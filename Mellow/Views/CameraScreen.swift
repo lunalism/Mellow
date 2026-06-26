@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Phase 1 · Stage 1 메인 화면.
 ///
-/// 권한 게이트 → 프레임된 필름 카드 프리뷰 + 전/후면 전환.
+/// 권한 게이트 → 들린 블랙 chrome 위의 큰 3:4 필름 카드 프리뷰 + 전/후면 전환.
 /// 셔터·비율·필터·노출 등 나머지 컨트롤은 다음 단계에서 추가한다.
 struct CameraScreen: View {
     @StateObject private var auth = CameraAuthorization()
@@ -11,16 +11,18 @@ struct CameraScreen: View {
 
     // MARK: - 레이아웃 상수
     private enum Layout {
-        static let hMargin: CGFloat = 16          // 프리뷰 카드 좌우 여백
-        static let cardCorner: CGFloat = 16       // 프리뷰 모서리 (Spec §2.2)
-        static let topBarHeight: CGFloat = 44     // 슬림 상단 바 영역
-        /// 프리뷰 카드 비율 = 폭:높이. Spec §3 기본값 4:3 → 세로 방향 3:4.
+        static let hMargin: CGFloat = 11        // 카드 좌우 여백(= 얇은 chrome 프레임)
+        static let cardCorner: CGFloat = 22     // 필름 카드 모서리 (Spec §2.2)
+        static let topBarHeight: CGFloat = 40   // 슬림 상단 바 영역 (Stage 3: 플래시·비율·설정)
+        static let cardTopGap: CGFloat = 4      // 상단 바 바로 아래에 카드를 붙인다
+        /// 프리뷰 카드 비율 = 폭:높이. Spec §3 기본 4:3 → 세로 3:4. WYSIWYG 위해 고정.
         static let previewRatio: CGFloat = 3.0 / 4.0
     }
 
     var body: some View {
         ZStack {
-            Color.mellowPaper.ignoresSafeArea()
+            // 들린 블랙 chrome (#3B362E). 순수 검정 금지.
+            Color.mellowShadow.ignoresSafeArea()
 
             switch auth.state {
             case .notDetermined:
@@ -35,6 +37,9 @@ struct CameraScreen: View {
                     .task { vm.startSession() }
             }
         }
+        // 어두운 chrome 위에선 상태바(시계·배터리)를 라이트 콘텐츠로. 페이퍼 프라이밍 화면은 라이트.
+        // (모든 색은 고정 토큰이라 colorScheme 전환은 상태바 가독성에만 영향)
+        .preferredColorScheme(auth.state == .authorized ? .dark : .light)
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
@@ -56,10 +61,10 @@ struct CameraScreen: View {
             let cardHeight = cardWidth / Layout.previewRatio   // 4:3 세로 → 폭 × 4/3
 
             VStack(spacing: 0) {
-                // (1) 상단 바 — Stage 1은 예약 공간. (플래시·비율·설정은 Stage 3)
+                // (1) 슬림 상단 바 — Stage 1은 예약 공간. (플래시·비율·설정은 Stage 3)
                 topBarZone
 
-                // (2) 프리뷰 — 화면의 지배적 영역. 고정 4:3 필름 카드.
+                // (2) 프리뷰 — 화면을 지배하는 큰 3:4 필름 카드. 가장자리엔 닿지 않음(얇은 프레임).
                 previewCard
                     .frame(width: cardWidth, height: cardHeight)
                     .clipShape(RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous))
@@ -67,13 +72,17 @@ struct CameraScreen: View {
                         RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
                             .stroke(Color.mellowBorder, lineWidth: 1)
                     )
-                    .shadow(color: Color.mellowShadow.opacity(0.12), radius: 12, y: 6)
-                    .frame(maxWidth: .infinity)   // 가로 중앙 정렬
-                    .padding(.top, 8)
+                    .shadow(color: Color.mellowShadow.opacity(0.35), radius: 16, y: 8)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Layout.cardTopGap)
 
-                // (3) 하단 컨트롤 — 남는 세로 공간 전부 흡수(데드 갭 방지).
+                // (3) 하단 컨트롤 — 남는 세로 공간 흡수(데드 갭 방지).
                 //     Stage 3: 필름통 필터 스트립 + 셔터. 지금은 전/후면 플립만.
-                bottomControlZone
+                ZStack {
+                    flipButton
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, Layout.hMargin)
             }
         }
     }
@@ -102,30 +111,21 @@ struct CameraScreen: View {
         #endif
     }
 
-    /// (3) 하단 컨트롤 영역. 남는 공간을 모두 흡수해 프리뷰가 지배적으로 보이게 한다.
-    private var bottomControlZone: some View {
-        ZStack {
-            flipButton
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, Layout.hMargin)
-    }
-
-    /// 전/후면 전환 버튼.
+    /// 전/후면 전환 버튼 (하단 chrome 영역 중앙). 어두운 chrome 위에서도 읽히는 따뜻한 칩.
     private var flipButton: some View {
         Button {
             vm.toggleCamera()
         } label: {
             Image(systemName: "arrow.triangle.2.circlepath.camera")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 24, weight: .regular))
                 .foregroundStyle(Color.mellowTextPrimary)
-                .frame(width: 52, height: 52)
+                .frame(width: 64, height: 64)
                 .background(Circle().fill(Color.mellowBgRaised))
                 .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 1))
-                .shadow(color: Color.mellowShadow.opacity(0.12), radius: 6, y: 3)
+                .shadow(color: Color.mellowShadow.opacity(0.25), radius: 8, y: 4)
         }
         .disabled(!vm.isCameraAvailable || vm.isSwitchingCamera)
-        .opacity(vm.isCameraAvailable ? 1 : 0.4)
+        .opacity(vm.isCameraAvailable ? 1 : 0.5)
     }
 }
 

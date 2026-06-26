@@ -4,9 +4,8 @@ import SwiftUI
 struct MellowApp: App {
     var body: some Scene {
         WindowGroup {
+            // colorScheme은 CameraScreen이 화면별로 결정한다(어두운 chrome=라이트 상태바).
             CameraScreen()
-                // v1은 라이트 모드 고정 (다크모드는 v1.1).
-                .preferredColorScheme(.light)
         }
     }
 }
