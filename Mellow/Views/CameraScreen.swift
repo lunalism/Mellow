@@ -13,7 +13,8 @@ struct CameraScreen: View {
     private enum Layout {
         static let frameMargin: CGFloat = 9     // 얇은 lifted-black 프레임 (상·좌·우)
         static let cardCorner: CGFloat = 22     // 필름 카드 모서리 (Spec §2.2)
-        static let minBottomZone: CGFloat = 88  // 하단 컨트롤(플립) 최소 높이, Stage 3에서 확장
+        static let minBottomZone: CGFloat = 116 // 하단 컨트롤(필터 스트립 + 플립) 높이
+        static let swipeThreshold: CGFloat = 40 // 필터 전환 스와이프 최소 이동
     }
 
     var body: some View {
@@ -67,6 +68,7 @@ struct CameraScreen: View {
                 Color.clear.frame(height: Layout.frameMargin)
 
                 // 프리뷰 — 세로로 꽉 찬 9:16 필름 카드. 얇은 lifted-black 프레임이 사방에 보임.
+                // 좌우 스와이프 → 필터 전환 (Spec §4.1).
                 previewCard
                     .frame(width: cardWidth, height: cardHeight)
                     .clipShape(RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous))
@@ -75,10 +77,13 @@ struct CameraScreen: View {
                             .stroke(Color.mellowBorder, lineWidth: 1)
                     )
                     .shadow(color: Color.mellowShadow.opacity(0.35), radius: 16, y: 8)
+                    .contentShape(Rectangle())
+                    .gesture(filterSwipe)
                     .frame(maxWidth: .infinity)
 
-                // 하단 컨트롤 — 남는 세로 공간 흡수. Stage 3: 필름통 스트립 + 셔터. 지금은 플립만.
-                ZStack {
+                // 하단 컨트롤 — 필터 스트립 + 플립. (Stage 3 이후: 셔터)
+                VStack(spacing: 12) {
+                    filterStrip
                     flipButton
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -100,20 +105,64 @@ struct CameraScreen: View {
         // 깔고, 프레임이 들어오면 라이브 프리뷰가 그 위를 채운다. 더미 재사용 금지.
         ZStack {
             Color.mellowPaper
-            CameraPreviewView(sessionManager: vm.sessionManager)
+            CameraPreviewView(sessionManager: vm.sessionManager,
+                              selectedFilter: vm.selectedFilter)
         }
         #endif
     }
 
-    /// 전/후면 전환 버튼 (하단 chrome 영역 중앙). 어두운 chrome 위에서도 읽히는 따뜻한 칩.
+    // MARK: - 필터 스위칭 (Spec §4)
+
+    /// 좌우 스와이프 → 다음/이전 필터. 수평 우세 + 임계값 통과 시에만.
+    private var filterSwipe: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy), abs(dx) > Layout.swipeThreshold else { return }
+                vm.cycleFilter(by: dx < 0 ? 1 : -1)  // 왼쪽 스와이프 → 다음
+            }
+    }
+
+    /// 하단 필터 스트립. 칩 = 이름 + 선택 시 앰버 링 (Spec §2.3). 탭 = 선택.
+    /// (필름통 아트·라이브 틴트 썸네일은 후속 폴리시.)
+    private var filterStrip: some View {
+        HStack(spacing: 10) {
+            ForEach(vm.presets) { preset in
+                filterChip(preset)
+            }
+        }
+    }
+
+    private func filterChip(_ preset: FilterPreset) -> some View {
+        let isSelected = preset.id == vm.selectedFilter.id
+        return Button {
+            vm.selectFilter(preset)
+        } label: {
+            Text(preset.displayName)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.mellowTextPrimary : Color.mellowIvory.opacity(0.7))
+                .padding(.vertical, 7)
+                .padding(.horizontal, 14)
+                .background(Capsule().fill(isSelected ? Color.mellowBgRaised : Color.clear))
+                .overlay(
+                    Capsule().stroke(isSelected ? Color.mellowAccent : Color.mellowIvory.opacity(0.25),
+                                     lineWidth: isSelected ? 2 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.18), value: isSelected)
+    }
+
+    /// 전/후면 전환 버튼. 어두운 chrome 위에서도 읽히는 따뜻한 칩.
     private var flipButton: some View {
         Button {
             vm.toggleCamera()
         } label: {
             Image(systemName: "arrow.triangle.2.circlepath.camera")
-                .font(.system(size: 24, weight: .regular))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(Color.mellowTextPrimary)
-                .frame(width: 64, height: 64)
+                .frame(width: 52, height: 52)
                 .background(Circle().fill(Color.mellowBgRaised))
                 .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 1))
                 .shadow(color: Color.mellowShadow.opacity(0.25), radius: 8, y: 4)

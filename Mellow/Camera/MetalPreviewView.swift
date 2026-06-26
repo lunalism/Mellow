@@ -36,6 +36,7 @@ final class MetalPreviewView: MTKView {
         isPaused = true                  // 프레임 도착 시에만 그린다(상시 렌더 루프 없음)
         enableSetNeedsDisplay = true
         autoResizeDrawable = true
+        isUserInteractionEnabled = false // 스와이프 제스처가 상위 SwiftUI로 전달되도록
     }
 
     @available(*, unavailable)
