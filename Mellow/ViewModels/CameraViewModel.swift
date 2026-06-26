@@ -12,6 +12,12 @@ import Combine
 final class CameraViewModel: ObservableObject {
     let sessionManager = CameraSessionManager()
 
+    /// 프리뷰·캡처 공통 화면 비율. 기본 9:16(세로). 단일 출처(= WYSIWYG).
+    /// TODO(캡처 단계): 셔터 캡처 시 원본을 **반드시 이 `aspectRatio`로 크롭**해 저장한다.
+    ///   프리뷰는 resizeAspectFill로 이 비율의 센터 크롭을 보여주므로, 저장 크롭도
+    ///   동일해야 프리뷰=캡처(WYSIWYG)가 유지된다. 다른 비율 하드코딩 금지.
+    @Published private(set) var aspectRatio: AspectRatio = .default
+
     /// 카메라 입력 구성에 성공했는지(전/후면 전환 활성화 여부). 실기기에서만 true.
     @Published private(set) var isCameraAvailable = false
     @Published private(set) var cameraPosition: AVCaptureDevice.Position = .back

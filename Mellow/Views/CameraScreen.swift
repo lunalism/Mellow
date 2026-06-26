@@ -11,12 +11,9 @@ struct CameraScreen: View {
 
     // MARK: - 레이아웃 상수
     private enum Layout {
-        static let hMargin: CGFloat = 11        // 카드 좌우 여백(= 얇은 chrome 프레임)
+        static let frameMargin: CGFloat = 9     // 얇은 lifted-black 프레임 (상·좌·우)
         static let cardCorner: CGFloat = 22     // 필름 카드 모서리 (Spec §2.2)
-        static let topBarHeight: CGFloat = 40   // 슬림 상단 바 영역 (Stage 3: 플래시·비율·설정)
-        static let cardTopGap: CGFloat = 4      // 상단 바 바로 아래에 카드를 붙인다
-        /// 프리뷰 카드 비율 = 폭:높이. Spec §3 기본 4:3 → 세로 3:4. WYSIWYG 위해 고정.
-        static let previewRatio: CGFloat = 3.0 / 4.0
+        static let minBottomZone: CGFloat = 88  // 하단 컨트롤(플립) 최소 높이, Stage 3에서 확장
     }
 
     var body: some View {
@@ -57,14 +54,19 @@ struct CameraScreen: View {
 
     private var cameraInterface: some View {
         GeometryReader { geo in
-            let cardWidth = geo.size.width - Layout.hMargin * 2
-            let cardHeight = cardWidth / Layout.previewRatio   // 4:3 세로 → 폭 × 4/3
+            // 단일 출처 비율(기본 9:16). 프리뷰 카드와 (추후) 캡처가 같은 값을 쓴다.
+            let ratio = vm.aspectRatio.portraitWidthOverHeight
+            // 얇은 상·좌·우 프레임 + 하단 컨트롤 영역을 확보한 뒤, 들어맞는 가장 큰 비율 카드.
+            let availWidth = geo.size.width - Layout.frameMargin * 2
+            let availHeight = max(0, geo.size.height - Layout.frameMargin - Layout.minBottomZone)
+            let cardWidth = min(availWidth, availHeight * ratio)
+            let cardHeight = cardWidth / ratio
 
             VStack(spacing: 0) {
-                // (1) 슬림 상단 바 — Stage 1은 예약 공간. (플래시·비율·설정은 Stage 3)
-                topBarZone
+                // 얇은 상단 프레임 (좌우 여백과 동일 폭) — full-bleed 방지.
+                Color.clear.frame(height: Layout.frameMargin)
 
-                // (2) 프리뷰 — 화면을 지배하는 큰 3:4 필름 카드. 가장자리엔 닿지 않음(얇은 프레임).
+                // 프리뷰 — 세로로 꽉 찬 9:16 필름 카드. 얇은 lifted-black 프레임이 사방에 보임.
                 previewCard
                     .frame(width: cardWidth, height: cardHeight)
                     .clipShape(RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous))
@@ -74,26 +76,18 @@ struct CameraScreen: View {
                     )
                     .shadow(color: Color.mellowShadow.opacity(0.35), radius: 16, y: 8)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, Layout.cardTopGap)
 
-                // (3) 하단 컨트롤 — 남는 세로 공간 흡수(데드 갭 방지).
-                //     Stage 3: 필름통 필터 스트립 + 셔터. 지금은 전/후면 플립만.
+                // 하단 컨트롤 — 남는 세로 공간 흡수. Stage 3: 필름통 스트립 + 셔터. 지금은 플립만.
                 ZStack {
                     flipButton
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, Layout.hMargin)
+                .padding(.horizontal, Layout.frameMargin)
             }
         }
     }
 
-    /// (1) 슬림 상단 바 영역. Stage 1은 비워 둔 예약 공간.
-    private var topBarZone: some View {
-        Color.clear
-            .frame(height: Layout.topBarHeight)
-    }
-
-    /// (2) 프리뷰 카드 내용. 카메라 피드는 레이어의 resizeAspectFill로 카드를
+    /// 프리뷰 카드 내용. 카메라 피드는 레이어의 resizeAspectFill로 카드를
     ///     꽉 채우고 넘치는 부분은 크롭된다(내부 레터박스 없음).
     @ViewBuilder
     private var previewCard: some View {
