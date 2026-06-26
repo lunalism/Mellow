@@ -100,7 +100,7 @@ struct CameraScreen: View {
         // 깔고, 프레임이 들어오면 라이브 프리뷰가 그 위를 채운다. 더미 재사용 금지.
         ZStack {
             Color.mellowPaper
-            CameraPreviewView(session: vm.sessionManager.session)
+            CameraPreviewView(sessionManager: vm.sessionManager)
         }
         #endif
     }

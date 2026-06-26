@@ -1,31 +1,50 @@
 import SwiftUI
 import AVFoundation
 
-/// raw 라이브 프리뷰 (Stage 1). `AVCaptureVideoPreviewLayer`로 세션 영상을
-/// 그대로 표시한다. 필터는 다음 단계에서 Metal 경로로 입힌다.
+/// 라이브 프리뷰 (Stage 2~). SwiftUI ↔ `MetalPreviewView`(MTKView) 브리지.
+///
+/// 세션의 VideoDataOutput 프레임을 `FrameProcessor`로 CIImage로 바꿔 Metal 뷰에
+/// 넘긴다. raw 패스스루(필터 없음) — 화면은 기존 프리뷰 레이어와 동일하게 보인다.
 struct CameraPreviewView: UIViewRepresentable {
-    let session: AVCaptureSession
+    let sessionManager: CameraSessionManager
 
-    func makeUIView(context: Context) -> PreviewView {
-        let view = PreviewView()
-        // 첫 프레임 도착 전에는 레이어가 비어 있으므로 배경을 페이퍼로 둔다(검정 플래시 방지).
-        view.backgroundColor = UIColor(Color.mellowPaper)
-        view.videoPreviewLayer.session = session
-        view.videoPreviewLayer.videoGravity = .resizeAspectFill
+    func makeCoordinator() -> Coordinator {
+        Coordinator(sessionManager: sessionManager)
+    }
+
+    func makeUIView(context: Context) -> MetalPreviewView {
+        let view = MetalPreviewView()
+        context.coordinator.attach(to: view)
         return view
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {
-        if uiView.videoPreviewLayer.session !== session {
-            uiView.videoPreviewLayer.session = session
-        }
-    }
+    func updateUIView(_ uiView: MetalPreviewView, context: Context) {}
 
-    /// 백킹 레이어가 AVCaptureVideoPreviewLayer인 UIView.
-    final class PreviewView: UIView {
-        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
-            layer as! AVCaptureVideoPreviewLayer
+    /// 프레임 콜백(videoQueue)을 받아 CIImage 변환 후 메인에서 뷰에 전달.
+    final class Coordinator {
+        private let sessionManager: CameraSessionManager
+        private let processor = FrameProcessor()
+        private weak var view: MetalPreviewView?
+
+        init(sessionManager: CameraSessionManager) {
+            self.sessionManager = sessionManager
+        }
+
+        func attach(to view: MetalPreviewView) {
+            self.view = view
+            sessionManager.onFrame = { [weak self] sampleBuffer in
+                self?.render(sampleBuffer)
+            }
+        }
+
+        /// videoQueue에서 호출. CIImage 변환(가벼움) 후 메인에서 렌더 트리거.
+        private func render(_ sampleBuffer: CMSampleBuffer) {
+            guard let image = processor.process(sampleBuffer,
+                                                orientation: sessionManager.currentOrientation)
+            else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.view?.image = image
+            }
         }
     }
 }
