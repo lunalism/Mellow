@@ -2,12 +2,21 @@ import SwiftUI
 
 /// Phase 1 · Stage 1 메인 화면.
 ///
-/// 권한 게이트 → 라이브(또는 더미) 프리뷰 + 전/후면 전환.
+/// 권한 게이트 → 프레임된 필름 카드 프리뷰 + 전/후면 전환.
 /// 셔터·비율·필터·노출 등 나머지 컨트롤은 다음 단계에서 추가한다.
 struct CameraScreen: View {
     @StateObject private var auth = CameraAuthorization()
     @StateObject private var vm = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
+
+    // MARK: - 레이아웃 상수
+    private enum Layout {
+        static let hMargin: CGFloat = 16          // 프리뷰 카드 좌우 여백
+        static let cardCorner: CGFloat = 16       // 프리뷰 모서리 (Spec §2.2)
+        static let topBarHeight: CGFloat = 44     // 슬림 상단 바 영역
+        /// 프리뷰 카드 비율 = 폭:높이. Spec §3 기본값 4:3 → 세로 방향 3:4.
+        static let previewRatio: CGFloat = 3.0 / 4.0
+    }
 
     var body: some View {
         ZStack {
@@ -39,30 +48,50 @@ struct CameraScreen: View {
         }
     }
 
-    // MARK: - 카메라 인터페이스
+    // MARK: - 카메라 인터페이스 (3분할: 상단 바 · 프리뷰 · 하단 컨트롤)
 
     private var cameraInterface: some View {
-        VStack(spacing: 0) {
-            preview
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+        GeometryReader { geo in
+            let cardWidth = geo.size.width - Layout.hMargin * 2
+            let cardHeight = cardWidth / Layout.previewRatio   // 4:3 세로 → 폭 × 4/3
 
-            Spacer(minLength: 0)
+            VStack(spacing: 0) {
+                // (1) 상단 바 — Stage 1은 예약 공간. (플래시·비율·설정은 Stage 3)
+                topBarZone
 
-            bottomBar
-                .padding(.bottom, 24)
+                // (2) 프리뷰 — 화면의 지배적 영역. 고정 4:3 필름 카드.
+                previewCard
+                    .frame(width: cardWidth, height: cardHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
+                            .stroke(Color.mellowBorder, lineWidth: 1)
+                    )
+                    .shadow(color: Color.mellowShadow.opacity(0.12), radius: 12, y: 6)
+                    .frame(maxWidth: .infinity)   // 가로 중앙 정렬
+                    .padding(.top, 8)
+
+                // (3) 하단 컨트롤 — 남는 세로 공간 전부 흡수(데드 갭 방지).
+                //     Stage 3: 필름통 필터 스트립 + 셔터. 지금은 전/후면 플립만.
+                bottomControlZone
+            }
         }
     }
 
+    /// (1) 슬림 상단 바 영역. Stage 1은 비워 둔 예약 공간.
+    private var topBarZone: some View {
+        Color.clear
+            .frame(height: Layout.topBarHeight)
+    }
+
+    /// (2) 프리뷰 카드 내용. 카메라 피드는 레이어의 resizeAspectFill로 카드를
+    ///     꽉 채우고 넘치는 부분은 크롭된다(내부 레터박스 없음).
     @ViewBuilder
-    private var preview: some View {
-        // Stage 1: 4:3 고정. 비율 전환은 다음 단계.
+    private var previewCard: some View {
         #if targetEnvironment(simulator)
         // 시뮬레이터엔 카메라가 없다. 더미는 **오직** 이 컴파일 타임 분기에서만 진입한다.
         // 실기기 빌드에는 이 코드가 포함되지 않아 더미가 도달 불가.
         DummyCameraView()
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)
         #else
         // 실기기: 첫 프레임 전 짧은 윈도우 동안 차분한 페이퍼 플레이스홀더(라벨 없음)를
         // 깔고, 프레임이 들어오면 라이브 프리뷰가 그 위를 채운다. 더미 재사용 금지.
@@ -70,30 +99,33 @@ struct CameraScreen: View {
             Color.mellowPaper
             CameraPreviewView(session: vm.sessionManager.session)
         }
-        .aspectRatio(3.0 / 4.0, contentMode: .fit)
         #endif
     }
 
-    private var bottomBar: some View {
-        HStack {
-            Spacer()
-            // 전/후면 전환
-            Button {
-                vm.toggleCamera()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(Color.mellowTextPrimary)
-                    .frame(width: 52, height: 52)
-                    .background(Circle().fill(Color.mellowBgRaised))
-                    .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 1))
-                    .shadow(color: Color.mellowShadow.opacity(0.12), radius: 6, y: 3)
-            }
-            .disabled(!vm.isCameraAvailable || vm.isSwitchingCamera)
-            .opacity(vm.isCameraAvailable ? 1 : 0.4)
-            Spacer()
+    /// (3) 하단 컨트롤 영역. 남는 공간을 모두 흡수해 프리뷰가 지배적으로 보이게 한다.
+    private var bottomControlZone: some View {
+        ZStack {
+            flipButton
         }
-        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, Layout.hMargin)
+    }
+
+    /// 전/후면 전환 버튼.
+    private var flipButton: some View {
+        Button {
+            vm.toggleCamera()
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(Color.mellowTextPrimary)
+                .frame(width: 52, height: 52)
+                .background(Circle().fill(Color.mellowBgRaised))
+                .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 1))
+                .shadow(color: Color.mellowShadow.opacity(0.12), radius: 6, y: 3)
+        }
+        .disabled(!vm.isCameraAvailable || vm.isSwitchingCamera)
+        .opacity(vm.isCameraAvailable ? 1 : 0.4)
     }
 }
 
