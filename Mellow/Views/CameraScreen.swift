@@ -8,7 +8,6 @@ struct CameraScreen: View {
     @StateObject private var auth = CameraAuthorization()
     @StateObject private var vm = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var flashOpacity: Double = 0   // 촬영 확인용 부드러운 아이보리 플래시
     @State private var showGallery = false         // 보관함 그리드(4b-2) 표시
 
     // MARK: - 레이아웃 상수
@@ -37,20 +36,8 @@ struct CameraScreen: View {
                     // 기존 최근 캡처가 있으면 보관함 썸네일도 띄운다(재실행 시 지속).
                     .task { vm.startSession(); vm.loadLatestThumbnail() }
             }
-
-            // 촬영 확인 — 부드러운 아이보리 플래시(하드한 흰 플래시 ❌).
-            Color.mellowIvory
-                .opacity(flashOpacity)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
         }
-        // 셔터 시 한 번 깜빡 → 잔잔히 사라짐.
-        .onChange(of: vm.captureState) { _, state in
-            if state == .capturing {
-                flashOpacity = 0.55
-                withAnimation(.easeOut(duration: 0.28)) { flashOpacity = 0 }
-            }
-        }
+        // 촬영 피드백은 셔터 햅틱 + 좌하단 썸네일 갱신만 (흰 플래시 제거: 눈부심 + 들린-블랙 원칙).
         // 실패 토스트 (저장공간 부족·촬영 실패).
         .overlay(alignment: .bottom) { captureToast }
         // 보관함 그리드(4b-2) — 풀스크린으로 띄우고 chevron으로 카메라 복귀.
