@@ -39,6 +39,12 @@ final class CameraViewModel: ObservableObject {
 
     enum CaptureState { case idle, capturing }
 
+    /// 최근 캡처의 **필터 적용** 썸네일 (Stage 4b-1). nil이면 빈 상태(플레이스홀더).
+    /// 비파괴 — 무필터 원본 + filterID를 프리뷰와 같은 체인으로 재렌더한 결과.
+    @Published private(set) var latestThumbnail: UIImage?
+    /// 캐시 키. 같은 캡처면 재렌더하지 않는다(SwiftUI 본문 재평가마다 렌더 금지).
+    private var latestThumbnailID: UUID?
+
     private var didConfigure = false
     private let selectionHaptic = UISelectionFeedbackGenerator()
     private let shutterHaptic = UIImpactFeedbackGenerator(style: .soft)
@@ -134,13 +140,46 @@ final class CameraViewModel: ObservableObject {
     func clearCaptureError() { captureError = nil }
 
     /// 원본 저장(파일 쓰기는 백그라운드). 셔터 게이트(captureState)와 무관 — 저장이 다음
-    /// 촬영을 막지 않는다. 저장공간 부족 시 실패 토스트만 띄운다.
+    /// 촬영을 막지 않는다. 저장 직후 같은 백그라운드 작업에서 썸네일을 렌더해 최신 샷을 반영.
+    /// 저장공간 부족 시 실패 토스트만 띄운다.
     private func persist(data: Data, filterID: String, ratio: AspectRatio, at createdAt: Date) {
         Task.detached(priority: .utility) {
             do {
-                try CaptureStore.shared.save(imageData: data, filterID: filterID, ratio: ratio, createdAt: createdAt)
+                let capture = try CaptureStore.shared.save(imageData: data, filterID: filterID,
+                                                           ratio: ratio, createdAt: createdAt)
+                let thumb = CaptureThumbnailRenderer.shared.render(
+                    originalURL: CaptureStore.shared.url(for: capture), filterID: capture.filterID)
+                await MainActor.run {
+                    guard let thumb else { return }
+                    self.latestThumbnail = thumb
+                    self.latestThumbnailID = capture.id
+                }
             } catch {
                 await MainActor.run { self.captureError = "저장 공간이 부족해요" }
+            }
+        }
+    }
+
+    // MARK: - 보관함 썸네일 (Stage 4b-1)
+
+    /// 앱 진입/카메라 표시 시 1회. 기존 최근 캡처가 있으면 썸네일을 띄운다(없으면 빈 상태 유지).
+    func loadLatestThumbnail() {
+        guard let capture = CaptureStore.shared.latest else { return }
+        renderThumbnail(for: capture)
+    }
+
+    /// 캡처 1건의 필터 적용 썸네일을 백그라운드에서 렌더 → 메인에서 반영. 같은 캡처면 스킵(캐시).
+    private func renderThumbnail(for capture: Capture) {
+        guard latestThumbnailID != capture.id else { return }
+        let url = CaptureStore.shared.url(for: capture)
+        let filterID = capture.filterID
+        let id = capture.id
+        Task.detached(priority: .utility) {
+            let image = CaptureThumbnailRenderer.shared.render(originalURL: url, filterID: filterID)
+            await MainActor.run {
+                guard let image else { return }
+                self.latestThumbnail = image
+                self.latestThumbnailID = id
             }
         }
     }

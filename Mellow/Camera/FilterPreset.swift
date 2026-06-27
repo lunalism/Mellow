@@ -49,6 +49,12 @@ extension FilterPreset {
     /// 전체 카탈로그(스트립/스와이프 순서). Phase 2에서 8종으로 확장.
     static let all: [FilterPreset] = [.original, .sunday, .honey]
 
+    /// 비파괴 저장의 filterID → 프리셋 조회. 미상이면 Original(패스스루)로 안전 폴백.
+    /// 썸네일·익스포트가 저장된 룩을 재현할 때 쓰는 단일 진입점.
+    static func preset(for id: String) -> FilterPreset {
+        all.first { $0.id == id } ?? .original
+    }
+
     /// 기본 선택 (Spec §2.3 = Sunday).
     static let `default`: FilterPreset = .sunday
 }

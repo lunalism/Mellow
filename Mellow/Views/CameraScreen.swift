@@ -33,7 +33,8 @@ struct CameraScreen: View {
             case .authorized:
                 cameraInterface
                     // 세션 구성/시작은 백그라운드 큐에서. 가능한 한 일찍 시작해 런치 윈도우를 줄인다.
-                    .task { vm.startSession() }
+                    // 기존 최근 캡처가 있으면 보관함 썸네일도 띄운다(재실행 시 지속).
+                    .task { vm.startSession(); vm.loadLatestThumbnail() }
             }
 
             // 촬영 확인 — 부드러운 아이보리 플래시(하드한 흰 플래시 ❌).
@@ -103,6 +104,7 @@ struct CameraScreen: View {
                     ZStack {
                         shutterButton
                         HStack {
+                            libraryThumbnail
                             Spacer()
                             flipButton
                         }
@@ -191,6 +193,38 @@ struct CameraScreen: View {
         }
         .disabled(!vm.isCameraAvailable || vm.isSwitchingCamera)
         .opacity(vm.isCameraAvailable ? 1 : 0.5)
+    }
+
+    /// 보관함 썸네일 (Spec §2.3 · Stage 4b-1). 최근 캡처의 **필터 적용** 미리보기.
+    /// 셔터 반대편(leading)에 두고 셔터는 중앙 유지. 탭 → 보관함은 4b-2.
+    private var libraryThumbnail: some View {
+        Button {
+            // TODO(4b-2): 탭 → 보관함 그리드 진입. 지금은 no-op.
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.mellowBgRaised)
+                if let thumb = vm.latestThumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "photo")          // 빈 상태 — 아직 촬영 없음
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(Color.mellowTextSecondary)
+                }
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.mellowBorder, lineWidth: 1)
+            )
+            .shadow(color: Color.mellowShadow.opacity(0.25), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.latestThumbnail == nil)            // 빈 상태에선 비활성(no-op 의도 명확)
+        .animation(.easeOut(duration: 0.2), value: vm.latestThumbnail != nil)
     }
 
     // MARK: - 셔터 (Spec §6, §9)

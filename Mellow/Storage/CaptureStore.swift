@@ -33,6 +33,9 @@ final class CaptureStore {
         originalsDir.appendingPathComponent(capture.originalFilename)
     }
 
+    /// 가장 최근 캡처(없으면 nil). 큐에서 읽어 save와의 경쟁을 피한다(스레드 안전).
+    var latest: Capture? { queue.sync { captures.first } }
+
     /// 원본 JPEG를 저장하고 메타데이터를 영속화. 저장공간 부족 등으로 쓰기 실패 시 throw.
     @discardableResult
     func save(imageData: Data, filterID: String, ratio: AspectRatio, createdAt: Date) throws -> Capture {
