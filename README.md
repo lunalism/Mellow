@@ -76,6 +76,8 @@ Mellow는 바로 그 빈자리에 섭니다.
 | [PRD](docs/Mellow_PRD_v0.2.md) | 제품 요구사항 정의 |
 | [Design System](docs/Mellow_Design_System_v0.2.md) | 색·타이포·디자인 토큰 |
 | [Phase 1 Spec](docs/Mellow_Phase1_CameraCore_Spec_v0.2.md) | 카메라 코어 상세 설계 |
+| [Screen Flow / IA](docs/Mellow_Screen_Flow_Map_IA_v0.1.md) | 화면 지도 · 내비게이션 (IA) |
+| [UI Interaction Guide](docs/Mellow_UI_Interaction_Guide_v0.1.md) | 컴포넌트 · 모션 · 햅틱 · 접근성 |
 | [CLAUDE.md](CLAUDE.md) | 개발 워크플로 · 검증 규칙 |
 
 ---
