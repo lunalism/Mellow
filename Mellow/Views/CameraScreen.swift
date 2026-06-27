@@ -9,6 +9,7 @@ struct CameraScreen: View {
     @StateObject private var vm = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var flashOpacity: Double = 0   // 촬영 확인용 부드러운 아이보리 플래시
+    @State private var showGallery = false         // 보관함 그리드(4b-2) 표시
 
     // MARK: - 레이아웃 상수
     private enum Layout {
@@ -52,6 +53,8 @@ struct CameraScreen: View {
         }
         // 실패 토스트 (저장공간 부족·촬영 실패).
         .overlay(alignment: .bottom) { captureToast }
+        // 보관함 그리드(4b-2) — 풀스크린으로 띄우고 chevron으로 카메라 복귀.
+        .fullScreenCover(isPresented: $showGallery) { GalleryView() }
         // 어두운 chrome 위에선 상태바(시계·배터리)를 라이트 콘텐츠로. 페이퍼 프라이밍 화면은 라이트.
         // (모든 색은 고정 토큰이라 colorScheme 전환은 상태바 가독성에만 영향)
         .preferredColorScheme(auth.state == .authorized ? .dark : .light)
@@ -199,7 +202,7 @@ struct CameraScreen: View {
     /// 셔터 반대편(leading)에 두고 셔터는 중앙 유지. 탭 → 보관함은 4b-2.
     private var libraryThumbnail: some View {
         Button {
-            // TODO(4b-2): 탭 → 보관함 그리드 진입. 지금은 no-op.
+            showGallery = true   // 탭 → 인앱 보관함 그리드(4b-2).
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)

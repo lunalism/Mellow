@@ -36,6 +36,9 @@ final class CaptureStore {
     /// 가장 최근 캡처(없으면 nil). 큐에서 읽어 save와의 경쟁을 피한다(스레드 안전).
     var latest: Capture? { queue.sync { captures.first } }
 
+    /// 전체 캡처 스냅샷, **최신순**(Stage 4b-2 갤러리 단일 데이터 소스). 큐에서 읽어 스레드 안전.
+    var allNewestFirst: [Capture] { queue.sync { captures.sorted { $0.createdAt > $1.createdAt } } }
+
     /// 원본 JPEG를 저장하고 메타데이터를 영속화. 저장공간 부족 등으로 쓰기 실패 시 throw.
     @discardableResult
     func save(imageData: Data, filterID: String, ratio: AspectRatio, createdAt: Date) throws -> Capture {
