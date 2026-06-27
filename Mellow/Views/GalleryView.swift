@@ -40,7 +40,14 @@ struct GalleryView: View {
             }
             .toolbarBackground(Color.mellowShadow, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            // 셀 탭 → 상세 뷰(4b-3). UUID로 라우팅해 Capture 모델은 건드리지 않는다.
+            .navigationDestination(for: UUID.self) { id in
+                if let capture = captures.first(where: { $0.id == id }) {
+                    PhotoDetailView(capture: capture)
+                }
+            }
         }
+        .tint(Color.mellowAccent)      // 뒤로가기 등 시스템 액센트를 앰버로(온브랜드)
         .preferredColorScheme(.dark)   // 어두운 chrome → 라이트 상태바
         .onAppear { captures = CaptureStore.shared.allNewestFirst }   // 단일 소스, 최신순 스냅샷
     }
@@ -49,7 +56,10 @@ struct GalleryView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: gap) {
                 ForEach(captures) { capture in
-                    GalleryCell(capture: capture)
+                    NavigationLink(value: capture.id) {
+                        GalleryCell(capture: capture)
+                    }
+                    .buttonStyle(.plain)   // 기본 틴트/하이라이트 제거 — 셀 그대로
                 }
             }
             .padding(gap)

@@ -23,6 +23,10 @@ final class CaptureThumbnailRenderer {
     /// 그리드 스크롤 시 셀이 재생성돼도 재렌더하지 않는다. NSCache라 스레드 안전 + 메모리 압박 시 자동 축출.
     private let cache = NSCache<NSString, UIImage>()
 
+    /// 상세 뷰 풀프레임 캐시 (Stage 4b-3). 화면 크기라 객체가 크므로 **소수만** 별도 보관 →
+    /// 작은 정사각 캐시를 밀어내지 않고, 메모리 압박 시 자동 축출.
+    private let fullCache = NSCache<NSString, UIImage>()
+
     private init() {
         if let device = MTLCreateSystemDefaultDevice() {
             ciContext = CIContext(mtlDevice: device, options: [.name: "MellowThumbnail"])
@@ -30,20 +34,12 @@ final class CaptureThumbnailRenderer {
             ciContext = CIContext(options: [.name: "MellowThumbnail"])  // 폴백(시뮬 등)
         }
         cache.countLimit = 240   // 대량 캡처에서도 메모리 상한(초과분은 자동 축출)
+        fullCache.countLimit = 6 // 큰 풀프레임은 최근 몇 장만(재진입 즉시, 나머지는 재렌더)
     }
 
-    /// 원본 파일 + filterID → 필터 적용된 작은 UIImage. **백그라운드에서 호출**, UI는 호출측이 메인에서.
+    /// 원본 파일 + filterID → 필터 적용된 작은 UIImage(4b-1 좌하단 썸네일용). **백그라운드 호출**.
     func render(originalURL: URL, filterID: String) -> UIImage? {
-        guard let small = Self.downsampled(originalURL, maxPixelSize: maxPixelSize) else { return nil }
-        let input = CIImage(cgImage: small)
-        // 라이브 프리뷰와 같은 체인. 미상 id는 Original(패스스루)로 안전 폴백.
-        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)
-        // 색 전용 체인이라 extent는 입력과 동일 → 입력 extent로 안전하게 래스터.
-        guard let cg = ciContext.createCGImage(filtered,
-                                               from: input.extent,
-                                               format: .RGBA8,
-                                               colorSpace: renderColorSpace) else { return nil }
-        return UIImage(cgImage: cg)
+        renderFullFrame(originalURL: originalURL, filterID: filterID, maxPixelSize: maxPixelSize)
     }
 
     // MARK: - 정사각 그리드 셀 (Stage 4b-2)
@@ -77,6 +73,42 @@ final class CaptureThumbnailRenderer {
         let s = min(ext.width, ext.height)
         let crop = CGRect(x: ext.midX - s / 2, y: ext.midY - s / 2, width: s, height: s).integral
         guard let cg = ciContext.createCGImage(filtered, from: crop,
+                                               format: .RGBA8, colorSpace: renderColorSpace) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    // MARK: - 상세 뷰 풀프레임 (Stage 4b-3) — 9:16 전체 프레이밍, 화면 크기 다운스케일
+
+    /// 메인에서 안전한 캐시 조회(렌더 안 함). 있으면 즉시 표시(재진입 시 깜빡임 없음).
+    func cachedFullFrame(id: UUID, maxPixelSize: Int) -> UIImage? {
+        fullCache.object(forKey: Self.fullKey(id, maxPixelSize))
+    }
+
+    /// 캐시 우선 **풀프레임(9:16 전체, 크롭 없음)** 이미지. **백그라운드 호출**. 상세 뷰 전용.
+    /// 화면 크기로 다운스케일한 뒤 필터를 건다 — 풀해상도(2268×4032)를 굳이 처리하지 않는다
+    /// (화면에선 동일하게 보이고 훨씬 가볍다).
+    func fullFrameThumbnail(id: UUID, url: URL, filterID: String, maxPixelSize: Int) -> UIImage? {
+        let key = Self.fullKey(id, maxPixelSize)
+        if let hit = fullCache.object(forKey: key) { return hit }
+        guard let image = renderFullFrame(originalURL: url, filterID: filterID, maxPixelSize: maxPixelSize) else { return nil }
+        fullCache.setObject(image, forKey: key)
+        return image
+    }
+
+    private static func fullKey(_ id: UUID, _ max: Int) -> NSString { "\(id.uuidString)#full\(max)" as NSString }
+
+    /// 다운스케일 → 공유 필터 체인 → 풀프레임(크롭 없음) 래스터. 4b-1·프리뷰·셀과 **동일한 체인**.
+    /// 처음으로 (거의) 전체 해상도에 필터를 적용하는 지점.
+    ///
+    /// TODO(그레인/비네팅/헐레이션 단계 — Stage 4a 메모): **픽셀 단위** 효과가 들어오면 이 상세
+    ///   렌더(≈화면 크기)와 작은 프리뷰/셀 렌더의 **해상도 차이를 보정**해야 한다(그레인 시드 스케일,
+    ///   비네팅 반경, 헐레이션 블러 반경 등). 지금은 색 전용 체인이라 해상도 무관 → 모든 렌더가 동일하게 보인다.
+    private func renderFullFrame(originalURL: URL, filterID: String, maxPixelSize: Int) -> UIImage? {
+        guard let small = Self.downsampled(originalURL, maxPixelSize: maxPixelSize) else { return nil }
+        let input = CIImage(cgImage: small)
+        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)   // 미상 id는 Original 폴백
+        // 색 전용 체인이라 extent는 입력과 동일 → 입력 extent로 안전하게 래스터.
+        guard let cg = ciContext.createCGImage(filtered, from: input.extent,
                                                format: .RGBA8, colorSpace: renderColorSpace) else { return nil }
         return UIImage(cgImage: cg)
     }
