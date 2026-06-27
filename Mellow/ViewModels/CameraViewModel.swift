@@ -31,8 +31,17 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var cameraPosition: AVCaptureDevice.Position = .back
     @Published private(set) var isSwitchingCamera = false
 
+    /// 셔터 게이트 상태. **저장과 분리** — capturing은 탭 직후 센서 노출이 끝날 때까지의
+    /// 짧은 구간만이다. 저장은 백그라운드에서 독립적으로 돌며 다음 셔터를 막지 않는다.
+    @Published private(set) var captureState: CaptureState = .idle
+    /// 실패 토스트 메시지(저장공간 부족·촬영 실패). nil이면 미표시.
+    @Published var captureError: String?
+
+    enum CaptureState { case idle, capturing }
+
     private var didConfigure = false
     private let selectionHaptic = UISelectionFeedbackGenerator()
+    private let shutterHaptic = UIImpactFeedbackGenerator(style: .soft)
 
     /// 최초 진입 시 1회 세션 구성. 권한 authorized 이후에 호출한다.
     /// 구성·시작은 모두 백그라운드 큐에서 수행되어 UI를 막지 않는다(런치 윈도우 단축).
@@ -87,5 +96,52 @@ final class CameraViewModel: ObservableObject {
         selectedFilter = preset
         selectionHaptic.selectionChanged()
         selectionHaptic.prepare()
+    }
+
+    // MARK: - 캡처 (Spec §6) — 비파괴 저장
+
+    /// 셔터. 풀해상도 무필터 원본 + filterID를 비파괴 저장. 촬영 중 중복 탭 무시(Spec §3).
+    func capturePhoto() {
+        guard isCameraAvailable, captureState == .idle else { return }
+        // 커밋된 값 스냅샷 — 크로스페이드 중이어도 transient가 아닌 selectedFilter를 쓴다.
+        let filterID = selectedFilter.id
+        let ratio = aspectRatio
+        let createdAt = Date()
+
+        captureState = .capturing
+        shutterHaptic.impactOccurred()
+        shutterHaptic.prepare()
+
+        sessionManager.capturePhoto(
+            aspectRatio: ratio,
+            onReadyForNextShot: { [weak self] in
+                // 센서 노출 완료 → 즉시 다음 셔터 허용(저장 완료를 기다리지 않음).
+                self?.captureState = .idle
+            },
+            completion: { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let data):
+                    // 저장은 백그라운드에서 독립적으로 — 셔터 재활성화를 막지 않는다.
+                    self.persist(data: data, filterID: filterID, ratio: ratio, at: createdAt)
+                case .failure:
+                    self.captureError = "촬영에 실패했어요"
+                    self.captureState = .idle   // 센서 콜백 전 실패 시 안전하게 게이트 해제.
+                }
+            })
+    }
+
+    func clearCaptureError() { captureError = nil }
+
+    /// 원본 저장(파일 쓰기는 백그라운드). 셔터 게이트(captureState)와 무관 — 저장이 다음
+    /// 촬영을 막지 않는다. 저장공간 부족 시 실패 토스트만 띄운다.
+    private func persist(data: Data, filterID: String, ratio: AspectRatio, at createdAt: Date) {
+        Task.detached(priority: .utility) {
+            do {
+                try CaptureStore.shared.save(imageData: data, filterID: filterID, ratio: ratio, createdAt: createdAt)
+            } catch {
+                await MainActor.run { self.captureError = "저장 공간이 부족해요" }
+            }
+        }
     }
 }

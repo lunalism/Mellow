@@ -8,12 +8,13 @@ struct CameraScreen: View {
     @StateObject private var auth = CameraAuthorization()
     @StateObject private var vm = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var flashOpacity: Double = 0   // 촬영 확인용 부드러운 아이보리 플래시
 
     // MARK: - 레이아웃 상수
     private enum Layout {
         static let frameMargin: CGFloat = 9     // 얇은 lifted-black 프레임 (상·좌·우)
         static let cardCorner: CGFloat = 22     // 필름 카드 모서리 (Spec §2.2)
-        static let minBottomZone: CGFloat = 116 // 하단 컨트롤(필터 스트립 + 플립) 높이
+        static let minBottomZone: CGFloat = 150 // 하단 컨트롤(필터 스트립 + 셔터 + 플립) 높이
         static let swipeThreshold: CGFloat = 40 // 필터 전환 스와이프 최소 이동
     }
 
@@ -34,7 +35,22 @@ struct CameraScreen: View {
                     // 세션 구성/시작은 백그라운드 큐에서. 가능한 한 일찍 시작해 런치 윈도우를 줄인다.
                     .task { vm.startSession() }
             }
+
+            // 촬영 확인 — 부드러운 아이보리 플래시(하드한 흰 플래시 ❌).
+            Color.mellowIvory
+                .opacity(flashOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
         }
+        // 셔터 시 한 번 깜빡 → 잔잔히 사라짐.
+        .onChange(of: vm.captureState) { _, state in
+            if state == .capturing {
+                flashOpacity = 0.55
+                withAnimation(.easeOut(duration: 0.28)) { flashOpacity = 0 }
+            }
+        }
+        // 실패 토스트 (저장공간 부족·촬영 실패).
+        .overlay(alignment: .bottom) { captureToast }
         // 어두운 chrome 위에선 상태바(시계·배터리)를 라이트 콘텐츠로. 페이퍼 프라이밍 화면은 라이트.
         // (모든 색은 고정 토큰이라 colorScheme 전환은 상태바 가독성에만 영향)
         .preferredColorScheme(auth.state == .authorized ? .dark : .light)
@@ -81,10 +97,16 @@ struct CameraScreen: View {
                     .gesture(filterSwipe)
                     .frame(maxWidth: .infinity)
 
-                // 하단 컨트롤 — 필터 스트립 + 플립. (Stage 3 이후: 셔터)
-                VStack(spacing: 12) {
+                // 하단 컨트롤 — 필터 스트립 + (셔터 중앙 · 플립 우측). (보관함 썸네일은 4b)
+                VStack(spacing: 14) {
                     filterStrip
-                    flipButton
+                    ZStack {
+                        shutterButton
+                        HStack {
+                            Spacer()
+                            flipButton
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, Layout.frameMargin)
@@ -169,6 +191,47 @@ struct CameraScreen: View {
         }
         .disabled(!vm.isCameraAvailable || vm.isSwitchingCamera)
         .opacity(vm.isCameraAvailable ? 1 : 0.5)
+    }
+
+    // MARK: - 셔터 (Spec §6, §9)
+
+    /// 셔터 버튼 — 앰버 링 + 아이보리 중앙. 촬영 중 축소 + 중복 탭 무시.
+    private var shutterButton: some View {
+        Button {
+            vm.capturePhoto()
+        } label: {
+            ZStack {
+                Circle().fill(Color.mellowIvory).frame(width: 56, height: 56)
+                Circle().stroke(Color.mellowAccent, lineWidth: 5).frame(width: 70, height: 70)
+            }
+            .shadow(color: Color.mellowShadow.opacity(0.3), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(!vm.isCameraAvailable || vm.captureState != .idle)
+        .opacity(vm.isCameraAvailable ? 1 : 0.5)
+        .scaleEffect(vm.captureState == .capturing ? 0.92 : 1)
+        .animation(.easeOut(duration: 0.12), value: vm.captureState)
+    }
+
+    // MARK: - 실패 토스트
+
+    @ViewBuilder
+    private var captureToast: some View {
+        if let message = vm.captureError {
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.mellowIvory)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 18)
+                .background(Capsule().fill(Color.mellowShadow.opacity(0.92)))
+                .overlay(Capsule().stroke(Color.mellowBorder.opacity(0.3), lineWidth: 1))
+                .padding(.bottom, 44)
+                .transition(.opacity)
+                .task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    vm.clearCaptureError()
+                }
+        }
     }
 }
 
