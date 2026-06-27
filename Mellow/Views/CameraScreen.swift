@@ -9,6 +9,7 @@ struct CameraScreen: View {
     @StateObject private var vm = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showGallery = false         // 보관함 그리드(4b-2) 표시
+    @State private var shutterDim: Double = 0       // 셔터 블링크(프리뷰 들린-블랙 딥)
 
     // MARK: - 레이아웃 상수
     private enum Layout {
@@ -37,7 +38,13 @@ struct CameraScreen: View {
                     .task { vm.startSession(); vm.loadLatestThumbnail() }
             }
         }
-        // 촬영 피드백은 셔터 햅틱 + 좌하단 썸네일 갱신만 (흰 플래시 제거: 눈부심 + 들린-블랙 원칙).
+        // 촬영 피드백: 셔터 햅틱 + 좌하단 썸네일 갱신 + 프리뷰 들린-블랙 블링크(아래).
+        // 셔터 시 프리뷰만 잠깐 어두워졌다 복귀 — fade-in 80ms → fade-out 120ms(총 ~200ms).
+        .onChange(of: vm.captureState) { _, state in
+            guard state == .capturing else { return }
+            withAnimation(.easeInOut(duration: 0.08)) { shutterDim = 0.7 }
+            withAnimation(.easeInOut(duration: 0.12).delay(0.08)) { shutterDim = 0 }
+        }
         // 실패 토스트 (저장공간 부족·촬영 실패).
         .overlay(alignment: .bottom) { captureToast }
         // 보관함 그리드(4b-2) — 풀스크린으로 띄우고 chevron으로 카메라 복귀.
@@ -79,6 +86,13 @@ struct CameraScreen: View {
                 previewCard
                     .frame(width: cardWidth, height: cardHeight)
                     .clipShape(RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous))
+                    // 셔터 블링크 — 들린-블랙으로 프리뷰만 살짝 어둡혔다 복귀(필름 셔터 느낌, 눈부심 없음).
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
+                            .fill(Color.mellowShadow)
+                            .opacity(shutterDim)
+                            .allowsHitTesting(false)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
                             .stroke(Color.mellowBorder, lineWidth: 1)
