@@ -40,11 +40,10 @@ struct GalleryView: View {
             }
             .toolbarBackground(Color.mellowShadow, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            // 셀 탭 → 상세 뷰(4b-3). UUID로 라우팅해 Capture 모델은 건드리지 않는다.
+            // 셀 탭 → 상세 뷰(4b-3). UUID로 라우팅하되, 페이징을 위해 같은 최신순 배열을
+            // 통째로 넘기고 그 id에서 시작한다. 그리드 자체 렌더링은 건드리지 않는다.
             .navigationDestination(for: UUID.self) { id in
-                if let capture = captures.first(where: { $0.id == id }) {
-                    PhotoDetailView(capture: capture)
-                }
+                PhotoDetailView(captures: captures, startID: id)
             }
         }
         .tint(Color.mellowAccent)      // 뒤로가기 등 시스템 액센트를 앰버로(온브랜드)
