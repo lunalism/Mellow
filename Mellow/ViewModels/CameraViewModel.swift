@@ -162,9 +162,17 @@ final class CameraViewModel: ObservableObject {
 
     // MARK: - 보관함 썸네일 (Stage 4b-1)
 
-    /// 앱 진입/카메라 표시 시 1회. 기존 최근 캡처가 있으면 썸네일을 띄운다(없으면 빈 상태 유지).
-    func loadLatestThumbnail() {
-        guard let capture = CaptureStore.shared.latest else { return }
+    /// 좌하단 썸네일을 **단일 소스(captures 최신순)**에 맞춘다 — 앱 진입/카메라 표시 시, 그리고
+    /// 보관함에서 돌아올 때. 자체 상태를 들고 있지 않고 매번 `CaptureStore.latest`에서 파생한다:
+    /// - 최신 캡처가 **있으면** 그 썸네일(같은 최신이면 내부 가드로 no-op, 바뀌었으면 재렌더).
+    /// - **없으면**(전부 삭제) 비워서 첫 촬영 전과 같은 빈/비활성 상태로 되돌린다.
+    /// 덕분에 상세 뷰 삭제(최신 삭제·비최신 삭제·전부 삭제) 후에도 썸네일이 갤러리와 일관된다.
+    func syncLatestThumbnail() {
+        guard let capture = CaptureStore.shared.latest else {
+            latestThumbnail = nil          // → libraryThumbnail이 빈 상태 + .disabled로 복귀
+            latestThumbnailID = nil
+            return
+        }
         renderThumbnail(for: capture)
     }
 

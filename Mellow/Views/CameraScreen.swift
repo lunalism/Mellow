@@ -35,7 +35,7 @@ struct CameraScreen: View {
                 cameraInterface
                     // 세션 구성/시작은 백그라운드 큐에서. 가능한 한 일찍 시작해 런치 윈도우를 줄인다.
                     // 기존 최근 캡처가 있으면 보관함 썸네일도 띄운다(재실행 시 지속).
-                    .task { vm.startSession(); vm.loadLatestThumbnail() }
+                    .task { vm.startSession(); vm.syncLatestThumbnail() }
             }
         }
         // 촬영 피드백: 셔터 햅틱 + 좌하단 썸네일 갱신 + 프리뷰 들린-블랙 블링크(아래).
@@ -48,7 +48,8 @@ struct CameraScreen: View {
         // 실패 토스트 (저장공간 부족·촬영 실패).
         .overlay(alignment: .bottom) { captureToast }
         // 보관함 그리드(4b-2) — 풀스크린으로 띄우고 chevron으로 카메라 복귀.
-        .fullScreenCover(isPresented: $showGallery) { GalleryView() }
+        // 닫힐 때 썸네일을 단일 소스에 재동기화(상세 뷰에서 삭제했을 수 있으므로).
+        .fullScreenCover(isPresented: $showGallery, onDismiss: { vm.syncLatestThumbnail() }) { GalleryView() }
         // 어두운 chrome 위에선 상태바(시계·배터리)를 라이트 콘텐츠로. 페이퍼 프라이밍 화면은 라이트.
         // (모든 색은 고정 토큰이라 colorScheme 전환은 상태바 가독성에만 영향)
         .preferredColorScheme(auth.state == .authorized ? .dark : .light)

@@ -27,6 +27,13 @@ final class CaptureThumbnailRenderer {
     /// 작은 정사각 캐시를 밀어내지 않고, 메모리 압박 시 자동 축출.
     private let fullCache = NSCache<NSString, UIImage>()
 
+    /// 삭제 시(Stage 4c) 한 캡처의 항목을 두 캐시에서 **정확히** 비우기 위한 id→키 인덱스.
+    /// NSCache는 열거/접두사 삭제가 안 되므로 삽입 시 키를 id별로 기록해 둔다. 삭제는 드물고
+    /// 키 문자열은 작다. (NSCache가 상한으로 자동 축출한 키는 인덱스에 잠시 남지만 무해 —
+    /// 다음 evict에서 함께 정리된다.)
+    private let keyIndexLock = NSLock()
+    private var keysByID: [UUID: Set<NSString>] = [:]
+
     private init() {
         if let device = MTLCreateSystemDefaultDevice() {
             ciContext = CIContext(mtlDevice: device, options: [.name: "MellowThumbnail"])
@@ -56,6 +63,7 @@ final class CaptureThumbnailRenderer {
         if let hit = cache.object(forKey: key) { return hit }
         guard let image = renderSquare(originalURL: url, filterID: filterID, side: side) else { return nil }
         cache.setObject(image, forKey: key)
+        indexKey(key, for: id)
         return image
     }
 
@@ -92,7 +100,27 @@ final class CaptureThumbnailRenderer {
         if let hit = fullCache.object(forKey: key) { return hit }
         guard let image = renderFullFrame(originalURL: url, filterID: filterID, maxPixelSize: maxPixelSize) else { return nil }
         fullCache.setObject(image, forKey: key)
+        indexKey(key, for: id)
         return image
+    }
+
+    // MARK: - 삭제 시 캐시 정리 (Stage 4c)
+
+    /// 한 캡처의 모든 항목을 **두 캐시**에서 제거(삭제 후 스테일 썸네일/풀프레임이 남지 않게).
+    /// 삽입 때 기록한 id→키 인덱스로 정사각·풀프레임 키를 정확히 찾아 비운다.
+    func evict(id: UUID) {
+        keyIndexLock.lock()
+        let keys = keysByID.removeValue(forKey: id) ?? []
+        keyIndexLock.unlock()
+        for key in keys {
+            cache.removeObject(forKey: key)
+            fullCache.removeObject(forKey: key)
+        }
+    }
+
+    private func indexKey(_ key: NSString, for id: UUID) {
+        keyIndexLock.lock(); defer { keyIndexLock.unlock() }
+        keysByID[id, default: []].insert(key)
     }
 
     private static func fullKey(_ id: UUID, _ max: Int) -> NSString { "\(id.uuidString)#full\(max)" as NSString }

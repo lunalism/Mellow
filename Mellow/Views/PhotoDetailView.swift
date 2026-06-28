@@ -15,10 +15,14 @@ import SwiftUI
 ///   메모리 상한을 둔다. 먼 페이지는 자동 축출 → 수백 장을 넘겨도 메모리·발열이 누적되지 않는다.
 ///   (윈도우는 보이는 페이지 + 양옆 = 최대 3장이 "핫" → 상한 6은 왕복 스와이프에 충분한 여유.)
 ///
-/// 범위(2/n): 페이징만. 줌/팬·삭제·사진앱 내보내기는 이후 단계.
+/// 범위(2/n + Stage 2a 삭제): 페이징 + **단일 삭제(삭제 후 dismiss)**. 삭제 모션은 그리드에서만
+/// 일어난다 — 여기선 스토어에서 지우고 바로 그리드로 돌아가며, .page TabView 전환 문제를 피한다.
 struct PhotoDetailView: View {
     let captures: [Capture]
     @State private var selection: UUID
+    @State private var showDeleteConfirm = false
+    @State private var deleteFailed = false
+    @Environment(\.dismiss) private var dismiss
 
     /// 상세 렌더 해상도 = 화면 긴 변 px(**다운스케일, 풀해상도 아님**). 화면에선 풀해상도와 동일하게 보인다.
     private let maxPixels = Int(max(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
@@ -42,7 +46,43 @@ struct PhotoDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.mellowShadow, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showDeleteConfirm = true } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.mellowIvory)   // 들린 블랙 바 위 따뜻한 아이보리(§9)
+                }
+                .accessibilityLabel("이 사진 삭제")
+            }
+        }
+        // 파괴적·되돌릴 수 없음(휴지통·실행취소 없음) → 확인 후에만 삭제.
+        .confirmationDialog("이 사진을 삭제할까요?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("삭제", role: .destructive) { deleteCurrentAndDismiss() }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("되돌릴 수 없어요. 원본도 함께 삭제됩니다.")
+        }
+        .alert("삭제하지 못했어요", isPresented: $deleteFailed) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text("잠시 후 다시 시도해 주세요. 사진은 그대로 남아 있어요.")
+        }
         .task(id: selection) { prefetchNeighbors() }     // 선택이 바뀔 때마다 인접 페이지 프리페치
+    }
+
+    /// 현재 보이는 사진을 삭제하고 **그리드로 dismiss**. 이웃 이동·크로스페이드 없음 —
+    /// 사라짐 애니메이션은 그리드 복귀 시 `reconcileAfterDetail`이 처리한다(삭제 모션 일원화).
+    @MainActor private func deleteCurrentAndDismiss() {
+        guard let cap = captures.first(where: { $0.id == selection }) else { return }
+        do {
+            try CaptureStore.shared.delete(cap)               // 원자적: 레코드+파일(실패 시 throw)
+        } catch {
+            deleteFailed = true                                // 실패 → 알림, dismiss 안 함
+            return
+        }
+        CaptureThumbnailRenderer.shared.evict(id: cap.id)      // 두 캐시에서 스테일 이미지 제거
+        dismiss()                                              // 그리드로 복귀 → 거기서 사라짐 애니메이션
     }
 
     /// 현재 선택된 캡처의 지역화된 날짜·시간. 스와이프로 selection이 바뀌면 헤더가 따라간다.
