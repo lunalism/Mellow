@@ -81,8 +81,9 @@ struct PhotoDetailView: View {
         // 콘텐츠에 맞춘 고정 높이 디텐트. 표면은 페이퍼 크림(§9, 순수 흰색 아님).
         .sheet(isPresented: $showInfo) {
             if let cap = captures.first(where: { $0.id == selection }) {
+                // 지도 섹션 유무에 따라 높이 조정 — 좌표 없으면 지도를 접으므로 더 낮게.
                 PhotoInfoSheet(capture: cap)
-                    .presentationDetents([.height(300)])
+                    .presentationDetents([.height(cap.coordinate == nil ? 210 : 400)])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(Color.mellowPaper)
             }

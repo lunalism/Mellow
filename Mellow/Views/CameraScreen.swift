@@ -35,7 +35,8 @@ struct CameraScreen: View {
                 cameraInterface
                     // 세션 구성/시작은 백그라운드 큐에서. 가능한 한 일찍 시작해 런치 윈도우를 줄인다.
                     // 기존 최근 캡처가 있으면 보관함 썸네일도 띄운다(재실행 시 지속).
-                    .task { vm.startSession(); vm.syncLatestThumbnail() }
+                    // 카메라 권한이 이미 허용된 지점이므로, 위치가 미결정이면 여기서 When-In-Use 프라이밍.
+                    .task { vm.startSession(); vm.syncLatestThumbnail(); vm.requestLocationIfNeeded() }
             }
         }
         // 촬영 피드백: 셔터 햅틱 + 좌하단 썸네일 갱신 + 프리뷰 들린-블랙 블링크(아래).

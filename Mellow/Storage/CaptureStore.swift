@@ -42,7 +42,8 @@ final class CaptureStore {
 
     /// 원본 JPEG를 저장하고 메타데이터를 영속화. 저장공간 부족 등으로 쓰기 실패 시 throw.
     @discardableResult
-    func save(imageData: Data, filterID: String, ratio: AspectRatio, createdAt: Date) throws -> Capture {
+    func save(imageData: Data, filterID: String, ratio: AspectRatio, createdAt: Date,
+              latitude: Double? = nil, longitude: Double? = nil) throws -> Capture {
         let id = UUID()
         let filename = "\(id.uuidString).jpg"
         let fileURL = originalsDir.appendingPathComponent(filename)
@@ -57,7 +58,9 @@ final class CaptureStore {
                               originalFilename: filename,
                               filterID: filterID,
                               ratio: ratio,
-                              createdAt: createdAt)
+                              createdAt: createdAt,
+                              latitude: latitude,
+                              longitude: longitude)
         queue.sync {
             captures.insert(capture, at: 0)   // 최신순
             persist()

@@ -1,5 +1,6 @@
 import SwiftUI
 import ImageIO
+import CoreLocation
 
 /// 사진 상세 뷰의 ⓘ 인포 바텀시트 (Phase 1 · Stage: detail-view info sheet).
 ///
@@ -40,18 +41,19 @@ struct PhotoInfoSheet: View {
                 .foregroundStyle(Color.mellowTextSecondary)
                 .padding(.top, 4)
 
-            // 2. 헤어라인
+            // 지도 섹션 (slice B-1) — **좌표가 있을 때만**. 없으면(기존 사진 / 위치 거부)
+            // 섹션을 통째로 접는다: 빈 밴드 없음, 중복 헤어라인 없음.
+            // 좌표가 있으면 두 헤어라인이 지도를 위아래로 감싼다.
+            if let coordinate = capture.coordinate {
+                divider.padding(.vertical, 16)
+                MapSnapshotView(coordinate: coordinate,
+                                placeName: Self.dateText(capture.createdAt))
+            }
+
+            // 메타 푸터 앞 헤어라인(지도 유무와 무관하게 항상 하나).
             divider.padding(.vertical, 16)
 
-            // 3. MAP SLOT — 예약된 빈 영역.
-            // TODO: location map (slice B) — 위치/지도는 별도 슬라이스에서 여기에 들어간다.
-            //       지금은 레이아웃 위치만 예약한다. CoreLocation/MapKit import 없음, 위치 권한 요청 없음.
-            Color.clear.frame(height: 104)
-
-            // 4. 헤어라인
-            divider.padding(.vertical, 16)
-
-            // 5. 메타 푸터(조용히, 작게): 비율 · 해상도
+            // 메타 푸터(조용히, 작게): 비율 · 해상도
             HStack(alignment: .top, spacing: 28) {
                 metaColumn(label: "비율", value: Self.ratioLabel(capture.ratio))    // capture.ratio에서 동적
                 metaColumn(label: "해상도", value: resolutionText)                 // 원본 헤더에서 유도

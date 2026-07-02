@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CoreLocation
 import UIKit  // 햅틱
 
 /// 카메라 화면 상태 바인딩 (Phase 1 Spec §7).
@@ -12,6 +13,9 @@ import UIKit  // 햅틱
 @MainActor
 final class CameraViewModel: ObservableObject {
     let sessionManager = CameraSessionManager()
+
+    /// 촬영 위치 캐시 (slice B-1). 세션과 함께 시작/중단하고, 셔터에서 동기로 좌표를 읽는다.
+    private let location = LocationProvider()
 
     /// 프리뷰·캡처 공통 화면 비율. 기본 9:16(세로). 단일 출처(= WYSIWYG).
     /// TODO(캡처 단계): 셔터 캡처 시 원본을 **반드시 이 `aspectRatio`로 크롭**해 저장한다.
@@ -52,6 +56,7 @@ final class CameraViewModel: ObservableObject {
     /// 최초 진입 시 1회 세션 구성. 권한 authorized 이후에 호출한다.
     /// 구성·시작은 모두 백그라운드 큐에서 수행되어 UI를 막지 않는다(런치 윈도우 단축).
     func startSession() {
+        location.start()   // 카메라 활성 동안만 위치 갱신(권한 있을 때만 실제 시작)
         guard !didConfigure else {
             sessionManager.start()
             return
@@ -65,9 +70,16 @@ final class CameraViewModel: ObservableObject {
         }
     }
 
-    /// 백그라운드 진입 등으로 화면을 떠날 때.
+    /// 백그라운드 진입 등으로 화면을 떠날 때. 위치 갱신도 함께 멈춘다(발열/배터리).
     func stopSession() {
         sessionManager.stop()
+        location.stop()
+    }
+
+    /// 카메라 화면 진입 시 위치 권한 프라이밍(카메라 권한이 이미 허용된 상태에서 호출).
+    /// 위치가 미결정일 때만 시스템 프롬프트가 뜬다 — 기존 사용자는 다음 카메라 진입 때 자연히 받는다.
+    func requestLocationIfNeeded() {
+        location.requestIfNeeded()
     }
 
     /// 전/후면 전환 (Spec §3). 카메라 없으면 무시. 중복 탭 방지.
@@ -113,6 +125,9 @@ final class CameraViewModel: ObservableObject {
         let filterID = selectedFilter.id
         let ratio = aspectRatio
         let createdAt = Date()
+        // 셔터를 느리게 하지 않도록 캐시된 좌표를 **동기로** 읽는다(fresh fix 대기 없음).
+        // fix가 아직 없으면(실내·방금 실행·거부) nil → 좌표 없이 저장.
+        let coordinate = location.lastCoordinate
 
         captureState = .capturing
         shutterHaptic.impactOccurred()
@@ -129,7 +144,8 @@ final class CameraViewModel: ObservableObject {
                 switch result {
                 case .success(let data):
                     // 저장은 백그라운드에서 독립적으로 — 셔터 재활성화를 막지 않는다.
-                    self.persist(data: data, filterID: filterID, ratio: ratio, at: createdAt)
+                    self.persist(data: data, filterID: filterID, ratio: ratio, at: createdAt,
+                                 coordinate: coordinate)
                 case .failure:
                     self.captureError = "촬영에 실패했어요"
                     self.captureState = .idle   // 센서 콜백 전 실패 시 안전하게 게이트 해제.
@@ -142,11 +158,14 @@ final class CameraViewModel: ObservableObject {
     /// 원본 저장(파일 쓰기는 백그라운드). 셔터 게이트(captureState)와 무관 — 저장이 다음
     /// 촬영을 막지 않는다. 저장 직후 같은 백그라운드 작업에서 썸네일을 렌더해 최신 샷을 반영.
     /// 저장공간 부족 시 실패 토스트만 띄운다.
-    private func persist(data: Data, filterID: String, ratio: AspectRatio, at createdAt: Date) {
+    private func persist(data: Data, filterID: String, ratio: AspectRatio, at createdAt: Date,
+                         coordinate: CLLocationCoordinate2D?) {
         Task.detached(priority: .utility) {
             do {
                 let capture = try CaptureStore.shared.save(imageData: data, filterID: filterID,
-                                                           ratio: ratio, createdAt: createdAt)
+                                                           ratio: ratio, createdAt: createdAt,
+                                                           latitude: coordinate?.latitude,
+                                                           longitude: coordinate?.longitude)
                 let thumb = CaptureThumbnailRenderer.shared.render(
                     originalURL: CaptureStore.shared.url(for: capture), filterID: capture.filterID)
                 await MainActor.run {
