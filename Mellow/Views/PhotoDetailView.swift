@@ -22,6 +22,8 @@ struct PhotoDetailView: View {
     @State private var selection: UUID
     @State private var showDeleteConfirm = false
     @State private var deleteFailed = false
+    /// 현재 보이는 페이지가 줌 상태인지. 줌 중엔 TabView 페이징을 억제하는 보조 신호로 쓴다.
+    @State private var isCurrentZoomed = false
     @Environment(\.dismiss) private var dismiss
 
     /// 상세 렌더 해상도 = 화면 긴 변 px(**다운스케일, 풀해상도 아님**). 화면에선 풀해상도와 동일하게 보인다.
@@ -35,11 +37,19 @@ struct PhotoDetailView: View {
     var body: some View {
         TabView(selection: $selection) {
             ForEach(captures) { capture in
-                PhotoDetailPage(capture: capture, maxPixels: maxPixels)
+                PhotoDetailPage(capture: capture, maxPixels: maxPixels,
+                                isActive: capture.id == selection,
+                                onZoomChange: { zoomed in
+                                    // 활성(보이는) 페이지의 줌만 페이징 게이트에 반영.
+                                    // 리셋으로 비활성 이웃이 false를 올려도 무시된다.
+                                    if capture.id == selection { isCurrentZoomed = zoomed }
+                                })
                     .tag(capture.id)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))   // 가로 페이징, 점 인디케이터 없음
+        // 보조 안전장치: 줌 중 페이징 억제. 주 기제는 내부 UIScrollView가 팬을 소비하는 것.
+        .scrollDisabled(isCurrentZoomed)
         .background(Color.mellowShadow.ignoresSafeArea())  // 들린 블랙 chrome (#3B362E)
         .ignoresSafeArea(.container, edges: .bottom)
         .navigationTitle(currentDateText)                // 헤더는 현재 보이는 사진을 따라 갱신
@@ -124,6 +134,10 @@ struct PhotoDetailView: View {
 private struct PhotoDetailPage: View {
     let capture: Capture
     let maxPixels: Int
+    /// 이 페이지가 현재 보이는(선택된) 페이지인지 — 비활성이 되면 줌을 1.0으로 리셋한다.
+    let isActive: Bool
+    /// 줌 여부를 부모로 올려 페이징 억제에 쓴다.
+    let onZoomChange: (Bool) -> Void
 
     @State private var image: UIImage?
 
@@ -131,9 +145,10 @@ private struct PhotoDetailPage: View {
         ZStack {
             Color.mellowShadow                 // 페이지 배경(스와이프 중에도 연속된 들린 블랙)
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()             // 9:16 전체가 보이도록(크롭 없음)
+                // 렌더된 이미지를 그대로 감싸 핀치/더블탭 줌 + 팬. 컨테이너 종횡비를 이미지에
+                // 맞춰(.aspectRatio) 줌 1.0에서 보더가 이미지에 딱 붙고, 필터 재렌더 없음(WYSIWYG).
+                ZoomableScrollView(image: image, isActive: isActive, onZoomChange: onZoomChange)
+                    .aspectRatio(image.size.width / image.size.height, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
