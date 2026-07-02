@@ -22,6 +22,7 @@ struct PhotoDetailView: View {
     @State private var selection: UUID
     @State private var showDeleteConfirm = false
     @State private var deleteFailed = false
+    @State private var showInfo = false
     /// 현재 보이는 페이지가 줌 상태인지. 줌 중엔 TabView 페이징을 억제하는 보조 신호로 쓴다.
     @State private var isCurrentZoomed = false
     @Environment(\.dismiss) private var dismiss
@@ -57,6 +58,16 @@ struct PhotoDetailView: View {
         .toolbarBackground(Color.mellowShadow, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            // ⓘ 인포 — nav 바(chrome)에 있어 ZoomableScrollView 위에 뜨고 항상 탭 가능하며,
+            // 핀치/팬/페이징 제스처와 히트 영역이 분리돼 간섭하지 않는다.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showInfo = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.mellowIvory)
+                }
+                .accessibilityLabel("사진 정보")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showDeleteConfirm = true } label: {
                     Image(systemName: "trash")
@@ -64,6 +75,16 @@ struct PhotoDetailView: View {
                         .foregroundStyle(Color.mellowIvory)   // 들린 블랙 바 위 따뜻한 아이보리(§9)
                 }
                 .accessibilityLabel("이 사진 삭제")
+            }
+        }
+        // ⓘ 바텀시트 — 사진은 위에 그대로 보이고(Photos식), 스와이프 다운·바깥 탭으로 닫힘.
+        // 콘텐츠에 맞춘 고정 높이 디텐트. 표면은 페이퍼 크림(§9, 순수 흰색 아님).
+        .sheet(isPresented: $showInfo) {
+            if let cap = captures.first(where: { $0.id == selection }) {
+                PhotoInfoSheet(capture: cap)
+                    .presentationDetents([.height(300)])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(Color.mellowPaper)
             }
         }
         // 파괴적·되돌릴 수 없음(휴지통·실행취소 없음) → 확인 후에만 삭제.
