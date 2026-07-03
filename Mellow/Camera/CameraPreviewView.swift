@@ -97,9 +97,8 @@ struct CameraPreviewView: UIViewRepresentable {
                 output = oriented
             }
 
-            DispatchQueue.main.async { [weak self] in
-                self?.view?.image = output
-            }
+            // L3.5: 메인 홉 제거 — videoQueue에서 직접 오프메인 렌더(CA 커밋 사이클 이탈).
+            view?.renderFrame(output)
         }
     }
 }
