@@ -18,6 +18,10 @@ enum CaptureType: String, Codable {
 /// 좌표를 붙인다(없으면 nil). **마이그레이션 안전**이 최우선 — 좌표 키가 없는 기존
 /// captures.json 레코드도 반드시 그대로 디코드돼야 한다(갤러리가 사라지면 안 됨).
 /// 그래서 좌표는 `decodeIfPresent`로 읽고(없으면 nil), `encodeIfPresent`로 쓴다(있을 때만).
+///
+/// slice B-2: **옵셔널 장소명**(`placeName`). 좌표를 역지오코딩한 짧은 이름(동네·시)을
+/// 한 번 얻어 여기에 **박제**한다(이후 재지오코딩 없이 오프라인에서도 표시). 좌표와 동일한
+/// 옵셔널-마이그레이션 패턴 — 키가 없는 기존 레코드는 `decodeIfPresent`로 nil 디코드.
 struct Capture: Identifiable, Codable {
     let id: UUID
     let type: CaptureType
@@ -27,6 +31,7 @@ struct Capture: Identifiable, Codable {
     let createdAt: Date
     let latitude: Double?
     let longitude: Double?
+    let placeName: String?
 
     /// 좌표가 **둘 다** 있을 때만 좌표를 돌려준다 — 인포 시트의 지도 섹션 표시 조건.
     var coordinate: CLLocationCoordinate2D? {
@@ -36,7 +41,7 @@ struct Capture: Identifiable, Codable {
 
     init(id: UUID, type: CaptureType, originalFilename: String, filterID: String,
          ratio: AspectRatio, createdAt: Date,
-         latitude: Double? = nil, longitude: Double? = nil) {
+         latitude: Double? = nil, longitude: Double? = nil, placeName: String? = nil) {
         self.id = id
         self.type = type
         self.originalFilename = originalFilename
@@ -45,10 +50,11 @@ struct Capture: Identifiable, Codable {
         self.createdAt = createdAt
         self.latitude = latitude
         self.longitude = longitude
+        self.placeName = placeName
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, originalFilename, filterID, ratio, createdAt, latitude, longitude
+        case id, type, originalFilename, filterID, ratio, createdAt, latitude, longitude, placeName
     }
 
     /// 명시적 디코드 — 좌표는 **decodeIfPresent**. 기존 레코드엔 두 키가 아예 없으므로
@@ -63,6 +69,7 @@ struct Capture: Identifiable, Codable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         latitude = try c.decodeIfPresent(Double.self, forKey: .latitude)
         longitude = try c.decodeIfPresent(Double.self, forKey: .longitude)
+        placeName = try c.decodeIfPresent(String.self, forKey: .placeName)
     }
 
     /// 명시적 인코드 — 좌표는 **encodeIfPresent**. 좌표 없는 사진의 JSON은 예전과
@@ -77,5 +84,6 @@ struct Capture: Identifiable, Codable {
         try c.encode(createdAt, forKey: .createdAt)
         try c.encodeIfPresent(latitude, forKey: .latitude)
         try c.encodeIfPresent(longitude, forKey: .longitude)
+        try c.encodeIfPresent(placeName, forKey: .placeName)
     }
 }

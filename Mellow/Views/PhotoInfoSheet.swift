@@ -18,6 +18,15 @@ struct PhotoInfoSheet: View {
     /// 원본 JPEG 헤더에서 읽은 픽셀 크기(비동기 로드). nil이면 로딩 중 "—".
     @State private var pixelSize: CGSize?
 
+    /// 역지오코딩된 장소명 (slice B-2). 디스크에 박제됐으면 그 값으로 시작, 없으면 시트 오픈 시
+    /// best-effort 지오코딩. nil이면 지도에 라벨을 표시하지 않는다.
+    @State private var placeName: String?
+
+    init(capture: Capture) {
+        self.capture = capture
+        _placeName = State(initialValue: capture.placeName)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 1. 필터 스와치 + 표시명 ····· 시각(우측 정렬)
@@ -47,7 +56,8 @@ struct PhotoInfoSheet: View {
             if let coordinate = capture.coordinate {
                 divider.padding(.vertical, 16)
                 MapSnapshotView(coordinate: coordinate,
-                                placeName: Self.dateText(capture.createdAt))
+                                mapItemName: Self.dateText(capture.createdAt),   // Apple Maps 핀 이름(B-1)
+                                placeName: placeName)                            // 역지오코딩 라벨(B-2)
             }
 
             // 메타 푸터 앞 헤어라인(지도 유무와 무관하게 항상 하나).
@@ -64,6 +74,7 @@ struct PhotoInfoSheet: View {
         .padding(.top, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: capture.id) { await loadPixelSize() }
+        .task(id: capture.id) { await loadPlaceName() }
     }
 
     // MARK: - 조각
@@ -97,8 +108,30 @@ struct PhotoInfoSheet: View {
         if let size { pixelSize = size }
     }
 
+    // MARK: - 장소명 (slice B-2, best-effort 역지오코딩 + 박제)
+
+    /// 시트 오픈 시 장소명 확보. 우선순위: 이미 있는 값(디스크 박제) → 이번 세션에 저장된 값 →
+    /// 없으면 best-effort 역지오코딩 1회. 좌표가 없으면 라벨 자체가 없으므로 아무것도 안 한다.
+    /// 실패(오프라인·레이트리밋·결과 없음)면 저장하지 않아 다음 오픈 때 재시도된다(에러 표시 없음).
+    private func loadPlaceName() async {
+        guard let coordinate = capture.coordinate else { return }   // 좌표 없음 → 라벨 없음
+        if placeName != nil { return }                              // 이미 박제됨(디스크 로드) → 끝
+        // 이번 세션에 이미 지오코딩·저장됐는지(스토어가 단일 진실).
+        if let stored = CaptureStore.shared.placeName(for: capture.id) {
+            placeName = stored
+            return
+        }
+        // best-effort 1회. 실패/중복 인플라이트면 nil → 저장 안 함(재시도 여지).
+        guard let name = await ReverseGeocoder.shared.placeName(id: capture.id, coordinate: coordinate) else {
+            return
+        }
+        CaptureStore.shared.setPlaceName(name, for: capture.id)     // 박제 → 다시는 지오코딩 안 함
+        placeName = name
+    }
+
     /// ImageIO로 헤더의 픽셀 폭·높이만 조회. 저장 원본은 이미 .up 방향이라 그대로 표시 크기.
-    private static func readPixelSize(url: URL) -> CGSize? {
+    /// 순수 함수(액터 상태 없음)라 `nonisolated` — 백그라운드 detached 태스크에서 안전하게 호출.
+    nonisolated private static func readPixelSize(url: URL) -> CGSize? {
         let opts = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let src = CGImageSourceCreateWithURL(url as CFURL, opts),
               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],

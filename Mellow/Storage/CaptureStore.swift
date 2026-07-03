@@ -68,6 +68,26 @@ final class CaptureStore {
         return capture
     }
 
+    /// 저장된 장소명 조회 (slice B-2). 큐에서 읽어 스레드 안전. 없으면 nil.
+    func placeName(for id: UUID) -> String? {
+        queue.sync { captures.first(where: { $0.id == id })?.placeName }
+    }
+
+    /// 역지오코딩 결과를 캡처에 **박제** (slice B-2). 좌표·나머지 필드는 그대로 두고 placeName만
+    /// 채운 새 레코드로 교체 후 persist. best-effort — persist 실패해도(디스크 문제) 크래시 없이
+    /// 다음 시트 오픈 때 재지오코딩 가능. 대상이 없거나 좌표가 없으면 no-op.
+    func setPlaceName(_ placeName: String, for id: UUID) {
+        queue.sync {
+            guard let idx = captures.firstIndex(where: { $0.id == id }) else { return }
+            let old = captures[idx]
+            guard old.latitude != nil, old.longitude != nil else { return }   // 좌표 있는 캡처만 의미
+            captures[idx] = Capture(id: old.id, type: old.type, originalFilename: old.originalFilename,
+                                    filterID: old.filterID, ratio: old.ratio, createdAt: old.createdAt,
+                                    latitude: old.latitude, longitude: old.longitude, placeName: placeName)
+            persist()   // best-effort(non-throwing)
+        }
+    }
+
     /// 캡처 1장 삭제 (Stage 4c). 멀티 삭제와 **하나의 알고리즘**을 쓰도록 `deleteMany`에 위임한다.
     @discardableResult
     func delete(_ capture: Capture) throws -> [Capture] {

@@ -11,8 +11,10 @@ import MapKit
 /// 스냅샷은 `.utility` 백그라운드에서 생성하고, 좌표+크기 키로 캐시해 재오픈 시 즉시 표시한다.
 struct MapSnapshotView: View {
     let coordinate: CLLocationCoordinate2D
-    /// Apple Maps에서 열릴 때 핀에 붙는 이름(여기선 촬영 날짜).
-    let placeName: String
+    /// Apple Maps에서 열릴 때 핀에 붙는 이름(B-1: 촬영 날짜). 탭 동작은 B-1 그대로 유지.
+    let mapItemName: String
+    /// 역지오코딩된 짧은 장소명 (slice B-2). nil이면 라벨 미표시(지도+핀만 = B-1 상태).
+    let placeName: String?
 
     @State private var snapshot: UIImage?
 
@@ -39,6 +41,8 @@ struct MapSnapshotView: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(Color.mellowBorder, lineWidth: 1)      // 크림 라운드 프레임(§9)
             )
+            // 장소명 필 (slice B-2) — 좌하단, placeName 있을 때만. §9 웜톤: 크림 필 · 앰버 핀 · 잉크 텍스트.
+            .overlay(alignment: .bottomLeading) { placePill }
             .task(id: cacheKey(width: geo.size.width)) {
                 await loadSnapshot(width: geo.size.width)
             }
@@ -48,6 +52,28 @@ struct MapSnapshotView: View {
         .onTapGesture { openInMaps() }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("지도에서 열기")
+    }
+
+    /// 장소명 필 — placeName이 있을 때만. 크림 캡슐 + 앰버 맵핀 아이콘 + 들린 잉크 텍스트.
+    @ViewBuilder
+    private var placePill: some View {
+        if let placeName {
+            HStack(spacing: 4) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.mellowAccent)          // 앰버/코랄 액센트
+                Text(placeName)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.mellowTextPrimary)     // 들린 블랙 #4A443A
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.mellowPaper.opacity(0.96)))   // 크림 필
+            .overlay(Capsule().stroke(Color.mellowBorder, lineWidth: 0.5))
+            .shadow(color: Color.mellowShadow.opacity(0.18), radius: 4, y: 1)
+            .padding(10)
+        }
     }
 
     private func cacheKey(width: CGFloat) -> String {
@@ -99,7 +125,7 @@ struct MapSnapshotView: View {
     /// 탭 → Apple Maps 앱에서 좌표를 연다(합리적 span). 인앱 지도·지오코딩 없음.
     private func openInMaps() {
         let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-        item.name = placeName
+        item.name = mapItemName
         item.openInMaps(launchOptions: [
             MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate),
             MKLaunchOptionsMapSpanKey: NSValue(mkCoordinateSpan:
