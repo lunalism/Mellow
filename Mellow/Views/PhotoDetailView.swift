@@ -23,6 +23,9 @@ struct PhotoDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var deleteFailed = false
     @State private var showInfo = false
+    /// 익스포트 진행 중(중복 탭 방지 + 툴바 스피너). 저장 결과는 조용한 토스트로 안내.
+    @State private var isExporting = false
+    @State private var exportToast: String?
     /// 현재 보이는 페이지가 줌 상태인지. 줌 중엔 TabView 페이징을 억제하는 보조 신호로 쓴다.
     @State private var isCurrentZoomed = false
     @Environment(\.dismiss) private var dismiss
@@ -58,6 +61,20 @@ struct PhotoDetailView: View {
         .toolbarBackground(Color.mellowShadow, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            // 익스포트 — 원탭 사진 앱 저장(공유 시트 없음). 진행 중엔 은은한 스피너로 대체.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { exportCurrent() } label: {
+                    if isExporting {
+                        ProgressView().tint(Color.mellowIvory)   // 차분한 진행 표시(로딩 순간)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.mellowIvory)
+                    }
+                }
+                .disabled(isExporting)
+                .accessibilityLabel("사진 앱에 저장")
+            }
             // ⓘ 인포 — nav 바(chrome)에 있어 ZoomableScrollView 위에 뜨고 항상 탭 가능하며,
             // 핀치/팬/페이징 제스처와 히트 영역이 분리돼 간섭하지 않는다.
             ToolbarItem(placement: .topBarTrailing) {
@@ -101,6 +118,51 @@ struct PhotoDetailView: View {
             Text("잠시 후 다시 시도해 주세요. 사진은 그대로 남아 있어요.")
         }
         .task(id: selection) { prefetchNeighbors() }     // 선택이 바뀔 때마다 인접 페이지 프리페치
+        // 익스포트 결과 토스트 — 조용하고 따뜻하게(§9 크림/들린 블랙). 큰 배너·시스템 사운드 없음.
+        .overlay(alignment: .bottom) { exportToastView }
+        .animation(.easeOut(duration: 0.2), value: exportToast)
+    }
+
+    // MARK: - 익스포트 (Stage 4d) — 원탭 사진 앱 저장, 차분한 피드백
+
+    /// 현재 보이는 사진을 풀해상도 필터본으로 사진 앱에 저장. 중복 탭·진행 중 재실행 방지.
+    private func exportCurrent() {
+        guard !isExporting, let cap = captures.first(where: { $0.id == selection }) else { return }
+        isExporting = true
+        Task {
+            let result = await PhotoExporter.export(cap)
+            isExporting = false
+            switch result {
+            case .saved:  showToast("사진 앱에 저장했어요")
+            case .denied: showToast("사진 접근 권한이 필요해요")
+            case .failed: showToast("저장하지 못했어요")
+            }
+        }
+    }
+
+    /// 잠깐 뜨는 조용한 토스트. 더 새로운 토스트가 떠 있으면 오래된 타이머는 지우지 않는다.
+    private func showToast(_ message: String) {
+        exportToast = message
+        Task {
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            if exportToast == message { exportToast = nil }
+        }
+    }
+
+    /// 크림 캡슐 + 들린 블랙 텍스트(§9). 어두운 chrome 위에서 부드럽게 읽힌다.
+    @ViewBuilder private var exportToastView: some View {
+        if let exportToast {
+            Text(exportToast)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.mellowTextPrimary)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 18)
+                .background(Capsule().fill(Color.mellowPaper))
+                .overlay(Capsule().stroke(Color.mellowBorder, lineWidth: 1))
+                .shadow(color: Color.mellowShadow.opacity(0.3), radius: 10, y: 4)
+                .padding(.bottom, 40)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     /// 현재 보이는 사진을 삭제하고 **그리드로 dismiss**. 이웃 이동·크로스페이드 없음 —

@@ -104,6 +104,27 @@ final class CaptureThumbnailRenderer {
         return image
     }
 
+    // MARK: - 풀해상도 필터 익스포트 (Stage 4d)
+
+    /// **풀해상도** 필터본을 JPEG 데이터로 (사진 앱 익스포트용). 화면 프리뷰(다운스케일)가 아니라
+    /// **원본 전체**(예: 2268×4032)를 디코드해, 프리뷰·썸네일과 **동일한 `makeChain`**으로 렌더한다
+    /// → WYSIWYG(같은 필터 출력·색), 풀해상도, 워터마크 없음. **백그라운드에서 호출.**
+    ///
+    /// 캐시하지 않는다 — 일회성이고 버퍼가 크므로, 반환 즉시 로컬(원본 CGImage·CIImage)이 해제된다.
+    /// 저장 원본은 캡처 시 `.up`으로 정규화(PhotoCaptureDelegate.normalizedUp)돼 있어 방향 보정이
+    /// 불필요하다 — 프리뷰(transform=no-op)와 동일 방향으로 저장된다.
+    func fullResolutionFilteredJPEG(originalURL: URL, filterID: String) -> Data? {
+        let srcOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(originalURL as CFURL, srcOptions),
+              let full = CGImageSourceCreateImageAtIndex(source, 0,
+                          [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { return nil }
+        let input = CIImage(cgImage: full)                                        // 풀해상도(다운스케일 없음)
+        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)   // 프리뷰·썸네일과 동일 체인
+        let quality = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
+        // 색 전용 체인이라 extent는 입력과 동일 → 컨텍스트가 풀해상도로 JPEG 인코드(캡처와 같은 q=0.95).
+        return ciContext.jpegRepresentation(of: filtered, colorSpace: renderColorSpace, options: [quality: 0.95])
+    }
+
     // MARK: - 삭제 시 캐시 정리 (Stage 4c)
 
     /// 한 캡처의 모든 항목을 **두 캐시**에서 제거(삭제 후 스테일 썸네일/풀프레임이 남지 않게).
