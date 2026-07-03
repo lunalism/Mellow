@@ -4,9 +4,12 @@ import SwiftUI
 struct MellowApp: App {
     init() {
         #if DEBUG
-        // Stage L1: 번들 .cube 9종 구조 검증(콘솔). 런치·메인 블로킹 없이 백그라운드 1회.
-        DispatchQueue.global(qos: .utility).async {
+        // LUT DEBUG 하네스 — 런치·메인 블로킹 없이 백그라운드 1회.
+        // L1 구조 검증 → L2 스토어 프리로드 → L2 색/축순서 검증(순서 보장).
+        Task.detached(priority: .utility) {
             LUTVerification.runParseCheck()
+            await LUTStore.shared.preload()
+            await LUTColorVerification.run()
         }
         #endif
     }
