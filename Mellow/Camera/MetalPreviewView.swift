@@ -9,7 +9,9 @@ import CoreImage
 final class MetalPreviewView: MTKView {
     private let commandQueue: MTLCommandQueue
     private let ciContext: CIContext
-    private let renderColorSpace = CGColorSpaceCreateDeviceRGB()
+    /// 라이브 색 파이프라인을 **명시적 sRGB**로 고정(L3 Decision A). deviceRGB≈sRGB에
+    /// 암묵 의존하지 않고, L2/Photoshop 검증과 동일한 WYSIWYG를 구조적으로 보장한다.
+    private let renderColorSpace: CGColorSpace
 
     /// 렌더할 최신 프레임(방향 보정된 CIImage). 메인 스레드에서 설정.
     var image: CIImage? {
@@ -22,9 +24,15 @@ final class MetalPreviewView: MTKView {
             fatalError("Metal을 사용할 수 없는 기기입니다.")
         }
         self.commandQueue = queue
+        // 워킹·출력 색공간을 명시적 sRGB로 통일 → CI가 숨은 변환 커널을 끼워넣지 않음(발열↓)
+        // + 프리뷰 색이 검증된 정적 결과와 일치. sRGB 생성 실패 시에만 deviceRGB로 폴백.
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        self.renderColorSpace = srgb
         // GPU 렌더 컨텍스트. 소프트웨어 렌더러 사용 안 함.
         self.ciContext = CIContext(mtlDevice: device, options: [
             .cacheIntermediates: false,
+            .workingColorSpace: srgb,
+            .highQualityDownsample: false,
             .name: "MellowPreview"
         ])
         super.init(frame: .zero, device: device)

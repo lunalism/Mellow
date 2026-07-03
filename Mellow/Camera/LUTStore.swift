@@ -12,6 +12,9 @@ actor LUTStore {
     static let shared = LUTStore()
 
     private var cubes: [String: LUTCube] = [:]
+    /// 라이브 프리뷰용 영속 필터 — slug당 1개, 최초 1회 생성 후 영구 재사용.
+    /// 프레임마다 inputImage만 교체 → 3D 텍스처 재업로드(발열) 방지(L3 #1 열 레버).
+    private var liveFilters: [String: CIFilter] = [:]
     /// 큐브는 sRGB로 저작됨 — 파싱·필터 색공간 모두 sRGB로 통일(WYSIWYG).
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
@@ -39,6 +42,16 @@ actor LUTStore {
         filter.setValue(cube.dimension, forKey: "inputCubeDimension")
         filter.setValue(cube.data, forKey: "inputCubeData")
         filter.setValue(cube.colorSpace, forKey: "inputColorSpace")
+        return filter
+    }
+
+    /// 라이브 프리뷰용 **영속** 필터. slug당 한 번 생성해 캐시하고 영구 재사용한다.
+    /// 호출자는 프레임마다 inputImage만 교체할 것 — 절대 프레임마다 재생성 금지.
+    /// 미상/미로딩 slug → nil(호출자가 아이덴티티 패스스루로 폴백).
+    func livePreviewFilter(for slug: String) -> CIFilter? {
+        if let cached = liveFilters[slug] { return cached }
+        guard let filter = makeFilter(for: slug) else { return nil }
+        liveFilters[slug] = filter
         return filter
     }
 
