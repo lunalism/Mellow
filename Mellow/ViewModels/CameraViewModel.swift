@@ -172,7 +172,7 @@ final class CameraViewModel: ObservableObject {
                                                            ratio: ratio, createdAt: createdAt,
                                                            latitude: coordinate?.latitude,
                                                            longitude: coordinate?.longitude)
-                let thumb = CaptureThumbnailRenderer.shared.render(
+                let thumb = await CaptureThumbnailRenderer.shared.render(
                     originalURL: CaptureStore.shared.url(for: capture), filterID: capture.filterID)
                 await MainActor.run {
                     guard let thumb else { return }
@@ -208,7 +208,7 @@ final class CameraViewModel: ObservableObject {
         let filterID = capture.filterID
         let id = capture.id
         Task.detached(priority: .utility) {
-            let image = CaptureThumbnailRenderer.shared.render(originalURL: url, filterID: filterID)
+            let image = await CaptureThumbnailRenderer.shared.render(originalURL: url, filterID: filterID)
             await MainActor.run {
                 guard let image else { return }
                 self.latestThumbnail = image

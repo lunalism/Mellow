@@ -15,7 +15,9 @@ final class CaptureThumbnailRenderer {
     static let shared = CaptureThumbnailRenderer()
 
     private let ciContext: CIContext
-    private let renderColorSpace = CGColorSpaceCreateDeviceRGB()
+    /// 출력 색공간 — 프리뷰와 동일하게 **명시적 sRGB**(구 deviceRGB 아님). LUT의 sRGB 저작·
+    /// 프리뷰 sRGB 워킹과 통일해 WYSIWYG를 보장한다(GATE 3). 생성 실패 시에만 deviceRGB 폴백.
+    private let renderColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
     /// 썸네일 한 변 최대 px. UI는 52pt(≈156px @3x)라 여유 있게 작게 잡는다.
     private let maxPixelSize = 400
 
@@ -35,18 +37,21 @@ final class CaptureThumbnailRenderer {
     private var keysByID: [UUID: Set<NSString>] = [:]
 
     private init() {
+        // 워킹 색공간을 **명시적 sRGB**로 — 프리뷰 컨텍스트와 동일(구: 미설정=선형 기본). LUT의
+        // sRGB 룩업/프리뷰와 정렬해 색 드리프트 제거(GATE 3).
+        let options: [CIContextOption: Any] = [.workingColorSpace: renderColorSpace, .name: "MellowThumbnail"]
         if let device = MTLCreateSystemDefaultDevice() {
-            ciContext = CIContext(mtlDevice: device, options: [.name: "MellowThumbnail"])
+            ciContext = CIContext(mtlDevice: device, options: options)
         } else {
-            ciContext = CIContext(options: [.name: "MellowThumbnail"])  // 폴백(시뮬 등)
+            ciContext = CIContext(options: options)  // 폴백(시뮬 등)
         }
         cache.countLimit = 240   // 대량 캡처에서도 메모리 상한(초과분은 자동 축출)
         fullCache.countLimit = 6 // 큰 풀프레임은 최근 몇 장만(재진입 즉시, 나머지는 재렌더)
     }
 
     /// 원본 파일 + filterID → 필터 적용된 작은 UIImage(4b-1 좌하단 썸네일용). **백그라운드 호출**.
-    func render(originalURL: URL, filterID: String) -> UIImage? {
-        renderFullFrame(originalURL: originalURL, filterID: filterID, maxPixelSize: maxPixelSize)
+    func render(originalURL: URL, filterID: String) async -> UIImage? {
+        await renderFullFrame(originalURL: originalURL, filterID: filterID, maxPixelSize: maxPixelSize)
     }
 
     // MARK: - 정사각 그리드 셀 (Stage 4b-2)
@@ -58,10 +63,10 @@ final class CaptureThumbnailRenderer {
 
     /// 캐시 우선 **정사각** 썸네일. **백그라운드에서 호출**(미스 시 다운스케일→필터→크롭→래스터).
     /// 그리드 셀용 1:1 중앙 크롭은 표시 전용 — 저장 원본(9:16)은 그대로다.
-    func squareThumbnail(id: UUID, url: URL, filterID: String, side: Int) -> UIImage? {
+    func squareThumbnail(id: UUID, url: URL, filterID: String, side: Int) async -> UIImage? {
         let key = Self.squareKey(id, side)
         if let hit = cache.object(forKey: key) { return hit }
-        guard let image = renderSquare(originalURL: url, filterID: filterID, side: side) else { return nil }
+        guard let image = await renderSquare(originalURL: url, filterID: filterID, side: side) else { return nil }
         cache.setObject(image, forKey: key)
         indexKey(key, for: id)
         return image
@@ -73,10 +78,10 @@ final class CaptureThumbnailRenderer {
 
     /// 다운스케일 → 공유 필터 체인 → 중앙 정사각 크롭. **풀해상도를 필터링하지 않는다.**
     /// side*2로 디코드하면 우리 비율(9:16·4:3·1:1·2:1) 모두에서 짧은 변 ≥ side가 보장된다.
-    private func renderSquare(originalURL: URL, filterID: String, side: Int) -> UIImage? {
+    private func renderSquare(originalURL: URL, filterID: String, side: Int) async -> UIImage? {
         guard let small = Self.downsampled(originalURL, maxPixelSize: side * 2) else { return nil }
         let input = CIImage(cgImage: small)
-        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)   // 4b-1·프리뷰와 동일 체인
+        let filtered = await Self.lutFiltered(input, filterID: filterID)   // 프리뷰와 동일한 .cube LUT
         let ext = filtered.extent
         let s = min(ext.width, ext.height)
         let crop = CGRect(x: ext.midX - s / 2, y: ext.midY - s / 2, width: s, height: s).integral
@@ -95,10 +100,10 @@ final class CaptureThumbnailRenderer {
     /// 캐시 우선 **풀프레임(9:16 전체, 크롭 없음)** 이미지. **백그라운드 호출**. 상세 뷰 전용.
     /// 화면 크기로 다운스케일한 뒤 필터를 건다 — 풀해상도(2268×4032)를 굳이 처리하지 않는다
     /// (화면에선 동일하게 보이고 훨씬 가볍다).
-    func fullFrameThumbnail(id: UUID, url: URL, filterID: String, maxPixelSize: Int) -> UIImage? {
+    func fullFrameThumbnail(id: UUID, url: URL, filterID: String, maxPixelSize: Int) async -> UIImage? {
         let key = Self.fullKey(id, maxPixelSize)
         if let hit = fullCache.object(forKey: key) { return hit }
-        guard let image = renderFullFrame(originalURL: url, filterID: filterID, maxPixelSize: maxPixelSize) else { return nil }
+        guard let image = await renderFullFrame(originalURL: url, filterID: filterID, maxPixelSize: maxPixelSize) else { return nil }
         fullCache.setObject(image, forKey: key)
         indexKey(key, for: id)
         return image
@@ -113,13 +118,13 @@ final class CaptureThumbnailRenderer {
     /// 캐시하지 않는다 — 일회성이고 버퍼가 크므로, 반환 즉시 로컬(원본 CGImage·CIImage)이 해제된다.
     /// 저장 원본은 캡처 시 `.up`으로 정규화(PhotoCaptureDelegate.normalizedUp)돼 있어 방향 보정이
     /// 불필요하다 — 프리뷰(transform=no-op)와 동일 방향으로 저장된다.
-    func fullResolutionFilteredJPEG(originalURL: URL, filterID: String) -> Data? {
+    func fullResolutionFilteredJPEG(originalURL: URL, filterID: String) async -> Data? {
         let srcOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithURL(originalURL as CFURL, srcOptions),
               let full = CGImageSourceCreateImageAtIndex(source, 0,
                           [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { return nil }
-        let input = CIImage(cgImage: full)                                        // 풀해상도(다운스케일 없음)
-        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)   // 프리뷰·썸네일과 동일 체인
+        let input = CIImage(cgImage: full)                                // 풀해상도(다운스케일 없음)
+        let filtered = await Self.lutFiltered(input, filterID: filterID)   // 프리뷰·썸네일과 동일한 .cube LUT
         let quality = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
         // 색 전용 체인이라 extent는 입력과 동일 → 컨텍스트가 풀해상도로 JPEG 인코드(캡처와 같은 q=0.95).
         return ciContext.jpegRepresentation(of: filtered, colorSpace: renderColorSpace, options: [quality: 0.95])
@@ -152,14 +157,22 @@ final class CaptureThumbnailRenderer {
     /// TODO(그레인/비네팅/헐레이션 단계 — Stage 4a 메모): **픽셀 단위** 효과가 들어오면 이 상세
     ///   렌더(≈화면 크기)와 작은 프리뷰/셀 렌더의 **해상도 차이를 보정**해야 한다(그레인 시드 스케일,
     ///   비네팅 반경, 헐레이션 블러 반경 등). 지금은 색 전용 체인이라 해상도 무관 → 모든 렌더가 동일하게 보인다.
-    private func renderFullFrame(originalURL: URL, filterID: String, maxPixelSize: Int) -> UIImage? {
+    private func renderFullFrame(originalURL: URL, filterID: String, maxPixelSize: Int) async -> UIImage? {
         guard let small = Self.downsampled(originalURL, maxPixelSize: maxPixelSize) else { return nil }
         let input = CIImage(cgImage: small)
-        let filtered = FilterPreset.preset(for: filterID).makeChain(for: input)   // 미상 id는 Original 폴백
+        let filtered = await Self.lutFiltered(input, filterID: filterID)   // 프리뷰와 동일한 .cube LUT
         // 색 전용 체인이라 extent는 입력과 동일 → 입력 extent로 안전하게 래스터.
         guard let cg = ciContext.createCGImage(filtered, from: input.extent,
                                                format: .RGBA8, colorSpace: renderColorSpace) else { return nil }
         return UIImage(cgImage: cg)
+    }
+
+    /// **LUT 적용 단일 진입점** — 프리뷰가 쓰는 바로 그 .cube를 로스터(9종) 기준으로 찾아
+    /// LUTFilter.apply(fresh 인스턴스: GATE 2)로 임의 CIImage에 적용한다. 로스터에 없는 slug
+    /// ("original"/미상)은 룩업-미스 → **입력 그대로 패스스루**(프리뷰의 nil→아이덴티티와 동일: GATE 1).
+    private static func lutFiltered(_ input: CIImage, filterID: String) async -> CIImage {
+        guard let cube = await LUTStore.shared.loadedCube(for: filterID) else { return input }
+        return LUTFilter.apply(cube: cube, to: input)
     }
 
     /// ImageIO 썸네일 디코드 — 풀해상도를 메모리에 올리지 않고 작게 디코드(+EXIF 방향 보정).

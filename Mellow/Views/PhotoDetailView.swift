@@ -204,8 +204,8 @@ struct PhotoDetailView: View {
             let url = CaptureStore.shared.url(for: cap)
             let px = maxPixels
             Task.detached(priority: .utility) {   // 보이는 페이지(.userInitiated)보다 낮은 우선순위
-                _ = CaptureThumbnailRenderer.shared.fullFrameThumbnail(id: cap.id, url: url,
-                                                                       filterID: cap.filterID, maxPixelSize: px)
+                _ = await CaptureThumbnailRenderer.shared.fullFrameThumbnail(id: cap.id, url: url,
+                                                                             filterID: cap.filterID, maxPixelSize: px)
             }
         }
     }
@@ -267,8 +267,8 @@ private struct PhotoDetailPage: View {
         let url = CaptureStore.shared.url(for: cap)
         let px = maxPixels
         let rendered = await Task.detached(priority: .userInitiated) {
-            CaptureThumbnailRenderer.shared.fullFrameThumbnail(id: cap.id, url: url,
-                                                               filterID: cap.filterID, maxPixelSize: px)
+            await CaptureThumbnailRenderer.shared.fullFrameThumbnail(id: cap.id, url: url,
+                                                                     filterID: cap.filterID, maxPixelSize: px)
         }.value
         if let rendered { image = rendered }   // UI 설정은 메인(@MainActor)
     }

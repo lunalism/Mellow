@@ -19,7 +19,7 @@ enum PhotoExporter {
         let url = CaptureStore.shared.url(for: capture)
         let filterID = capture.filterID
         let data = await Task.detached(priority: .userInitiated) {
-            CaptureThumbnailRenderer.shared.fullResolutionFilteredJPEG(originalURL: url, filterID: filterID)
+            await CaptureThumbnailRenderer.shared.fullResolutionFilteredJPEG(originalURL: url, filterID: filterID)
         }.value
         guard let data else { return .failed }
 

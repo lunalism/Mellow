@@ -257,8 +257,8 @@ private struct GalleryCell: View {
         let url = CaptureStore.shared.url(for: cap)
         let side = renderSide
         let rendered = await Task.detached(priority: .utility) {
-            CaptureThumbnailRenderer.shared.squareThumbnail(id: cap.id, url: url,
-                                                            filterID: cap.filterID, side: side)
+            await CaptureThumbnailRenderer.shared.squareThumbnail(id: cap.id, url: url,
+                                                                  filterID: cap.filterID, side: side)
         }.value
         if let rendered { image = rendered }           // UI 설정은 메인(@MainActor)
     }

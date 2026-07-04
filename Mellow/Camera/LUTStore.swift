@@ -34,15 +34,21 @@ actor LUTStore {
         cubes[slug]
     }
 
+    /// **로드 보장** cube 접근 — 저장/썸네일/익스포트용. preload 완료 전이라도(예: 런치 직후
+    /// 보관함이 옛 캡처를 렌더) 로스터에 있으면 즉석 로드해 캐시한다 → 미필터 저장(구 버그) 방지.
+    /// 로스터에 없는 slug("original"/미상)은 nil → 호출자가 패스스루(GATE 1).
+    func loadedCube(for slug: String) -> LUTCube? {
+        if let cached = cubes[slug] { return cached }
+        guard let cube = loadCube(forSlug: slug) else { return nil }
+        cubes[slug] = cube
+        return cube
+    }
+
     /// STATIC 렌더/검증/익스포트용 일회성 필터. inputImage는 호출자가 세팅.
     /// 미상 slug → nil(호출자가 아이덴티티 폴백 결정). 크래시 금지.
     func makeFilter(for slug: String) -> CIFilter? {
-        guard let cube = cubes[slug],
-              let filter = CIFilter(name: "CIColorCubeWithColorSpace") else { return nil }
-        filter.setValue(cube.dimension, forKey: "inputCubeDimension")
-        filter.setValue(cube.data, forKey: "inputCubeData")
-        filter.setValue(cube.colorSpace, forKey: "inputColorSpace")
-        return filter
+        guard let cube = cubes[slug] else { return nil }
+        return LUTFilter.makeFilter(cube: cube)   // 단일 빌더(프리뷰·검증·저장 공용)
     }
 
     /// 라이브 프리뷰용 **영속** 필터. slug당 한 번 생성해 캐시하고 영구 재사용한다.
