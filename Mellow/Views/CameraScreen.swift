@@ -33,10 +33,10 @@ struct CameraScreen: View {
                 PermissionPrimingView(isDenied: true, onRequest: {})
             case .authorized:
                 cameraInterface
-                    // 세션 구성/시작은 백그라운드 큐에서. 가능한 한 일찍 시작해 런치 윈도우를 줄인다.
+                    // 세션 시작은 reconcileCamera()가 단일 불변식으로 관리(보관함 열림/scenePhase 반영).
                     // 기존 최근 캡처가 있으면 보관함 썸네일도 띄운다(재실행 시 지속).
                     // 카메라 권한이 이미 허용된 지점이므로, 위치가 미결정이면 여기서 When-In-Use 프라이밍.
-                    .task { vm.startSession(); vm.syncLatestThumbnail(); vm.requestLocationIfNeeded() }
+                    .task { reconcileCamera(); vm.syncLatestThumbnail(); vm.requestLocationIfNeeded() }
             }
         }
         // 촬영 피드백: 셔터 햅틱 + 좌하단 썸네일 갱신 + 프리뷰 들린-블랙 블링크(아래).
@@ -51,19 +51,27 @@ struct CameraScreen: View {
         // 보관함 그리드(4b-2) — 풀스크린으로 띄우고 chevron으로 카메라 복귀.
         // 닫힐 때 썸네일을 단일 소스에 재동기화(상세 뷰에서 삭제했을 수 있으므로).
         .fullScreenCover(isPresented: $showGallery, onDismiss: { vm.syncLatestThumbnail() }) { GalleryView() }
+        // 보관함 열림/닫힘 → 카메라 불변식 재조정(열리면 정지, 닫히면 재시작).
+        .onChange(of: showGallery) { _, _ in reconcileCamera() }
         // 어두운 chrome 위에선 상태바(시계·배터리)를 라이트 콘텐츠로. 페이퍼 프라이밍 화면은 라이트.
         // (모든 색은 고정 토큰이라 colorScheme 전환은 상태바 가독성에만 영향)
         .preferredColorScheme(auth.state == .authorized ? .dark : .light)
         .onChange(of: scenePhase) { _, phase in
-            switch phase {
-            case .active:
-                auth.refresh()
-                if auth.state == .authorized { vm.startSession() }
-            case .background, .inactive:
-                vm.stopSession()
-            @unknown default:
-                break
-            }
+            if phase == .active { auth.refresh() }   // 설정 앱에서 권한 바뀐 뒤 복귀 시 갱신
+            reconcileCamera()
+        }
+    }
+
+    // MARK: - 카메라 수명주기 단일 불변식
+
+    /// 카메라는 **(scenePhase == .active) && (보관함 닫힘) && (권한 authorized)** 일 때만 돈다.
+    /// 이 하나의 함수가 유일한 start/stop 출처 — 보관함 위에서 카메라가 켜질 두 번째 경로를 두지 않는다.
+    /// 세션 매니저의 isRunning 가드가 반복 호출을 무해하게 만들고, start/stop은 모두 세션 큐(오프메인).
+    private func reconcileCamera() {
+        if scenePhase == .active, !showGallery, auth.state == .authorized {
+            vm.startSession()
+        } else {
+            vm.stopSession()
         }
     }
 
