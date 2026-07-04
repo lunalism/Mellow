@@ -56,6 +56,9 @@ final class CameraViewModel: ObservableObject {
     /// 최초 진입 시 1회 세션 구성. 권한 authorized 이후에 호출한다.
     /// 구성·시작은 모두 백그라운드 큐에서 수행되어 UI를 막지 않는다(런치 윈도우 단축).
     func startSession() {
+        #if DEBUG
+        ThermalDiagnostics.shared.setActivity("previewing")
+        #endif
         location.start()   // 카메라 활성 동안만 위치 갱신(권한 있을 때만 실제 시작)
         guard !didConfigure else {
             sessionManager.start()
@@ -74,6 +77,9 @@ final class CameraViewModel: ObservableObject {
     func stopSession() {
         sessionManager.stop()
         location.stop()
+        #if DEBUG
+        ThermalDiagnostics.shared.setActivity("idle")
+        #endif
     }
 
     /// 카메라 화면 진입 시 위치 권한 프라이밍(카메라 권한이 이미 허용된 상태에서 호출).

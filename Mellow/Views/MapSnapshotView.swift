@@ -98,8 +98,14 @@ struct MapSnapshotView: View {
         options.size = size
         options.mapType = .standard
         let snapshotter = MKMapSnapshotter(options: options)
+        #if DEBUG
+        ThermalDiagnostics.shared.beginMapSnapshot()
+        #endif
         return await withCheckedContinuation { continuation in
             snapshotter.start(with: DispatchQueue.global(qos: .utility)) { snapshot, _ in
+                #if DEBUG
+                ThermalDiagnostics.shared.endMapSnapshot()
+                #endif
                 guard let snapshot else { continuation.resume(returning: nil); return }
                 continuation.resume(returning: compositePin(on: snapshot, coordinate: coordinate, size: size))
             }

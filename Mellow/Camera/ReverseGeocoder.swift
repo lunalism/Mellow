@@ -27,7 +27,13 @@ final class ReverseGeocoder {
         // 요청마다 새 CLGeocoder — 단일 인스턴스 동시 요청 제약을 피한다.
         // preferredLocale을 넘기지 않아 **기기 로케일 그대로**(한국어 기기 → "도쿄", 영어 기기 → "Tokyo").
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        #if DEBUG
+        ThermalDiagnostics.shared.beginGeocode()
+        #endif
         let placemarks = try? await CLGeocoder().reverseGeocodeLocation(location)
+        #if DEBUG
+        ThermalDiagnostics.shared.endGeocode()
+        #endif
         guard let placemark = placemarks?.first else { return nil }
         return Self.shortName(from: placemark)
     }

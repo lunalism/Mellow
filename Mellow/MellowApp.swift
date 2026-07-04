@@ -4,6 +4,9 @@ import SwiftUI
 struct MellowApp: App {
     init() {
         #if DEBUG
+        // 열/메모리 진단 계측 — 전용 시리얼 큐에서 항상 켜짐(메인스레드 무부하). 하루 테스트 관측용.
+        ThermalDiagnostics.shared.start()
+
         // LUT DEBUG 하네스 — 런치·메인 블로킹 없이 백그라운드 1회.
         // L1 구조 검증 → L2 스토어 프리로드 → L2 색/축순서 검증(순서 보장).
         Task.detached(priority: .utility) {

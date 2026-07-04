@@ -130,7 +130,15 @@ struct PhotoDetailView: View {
         guard !isExporting, let cap = captures.first(where: { $0.id == selection }) else { return }
         isExporting = true
         Task {
+            #if DEBUG
+            ThermalDiagnostics.shared.setActivity("exporting")
+            ThermalDiagnostics.shared.beginExport()
+            #endif
             let result = await PhotoExporter.export(cap)
+            #if DEBUG
+            ThermalDiagnostics.shared.endExport()
+            ThermalDiagnostics.shared.setActivity("idle")
+            #endif
             isExporting = false
             switch result {
             case .saved:  showToast("사진 앱에 저장했어요")
