@@ -65,6 +65,35 @@ final class ThermalDiagnostics {
         return info.phys_footprint
     }
 
+    // MARK: - CPU 사용률
+
+    /// 전 스레드(비유휴) 합산 CPU%. 멀티코어에서 100%를 넘을 수 있고 그게 정상 — 지속 CPU=발열.
+    func currentCPUUsage() -> Double? {
+        var threadsList: thread_act_array_t?
+        var threadsCount = mach_msg_type_number_t(0)
+        guard task_threads(mach_task_self_, &threadsList, &threadsCount) == KERN_SUCCESS,
+              let threads = threadsList else { return nil }
+        defer {
+            vm_deallocate(mach_task_self_,
+                          vm_address_t(UInt(bitPattern: threads)),
+                          vm_size_t(Int(threadsCount) * MemoryLayout<thread_t>.stride))
+        }
+        var total: Double = 0
+        for i in 0..<Int(threadsCount) {
+            var info = thread_basic_info()
+            var infoCount = mach_msg_type_number_t(THREAD_INFO_MAX)
+            let kr = withUnsafeMutablePointer(to: &info) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(infoCount)) {
+                    thread_info(threads[i], thread_flavor_t(THREAD_BASIC_INFO), $0, &infoCount)
+                }
+            }
+            if kr == KERN_SUCCESS, (info.flags & TH_FLAGS_IDLE) == 0 {
+                total += Double(info.cpu_usage) / Double(TH_USAGE_SCALE) * 100.0
+            }
+        }
+        return total
+    }
+
     // MARK: - 시작
 
     /// 앱 런치 시 1회 호출. 헤더 기록 → 열 상태 변화 구독 → 10초 주기 샘플러 시작.
@@ -95,7 +124,7 @@ final class ThermalDiagnostics {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let thermal = ProcessInfo.processInfo.thermalState.mellowLabel
-            self.write("SAMPLE thermal=\(thermal) mem=\(self.footprintMB())MB activity=\(self.activity)")
+            self.write("SAMPLE thermal=\(thermal) cpu=\(self.cpuPct()) mem=\(self.footprintMB())MB activity=\(self.activity)")
         }
         self.timer = timer
         timer.resume()
@@ -184,6 +213,11 @@ final class ThermalDiagnostics {
     private func footprintMB() -> String {
         guard let bytes = currentMemoryFootprint() else { return "?" }
         return String(format: "%.1f", Double(bytes) / 1_048_576)
+    }
+
+    private func cpuPct() -> String {
+        guard let pct = currentCPUUsage() else { return "?%" }
+        return String(format: "%.1f%%", pct)
     }
 
     private static func deviceModel() -> String {
