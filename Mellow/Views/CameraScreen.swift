@@ -144,7 +144,8 @@ struct CameraScreen: View {
         ZStack {
             Color.mellowPaper
             CameraPreviewView(sessionManager: vm.sessionManager,
-                              selectedFilter: vm.selectedFilter)
+                              selectedSlug: vm.selectedSlug,
+                              isPreviewRunning: vm.isPreviewRunning)
         }
         #endif
     }
@@ -162,30 +163,54 @@ struct CameraScreen: View {
             }
     }
 
-    /// 하단 필터 스트립. 칩 = 이름 + 선택 시 앰버 링 (Spec §2.3). 탭 = 선택.
-    /// (필름통 아트·라이브 틴트 썸네일은 후속 폴리시.)
+    /// 하단 필터 스트립 (10종: Original + 로스터 9). 가로 스크롤로 브라우즈 + 탭 선택.
+    /// 선택 pill은 탭·스와이프 어느 쪽이든 `selectedSlug` 변화를 **단일 지점**에서 감지해 센터로
+    /// 자동 스크롤한다(스와이프/탭 스크롤 애니메이션이 겹치지 않게 최신 타깃으로만 이동 — GATE 1).
     private var filterStrip: some View {
-        HStack(spacing: 10) {
-            ForEach(vm.presets) { preset in
-                filterChip(preset)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(vm.filterOptions) { option in
+                        filterChip(option).id(option.slug)
+                    }
+                }
+                .padding(.horizontal, Layout.frameMargin)
             }
+            .mask(stripEdgeFade)   // 좌우 엣지 페이드 — 더 있음을 암시
+            .onChange(of: vm.selectedSlug) { _, slug in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(slug, anchor: .center) }
+            }
+            .onAppear { proxy.scrollTo(vm.selectedSlug, anchor: .center) }   // 런치: Sunday 센터
         }
     }
 
-    private func filterChip(_ preset: FilterPreset) -> some View {
-        let isSelected = preset.id == vm.selectedFilter.id
+    /// 스트립 좌우 가장자리 페이드 마스크(알파: black=불투명, clear=투명).
+    private var stripEdgeFade: some View {
+        LinearGradient(stops: [
+            .init(color: .clear, location: 0.0),
+            .init(color: .black, location: 0.05),
+            .init(color: .black, location: 0.95),
+            .init(color: .clear, location: 1.0),
+        ], startPoint: .leading, endPoint: .trailing)
+    }
+
+    private func filterChip(_ option: CameraViewModel.FilterOption) -> some View {
+        let isSelected = option.slug == vm.selectedSlug
         return Button {
-            vm.selectFilter(preset)
+            vm.selectFilter(slug: option.slug)
         } label: {
-            Text(preset.displayName)
+            Text(option.name)
                 .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.mellowTextPrimary : Color.mellowIvory.opacity(0.7))
+                // 선택 = 들린-블랙 잉크(크림 위), 비선택 = 뮤트 아이보리(들린-블랙 chrome 위).
+                .foregroundStyle(isSelected ? Color.mellowShadow : Color.mellowIvory.opacity(0.7))
                 .padding(.vertical, 7)
                 .padding(.horizontal, 14)
-                .background(Capsule().fill(isSelected ? Color.mellowBgRaised : Color.clear))
+                // 선택 = 크림 필(#F4EEE1 mellowPaper), 비선택 = 투명.
+                .background(Capsule().fill(isSelected ? Color.mellowPaper : Color.clear))
                 .overlay(
+                    // 선택 = 2px 앰버 링(셔터 링과 동일), 비선택 = 0.5px 헤어라인.
                     Capsule().stroke(isSelected ? Color.mellowAccent : Color.mellowIvory.opacity(0.25),
-                                     lineWidth: isSelected ? 2 : 1)
+                                     lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)

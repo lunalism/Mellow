@@ -30,6 +30,10 @@ enum MellowFilterRoster {
     /// 기본 선택 (Spec: Sunday).
     static let defaultSlug = "sunday"
 
+    /// **합성 Original** slug — 로스터에 실제 엔트리는 없다(룩업-미스 = 패스스루). 프리뷰·저장·UI가
+    /// 공유하는 단일 리터럴 → "무필터"가 세 경로에서 동일하게 흐른다(GATE 3).
+    static let originalSlug = "original"
+
     /// slug으로 엔트리 조회.
     static func entry(forSlug slug: String) -> Entry? {
         entries.first { $0.slug == slug }

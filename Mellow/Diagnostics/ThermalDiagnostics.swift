@@ -41,6 +41,13 @@ final class ThermalDiagnostics {
     /// 주기 샘플러. 강한 참조 유지.
     private var timer: DispatchSourceTimer?
 
+    // MARK: - 프리뷰 프리즈 진단 (onFrame 하트비트 + nextDrawable 스톨)
+    /// onFrame 콜백 카운터 — videoQueue(고빈도)에서 증가. NSLock으로 보호(값싼 lock/unlock).
+    /// SAMPLE이 직전 샘플 이후 델타를 찍어 "프레임이 아직 도착하는가"를 판별한다.
+    private let frameLock = NSLock()
+    private var frameCount: UInt64 = 0
+    private var lastSampledFrameCount: UInt64 = 0
+
     /// 라인 프리픽스용 ISO8601 타임스탬프. 큐에서만 써서 스레드 안전.
     private let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -124,7 +131,9 @@ final class ThermalDiagnostics {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let thermal = ProcessInfo.processInfo.thermalState.mellowLabel
-            self.write("SAMPLE thermal=\(thermal) cpu=\(self.cpuPct()) mem=\(self.footprintMB())MB activity=\(self.activity)")
+            // frames = 직전 샘플 이후 onFrame 콜백 수. 프리즈 시 0이면 캡처가 조용해진 것(candidate 1),
+            // >0인데 화면이 멈춰 있으면 프레임은 오는데 하류 렌더/nextDrawable이 막힌 것(candidate 2).
+            self.write("SAMPLE thermal=\(thermal) cpu=\(self.cpuPct()) frames=\(self.frameDeltaSinceLastSample()) mem=\(self.footprintMB())MB activity=\(self.activity)")
         }
         self.timer = timer
         timer.resume()
@@ -139,6 +148,34 @@ final class ThermalDiagnostics {
             self.activity = a
             self.write("ACTIVITY \(a) mem=\(self.footprintMB())MB")
         }
+    }
+
+    // MARK: - 프리뷰 프리즈 진단
+
+    /// onFrame 콜백마다 호출(videoQueue, 렌더 **전에**). 값싼 lock 증가만 — 파일 I/O 없음.
+    func recordFrame() {
+        frameLock.lock()
+        frameCount &+= 1
+        frameLock.unlock()
+    }
+
+    /// 직전 샘플 이후 프레임 델타(진단 큐의 SAMPLE에서 호출). 읽고 베이스라인 갱신.
+    private func frameDeltaSinceLastSample() -> UInt64 {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        let delta = frameCount &- lastSampledFrameCount
+        lastSampledFrameCount = frameCount
+        return delta
+    }
+
+    /// nextDrawable()이 nil 반환(≈1s 타임아웃 = drawable 고갈) 시 1회 기록. videoQueue에서 호출 → 진단 큐로.
+    func noteDrawableNil() {
+        queue.async { self.write("nextDrawable nil (drawable 고갈 의심) activity=\(self.activity)") }
+    }
+
+    /// nextDrawable()이 임계(>100ms) 초과로 반환됐을 때 기록(성공 프레임마다 찍지 않음).
+    func noteDrawableStall(ms: Double) {
+        queue.async { self.write("nextDrawable stalled \(String(format: "%.0f", ms))ms activity=\(self.activity)") }
     }
 
     // MARK: - 시그포스트 인터벌 (의심 버스트 3종)

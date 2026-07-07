@@ -23,17 +23,32 @@ final class CameraViewModel: ObservableObject {
     ///   동일해야 프리뷰=캡처(WYSIWYG)가 유지된다. 다른 비율 하드코딩 금지.
     @Published private(set) var aspectRatio: AspectRatio = .default
 
-    /// 선택된 필터 (단일 출처 = WYSIWYG). 캡처 단계에서 원본 + 이 `selectedFilter.id`를
-    /// 비파괴 저장한다(원본은 그대로, 표시·익스포트 시 필터 렌더).
-    @Published private(set) var selectedFilter: FilterPreset = .default
+    /// 선택된 필터 **slug** (단일 출처 = WYSIWYG). 프리뷰·저장·UI가 모두 이 slug을 키로 쓴다.
+    /// 캡처 시 원본 + 이 slug을 비파괴 저장한다(원본 그대로, 표시·익스포트 시 LUT 렌더).
+    @Published private(set) var selectedSlug: String = MellowFilterRoster.defaultSlug
 
-    /// 스트립/스와이프 순서(현재 Original/Sunday/Honey). Phase 2에서 8종.
-    let presets: [FilterPreset] = FilterPreset.all
+    /// 스트립 항목 (slug + 표시 이름). **합성 Original** + 로스터 9종(order 정렬) = 10개.
+    /// slug이 저장·프리뷰 공통 키 — 선택과 저장이 다시는 갈라지지 않는다.
+    struct FilterOption: Identifiable, Equatable {
+        let slug: String
+        let name: String
+        var id: String { slug }
+    }
+    let filterOptions: [FilterOption] = {
+        let roster = MellowFilterRoster.entries
+            .sorted { $0.order < $1.order }
+            .map { FilterOption(slug: $0.slug, name: $0.displayName) }
+        return [FilterOption(slug: MellowFilterRoster.originalSlug, name: "Original")] + roster
+    }()
 
     /// 카메라 입력 구성에 성공했는지(전/후면 전환 활성화 여부). 실기기에서만 true.
     @Published private(set) var isCameraAvailable = false
     @Published private(set) var cameraPosition: AVCaptureDevice.Position = .back
     @Published private(set) var isSwitchingCamera = false
+
+    /// 세션이 돌아야 하는 상태인지(reconcile 불변식). 프리뷰의 freeze-last-frame 오버레이가
+    /// 이 값이 false로 바뀌는 순간을 트리거로 마지막 프레임을 얹는다. true→첫 프레임이 해제.
+    @Published private(set) var isPreviewRunning = false
 
     /// 셔터 게이트 상태. **저장과 분리** — capturing은 탭 직후 센서 노출이 끝날 때까지의
     /// 짧은 구간만이다. 저장은 백그라운드에서 독립적으로 돌며 다음 셔터를 막지 않는다.
@@ -56,6 +71,7 @@ final class CameraViewModel: ObservableObject {
     /// 최초 진입 시 1회 세션 구성. 권한 authorized 이후에 호출한다.
     /// 구성·시작은 모두 백그라운드 큐에서 수행되어 UI를 막지 않는다(런치 윈도우 단축).
     func startSession() {
+        isPreviewRunning = true
         #if DEBUG
         ThermalDiagnostics.shared.setActivity("previewing")
         #endif
@@ -75,6 +91,7 @@ final class CameraViewModel: ObservableObject {
 
     /// 백그라운드 진입 등으로 화면을 떠날 때. 위치 갱신도 함께 멈춘다(발열/배터리).
     func stopSession() {
+        isPreviewRunning = false
         sessionManager.stop()
         location.stop()
         #if DEBUG
@@ -101,23 +118,23 @@ final class CameraViewModel: ObservableObject {
 
     // MARK: - 필터 선택 (Spec §4 — 이중 입력, 동기화)
 
-    /// 스트립 칩 탭 → 특정 필터 선택.
-    func selectFilter(_ preset: FilterPreset) {
-        setFilter(preset)
+    /// 스트립 칩 탭 → 특정 필터 선택(slug).
+    func selectFilter(slug: String) {
+        setFilter(slug: slug)
     }
 
-    /// 뷰파인더 스와이프 → 다음/이전 필터 순환(+1/-1). 끝에서 래핑.
+    /// 뷰파인더 스와이프 → 다음/이전 필터 순환(+1/-1). 끝에서 래핑. 10개(Original+9) 전체.
     func cycleFilter(by delta: Int) {
-        guard let index = presets.firstIndex(where: { $0.id == selectedFilter.id }) else { return }
-        let count = presets.count
+        guard let index = filterOptions.firstIndex(where: { $0.slug == selectedSlug }) else { return }
+        let count = filterOptions.count
         let next = ((index + delta) % count + count) % count
-        setFilter(presets[next])
+        setFilter(slug: filterOptions[next].slug)
     }
 
     /// 단일 진입점: 변경 시에만 갱신 + 디텐트 햅틱(Spec §4.3). 스트립↔스와이프 자동 동기화.
-    private func setFilter(_ preset: FilterPreset) {
-        guard preset.id != selectedFilter.id else { return }
-        selectedFilter = preset
+    private func setFilter(slug: String) {
+        guard slug != selectedSlug else { return }
+        selectedSlug = slug
         selectionHaptic.selectionChanged()
         selectionHaptic.prepare()
     }
@@ -127,8 +144,8 @@ final class CameraViewModel: ObservableObject {
     /// 셔터. 풀해상도 무필터 원본 + filterID를 비파괴 저장. 촬영 중 중복 탭 무시(Spec §3).
     func capturePhoto() {
         guard isCameraAvailable, captureState == .idle else { return }
-        // 커밋된 값 스냅샷 — 크로스페이드 중이어도 transient가 아닌 selectedFilter를 쓴다.
-        let filterID = selectedFilter.id
+        // 커밋된 값 스냅샷 — 저장 키 = 현재 선택 slug(프리뷰와 동일). "original"이면 저장 시 패스스루.
+        let filterID = selectedSlug
         let ratio = aspectRatio
         let createdAt = Date()
         // 셔터를 느리게 하지 않도록 캐시된 좌표를 **동기로** 읽는다(fresh fix 대기 없음).

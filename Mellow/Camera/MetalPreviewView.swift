@@ -25,6 +25,14 @@ final class MetalPreviewView: UIView {
     private let sizeLock = NSLock()
     private var drawablePixelSize: CGSize = .zero
 
+    /// **freeze-last-frame 오버레이** (블랙 플래시 방지). 세션 정지 시 마지막 프레임을 이 UIImageView에
+    /// 얹어 재시작 갭 동안 검정 대신 정지 프레임을 보여준다. metal 레이어가 아니라 일반 UIImageView라
+    /// 윈도우 detach에도 내용이 유지된다(CAMetalLayer의 콘텐츠 손실 함정을 피함).
+    private let freezeOverlay = UIImageView()
+    /// videoQueue(renderFrame)와 메인(freeze/clear) 사이의 frozen 상태 보호.
+    private let freezeLock = NSLock()
+    private var frozen = false
+
     init() {
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else {
@@ -50,12 +58,24 @@ final class MetalPreviewView: UIView {
         metalLayer.framebufferOnly = false
         metalLayer.presentsWithTransaction = false   // present를 CA 트랜잭션에 묶지 않음(오프메인 유지)
         metalLayer.isOpaque = false                  // 첫 프레임 전, 뒤의 페이퍼 플레이스홀더가 비치도록
+        // 세션 재시작 갭(~0.2–0.3s): drawable을 잃은 빈 metal 표면은 컴포지터에서 순검정(#000)으로
+        // 뜬다. backgroundColor를 들린 블랙(#3B362E)으로 깔아 그 갭이 순검정 대신 브랜드 톤이 되게 한다.
+        metalLayer.backgroundColor = UIColor(red: 0x3B/255, green: 0x36/255, blue: 0x2E/255, alpha: 1).cgColor
         // ⚠️ metalLayer.colorspace는 **미설정(default)**으로 둔다. bgra8Unorm 픽셀은 이미
         //    sRGB 인코딩됨 — colorspace=sRGB로 강제하면 이중 해석되어 색이 밀린다. MTKView 이전
         //    동작과 동일하게 default 유지(이것이 β에서 색이 드리프트할 수 있는 유일한 지점).
 
         isOpaque = false
         isUserInteractionEnabled = false             // 스와이프/엣지 제스처가 상위 SwiftUI로 전달되도록
+
+        // freeze 오버레이 — 라이브 프리뷰와 동일한 aspect-fill 크롭. 기본 숨김.
+        freezeOverlay.frame = bounds
+        freezeOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        freezeOverlay.contentMode = .scaleAspectFill
+        freezeOverlay.clipsToBounds = true
+        freezeOverlay.isUserInteractionEnabled = false
+        freezeOverlay.isHidden = true
+        addSubview(freezeOverlay)                     // metal 콘텐츠 위(서브뷰)에 합성됨
     }
 
     @available(*, unavailable)
@@ -74,6 +94,7 @@ final class MetalPreviewView: UIView {
         sizeLock.lock()
         drawablePixelSize = size
         sizeLock.unlock()
+        freezeOverlay.frame = bounds          // 오버레이를 항상 프리뷰 카드에 정확히 맞춤
     }
 
     /// 뷰가 윈도우에 붙는 시점에 스케일을 일관되게 맞춰 둔다(정합성용).
@@ -94,8 +115,21 @@ final class MetalPreviewView: UIView {
         guard size.width > 0, size.height > 0 else { return }
 
         // nextDrawable() 블로킹 = 의도된 백프레셔(videoQueue에서만; 늦은 프레임은 상류에서 폐기).
+        #if DEBUG
+        // 프리즈 진단: nextDrawable 소요 측정. nil(≈1s 타임아웃=drawable 고갈) 또는 >100ms면 기록.
+        // (성공 프레임마다 찍지 않아 near-zero. 영구 블록이면 이 호출이 반환 안 해 로그도 안 남 —
+        //  그 경우는 SAMPLE의 frames=0 + 이 라인 부재로 판별.)
+        let drawStart = CACurrentMediaTime()
+        let nextDrawable = metalLayer.nextDrawable()
+        let drawMs = (CACurrentMediaTime() - drawStart) * 1000
+        if nextDrawable == nil { ThermalDiagnostics.shared.noteDrawableNil() }
+        else if drawMs > 100 { ThermalDiagnostics.shared.noteDrawableStall(ms: drawMs) }
+        guard let drawable = nextDrawable,
+              let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        #else
         guard let drawable = metalLayer.nextDrawable(),
               let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        #endif
 
         let target = CGRect(origin: .zero, size: size)
         let filled = Self.aspectFill(image, into: target)
@@ -105,8 +139,37 @@ final class MetalPreviewView: UIView {
                          commandBuffer: commandBuffer,
                          bounds: target,
                          colorSpace: renderColorSpace)
+
+        // freeze 해제: 재시작 후 첫 실제 프레임에서만(타이머 아님). drawable이 **화면에 뜬 순간**
+        // (presented handler) 오버레이를 숨겨 검정도 seam도 없이 라이브로 스왑한다.
+        freezeLock.lock()
+        let clearing = frozen
+        if clearing { frozen = false }
+        freezeLock.unlock()
+        if clearing {
+            drawable.addPresentedHandler { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.freezeOverlay.isHidden = true
+                    self?.freezeOverlay.image = nil
+                }
+            }
+        }
+
         commandBuffer.present(drawable)
         commandBuffer.commit()
+    }
+
+    /// 세션 정지 시 마지막 프레임을 오버레이에 얹는다(메인). 이미 표시 중이면 재변환하지 않는다.
+    /// ciImage가 nil이면 caller에서 걸러진다 — 최초 시작(보관 프레임 없음)엔 호출되지 않아 오버레이는 숨김 유지.
+    /// 변환은 정지 시 1회뿐(프레임당 아님) — 정지 순간(보관함 커버 애니메이션 중)의 짧은 GPU readback.
+    func freeze(with ciImage: CIImage) {
+        guard freezeOverlay.isHidden else { return }   // 이미 정지 프레임 표시 중 → 중복 변환 방지
+        guard let cg = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
+        freezeOverlay.image = UIImage(cgImage: cg)
+        freezeOverlay.isHidden = false
+        freezeLock.lock()
+        frozen = true
+        freezeLock.unlock()
     }
 
     /// 이미지를 rect에 꽉 채우고(cover) 넘침은 크롭. AVLayer의 resizeAspectFill과 동일.
