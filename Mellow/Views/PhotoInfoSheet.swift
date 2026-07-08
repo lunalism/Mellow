@@ -35,7 +35,7 @@ struct PhotoInfoSheet: View {
                     .fill(Self.swatchColor(for: capture.filterID))
                     .frame(width: 12, height: 12)
                     .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 0.5))  // 크림 위 은은한 테두리
-                Text(FilterPreset.preset(for: capture.filterID).displayName)       // 원시 filterID 아님
+                Text(MellowFilterRoster.displayName(forSlug: capture.filterID))    // 로스터 slug→표시명(원시 filterID 아님)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.mellowTextPrimary)
                 Spacer(minLength: 12)

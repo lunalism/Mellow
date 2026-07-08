@@ -38,4 +38,11 @@ enum MellowFilterRoster {
     static func entry(forSlug slug: String) -> Entry? {
         entries.first { $0.slug == slug }
     }
+
+    /// slug → 사람이 읽는 표시명. 로스터에 있으면 그 displayName, 없으면 "Original"로 폴백한다.
+    /// **합성 Original**(로스터 엔트리 없음)과 미상/레거시 slug 둘 다 여기서 "Original"로 접힌다
+    /// — 예전 `FilterPreset.preset(for:) ?? .original` 안전망과 동일 동작(표시명 전용).
+    static func displayName(forSlug slug: String) -> String {
+        entry(forSlug: slug)?.displayName ?? "Original"
+    }
 }
