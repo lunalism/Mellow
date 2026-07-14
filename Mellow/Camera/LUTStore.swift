@@ -16,7 +16,12 @@ actor LUTStore {
     /// 프레임마다 inputImage만 교체 → 3D 텍스처 재업로드(발열) 방지(L3 #1 열 레버).
     private var liveFilters: [String: CIFilter] = [:]
     /// 큐브는 sRGB로 저작됨 — 파싱·필터 색공간 모두 sRGB로 통일(WYSIWYG).
-    private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    /// 블롭엔 색공간을 저장하지 않는다(항상 sRGB) → 런타임에 이 하나로 재구성.
+    private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+
+    /// `.lutbin` v1 헤더: magic(4) + version(4) + dimension(4).
+    private static let headerSize = 12
+    private static let formatVersion: UInt32 = 1
 
     private init() {}
 
@@ -74,18 +79,69 @@ actor LUTStore {
         return slugs
     }
 
+    /// 번들의 **precompiled `.lutbin` 블롭**을 읽어 LUTCube로. 런타임 텍스트 파싱 없음.
+    ///
+    /// `.cube` 텍스트 파싱은 64³(7MB) 한 장에 ~1–3s가 들어 콜드런치에서 프리뷰가 몇 초간
+    /// 패스스루로 남는 원인이었다. 이제 파싱은 **빌드 전 오프라인**(LUTSource/*.cube → Mellow/LUTs/*.lutbin,
+    /// 동일한 CubeParser로 생성 — 바이트 동일 검증 완료)에서 끝내고, 런타임은 블롭을 그대로 읽는다.
+    /// `CubeParser`는 오프라인 컨버터 전용으로 남는다(런타임 호출 없음).
+    ///
+    /// 포맷 v1: [0..3] magic "MLUT" · [4..7] version UInt32 LE(=1) · [8..11] dimension UInt32 LE
+    ///          [12..] payload = n³×16B Float32 RGBA(= LUTCube.data 그대로). colorSpace는 미저장 —
+    ///          항상 sRGB라 런타임에 재구성한다.
     private func loadCube(forSlug slug: String) -> LUTCube? {
         guard let entry = MellowFilterRoster.entry(forSlug: slug) else { return nil }
-        guard let url = Bundle.main.url(forResource: entry.fileName, withExtension: "cube") else {
+        guard let url = Bundle.main.url(forResource: entry.fileName, withExtension: "lutbin") else {
             print("[LUTStore] MISSING \(entry.fileName)")
             return nil
         }
+
+        // mmap — 페이로드는 읽기 전용이고 변형하지 않는다(풀 리드 없이 페이지 폴트로 들어옴).
+        let blob: Data
         do {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            return try CubeParser.parse(text, colorSpace: colorSpace)
+            blob = try Data(contentsOf: url, options: .mappedIfSafe)
         } catch {
-            print("[LUTStore] PARSE FAIL \(slug): \(error)")
+            print("[LUTStore] BADBLOB \(slug): read failed — \(error)")
             return nil
         }
+
+        guard blob.count >= Self.headerSize else {
+            print("[LUTStore] BADBLOB \(slug): truncated (\(blob.count)B < \(Self.headerSize)B header)")
+            return nil
+        }
+
+        let (magicOK, version, dimension) = blob.withUnsafeBytes { raw -> (Bool, UInt32, UInt32) in
+            let magicOK = raw[0] == 0x4D && raw[1] == 0x4C && raw[2] == 0x55 && raw[3] == 0x54   // "MLUT"
+            let v = UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 4, as: UInt32.self))
+            let d = UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 8, as: UInt32.self))
+            return (magicOK, v, d)
+        }
+
+        guard magicOK else {
+            print("[LUTStore] BADBLOB \(slug): bad magic")
+            return nil
+        }
+        guard version == Self.formatVersion else {
+            print("[LUTStore] BADBLOB \(slug): unsupported version \(version)")
+            return nil
+        }
+        let n = Int(dimension)
+        guard (2...64).contains(n) else {
+            print("[LUTStore] BADBLOB \(slug): dimension out of range (\(n))")
+            return nil
+        }
+
+        let expected = n * n * n * 4 * MemoryLayout<Float>.size          // n³ × 16B
+        let payloadCount = blob.count - Self.headerSize
+        guard payloadCount == expected else {
+            print("[LUTStore] BADBLOB \(slug): payload \(payloadCount)B != expected \(expected)B for N=\(n)")
+            return nil
+        }
+
+        // ⚠️ 페이로드는 **base-0 연속 Data**로 넘긴다. mmap 슬라이스를 그대로 주면 startIndex가
+        //    12인 Data가 되어 CIColorCubeWithColorSpace가 오프셋을 오해할 여지가 있다(색 밀림/크래시).
+        //    `subdata`는 페이로드만 복사해 startIndex=0을 보장한다 — 4MB memcpy(<1ms)로 정확성을 산다.
+        let payload = blob.subdata(in: Self.headerSize ..< blob.count)
+        return LUTCube(dimension: n, data: payload, colorSpace: Self.sRGB)
     }
 }
