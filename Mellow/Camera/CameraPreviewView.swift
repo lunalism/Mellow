@@ -139,6 +139,13 @@ struct CameraPreviewView: UIViewRepresentable {
 
             // L3.5: 메인 홉 제거 — videoQueue에서 직접 오프메인 렌더(CA 커밋 사이클 이탈).
             view?.renderFrame(output)
+
+            // 렌더 직후 필터의 inputImage 해제 (프리즈 수정). 영속 필터가 마지막 카메라 버퍼
+            // (CVPixelBuffer 참조 CIImage)를 물고 있으면, 빠른 필터 전환 시 전환된 필터 수만큼
+            // 버퍼가 고정되어 캡처 풀(~6개)이 고갈되고 captureOutput이 **조용히** 멈춘다(프리뷰
+            // 프리즈, 세션 재구성으로만 복구). renderFrame의 ciContext.render가 동기 인코드하고
+            // 커밋된 커맨드버퍼가 GPU 완료까지 자원을 붙들므로, 여기서 지워도 프레임은 안전하다.
+            filter?.setValue(nil, forKey: kCIInputImageKey)
         }
 
         /// 세션 정지 시 마지막 프레임을 뷰의 freeze 오버레이로 얹는다(메인에서 호출 — updateUIView).
@@ -149,6 +156,12 @@ struct CameraPreviewView: UIViewRepresentable {
             lock.unlock()
             guard let image else { return }   // 최초 카메라 시작: 보관 프레임 없음 → freeze 없음
             view?.freeze(with: image)
+            // freeze()가 UIImage로 변환을 마쳤으니 CIImage는 더 필요 없다. 세션 정지 동안
+            // 카메라 버퍼(CVPixelBuffer)를 물고 있지 않도록 즉시 해제(캡처 풀 고정 방지 —
+            // 위 inputImage 해제와 같은 결함 클래스). 재시작 후 첫 프레임이 자연히 다시 채운다.
+            lock.lock()
+            lastImage = nil
+            lock.unlock()
         }
     }
 }
