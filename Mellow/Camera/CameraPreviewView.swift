@@ -44,6 +44,12 @@ struct CameraPreviewView: UIViewRepresentable {
         /// slug → 영속 CIFilter 로컬 캐시. LUTStore(actor)에서 1회 가져와 보관 →
         /// render()는 프레임마다 **동기**로 읽는다(프레임당 await/필터 재생성 없음).
         private var liveFilters: [String: CIFilter] = [:]
+        /// 프리페치 복구 가드: slug당 재킥 시도 수(캡 5) + 진행 중 dedupe.
+        /// 캡 없으면 진짜 죽은 블롭(디스크 손상)에서 프레임레이트로 디스크 재시도가 돌아 발열 리스크.
+        /// 캡 도달 후 패스스루가 올바른 종착 상태. 진행 중 Set은 프레임당 중복 Task 스폰 방지.
+        private var prefetchAttempts: [String: Int] = [:]
+        private var prefetchInFlight: Set<String> = []
+        private static let maxPrefetchRetries = 5
         /// 마지막으로 렌더한 프레임(freeze-last-frame용). 프레임당 참조만 보관(변환 없음) →
         /// 정지 시 freezeLastFrame()에서 1회 UIImage로 변환. lock으로 보호(render=videoQueue).
         private var lastImage: CIImage?
@@ -75,14 +81,23 @@ struct CameraPreviewView: UIViewRepresentable {
             if needFetch { prefetch(slug) }
         }
 
-        /// LUTStore에서 영속 필터를 1회 가져와 로컬 캐시에 보관(off videoQueue).
-        /// nil(미상/미로딩)이면 캐시하지 않음 → render는 계속 패스스루. 크래시 없음.
+        /// LUTStore에서 영속 필터를 가져와 로컬 캐시에 보관(off videoQueue). slug당 동시 1건으로 dedupe.
+        /// nil(로스터 밖 slug)이면 캐시하지 않음 → render는 계속 패스스루. 크래시 없음.
+        /// 스토어 쪽이 로드 보장(loadedCube)이라 transient 실패는 없다 — nil은 영구 케이스뿐.
         private func prefetch(_ slug: String) {
+            lock.lock()
+            let alreadyInFlight = prefetchInFlight.contains(slug)
+            if !alreadyInFlight { prefetchInFlight.insert(slug) }
+            lock.unlock()
+            guard !alreadyInFlight else { return }
+
             Task { [weak self] in
-                guard let filter = await LUTStore.shared.livePreviewFilter(for: slug) else { return }
-                self?.lock.lock()
-                self?.liveFilters[slug] = filter
-                self?.lock.unlock()
+                let filter = await LUTStore.shared.livePreviewFilter(for: slug)
+                guard let self else { return }
+                self.lock.lock()
+                if let filter { self.liveFilters[slug] = filter }
+                self.prefetchInFlight.remove(slug)
+                self.lock.unlock()
                 // 다음 프레임(30fps+)에서 자연히 반영됨 — 강제 리드로우 불필요.
             }
         }
@@ -97,7 +112,17 @@ struct CameraPreviewView: UIViewRepresentable {
             let slug = currentSlug
             // "original" 또는 미준비 slug → nil = 아이덴티티 패스스루.
             let filter = (slug == MellowFilterRoster.originalSlug) ? nil : liveFilters[slug]
+            // 복구 가드: 로스터 slug인데 필터가 없으면(최초 프리페치가 레이스/오류로 유실) 재킥.
+            // dedupe(진행 중 1건) + 캡(5회) — 죽은 블롭에서 프레임레이트 재시도 금지(발열).
+            var rekick = false
+            if filter == nil, slug != MellowFilterRoster.originalSlug,
+               !prefetchInFlight.contains(slug),
+               prefetchAttempts[slug, default: 0] < Self.maxPrefetchRetries {
+                prefetchAttempts[slug, default: 0] += 1
+                rekick = true
+            }
             lock.unlock()
+            if rekick { prefetch(slug) }
 
             let output: CIImage
             if let filter {

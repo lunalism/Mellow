@@ -58,10 +58,12 @@ actor LUTStore {
 
     /// 라이브 프리뷰용 **영속** 필터. slug당 한 번 생성해 캐시하고 영구 재사용한다.
     /// 호출자는 프레임마다 inputImage만 교체할 것 — 절대 프레임마다 재생성 금지.
-    /// 미상/미로딩 slug → nil(호출자가 아이덴티티 패스스루로 폴백).
+    /// **로드 보장**(loadedCube 경유) — 프리로드보다 먼저 불려도 즉석 로드해 레이스에 지지 않는다.
+    /// nil은 로스터에 없는 slug("original"/미상)뿐 → 호출자가 아이덴티티 패스스루로 폴백.
     func livePreviewFilter(for slug: String) -> CIFilter? {
         if let cached = liveFilters[slug] { return cached }
-        guard let filter = makeFilter(for: slug) else { return nil }
+        guard let cube = loadedCube(for: slug) else { return nil }
+        guard let filter = LUTFilter.makeFilter(cube: cube) else { return nil }
         liveFilters[slug] = filter
         return filter
     }
