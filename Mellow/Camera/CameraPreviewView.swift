@@ -1,6 +1,9 @@
 import SwiftUI
 import AVFoundation
 import CoreImage
+#if DEBUG
+import QuartzCore  // CACurrentMediaTime (MTRACE5 워치독 단조 시계)
+#endif
 
 /// 라이브 프리뷰 (Stage L3~). SwiftUI ↔ `MetalPreviewView`(MTKView) 브리지.
 ///
@@ -28,6 +31,10 @@ struct CameraPreviewView: UIViewRepresentable {
     func updateUIView(_ uiView: MetalPreviewView, context: Context) {
         // selectedSlug가 바뀌면 즉시 스왑(스와이프/스트립 공통 경로).
         context.coordinator.setPreset(slug: selectedSlug, animated: true)
+        #if DEBUG
+        // MTRACE5 스톨 워치독 — 내부에서 실제 엣지만 반응(updateUIView는 반복 호출되므로).
+        context.coordinator.updateStallWatchdog(isPreviewRunning: isPreviewRunning)
+        #endif
         // 세션 정지(보관함 열림/백그라운드) → 마지막 프레임 freeze. 시작 시엔 첫 프레임이 오버레이를 해제.
         if !isPreviewRunning { context.coordinator.freezeLastFrame() }
     }
@@ -163,5 +170,70 @@ struct CameraPreviewView: UIViewRepresentable {
             lastImage = nil
             lock.unlock()
         }
+
+        #if DEBUG
+        // MARK: MTRACE5 스톨 워치독 (텔레메트리 전용 — 클리어/복구/상태 변경 없음)
+        //
+        // "카메라가 살아 있어야 하는데(isPreviewRunning=true) 렌더 커밋이 2s 넘게 없고
+        // freeze 오버레이가 떠 있다" = 오버레이가 영구히 남는 스톨 후보. arm 사이클당 1회
+        // MTRACE5 EVENT만 기록한다. 오탐 방지: 기준 시각 = max(arm, 마지막 커밋)이라
+        // 세션 재시작 갭(~0.3s)·첫 설치 셰이더 컴파일(~230ms)은 2s 임계에 걸리지 않는다.
+
+        /// 워치독 상태는 전부 이 시리얼 큐에 confined — 잠금 불필요.
+        private let watchdogQueue = DispatchQueue(label: "com.lunalism.mellow.mtrace5", qos: .utility)
+        private var watchdog: DispatchSourceTimer?        // watchdogQueue에서만 접근
+        private var watchdogArmTime: CFTimeInterval = 0   // watchdogQueue에서만 접근
+        private var stallLatched = false                  // watchdogQueue에서만 접근
+        /// 엣지 검출용 직전 값. updateUIView(메인)에서만 접근.
+        private var lastPreviewRunning = false
+
+        /// updateUIView(메인)에서 매 업데이트 호출되지만 **실제 엣지에서만** arm/disarm한다 —
+        /// 반복되는 true 업데이트가 armTime을 덮어쓰면 타임아웃이 영원히 리셋되므로 가드 필수.
+        func updateStallWatchdog(isPreviewRunning: Bool) {
+            guard isPreviewRunning != lastPreviewRunning else { return }
+            lastPreviewRunning = isPreviewRunning
+            if isPreviewRunning { armStallWatchdog() } else { disarmStallWatchdog() }
+        }
+
+        private func armStallWatchdog() {
+            let armTime = CACurrentMediaTime()   // 엣지 시점(메인)에서 캡처 — 큐 지연과 무관
+            watchdogQueue.async { [weak self] in
+                guard let self else { return }
+                self.watchdog?.cancel()
+                self.watchdogArmTime = armTime
+                self.stallLatched = false        // arm 사이클마다 1회 래치 리셋
+                let timer = DispatchSource.makeTimerSource(queue: self.watchdogQueue)
+                timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
+                timer.setEventHandler { [weak self] in self?.stallWatchdogTick() }
+                self.watchdog = timer
+                timer.resume()
+            }
+        }
+
+        private func disarmStallWatchdog() {
+            watchdogQueue.async { [weak self] in
+                guard let self else { return }
+                self.watchdog?.cancel()
+                self.watchdog = nil
+            }
+        }
+
+        /// watchdogQueue에서 500ms마다. 판정만 하고 아무것도 고치지 않는다.
+        private func stallWatchdogTick() {
+            guard !stallLatched else { return }              // arm 사이클당 1회만
+            let now = CACurrentMediaTime()
+            let lastCommit = ThermalDiagnostics.shared.lastRenderCommitTime()
+            let reference = max(watchdogArmTime, lastCommit) // 커밋 0(미시작)이면 arm 기준
+            guard now - reference > 2.0 else { return }
+            guard let view else { return }                   // 뷰 해제됨 → 이 틱은 스킵
+            // isHidden 직접 판독 금지(메인 전용) — 잠금 보호 미러로 오프메인 판독.
+            guard view.isOverlayVisibleForDiagnostics else { return }
+            stallLatched = true
+            ThermalDiagnostics.shared.noteStallDetected(
+                sinceMs: Int((now - reference) * 1000),
+                overlayVisible: true,
+                armAgeMs: Int((now - watchdogArmTime) * 1000))
+        }
+        #endif
     }
 }

@@ -66,3 +66,6 @@ fastlane/test_output
 
 # Xcode derived data (this project builds to ./build)
 build/
+
+# Local design asset, not bundled in the app
+logo.png

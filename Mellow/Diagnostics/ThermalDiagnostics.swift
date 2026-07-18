@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import UIKit
+import QuartzCore  // CACurrentMediaTime (단조 시계 — MTRACE5)
 import os
 
 /// **열/메모리 진단 계측** (Phase 1 → Phase 2 준비, DEBUG 전용).
@@ -47,6 +48,25 @@ final class ThermalDiagnostics {
     private let frameLock = NSLock()
     private var frameCount: UInt64 = 0
     private var lastSampledFrameCount: UInt64 = 0
+
+    // MARK: - MTRACE5 스톨 감지 상태 (텔레메트리 전용)
+
+    /// **폴트 인젝션(검증용):** true면 renderFrame이 drawable 획득 전에 리턴 → 프레임 공급이
+    /// 살아 있어도 렌더 커밋이 멈춘 상황을 재현한다. lldb 토글(computed setter를 거치므로 그대로 동작):
+    /// `expr ThermalDiagnostics.suppressRenderForTesting = true`
+    /// lldb 쓰기와 videoQueue 읽기가 겹치므로 NSLock으로 동기화(무동기화 cross-thread 접근은 UB).
+    private static let suppressLock = NSLock()
+    private static var _suppressRenderForTesting = false
+    static var suppressRenderForTesting: Bool {
+        get { suppressLock.lock(); defer { suppressLock.unlock() }; return _suppressRenderForTesting }
+        set { suppressLock.lock(); _suppressRenderForTesting = newValue; suppressLock.unlock() }
+    }
+
+    /// 마지막 성공 렌더 커밋의 단조 시각(CACurrentMediaTime). 0 = 아직 커밋 없음.
+    /// videoQueue에서 쓰고 워치독 큐·진단 큐에서 읽는다 → NSLock 보호(frameLock 패턴).
+    /// ⚠️ 벽시계(Date) 금지 — 시계 조정에 흔들리지 않는 단조 시계만 쓴다.
+    private let commitLock = NSLock()
+    private var lastRenderCommit: CFTimeInterval = 0
 
     /// 라인 프리픽스용 ISO8601 타임스탬프. 큐에서만 써서 스레드 안전.
     private let isoFormatter: ISO8601DateFormatter = {
@@ -133,7 +153,9 @@ final class ThermalDiagnostics {
             let thermal = ProcessInfo.processInfo.thermalState.mellowLabel
             // frames = 직전 샘플 이후 onFrame 콜백 수. 프리즈 시 0이면 캡처가 조용해진 것(candidate 1),
             // >0인데 화면이 멈춰 있으면 프레임은 오는데 하류 렌더/nextDrawable이 막힌 것(candidate 2).
-            self.write("SAMPLE thermal=\(thermal) cpu=\(self.cpuPct()) frames=\(self.frameDeltaSinceLastSample()) mem=\(self.footprintMB())MB activity=\(self.activity)")
+            // commitAge = 마지막 렌더 커밋 이후 경과 ms(MTRACE5 수동 가시성 — 별도 타이머 없이
+            // 기존 10s 샘플에 편승). frames>0인데 commitAge가 계속 커지면 공급은 사는데 렌더가 죽은 것.
+            self.write("SAMPLE thermal=\(thermal) cpu=\(self.cpuPct()) frames=\(self.frameDeltaSinceLastSample()) commitAge=\(self.commitAgeLabel()) mem=\(self.footprintMB())MB activity=\(self.activity)")
         }
         self.timer = timer
         timer.resume()
@@ -166,6 +188,40 @@ final class ThermalDiagnostics {
         let delta = frameCount &- lastSampledFrameCount
         lastSampledFrameCount = frameCount
         return delta
+    }
+
+    // MARK: - MTRACE5 (렌더 커밋 하트비트 + 스톨 EVENT)
+
+    /// renderFrame의 commandBuffer.commit() **직후**에만 호출(videoQueue). 조용한 조기 리턴
+    /// (사이즈 0·nil drawable·nil 커맨드버퍼)은 여기 도달하지 않는다 = 성공 프레임만 기록.
+    func recordRenderCommit() {
+        let now = CACurrentMediaTime()
+        commitLock.lock()
+        lastRenderCommit = now
+        commitLock.unlock()
+    }
+
+    /// 마지막 렌더 커밋의 단조 시각. 0 = 아직 없음. 워치독(비메인)에서 읽는다.
+    func lastRenderCommitTime() -> CFTimeInterval {
+        commitLock.lock()
+        defer { commitLock.unlock() }
+        return lastRenderCommit
+    }
+
+    /// 워치독이 스톨을 판정했을 때 1회(arm 사이클당) 기록. 관측만 — 복구 없음.
+    func noteStallDetected(sinceMs: Int, overlayVisible: Bool, armAgeMs: Int) {
+        queue.async {
+            self.write("MTRACE5 EVENT stall_detected since=\(sinceMs) overlay=\(overlayVisible) armAge=\(armAgeMs) activity=\(self.activity)")
+        }
+    }
+
+    /// SAMPLE용 커밋 나이(ms). 커밋이 아직 없으면 "-" — 스톨(큰 값)과 미시작을 구분한다.
+    private func commitAgeLabel() -> String {
+        commitLock.lock()
+        let last = lastRenderCommit
+        commitLock.unlock()
+        guard last > 0 else { return "-" }
+        return String(Int((CACurrentMediaTime() - last) * 1000))
     }
 
     /// nextDrawable()이 nil 반환(≈1s 타임아웃 = drawable 고갈) 시 1회 기록. videoQueue에서 호출 → 진단 큐로.
