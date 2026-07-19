@@ -65,6 +65,9 @@ final class CameraViewModel: ObservableObject {
     private var latestThumbnailID: UUID?
 
     private var didConfigure = false
+    /// 정지 의도 세대 카운터(stopSession마다 증가). 복구 재시작의 보류된 start가
+    /// 그 사이 끼어든 외부 정지(보관함 열림/백그라운드)를 덮어쓰지 않게 한다.
+    private var stopGeneration = 0
     private let selectionHaptic = UISelectionFeedbackGenerator()
     private let shutterHaptic = UIImpactFeedbackGenerator(style: .soft)
 
@@ -91,12 +94,30 @@ final class CameraViewModel: ObservableObject {
 
     /// 백그라운드 진입 등으로 화면을 떠날 때. 위치 갱신도 함께 멈춘다(발열/배터리).
     func stopSession() {
+        stopGeneration += 1   // 보류 중인 복구 재시작 무효화(restartSessionForRecovery 참조)
         isPreviewRunning = false
         sessionManager.stop()
         location.stop()
         #if DEBUG
         ThermalDiagnostics.shared.setActivity("idle")
         #endif
+    }
+
+    /// 스톨 복구 킥(freeze-overlay 스톨 — 워치독 감지 시 세션 stop→start 재기동).
+    /// 게이트: isPreviewRunning이 이미 false면(보관함 열림/백그라운드) no-op — reconcile
+    /// 불변식("카메라는 활성+보관함 닫힘에서만")을 여기서 재확인한다.
+    /// start는 **다음 런루프 틱**으로 미룬다: 동기 stop→start 연속 호출은 SwiftUI가 중간
+    /// false를 코얼레싱해 프리뷰의 freeze/워치독 엣지가 아예 돌지 않는다. 그 한 틱 사이
+    /// 외부 정지가 끼어들면 stopGeneration이 어긋나 start를 버린다 — 보관함/백그라운드 위에서
+    /// 카메라가 켜지는 두 번째 경로를 만들지 않는다.
+    func restartSessionForRecovery() {
+        guard isPreviewRunning else { return }
+        stopSession()
+        let generation = stopGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.stopGeneration == generation else { return }
+            self.startSession()
+        }
     }
 
     /// 카메라 화면 진입 시 위치 권한 프라이밍(카메라 권한이 이미 허용된 상태에서 호출).

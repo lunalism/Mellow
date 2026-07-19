@@ -145,7 +145,8 @@ struct CameraScreen: View {
             Color.mellowPaper
             CameraPreviewView(sessionManager: vm.sessionManager,
                               selectedSlug: vm.selectedSlug,
-                              isPreviewRunning: vm.isPreviewRunning)
+                              isPreviewRunning: vm.isPreviewRunning,
+                              onRequestSessionRestart: { vm.restartSessionForRecovery() })
         }
         #endif
     }

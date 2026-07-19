@@ -62,11 +62,9 @@ final class ThermalDiagnostics {
         set { suppressLock.lock(); _suppressRenderForTesting = newValue; suppressLock.unlock() }
     }
 
-    /// 마지막 성공 렌더 커밋의 단조 시각(CACurrentMediaTime). 0 = 아직 커밋 없음.
-    /// videoQueue에서 쓰고 워치독 큐·진단 큐에서 읽는다 → NSLock 보호(frameLock 패턴).
-    /// ⚠️ 벽시계(Date) 금지 — 시계 조정에 흔들리지 않는 단조 시계만 쓴다.
-    private let commitLock = NSLock()
-    private var lastRenderCommit: CFTimeInterval = 0
+    /// SAMPLE의 commitAge= 공급자. 커밋 타임스탬프가 production(MetalPreviewView)으로
+    /// 승격되어 여기엔 읽기 글루만 남는다. 등록·판독 모두 진단 큐 경유(confined — 잠금 불필요).
+    private var commitTimeProvider: (() -> CFTimeInterval)?
 
     /// 라인 프리픽스용 ISO8601 타임스탬프. 큐에서만 써서 스레드 안전.
     private let isoFormatter: ISO8601DateFormatter = {
@@ -190,37 +188,32 @@ final class ThermalDiagnostics {
         return delta
     }
 
-    // MARK: - MTRACE5 (렌더 커밋 하트비트 + 스톨 EVENT)
+    // MARK: - MTRACE5 (스톨/복구 EVENT — 커밋 하트비트는 MetalPreviewView로 승격됨)
 
-    /// renderFrame의 commandBuffer.commit() **직후**에만 호출(videoQueue). 조용한 조기 리턴
-    /// (사이즈 0·nil drawable·nil 커맨드버퍼)은 여기 도달하지 않는다 = 성공 프레임만 기록.
-    func recordRenderCommit() {
-        let now = CACurrentMediaTime()
-        commitLock.lock()
-        lastRenderCommit = now
-        commitLock.unlock()
+    /// commitAge= 공급자 등록(Coordinator.attach의 DEBUG 글루에서). 진단 큐로 confined.
+    func setCommitTimeProvider(_ provider: @escaping () -> CFTimeInterval) {
+        queue.async { self.commitTimeProvider = provider }
     }
 
-    /// 마지막 렌더 커밋의 단조 시각. 0 = 아직 없음. 워치독(비메인)에서 읽는다.
-    func lastRenderCommitTime() -> CFTimeInterval {
-        commitLock.lock()
-        defer { commitLock.unlock() }
-        return lastRenderCommit
-    }
-
-    /// 워치독이 스톨을 판정했을 때 1회(arm 사이클당) 기록. 관측만 — 복구 없음.
+    /// 워치독이 스톨을 판정했을 때 1회(arm 사이클당) 기록. 관측만.
     func noteStallDetected(sinceMs: Int, overlayVisible: Bool, armAgeMs: Int) {
         queue.async {
             self.write("MTRACE5 EVENT stall_detected since=\(sinceMs) overlay=\(overlayVisible) armAge=\(armAgeMs) activity=\(self.activity)")
         }
     }
 
-    /// SAMPLE용 커밋 나이(ms). 커밋이 아직 없으면 "-" — 스톨(큰 값)과 미시작을 구분한다.
+    /// 복구 킥 경로 EVENT(recovery_kick / recovery_gave_up / kick_skipped_interrupted).
+    /// 워치독 큐에서 호출 → 진단 큐로.
+    func noteRecoveryEvent(_ name: String, attempt: Int) {
+        queue.async {
+            self.write("MTRACE5 EVENT \(name) attempt=\(attempt) activity=\(self.activity)")
+        }
+    }
+
+    /// SAMPLE용 커밋 나이(ms). 커밋이 아직 없으면(또는 공급자 미등록) "-" —
+    /// 스톨(큰 값)과 미시작을 구분한다. 진단 큐에서만 호출.
     private func commitAgeLabel() -> String {
-        commitLock.lock()
-        let last = lastRenderCommit
-        commitLock.unlock()
-        guard last > 0 else { return "-" }
+        guard let last = commitTimeProvider?(), last > 0 else { return "-" }
         return String(Int((CACurrentMediaTime() - last) * 1000))
     }
 

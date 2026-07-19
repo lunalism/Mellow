@@ -156,30 +156,45 @@ final class MetalPreviewView: UIView {
                 DispatchQueue.main.async {
                     self?.freezeOverlay.isHidden = true
                     self?.freezeOverlay.image = nil
-                    #if DEBUG
-                    self?.mirrorOverlayVisible(false)   // MTRACE5 미러 — 관측만
-                    #endif
+                    self?.mirrorOverlayVisible(false)   // 워치독 미러 — 가시성 변화 지점 2/2
                 }
             }
         }
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
-        #if DEBUG
-        // MTRACE5 성공-프레임 하트비트. commit **직후**에만 — 위의 조기 리턴(사이즈 0·nil
-        // drawable·nil 커맨드버퍼)은 성공으로 세지 않는다.
-        ThermalDiagnostics.shared.recordRenderCommit()
-        #endif
+        // 성공-프레임 하트비트(스톨 워치독 신호). commit **직후**에만 — 위의 조기 리턴
+        // (사이즈 0·nil drawable·nil 커맨드버퍼)은 성공으로 세지 않는다.
+        recordRenderCommit()
     }
 
-    #if DEBUG
-    // MARK: MTRACE5 진단 — 오버레이 가시성 미러 (오프메인 판독용)
+    // MARK: 스톨 워치독 신호 (production — 복구 킥이 Release에서 돌므로 DEBUG 아님)
+
+    /// 마지막 성공 렌더 커밋의 단조 시각(CACurrentMediaTime). 0 = 아직 커밋 없음.
+    /// videoQueue에서 쓰고 워치독 큐·(DEBUG) 진단 큐에서 읽는다 → NSLock 보호.
+    /// ⚠️ 벽시계(Date) 금지 — 시계 조정에 흔들리지 않는 단조 시계만 쓴다.
+    private let commitLock = NSLock()
+    private var lastRenderCommit: CFTimeInterval = 0
+
+    func lastRenderCommitTime() -> CFTimeInterval {
+        commitLock.lock()
+        defer { commitLock.unlock() }
+        return lastRenderCommit
+    }
+
+    private func recordRenderCommit() {
+        let now = CACurrentMediaTime()
+        commitLock.lock()
+        lastRenderCommit = now
+        commitLock.unlock()
+    }
+
     /// UIView.isHidden은 메인 전용이라 워치독(비메인 큐)이 직접 읽을 수 없다. 가시성이 바뀌는
     /// 두 지점(freeze / presented-handler 해제) 모두 메인에서 이 미러를 세트하고, 워치독은
     /// 잠금으로 읽는다. **freeze/해제 로직 자체는 건드리지 않는다** — 순수 관측.
     private let overlayMirrorLock = NSLock()
     private var overlayVisibleMirror = false
-    var isOverlayVisibleForDiagnostics: Bool {
+    var isOverlayVisible: Bool {
         overlayMirrorLock.lock()
         defer { overlayMirrorLock.unlock() }
         return overlayVisibleMirror
@@ -189,7 +204,6 @@ final class MetalPreviewView: UIView {
         overlayVisibleMirror = visible
         overlayMirrorLock.unlock()
     }
-    #endif
 
     /// 세션 정지 시 마지막 프레임을 오버레이에 얹는다(메인). 이미 표시 중이면 재변환하지 않는다.
     /// ciImage가 nil이면 caller에서 걸러진다 — 최초 시작(보관 프레임 없음)엔 호출되지 않아 오버레이는 숨김 유지.
@@ -199,9 +213,7 @@ final class MetalPreviewView: UIView {
         guard let cg = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
         freezeOverlay.image = UIImage(cgImage: cg)
         freezeOverlay.isHidden = false
-        #if DEBUG
-        mirrorOverlayVisible(true)   // MTRACE5 미러 — 관측만
-        #endif
+        mirrorOverlayVisible(true)   // 워치독 미러 — 가시성 변화 지점 1/2
         freezeLock.lock()
         frozen = true
         freezeLock.unlock()

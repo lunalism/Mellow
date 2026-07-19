@@ -1,9 +1,7 @@
 import SwiftUI
 import AVFoundation
 import CoreImage
-#if DEBUG
-import QuartzCore  // CACurrentMediaTime (MTRACE5 워치독 단조 시계)
-#endif
+import QuartzCore  // CACurrentMediaTime (스톨 워치독 단조 시계)
 
 /// 라이브 프리뷰 (Stage L3~). SwiftUI ↔ `MetalPreviewView`(MTKView) 브리지.
 ///
@@ -16,6 +14,9 @@ struct CameraPreviewView: UIViewRepresentable {
     let selectedSlug: String
     /// 세션이 돌아야 하는지(= reconcile 불변식). false로 바뀌면 마지막 프레임을 freeze 오버레이로 얹는다.
     let isPreviewRunning: Bool
+    /// 스톨 복구 킥(워치독 → 메인 홉 → 호출). reconcile 불변식 게이트는 VM 쪽에 있다 —
+    /// 여기선 요청만 올린다.
+    let onRequestSessionRestart: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(sessionManager: sessionManager)
@@ -24,6 +25,7 @@ struct CameraPreviewView: UIViewRepresentable {
     func makeUIView(context: Context) -> MetalPreviewView {
         let view = MetalPreviewView()
         context.coordinator.attach(to: view)
+        context.coordinator.onRequestSessionRestart = onRequestSessionRestart
         context.coordinator.setPreset(slug: selectedSlug, animated: false)
         return view
     }
@@ -31,10 +33,10 @@ struct CameraPreviewView: UIViewRepresentable {
     func updateUIView(_ uiView: MetalPreviewView, context: Context) {
         // selectedSlug가 바뀌면 즉시 스왑(스와이프/스트립 공통 경로).
         context.coordinator.setPreset(slug: selectedSlug, animated: true)
-        #if DEBUG
-        // MTRACE5 스톨 워치독 — 내부에서 실제 엣지만 반응(updateUIView는 반복 호출되므로).
+        // 복구 클로저는 매 패스 갱신 — makeUIView 시점 캡처만 두면 stale 상태를 물고 있게 된다.
+        context.coordinator.onRequestSessionRestart = onRequestSessionRestart
+        // 스톨 워치독 — 내부에서 실제 엣지만 반응(updateUIView는 반복 호출되므로).
         context.coordinator.updateStallWatchdog(isPreviewRunning: isPreviewRunning)
-        #endif
         // 세션 정지(보관함 열림/백그라운드) → 마지막 프레임 freeze. 시작 시엔 첫 프레임이 오버레이를 해제.
         if !isPreviewRunning { context.coordinator.freezeLastFrame() }
     }
@@ -44,6 +46,8 @@ struct CameraPreviewView: UIViewRepresentable {
         private let sessionManager: CameraSessionManager
         private let processor = FrameProcessor()
         private weak var view: MetalPreviewView?
+        /// 복구 킥 콜백. 메인에서만 읽고 쓴다(updateUIView가 갱신, 킥의 메인 홉이 호출) — 잠금 불필요.
+        var onRequestSessionRestart: (() -> Void)?
 
         // 상태 보호(잠금): render는 videoQueue, setPreset/프리페치 완료는 다른 컨텍스트.
         private let lock = NSLock()
@@ -67,6 +71,13 @@ struct CameraPreviewView: UIViewRepresentable {
 
         func attach(to view: MetalPreviewView) {
             self.view = view
+            #if DEBUG
+            // SAMPLE의 commitAge= 글루 — 커밋 타임스탬프가 MetalPreviewView(production)로
+            // 승격된 뒤에도 진단 로그가 같은 값을 읽도록 공급자만 등록(관측 전용).
+            ThermalDiagnostics.shared.setCommitTimeProvider { [weak view] in
+                view?.lastRenderCommitTime() ?? 0
+            }
+            #endif
             prefetch(MellowFilterRoster.defaultSlug)   // 기본값(sunday) 첫 프레임부터 준비
             sessionManager.onFrame = { [weak self] sampleBuffer in
                 #if DEBUG
@@ -171,21 +182,32 @@ struct CameraPreviewView: UIViewRepresentable {
             lock.unlock()
         }
 
-        #if DEBUG
-        // MARK: MTRACE5 스톨 워치독 (텔레메트리 전용 — 클리어/복구/상태 변경 없음)
+        // MARK: 스톨 워치독 + 복구 킥 (production — EVENT 로깅만 DEBUG)
         //
         // "카메라가 살아 있어야 하는데(isPreviewRunning=true) 렌더 커밋이 2s 넘게 없고
-        // freeze 오버레이가 떠 있다" = 오버레이가 영구히 남는 스톨 후보. arm 사이클당 1회
-        // MTRACE5 EVENT만 기록한다. 오탐 방지: 기준 시각 = max(arm, 마지막 커밋)이라
-        // 세션 재시작 갭(~0.3s)·첫 설치 셰이더 컴파일(~230ms)은 2s 임계에 걸리지 않는다.
+        // freeze 오버레이가 떠 있다" = 오버레이가 영구히 남는 스톨. 감지 로직은 MTRACE5
+        // (47253f1, 실기기 검증)와 동일. 이제 감지 시 arm 사이클당 1회 세션 재시작을 킥한다.
+        // 오탐 방지: 기준 시각 = max(arm, 마지막 커밋)이라 세션 재시작 갭(~0.3s)·첫 설치
+        // 셰이더 컴파일(~230ms)은 2s 임계에 걸리지 않는다.
 
         /// 워치독 상태는 전부 이 시리얼 큐에 confined — 잠금 불필요.
         private let watchdogQueue = DispatchQueue(label: "com.lunalism.mellow.mtrace5", qos: .utility)
         private var watchdog: DispatchSourceTimer?        // watchdogQueue에서만 접근
         private var watchdogArmTime: CFTimeInterval = 0   // watchdogQueue에서만 접근
         private var stallLatched = false                  // watchdogQueue에서만 접근
+        /// 복구 킥 시도 수 + 마지막 킥의 단조 시각. watchdogQueue에서만 접근.
+        /// 캡 도달 = 그레이스풀 터미널(더 이상 킥 없음) — 진짜 죽은 카메라에 ~2.5s 간격
+        /// 무한 재시작이 돌면 발열/배터리 리스크(프리페치 rekick 캡과 같은 결함 클래스).
+        /// 리셋은 "킥 이후 실제 커밋 관측" 단 하나(stallWatchdogTick 상단).
+        private var recoveryAttempts = 0
+        private var lastKickTime: CFTimeInterval = 0
+        private static let maxRecoveryAttempts = 3
         /// 엣지 검출용 직전 값. updateUIView(메인)에서만 접근.
         private var lastPreviewRunning = false
+        #if DEBUG
+        /// kick_skipped_interrupted 로그를 arm 사이클당 1회로 억제(틱 500ms 스팸 방지). watchdogQueue.
+        private var interruptedSkipLogged = false
+        #endif
 
         /// updateUIView(메인)에서 매 업데이트 호출되지만 **실제 엣지에서만** arm/disarm한다 —
         /// 반복되는 true 업데이트가 armTime을 덮어쓰면 타임아웃이 영원히 리셋되므로 가드 필수.
@@ -202,6 +224,11 @@ struct CameraPreviewView: UIViewRepresentable {
                 self.watchdog?.cancel()
                 self.watchdogArmTime = armTime
                 self.stallLatched = false        // arm 사이클마다 1회 래치 리셋
+                #if DEBUG
+                self.interruptedSkipLogged = false
+                #endif
+                // ⚠️ recoveryAttempts는 여기서 리셋하지 않는다 — 킥이 유발한 재시작도 이 경로로
+                // re-arm되므로, 여기서 리셋하면 캡(3회)이 무력화되어 무한 킥 루프가 된다.
                 let timer = DispatchSource.makeTimerSource(queue: self.watchdogQueue)
                 timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
                 timer.setEventHandler { [weak self] in self?.stallWatchdogTick() }
@@ -218,22 +245,64 @@ struct CameraPreviewView: UIViewRepresentable {
             }
         }
 
-        /// watchdogQueue에서 500ms마다. 판정만 하고 아무것도 고치지 않는다.
+        /// watchdogQueue에서 500ms마다. 스톨 판정(MTRACE5와 동일) → 복구 킥 결정.
         private func stallWatchdogTick() {
             guard !stallLatched else { return }              // arm 사이클당 1회만
+            guard let view else { return }                   // 뷰 해제됨 → 이 틱은 스킵
             let now = CACurrentMediaTime()
-            let lastCommit = ThermalDiagnostics.shared.lastRenderCommitTime()
+            let lastCommit = view.lastRenderCommitTime()
+            // 복구 성공 판정(시도 카운터의 **유일한** 리셋 지점): 마지막 킥 이후 실제 커밋이
+            // 관측되면 카메라가 살아난 것 — 다음 스톨은 새 사건으로 취급한다.
+            if lastKickTime > 0, lastCommit > lastKickTime {
+                recoveryAttempts = 0
+                lastKickTime = 0
+            }
             let reference = max(watchdogArmTime, lastCommit) // 커밋 0(미시작)이면 arm 기준
             guard now - reference > 2.0 else { return }
-            guard let view else { return }                   // 뷰 해제됨 → 이 틱은 스킵
             // isHidden 직접 판독 금지(메인 전용) — 잠금 보호 미러로 오프메인 판독.
-            guard view.isOverlayVisibleForDiagnostics else { return }
+            guard view.isOverlayVisible else { return }
+
+            // 스톨 확정. 정당한 인터럽션(전화·다른 프로세스의 카메라 사용) 중엔 재시작이
+            // 반복 실패만 하므로 킥을 통째로 스킵 — 시도를 소모하지 않고 래치도 하지 않아,
+            // 인터럽션 해제 후 스톨이 남아 있으면 그때 정상 킥이 나간다.
+            // (isInterrupted는 KVO 노출 판독 전용 프로퍼티 — 세션 큐 밖에서 읽어도 안전.)
+            if sessionManager.session.isInterrupted {
+                #if DEBUG
+                if !interruptedSkipLogged {
+                    interruptedSkipLogged = true
+                    ThermalDiagnostics.shared.noteRecoveryEvent("kick_skipped_interrupted",
+                                                                attempt: recoveryAttempts)
+                }
+                #endif
+                return
+            }
+
             stallLatched = true
+            #if DEBUG
             ThermalDiagnostics.shared.noteStallDetected(
                 sinceMs: Int((now - reference) * 1000),
                 overlayVisible: true,
                 armAgeMs: Int((now - watchdogArmTime) * 1000))
+            #endif
+
+            guard recoveryAttempts < Self.maxRecoveryAttempts else {
+                // 터미널: 캡 도달 — 더 이상 킥하지 않는다(발열/배터리 가드). 사용자는
+                // 보관함 왕복·앱 재실행으로 여전히 복구 가능(그레이스풀 종착 상태).
+                #if DEBUG
+                ThermalDiagnostics.shared.noteRecoveryEvent("recovery_gave_up",
+                                                            attempt: recoveryAttempts)
+                #endif
+                return
+            }
+            recoveryAttempts += 1
+            lastKickTime = now
+            #if DEBUG
+            ThermalDiagnostics.shared.noteRecoveryEvent("recovery_kick", attempt: recoveryAttempts)
+            #endif
+            // 메인 홉 — startSession/stopSession은 @MainActor. 불변식 재확인은 VM 게이트가 한다.
+            DispatchQueue.main.async { [weak self] in
+                self?.onRequestSessionRestart?()
+            }
         }
-        #endif
     }
 }
