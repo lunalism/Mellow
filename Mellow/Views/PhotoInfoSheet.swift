@@ -32,7 +32,7 @@ struct PhotoInfoSheet: View {
             // 1. 필터 스와치 + 표시명 ····· 시각(우측 정렬)
             HStack(spacing: 10) {
                 Circle()
-                    .fill(Self.swatchColor(for: capture.filterID))
+                    .fill(MellowFilterRoster.swatchColor(forSlug: capture.filterID))  // 로스터 = 스와치 단일 진실
                     .frame(width: 12, height: 12)
                     .overlay(Circle().stroke(Color.mellowBorder, lineWidth: 0.5))  // 크림 위 은은한 테두리
                 Text(MellowFilterRoster.displayName(forSlug: capture.filterID))    // 로스터 slug→표시명(원시 filterID 아님)
@@ -141,16 +141,6 @@ struct PhotoInfoSheet: View {
     }
 
     // MARK: - 표시 매핑
-
-    /// 필터별 표시 스와치(장식용). 8종 확장 시 여기에 추가. 미상은 앰버 폴백.
-    private static func swatchColor(for filterID: String) -> Color {
-        switch filterID {
-        case "sunday":   return .mellowAmber        // 따뜻한 앰버
-        case "honey":    return .mellowGolden       // 골든
-        case "original": return .mellowLatte        // 중립 라떼
-        default:         return .mellowAccent
-        }
-    }
 
     private static func ratioLabel(_ ratio: AspectRatio) -> String {
         switch ratio {
