@@ -210,6 +210,14 @@ final class ThermalDiagnostics {
         }
     }
 
+    /// frozen/overlay 갈라짐 레이스 관측: 오래된 presented-handler hide가 새 freeze를 만나
+    /// 스킵됐을 때 기록. 메인에서 호출 → 진단 큐로. 관측만.
+    func noteStaleHideSkipped() {
+        queue.async {
+            self.write("MTRACE5 EVENT stale_hide_skipped activity=\(self.activity)")
+        }
+    }
+
     /// SAMPLE용 커밋 나이(ms). 커밋이 아직 없으면(또는 공급자 미등록) "-" —
     /// 스톨(큰 값)과 미시작을 구분한다. 진단 큐에서만 호출.
     private func commitAgeLabel() -> String {

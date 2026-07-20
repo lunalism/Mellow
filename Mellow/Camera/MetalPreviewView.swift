@@ -32,6 +32,11 @@ final class MetalPreviewView: UIView {
     /// videoQueue(renderFrame)와 메인(freeze/clear) 사이의 frozen 상태 보호.
     private let freezeLock = NSLock()
     private var frozen = false
+    /// freeze 세대 토큰. freeze(with:)마다 증가(freezeLock 하). presented-handler hide는
+    /// encode 시점에 캡처한 세대와 비교해, 그 사이 새 freeze가 오면 스킵한다.
+    /// 공유 Bool 재검사만으로는 부족 — 세션 정지 중 대기열의 낙오 프레임이 frozen을 다시
+    /// 내려 버리면 더 오래된 hide가 통과해 새 오버레이를 걷어낸다(Codex 리뷰 지적).
+    private var freezeGeneration: UInt64 = 0
 
     init() {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -119,6 +124,13 @@ final class MetalPreviewView: UIView {
         sizeLock.unlock()
         guard size.width > 0, size.height > 0 else { return }
 
+        // 진입 세대 캡처 — 블로킹 작업(nextDrawable~렌더) **전**. 이 프레임이 시작된 뒤
+        // freeze가 도착하면(세대 증가) 아래 clearing 판정에서 탈락시켜, freeze 이전에 시작된
+        // 프레임이 post-freeze 프레임으로 위장해 새 오버레이를 걷어내는 것을 막는다(Codex P1).
+        freezeLock.lock()
+        let entryGeneration = freezeGeneration
+        freezeLock.unlock()
+
         // nextDrawable() 블로킹 = 의도된 백프레셔(videoQueue에서만; 늦은 프레임은 상류에서 폐기).
         #if DEBUG
         // 프리즈 진단: nextDrawable 소요 측정. nil(≈1s 타임아웃=drawable 고갈) 또는 >100ms면 기록.
@@ -148,15 +160,33 @@ final class MetalPreviewView: UIView {
         // freeze 해제: 재시작 후 첫 실제 프레임에서만(타이머 아님). drawable이 **화면에 뜬 순간**
         // (presented handler) 오버레이를 숨겨 검정도 seam도 없이 라이브로 스왑한다.
         freezeLock.lock()
-        let clearing = frozen
+        // clearing 조건: frozen이고 **이 프레임 진입 후 새 freeze가 없었을 때만**.
+        // 세대가 다르면 이 프레임은 freeze 이전에 시작된 낙오 프레임 — frozen을 건드리지 않고
+        // hide도 걸지 않는다(프레임 자체는 present돼도 무해 — 오버레이가 위에 있다).
+        let clearing = frozen && freezeGeneration == entryGeneration
         if clearing { frozen = false }
+        let encodedGeneration = freezeGeneration
         freezeLock.unlock()
         if clearing {
             drawable.addPresentedHandler { [weak self] _ in
                 DispatchQueue.main.async {
-                    self?.freezeOverlay.isHidden = true
-                    self?.freezeOverlay.image = nil
-                    self?.mirrorOverlayVisible(false)   // 워치독 미러 — 가시성 변화 지점 2/2
+                    guard let self else { return }
+                    // 오래된 hide 가드: 이 프레임 encode 이후 새 freeze가 도착했으면 이 hide는
+                    // 무효 — 오버레이·미러를 건드리지 않는다. 세대 비교로 판정한다(frozen 재검사는
+                    // 불충분 — 낙오 프레임이 그 사이 frozen을 다시 내릴 수 있다). frozen이 다시
+                    // true가 되는 경로는 freeze뿐이고 freeze는 항상 세대를 올리므로 비교가 포섭한다.
+                    self.freezeLock.lock()
+                    let stale = self.freezeGeneration != encodedGeneration
+                    self.freezeLock.unlock()
+                    if stale {
+                        #if DEBUG
+                        ThermalDiagnostics.shared.noteStaleHideSkipped()
+                        #endif
+                        return
+                    }
+                    self.freezeOverlay.isHidden = true
+                    self.freezeOverlay.image = nil
+                    self.mirrorOverlayVisible(false)   // 워치독 미러 — 가시성 변화 지점 2/2
                 }
             }
         }
@@ -209,13 +239,25 @@ final class MetalPreviewView: UIView {
     /// ciImage가 nil이면 caller에서 걸러진다 — 최초 시작(보관 프레임 없음)엔 호출되지 않아 오버레이는 숨김 유지.
     /// 변환은 정지 시 1회뿐(프레임당 아님) — 정지 순간(보관함 커버 애니메이션 중)의 짧은 GPU readback.
     func freeze(with ciImage: CIImage) {
-        guard freezeOverlay.isHidden else { return }   // 이미 정지 프레임 표시 중 → 중복 변환 방지
+        guard freezeOverlay.isHidden else {
+            // 이미 정지 프레임 표시 중 → 중복 변환은 스킵하되 frozen은 다시 세운다.
+            // 레이스 클로저: renderFrame이 encode 시점에 frozen을 내렸지만 presented-handler
+            // hide가 아직 안 돈 갭에 freeze가 오면, 여기서 frozen을 재세트하지 않으면
+            // pending hide가 새 freeze 의도를 무시하고 오버레이를 걷어낸다.
+            // (미러는 이 경로에서 이미 true — hide 클로저만 false로 내리는데 아직 안 돌았다.)
+            freezeLock.lock()
+            frozen = true
+            freezeGeneration &+= 1
+            freezeLock.unlock()
+            return
+        }
         guard let cg = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
         freezeOverlay.image = UIImage(cgImage: cg)
         freezeOverlay.isHidden = false
         mirrorOverlayVisible(true)   // 워치독 미러 — 가시성 변화 지점 1/2
         freezeLock.lock()
         frozen = true
+        freezeGeneration &+= 1
         freezeLock.unlock()
     }
 
