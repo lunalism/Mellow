@@ -169,7 +169,7 @@ final class MetalPreviewView: UIView {
         freezeLock.unlock()
         if clearing {
             drawable.addPresentedHandler { [weak self] _ in
-                DispatchQueue.main.async {
+                let hideBody = { [weak self] in
                     guard let self else { return }
                     // 오래된 hide 가드: 이 프레임 encode 이후 새 freeze가 도착했으면 이 hide는
                     // 무효 — 오버레이·미러를 건드리지 않는다. 세대 비교로 판정한다(frozen 재검사는
@@ -188,6 +188,16 @@ final class MetalPreviewView: UIView {
                     self.freezeOverlay.image = nil
                     self.mirrorOverlayVisible(false)   // 워치독 미러 — 가시성 변화 지점 2/2
                 }
+                #if DEBUG
+                // 폴트 인젝션(검증용): hide 본문 **전체**(세대 검사 포함)를 지연 — 검사는 반드시
+                // 발화 시점에 수행돼야 지연 중 도착한 freeze가 검사를 탈락시킨다(훅의 목적).
+                let delay = ThermalDiagnostics.delayPresentedHideForTesting
+                if delay > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: hideBody)
+                    return
+                }
+                #endif
+                DispatchQueue.main.async(execute: hideBody)
             }
         }
 

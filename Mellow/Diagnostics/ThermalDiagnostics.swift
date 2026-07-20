@@ -62,6 +62,19 @@ final class ThermalDiagnostics {
         set { suppressLock.lock(); _suppressRenderForTesting = newValue; suppressLock.unlock() }
     }
 
+    /// **폴트 인젝션(검증용):** 0보다 크면 presented-handler hide 본문 전체(세대 검사 포함)를
+    /// 이 간격만큼 지연 → 좁은 hide 윈도우를 사람이 freeze를 끼워 넣을 수 있게 벌린다.
+    /// stale_hide_skipped 검증용 — suppressRenderForTesting은 렌더 자체를 막아 pending hide가
+    /// 생기지 않으므로 이 레이스를 만들 수 없다. lldb 토글:
+    /// `expr ThermalDiagnostics.delayPresentedHideForTesting = 3.0` (해제는 0)
+    /// lldb 쓰기와 메인 읽기가 겹치므로 suppressLock과 같은 방식으로 NSLock 동기화.
+    private static let delayHideLock = NSLock()
+    private static var _delayPresentedHideForTesting: TimeInterval = 0
+    static var delayPresentedHideForTesting: TimeInterval {
+        get { delayHideLock.lock(); defer { delayHideLock.unlock() }; return _delayPresentedHideForTesting }
+        set { delayHideLock.lock(); _delayPresentedHideForTesting = newValue; delayHideLock.unlock() }
+    }
+
     /// SAMPLE의 commitAge= 공급자. 커밋 타임스탬프가 production(MetalPreviewView)으로
     /// 승격되어 여기엔 읽기 글루만 남는다. 등록·판독 모두 진단 큐 경유(confined — 잠금 불필요).
     private var commitTimeProvider: (() -> CFTimeInterval)?
