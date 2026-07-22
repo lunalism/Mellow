@@ -2,7 +2,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import CoreMedia
 
-/// CMSampleBuffer → CIImage 변환(방향 보정 + 프리뷰 다운스케일) + 크로스페이드 (Phase 1 Spec §7).
+/// CMSampleBuffer → CIImage 변환(방향 보정 + 프리뷰 다운스케일) (Phase 1 Spec §7).
 ///
 /// 필터 적용은 이 타입 밖에서 일어난다 — 라이브 프리뷰는 `LUTStore`에서 얻은 LUT `CIFilter`에
 /// 프레임당 inputImage만 교체해 렌더한다(`CameraPreviewView.Coordinator.render` 참조).
@@ -25,18 +25,5 @@ struct FrameProcessor {
         guard longSide > previewMaxDimension else { return image }
         let scale = previewMaxDimension / longSide
         return image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-    }
-
-    /// 두 프리셋 출력의 크로스페이드 (Spec §4.2). progress 0 → from, 1 → to.
-    func crossfade(from: CIImage, to: CIImage, progress: Double) -> CIImage {
-        let p = max(0, min(1, progress))
-        let fade = CIFilter.colorMatrix()
-        fade.inputImage = to
-        fade.aVector = CIVector(x: 0, y: 0, z: 0, w: CGFloat(p)) // to의 알파 = progress
-        guard let faded = fade.outputImage else { return p >= 0.5 ? to : from }
-        let over = CIFilter.sourceOverCompositing()
-        over.inputImage = faded
-        over.backgroundImage = from
-        return over.outputImage ?? to
     }
 }
