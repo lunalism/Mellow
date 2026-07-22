@@ -8,7 +8,7 @@ import CoreLocation
 /// 차가운 EXIF 덤프가 아니라 §9의 따뜻한 필름 다이어리 톤: 페이퍼 크림 표면 · 들린 잉크 텍스트 ·
 /// 웜톤 헤어라인. 순수 흰색/검정 없음.
 ///
-/// - 필터 표시명은 `FilterPreset.preset(for:)`로 매핑(원시 filterID 문자열은 노출하지 않음).
+/// - 필터 표시명은 `MellowFilterRoster.displayName(forSlug:)`로 매핑(원시 filterID 문자열은 노출하지 않음).
 /// - 비율은 `capture.ratio`에서 **동적**으로(저장된 실제 비율). 하드코딩 9:16 아님.
 /// - 해상도는 저장에 없으므로 **원본 JPEG 헤더**에서 읽는다(ImageIO, 픽셀 크기만 — 전체 디코드 없음).
 /// - 위치/지도는 **별도 슬라이스**. 여기선 레이아웃 슬롯만 예약(아래 MAP SLOT 참고).

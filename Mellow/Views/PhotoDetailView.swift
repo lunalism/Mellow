@@ -5,7 +5,8 @@ import SwiftUI
 /// 캡처로 넘어간다. 날짜 헤더는 현재 보이는 사진을 따라 갱신된다.
 ///
 /// 색은 **비파괴 재렌더** — 각 페이지는 무필터 원본 + `filterID`를 라이브 프리뷰·썸네일·
-/// 갤러리 셀과 **같은 `FilterPreset.makeChain`**으로 9:16 전체 프레이밍으로 렌더한다(WYSIWYG).
+/// 갤러리 셀과 **같은 .cube LUT**(`CaptureThumbnailRenderer` 경로)로, 크롭 없이 저장된
+/// 원본 비율 그대로 풀프레임 렌더한다(WYSIWYG).
 /// step 1의 `fullFrameThumbnail` + `fullCache` 경로를 그대로 재사용한다(두 번째 렌더 경로 없음).
 ///
 /// 부드러움(이 슬라이스 핵심):

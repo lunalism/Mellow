@@ -5,7 +5,7 @@ import UIKit
 ///
 /// iOS 표준(사진 앱과 동일)인 `UIScrollView` + `UIImageView` 줌 파이프라인을 그대로 감싼다.
 /// **이미 렌더된 이미지를 그대로 표시**한다 — `PhotoDetailPage`가 `fullCache` /
-/// `FilterPreset.makeChain`으로 만든 바로 그 `UIImage`를 받아 레이어 트랜스폼만 한다.
+/// `fullFrameThumbnail`(.cube LUT 경로)로 만든 바로 그 `UIImage`를 받아 레이어 트랜스폼만 한다.
 /// 줌/팬은 필터 체인을 다시 돌리지 않는 순수 변환이므로 두 번째 렌더 경로가 없다(WYSIWYG 유지).
 ///
 /// 제스처 핸드오프(핵심):
