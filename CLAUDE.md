@@ -71,3 +71,5 @@ Watch items (observations, not bugs):
 - RenderBox glyph rendering visible during rapid filter cycling; negligible at current volume.
 
 **Phase 2 gate:** this baseline covers the STILLS pipeline only. Video recording adds encoding + sustained load — re-run the same Instruments set (Time Profiler + Thermal, Metal System Trace, Allocations) with video scenarios before/during Phase 2 work.
+
+Phase 2 video: capture aspect locked at 2.4:1, single 3-slot vertical stack layout, no layout selection UI. See docs/Mellow_Phase2_Video_Spec_v0.1.md §10-1.
