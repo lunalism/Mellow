@@ -2,10 +2,44 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
+/// 트랙 하나의 상태. "없음"과 "읽지 못함"을 구분하는 것이 핵심이다.
+///
+/// 둘을 섞으면 메타데이터 추출에 실패한 클립들이 서로 "일치"로 판정돼
+/// 진단 불능 입력이 성공으로 승격된다.
+enum TrackStatus<Spec> {
+    case absent
+    case present(Spec)
+    case unreadable(reason: String)
+
+    var spec: Spec? {
+        if case .present(let spec) = self { return spec }
+        return nil
+    }
+
+    var isAbsent: Bool {
+        if case .absent = self { return true }
+        return false
+    }
+
+    var isUnreadable: Bool {
+        if case .unreadable = self { return true }
+        return false
+    }
+
+    var stateText: String {
+        switch self {
+        case .absent: return "없음"
+        case .present: return "있음"
+        case .unreadable(let reason): return "읽기 실패 — \(reason)"
+        }
+    }
+}
+
 /// 영상 파일 하나에서 뽑아낸 스펙 스냅샷.
 ///
-/// 목적은 하나다 — 여러 클립이 **재인코딩 없이 붙일 수 있을 만큼 동일한가**를
-/// 눈으로 확인하는 것. 판정 자체는 `ClipSpec.compare(_:)` 가 한다.
+/// 목적은 **여러 클립의 스펙이 서로 다른지**를 눈으로 확인하는 것이다.
+/// 병합이 실제로 성립하는지는 `AVMutableComposition` 으로 붙여보고
+/// passthrough 익스포트를 돌려봐야 안다 (Tasks 1-12 ~ 1-17).
 struct ClipSpec {
 
     struct Video {
@@ -36,10 +70,8 @@ struct ClipSpec {
     var duration: Double
     var fileSize: Int64?
 
-    /// 트랙이 아예 없을 수 있다. 없음을 없음으로 들고 있어야
-    /// "값이 다르다"와 "트랙이 없다"를 비교 단계에서 구분할 수 있다.
-    var video: Video?
-    var audio: Audio?
+    var video: TrackStatus<Video>
+    var audio: TrackStatus<Audio>
 }
 
 // MARK: - 추출
@@ -49,6 +81,10 @@ extension ClipSpec {
     /// iOS 16+ 의 async `load(_:)` 계열만 사용한다.
     /// `asset.tracks`, `asset.duration`, `track.preferredTransform` 같은
     /// 동기 프로퍼티는 deprecated 이므로 쓰지 않는다.
+    ///
+    /// 트랙은 있는데 포맷 정보를 못 읽으면 기본값으로 채우지 않고
+    /// `.unreadable` 로 남긴다. 0×0 같은 sentinel 을 넣으면 추출 실패끼리
+    /// 값이 같아져서 "일치"로 판정돼버린다.
     static func load(from url: URL) async throws -> ClipSpec {
         let asset = AVURLAsset(url: url)
 
@@ -56,7 +92,7 @@ extension ClipSpec {
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
 
-        var video: Video?
+        var video: TrackStatus<Video> = .absent
         if let track = videoTracks.first {
             let naturalSize = try await track.load(.naturalSize)
             let transform = try await track.load(.preferredTransform)
@@ -65,44 +101,39 @@ extension ClipSpec {
             let dataRate = try await track.load(.estimatedDataRate)
             let formats = try await track.load(.formatDescriptions)
 
-            var dimensions = CMVideoDimensions(width: 0, height: 0)
-            var subType = "-"
-            var primaries: String?
-            var transfer: String?
-            var matrix: String?
-
             if let format = formats.first {
-                dimensions = CMVideoFormatDescriptionGetDimensions(format)
-                subType = fourCC(format.mediaSubType.rawValue)
-                primaries = stringExtension(format, kCMFormatDescriptionExtension_ColorPrimaries)
-                transfer = stringExtension(format, kCMFormatDescriptionExtension_TransferFunction)
-                matrix = stringExtension(format, kCMFormatDescriptionExtension_YCbCrMatrix)
+                video = .present(Video(
+                    naturalSize: naturalSize,
+                    dimensions: CMVideoFormatDescriptionGetDimensions(format),
+                    mediaSubType: fourCC(format.mediaSubType.rawValue),
+                    nominalFrameRate: frameRate,
+                    minFrameDuration: minFrameDuration,
+                    preferredTransform: transform,
+                    estimatedDataRate: dataRate,
+                    colorPrimaries: stringExtension(format, kCMFormatDescriptionExtension_ColorPrimaries),
+                    transferFunction: stringExtension(format, kCMFormatDescriptionExtension_TransferFunction),
+                    yCbCrMatrix: stringExtension(format, kCMFormatDescriptionExtension_YCbCrMatrix)
+                ))
+            } else {
+                video = .unreadable(reason: "formatDescription 없음")
             }
-
-            video = Video(
-                naturalSize: naturalSize,
-                dimensions: dimensions,
-                mediaSubType: subType,
-                nominalFrameRate: frameRate,
-                minFrameDuration: minFrameDuration,
-                preferredTransform: transform,
-                estimatedDataRate: dataRate,
-                colorPrimaries: primaries,
-                transferFunction: transfer,
-                yCbCrMatrix: matrix
-            )
         }
 
-        var audio: Audio?
+        var audio: TrackStatus<Audio> = .absent
         if let track = audioTracks.first {
             let formats = try await track.load(.formatDescriptions)
-            if let format = formats.first,
-               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee {
-                audio = Audio(
-                    formatID: fourCC(asbd.mFormatID),
-                    sampleRate: asbd.mSampleRate,
-                    channelCount: asbd.mChannelsPerFrame
-                )
+            if let format = formats.first {
+                if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee {
+                    audio = .present(Audio(
+                        formatID: fourCC(asbd.mFormatID),
+                        sampleRate: asbd.mSampleRate,
+                        channelCount: asbd.mChannelsPerFrame
+                    ))
+                } else {
+                    audio = .unreadable(reason: "AudioStreamBasicDescription 없음")
+                }
+            } else {
+                audio = .unreadable(reason: "formatDescription 없음")
             }
         }
 
@@ -142,98 +173,73 @@ extension ClipSpec {
 
 // MARK: - 필드 정의
 //
-// description 과 compare 가 같은 목록을 공유한다.
-// 필드를 추가할 때 두 군데를 고치지 않도록 여기 한 곳에만 적는다.
+// 판정용 key 와 표시용 display 를 분리한다.
+// CMTime 처럼 표기가 달라도 값이 같을 수 있는 필드가 있어서,
+// 표시 문자열을 그대로 비교하면 잘못된 불일치가 난다.
 
 extension ClipSpec {
 
-    fileprivate enum TrackKind {
-        case video, audio
-
-        var label: String {
-            switch self {
-            case .video: return "비디오 트랙"
-            case .audio: return "오디오 트랙"
-            }
-        }
-
-        var groupTitle: String {
-            switch self {
-            case .video: return "[비디오]"
-            case .audio: return "[오디오]"
-            }
-        }
-    }
-
-    fileprivate func hasTrack(_ kind: TrackKind) -> Bool {
-        switch kind {
-        case .video: return video != nil
-        case .audio: return audio != nil
-        }
-    }
-
-    fileprivate struct Field {
+    fileprivate struct Field<Spec> {
         let label: String
-        /// 값 추출. 해당 트랙이 있는 클립에 대해서만 호출된다.
-        let value: (ClipSpec) -> String
+        let key: (Spec) -> String
+        let display: (Spec) -> String
+
+        init(_ label: String, _ both: @escaping (Spec) -> String) {
+            self.label = label
+            self.key = both
+            self.display = both
+        }
+
+        init(_ label: String, key: @escaping (Spec) -> String, display: @escaping (Spec) -> String) {
+            self.label = label
+            self.key = key
+            self.display = display
+        }
     }
 
-    /// 재인코딩 없는 병합(passthrough)을 하려면 클립 전체에서 같아야 하는 값들.
+    /// 재인코딩 없는 병합을 노린다면 클립 전체에서 같아야 하는 값들.
     /// 비디오와 오디오를 같은 비중으로 다룬다 — 오디오 스펙은 사용자가
     /// 이어폰을 끼고 빼는 것만으로 세션 중간에 갈릴 수 있어서
     /// 우리 시나리오에서 가장 현실적인 불일치 원인이다.
-    fileprivate static func matchRequired(for kind: TrackKind) -> [Field] {
-        switch kind {
-        case .video:
-            return [
-                Field(label: "코덱") { $0.video!.mediaSubType },
-                Field(label: "해상도 (encoded)") {
-                    let d = $0.video!.dimensions
-                    return "\(d.width)×\(d.height)"
-                },
-                Field(label: "해상도 (natural)") {
-                    let s = $0.video!.naturalSize
-                    return "\(num(s.width))×\(num(s.height))"
-                },
-                Field(label: "프레임레이트") {
-                    String(format: "%.3f fps", $0.video!.nominalFrameRate)
-                },
-                Field(label: "minFrameDuration") {
-                    frameDuration($0.video!.minFrameDuration)
-                },
-                Field(label: "preferredTransform") {
-                    transformText($0.video!.preferredTransform)
-                },
-                Field(label: "colorPrimaries") { $0.video!.colorPrimaries ?? "(미지정)" },
-                Field(label: "transferFunction") { $0.video!.transferFunction ?? "(미지정)" },
-                Field(label: "YCbCrMatrix") { $0.video!.yCbCrMatrix ?? "(미지정)" }
-            ]
-        case .audio:
-            return [
-                Field(label: "코덱") { $0.audio!.formatID },
-                Field(label: "샘플레이트") {
-                    String(format: "%.0f Hz", $0.audio!.sampleRate)
-                },
-                Field(label: "채널 수") { "\($0.audio!.channelCount)ch" }
-            ]
-        }
-    }
+    fileprivate static let videoFields: [Field<Video>] = [
+        Field("코덱") { $0.mediaSubType },
+        Field("해상도 (encoded)") { "\($0.dimensions.width)×\($0.dimensions.height)" },
+        Field("해상도 (natural)") { "\(num($0.naturalSize.width))×\(num($0.naturalSize.height))" },
+        Field("프레임레이트") { String(format: "%.3f fps", $0.nominalFrameRate) },
+        Field("minFrameDuration",
+              key: { frameDurationKey($0.minFrameDuration) },
+              display: { frameDurationText($0.minFrameDuration) }),
+        Field("preferredTransform") { transformText($0.preferredTransform) },
+        Field("colorPrimaries") { $0.colorPrimaries ?? "(미지정)" },
+        Field("transferFunction") { $0.transferFunction ?? "(미지정)" },
+        Field("YCbCrMatrix") { $0.yCbCrMatrix ?? "(미지정)" }
+    ]
+
+    fileprivate static let audioFields: [Field<Audio>] = [
+        Field("코덱") { $0.formatID },
+        Field("샘플레이트") { String(format: "%.0f Hz", $0.sampleRate) },
+        Field("채널 수") { "\($0.channelCount)ch" }
+    ]
 
     /// 클립마다 달라도 정상인 값들. 판정에 넣지 않는다.
-    fileprivate static let informational: [Field] = [
-        Field(label: "길이") { String(format: "%.3f s", $0.duration) },
-        Field(label: "파일 크기") { $0.fileSize.map(byteText) ?? "(알 수 없음)" },
-        Field(label: "비트레이트") {
-            guard let v = $0.video else { return "-" }
-            return String(format: "%.2f Mbps", v.estimatedDataRate / 1_000_000)
+    fileprivate static let informational: [Field<ClipSpec>] = [
+        Field("길이") { String(format: "%.3f s", $0.duration) },
+        Field("파일 크기") { $0.fileSize.map(byteText) ?? "(알 수 없음)" },
+        Field("비트레이트") {
+            guard let video = $0.video.spec else { return "-" }
+            return String(format: "%.2f Mbps", video.estimatedDataRate / 1_000_000)
         }
     ]
 
-    fileprivate static var allLabels: [String] {
-        matchRequired(for: .video).map(\.label)
-            + matchRequired(for: .audio).map(\.label)
+    fileprivate static let videoLabel = "비디오 트랙"
+    fileprivate static let audioLabel = "오디오 트랙"
+
+    fileprivate static var labelWidth: Int {
+        let labels = videoFields.map(\.label)
+            + audioFields.map(\.label)
             + informational.map(\.label)
-            + [TrackKind.video.label, TrackKind.audio.label]
+            + [videoLabel, audioLabel]
+        return labels.map(displayWidth).max() ?? 0
     }
 }
 
@@ -242,25 +248,36 @@ extension ClipSpec {
 extension ClipSpec: CustomStringConvertible {
 
     var description: String {
-        let width = ClipSpec.allLabels.map(displayWidth).max() ?? 0
+        let width = ClipSpec.labelWidth
         var lines = ["── \(name) ──"]
 
-        for kind in [ClipSpec.TrackKind.video, .audio] {
-            lines.append(" \(kind.groupTitle)")
-            guard hasTrack(kind) else {
-                lines.append("  · \(pad(kind.label, to: width))  (없음)")
-                continue
-            }
-            for field in ClipSpec.matchRequired(for: kind) {
-                lines.append("  · \(pad(field.label, to: width))  \(field.value(self))")
-            }
-        }
+        lines.append(" [비디오]")
+        lines += Self.describe(status: video, label: ClipSpec.videoLabel,
+                               fields: ClipSpec.videoFields, width: width)
+
+        lines.append(" [오디오]")
+        lines += Self.describe(status: audio, label: ClipSpec.audioLabel,
+                               fields: ClipSpec.audioFields, width: width)
 
         lines.append(" [참고]")
         for field in ClipSpec.informational {
-            lines.append("  · \(pad(field.label, to: width))  \(field.value(self))")
+            lines.append("  · \(pad(field.label, to: width))  \(field.display(self))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private static func describe<Spec>(
+        status: TrackStatus<Spec>,
+        label: String,
+        fields: [Field<Spec>],
+        width: Int
+    ) -> [String] {
+        guard let spec = status.spec else {
+            return ["  · \(pad(label, to: width))  (\(status.stateText))"]
+        }
+        return fields.map { field in
+            "  · \(pad(field.label, to: width))  \(field.display(spec))"
+        }
     }
 }
 
@@ -268,17 +285,21 @@ extension ClipSpec: CustomStringConvertible {
 
 extension ClipSpec {
 
-    /// 필드별로 전 클립의 값이 같은지 판정한다.
+    /// 필드별로 전 클립의 값이 같은지 대조한다.
     /// 같으면 값 하나만, 다르면 클립별 값을 전부 나열한다.
     ///
-    /// "값이 다르다"와 "트랙이 아예 없다"는 원인이 달라서 따로 센다.
-    /// 트랙이 **전부** 없으면 그건 일치로 본다 — 무음 클립끼리는 붙는다.
+    /// 세 가지를 따로 센다.
+    /// - 값 불일치: 트랙이 있고 읽었는데 값이 다르다
+    /// - 트랙 누락: 어떤 클립엔 있고 어떤 클립엔 없다
+    /// - 읽기 실패: 트랙은 있는데 포맷 정보를 못 읽었다 → **판정 자체를 보류한다**
+    ///
+    /// 트랙이 전 클립에 **없는** 것은 일치로 본다. 무음 클립끼리는 붙는다.
+    /// 하지만 **못 읽은** 것에는 이 규칙을 적용하지 않는다.
     static func compare(_ specs: [ClipSpec]) -> String {
         guard !specs.isEmpty else { return "비교할 클립이 없다." }
         guard specs.count > 1 else { return specs[0].description }
 
-        let width = allLabels.map(displayWidth).max() ?? 0
-
+        let width = labelWidth
         var lines: [String] = []
         lines.append("━━━ 클립 스펙 비교 · \(specs.count)개 ━━━")
         for (index, spec) in specs.enumerated() {
@@ -287,60 +308,34 @@ extension ClipSpec {
 
         var valueMismatches: [String] = []
         var trackGaps: [String] = []
+        var readFailures: [String] = []
 
         lines.append("")
-        lines.append("● 병합 조건 — passthrough 하려면 전부 같아야 한다")
+        lines.append("● 스펙 대조 — 재인코딩 없이 붙이려면 전부 같아야 하는 값들")
 
-        for kind in [TrackKind.video, .audio] {
-            lines.append("")
-            lines.append(" \(kind.groupTitle)")
+        lines.append("")
+        lines.append(" [비디오]")
+        compareGroup(
+            label: videoLabel, groupTitle: "[비디오]",
+            statuses: specs.map(\.video), fields: videoFields, width: width,
+            lines: &lines, valueMismatches: &valueMismatches,
+            trackGaps: &trackGaps, readFailures: &readFailures
+        )
 
-            let present = specs.filter { $0.hasTrack(kind) }
-
-            if present.isEmpty {
-                // 전부 없음 = 일치. 붙이는 데 문제 없다.
-                lines.append("  ✓ \(pad(kind.label, to: width))  전 클립에 없음 (일치)")
-                continue
-            }
-
-            if present.count == specs.count {
-                lines.append("  ✓ \(pad(kind.label, to: width))  전 클립에 있음")
-            } else {
-                // 값 불일치가 아니라 구성 자체가 다른 경우다. 따로 표시한다.
-                trackGaps.append(kind.label)
-                lines.append("  ⚠ \(pad(kind.label, to: width))  ← 트랙 없는 클립이 섞여 있다")
-                for (index, spec) in specs.enumerated() {
-                    let mark = spec.hasTrack(kind) ? "있음" : "없음  ←"
-                    lines.append("      \(pad("[\(index + 1)]", to: 5)) \(mark)")
-                }
-            }
-
-            // 세부 필드는 트랙이 있는 클립끼리만 비교한다.
-            // 없는 클립을 "값이 다르다"로 또 세면 원인이 두 번 계상된다.
-            let scopeNote = present.count == specs.count
-                ? ""
-                : "   (트랙 있는 \(present.count)개 기준)"
-
-            for field in matchRequired(for: kind) {
-                let values = present.map(field.value)
-                if Set(values).count == 1 {
-                    lines.append("  ✓ \(pad(field.label, to: width))  \(values[0])\(scopeNote)")
-                } else {
-                    valueMismatches.append("\(kind.groupTitle) \(field.label)")
-                    lines.append("  ✗ \(pad(field.label, to: width))  ← 불일치\(scopeNote)")
-                    for (index, spec) in specs.enumerated() {
-                        let text = spec.hasTrack(kind) ? field.value(spec) : "— (트랙 없음)"
-                        lines.append("      \(pad("[\(index + 1)]", to: 5)) \(text)")
-                    }
-                }
-            }
-        }
+        lines.append("")
+        lines.append(" [오디오]")
+        compareGroup(
+            label: audioLabel, groupTitle: "[오디오]",
+            statuses: specs.map(\.audio), fields: audioFields, width: width,
+            lines: &lines, valueMismatches: &valueMismatches,
+            trackGaps: &trackGaps, readFailures: &readFailures
+        )
 
         lines.append("")
         lines.append(" [참고] — 클립마다 달라도 정상")
         for field in informational {
-            let values = specs.map(field.value)
-            if Set(values).count == 1 {
+            let values = specs.map(field.display)
+            if Set(specs.map(field.key)).count == 1 {
                 lines.append("  · \(pad(field.label, to: width))  \(values[0])")
             } else {
                 let joined = values.enumerated()
@@ -351,21 +346,113 @@ extension ClipSpec {
         }
 
         lines.append("")
-        if valueMismatches.isEmpty && trackGaps.isEmpty {
-            lines.append("━━━ 판정: 전 필드 일치 — 재인코딩 없이 병합 가능 ━━━")
-        } else {
-            lines.append("━━━ 판정: passthrough 병합 불가 ━━━")
-            if !trackGaps.isEmpty {
-                lines.append("    트랙 누락 \(trackGaps.count)종: "
-                             + trackGaps.joined(separator: ", ")
-                             + " — 일부 클립에만 존재")
-            }
-            if !valueMismatches.isEmpty {
-                lines.append("    값 불일치 \(valueMismatches.count)개: "
-                             + valueMismatches.joined(separator: ", "))
+        lines += verdict(valueMismatches: valueMismatches,
+                         trackGaps: trackGaps,
+                         readFailures: readFailures)
+        return lines.joined(separator: "\n")
+    }
+
+    private static func compareGroup<Spec>(
+        label: String,
+        groupTitle: String,
+        statuses: [TrackStatus<Spec>],
+        fields: [Field<Spec>],
+        width: Int,
+        lines: inout [String],
+        valueMismatches: inout [String],
+        trackGaps: inout [String],
+        readFailures: inout [String]
+    ) {
+        let present = statuses.compactMap(\.spec)
+        let unreadableCount = statuses.filter(\.isUnreadable).count
+        let absentCount = statuses.filter(\.isAbsent).count
+
+        func listStates() {
+            for (index, status) in statuses.enumerated() {
+                let mark = status.spec == nil ? "  ←" : ""
+                lines.append("      \(pad("[\(index + 1)]", to: 5)) \(status.stateText)\(mark)")
             }
         }
-        return lines.joined(separator: "\n")
+
+        if unreadableCount > 0 {
+            // 못 읽은 트랙이 하나라도 있으면 이 그룹의 대조는 근거가 없다.
+            readFailures.append(label)
+            lines.append("  ⛔ \(pad(label, to: width))  ← 읽지 못한 트랙이 있다")
+            listStates()
+        } else if present.count == statuses.count {
+            lines.append("  ✓ \(pad(label, to: width))  전 클립에 있음")
+        } else if absentCount == statuses.count {
+            lines.append("  ✓ \(pad(label, to: width))  전 클립에 없음 (일치)")
+            return  // 비교할 값이 없다
+        } else {
+            trackGaps.append(label)
+            lines.append("  ⚠ \(pad(label, to: width))  ← 트랙 없는 클립이 섞여 있다")
+            listStates()
+        }
+
+        guard !present.isEmpty else { return }
+
+        // 세부 필드는 읽어낸 클립끼리만 대조한다.
+        let scopeNote = present.count == statuses.count
+            ? ""
+            : "   (읽어낸 \(present.count)개 기준)"
+
+        for field in fields {
+            let keys = present.map(field.key)
+            if Set(keys).count == 1 {
+                var line = "  ✓ \(pad(field.label, to: width))  \(field.display(present[0]))\(scopeNote)"
+                // 값은 같은데 표기만 다른 경우(예: 1/30 과 2/60)를 숨기지 않는다.
+                let displays = present.map(field.display)
+                if Set(displays).count > 1 {
+                    line += "   ※ 표기 차이: " + displays.enumerated()
+                        .map { "[\($0.offset + 1)] \($0.element)" }
+                        .joined(separator: ", ")
+                }
+                lines.append(line)
+            } else {
+                valueMismatches.append("\(groupTitle) \(field.label)")
+                lines.append("  ✗ \(pad(field.label, to: width))  ← 불일치\(scopeNote)")
+                for (index, status) in statuses.enumerated() {
+                    let text = status.spec.map(field.display) ?? "— (\(status.stateText))"
+                    lines.append("      \(pad("[\(index + 1)]", to: 5)) \(text)")
+                }
+            }
+        }
+    }
+
+    /// 이 유틸이 확인할 수 있는 것은 "스펙 차이가 있느냐"까지다.
+    /// 실제로 붙는지는 composition 과 passthrough 익스포트를 돌려봐야 안다.
+    private static func verdict(
+        valueMismatches: [String],
+        trackGaps: [String],
+        readFailures: [String]
+    ) -> [String] {
+        if !readFailures.isEmpty {
+            return [
+                "━━━ 판정 보류: 읽지 못한 트랙이 있어 대조가 성립하지 않는다 ━━━",
+                "    읽기 실패 \(readFailures.count)종: \(readFailures.joined(separator: ", "))",
+                "    이 상태에서는 스펙이 같은지 판단할 근거가 없다."
+            ]
+        }
+
+        if valueMismatches.isEmpty && trackGaps.isEmpty {
+            return [
+                "━━━ 스펙 불일치 없음 — 대조한 모든 필드가 같다 ━━━",
+                "    실제로 붙는지는 composition + passthrough 익스포트로 확인한다 (1-12 ~ 1-17)."
+            ]
+        }
+
+        var lines = ["━━━ 스펙 불일치 있음 — 이대로는 재인코딩 없이 붙지 않는다 ━━━"]
+        if !trackGaps.isEmpty {
+            lines.append("    트랙 누락 \(trackGaps.count)종: "
+                         + trackGaps.joined(separator: ", ")
+                         + " — 일부 클립에만 존재")
+        }
+        if !valueMismatches.isEmpty {
+            lines.append("    값 불일치 \(valueMismatches.count)개: "
+                         + valueMismatches.joined(separator: ", "))
+        }
+        return lines
     }
 }
 
@@ -378,10 +465,35 @@ private func num(_ value: CGFloat) -> String {
         : String(format: "%.3f", value)
 }
 
-private func frameDuration(_ time: CMTime) -> String {
-    guard time.isValid, time.isNumeric, time.seconds > 0 else { return "(무효)" }
+private func isUsable(_ time: CMTime) -> Bool {
+    time.isValid && time.isNumeric && time.value > 0 && time.timescale > 0
+}
+
+/// 판정용. 기약분수로 줄여서 1/30 · 2/60 · 20/600 이 같은 키가 되게 한다.
+/// 기기·포맷에 따라 timescale 이 600 / 30000 / 90000 등으로 갈리므로
+/// value/timescale 을 그대로 비교하면 같은 30fps 클립이 불일치로 잡힌다.
+private func frameDurationKey(_ time: CMTime) -> String {
+    guard isUsable(time) else {
+        return "무효:\(time.value)/\(time.timescale):\(time.flags.rawValue)"
+    }
+    let divisor = greatestCommonDivisor(Int64(time.value), Int64(time.timescale))
+    return "\(Int64(time.value) / divisor)/\(Int64(time.timescale) / divisor)"
+}
+
+/// 표시용. 원본 value/timescale 을 그대로 보여준다.
+private func frameDurationText(_ time: CMTime) -> String {
+    guard isUsable(time) else {
+        return "(무효: \(time.value)/\(time.timescale))"
+    }
     return String(format: "%d/%d  (%.3f fps)",
                   time.value, time.timescale, 1 / time.seconds)
+}
+
+private func greatestCommonDivisor(_ a: Int64, _ b: Int64) -> Int64 {
+    var x = abs(a)
+    var y = abs(b)
+    while y != 0 { (x, y) = (y, x % y) }
+    return x == 0 ? 1 : x
 }
 
 /// 여섯 값 그대로 + 회전각. 1-11(회전 정보 일치 확인)에서 각도가 바로 필요하다.
