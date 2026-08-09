@@ -42,6 +42,10 @@
 범위 밖(나중): 자막, BGM·비트 전환, 클립 순서 변경, 주간 리캡 알림,
 공유·소셜, 클라우드 백업.
 
+## Diagnostics
+Mellow/Diagnostics/ClipSpec.swift 에는 UIKit/SwiftUI 의존을 넣지 않는다.
+macOS에서 swiftc로 단독 컴파일해 클립 스펙을 즉시 대조하기 위해서다.
+
 ## 참조 문서
 - `PRD.md` — 기능 요구사항과 수용 기준. 무엇을 만들지의 기준
 - `Tasks.md` — 실행 순서와 Phase별 게이트. 지금 어디까지 왔는지의 기준
