@@ -40,6 +40,22 @@ final class CameraController {
     private(set) var audioAuthorization: AVAuthorizationStatus = .notDetermined
     private(set) var sessionState = "미시작"
     private(set) var coordinatorState = "미생성"
+    private(set) var hasAudioInput = false
+
+    // MARK: 녹화 상태 (1-4)
+
+    private(set) var isRecording = false
+    /// 녹화 시작 시점에 동결한 각도. 녹화 중에는 절대 바뀌지 않는다.
+    private(set) var frozenAngle: CGFloat?
+    private(set) var recorderState = "대기"
+    private(set) var clipCount = 0
+    private(set) var lastClipName = "-"
+    /// 마지막 클립이 녹화 도중 자세가 바뀐 오염 클립인지.
+    private(set) var lastContaminated = false
+    private(set) var recordedSpecs: [ClipSpec] = []
+    /// COMPARE 결과는 콘솔로 나간다. 버튼이 먹었는지 화면에서 구분하기 위한 표시.
+    private(set) var compareState = "-"
+    private var compareCount = 0
 
     // MARK: 보관
 
@@ -60,6 +76,7 @@ final class CameraController {
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
 
     private var orientationObserver: NSObjectProtocol?
+    private let recorder = MovieRecorder()
 
     // MARK: 시작 / 정지
 
@@ -74,7 +91,18 @@ final class CameraController {
             log("permission")
             return
         }
-        configureAndRun()
+
+        recorder.onStart = { [weak self] url in
+            Task { @MainActor in
+                self?.recorderState = "녹화 중"
+                print("MREC started file=\(url.lastPathComponent)")
+            }
+        }
+        recorder.onFinish = { [weak self] url, error in
+            Task { @MainActor in self?.handleRecordingFinished(url: url, error: error) }
+        }
+
+        configureAndRun(audioAllowed: audioAuthorization == .authorized)
     }
 
     func stop() {
@@ -93,9 +121,13 @@ final class CameraController {
         }
     }
 
-    private func configureAndRun() {
+    /// 0단계(기본값 관찰)를 위해 **카메라 설정을 아무것도 건드리지 않는다.**
+    /// sessionPreset 도 지정하지 않는다 — 지정하면 "설정이 바꾼 것"과
+    /// "원래 그랬던 것"을 구분할 수 없다. 스펙 고정은 1-3 작업이다.
+    private func configureAndRun(audioAllowed: Bool) {
         sessionState = "구성 중"
         let session = self.session
+        let movieOutput = recorder.output
 
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -108,18 +140,40 @@ final class CameraController {
             }
 
             var failure: String?
+            var addedAudio = false
+
             session.beginConfiguration()
-            // 촬영 스펙 고정(1080p/30fps/H.264)은 1-3 작업이다. 여기서는 기본값으로 둔다.
-            session.sessionPreset = .high
             do {
                 let input = try AVCaptureDeviceInput(device: camera)
                 if session.canAddInput(input) {
                     session.addInput(input)
                 } else {
-                    failure = "입력을 추가할 수 없다"
+                    failure = "비디오 입력을 추가할 수 없다"
                 }
             } catch {
-                failure = "입력 생성 실패: \(error.localizedDescription)"
+                failure = "비디오 입력 생성 실패: \(error.localizedDescription)"
+            }
+
+            // 오디오 포맷 기본값을 관찰하려면 입력이 붙어 있어야 트랙이 생긴다.
+            // 오디오 관련 설정은 건드리지 않고 기본 마이크만 붙인다.
+            if failure == nil, audioAllowed, let microphone = AVCaptureDevice.default(for: .audio) {
+                do {
+                    let audioInput = try AVCaptureDeviceInput(device: microphone)
+                    if session.canAddInput(audioInput) {
+                        session.addInput(audioInput)
+                        addedAudio = true
+                    }
+                } catch {
+                    print("MREC audio-input-failed \(error.localizedDescription)")
+                }
+            }
+
+            if failure == nil {
+                if session.canAddOutput(movieOutput) {
+                    session.addOutput(movieOutput)
+                } else {
+                    failure = "MovieFileOutput 을 추가할 수 없다"
+                }
             }
             session.commitConfiguration()
 
@@ -128,6 +182,7 @@ final class CameraController {
 
             Task { @MainActor in
                 self.device = camera
+                self.hasAudioInput = addedAudio
                 self.sessionState = failure ?? (running ? "실행 중" : "시작 실패")
                 // 레이어가 이미 윈도우에 붙어 있었다면 여기서 코디네이터가 만들어진다.
                 self.makeCoordinatorIfPossible()
@@ -263,6 +318,160 @@ final class CameraController {
         }
         // 넣은 값이 아니라 실제로 들어간 값을 읽는다.
         appliedAngle = connection.videoRotationAngle
+    }
+
+    // MARK: 녹화 (1-4)
+
+    func toggleRecording() {
+        isRecording ? requestStop() : requestStart()
+    }
+
+    /// 시작 시점의 capture 각도를 **동결**한다.
+    /// 녹화 중에는 이 각도를 바꾸지 않는다. 바꾸면 한 파일 안에서 방향이 섞이고
+    /// 파일에는 흔적이 남지 않아 나중에 원인을 찾을 수 없다.
+    private func requestStart() {
+        guard !isRecording else { return }
+        guard sessionState == "실행 중" else {
+            recorderState = "세션이 실행 중이 아니다"
+            return
+        }
+
+        let angle = captureAngle
+        let index = clipCount + 1
+        let name = String(format: "spike_%03d_%@_%03d.mov",
+                          index, deviceOrientation.shortText, Int(angle))
+        let url = Self.spikeDirectory().appendingPathComponent(name)
+
+        // 0단계의 핵심. 결과 파일(ClipSpec)과 대조하려면 소스가 뭘 쓰고 있었는지
+        // 같은 시점에 찍어둬야 한다. 둘이 갈리면 인코더 태깅 문제다.
+        logSourceSettings(frozen: angle, fileName: name)
+
+        let recorder = self.recorder
+        sessionQueue.async { [weak self] in
+            let failure = recorder.start(to: url, rotationAngle: angle)
+            Task { @MainActor in
+                guard let self else { return }
+                if let failure {
+                    self.recorderState = "시작 실패: \(failure)"
+                    print("MREC start-failed \(failure)")
+                    return
+                }
+                self.isRecording = true
+                self.frozenAngle = angle
+            }
+        }
+    }
+
+    private func requestStop() {
+        recorderState = "정지 요청"
+        let recorder = self.recorder
+        sessionQueue.async { recorder.stop() }
+    }
+
+    private func handleRecordingFinished(url: URL, error: Error?) {
+        isRecording = false
+
+        let frozen = frozenAngle ?? 0
+        let current = captureAngle
+        // 녹화 도중 자세가 바뀌면 파일은 시작 각도로 동결됐는데 내용은 기울어진다.
+        // 파일명에 시작 자세만 박히므로, 표시가 없으면 compare() 결과를 흐린다.
+        let contaminated = frozen != current
+        frozenAngle = nil
+
+        var finalURL = url
+        if contaminated {
+            let base = url.deletingPathExtension().lastPathComponent
+            let renamed = "\(base)_moved.\(url.pathExtension)"
+            let target = url.deletingLastPathComponent().appendingPathComponent(renamed)
+            do {
+                try FileManager.default.moveItem(at: url, to: target)
+                finalURL = target
+            } catch {
+                print("MREC rename-failed \(error.localizedDescription)")
+            }
+        }
+
+        lastClipName = finalURL.lastPathComponent
+        lastContaminated = contaminated
+        recorderState = error == nil ? "종료" : "종료(에러)"
+
+        print("MREC finished file=\(finalURL.lastPathComponent) "
+              + "frozen=\(Int(frozen)) nowCapture=\(Int(current)) "
+              + "contaminated=\(contaminated) "
+              + "error=\(error?.localizedDescription ?? "none")")
+
+        // 에러가 있어도 파일이 남을 수 있다. 존재 여부를 따로 본다.
+        guard FileManager.default.fileExists(atPath: finalURL.path) else {
+            print("MREC no-file \(finalURL.lastPathComponent)")
+            return
+        }
+        clipCount += 1
+        Task { await loadSpec(from: finalURL, contaminated: contaminated) }
+    }
+
+    private func loadSpec(from url: URL, contaminated: Bool) async {
+        do {
+            let spec = try await ClipSpec.load(from: url)
+            recordedSpecs.append(spec)
+            print("########## \(spec.name)\(contaminated ? "   [오염: 녹화 중 자세 변경]" : "") ##########")
+            print(spec.description)
+        } catch {
+            print("MREC spec-load-failed \(url.lastPathComponent): \(error)")
+        }
+    }
+
+    func compareRecorded() {
+        compareCount += 1
+        guard !recordedSpecs.isEmpty else {
+            compareState = "녹화된 클립이 없다 (#\(compareCount))"
+            print("MREC compare: 녹화된 클립이 없다")
+            return
+        }
+        // 결과 자체는 콘솔로 간다. 화면에는 버튼이 먹었다는 것만 남긴다.
+        compareState = "compared \(recordedSpecs.count) clips (#\(compareCount))"
+        print("########## 누적 \(recordedSpecs.count)개 대조 ##########")
+        print(ClipSpec.compare(recordedSpecs))
+    }
+
+    /// 세션 디렉터리 구조(Documents/sessions/{uuid}/clips/)는 Phase 2 다.
+    /// 여기서는 평면 디렉터리 하나만 쓴다.
+    private static func spikeDirectory() -> URL {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let directory = documents.appendingPathComponent("spike", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// 소스 설정 스냅샷. ClipSpec 은 결과 파일을 보고, 이건 기기가 뭘 쓰는지를 본다.
+    private func logSourceSettings(frozen: CGFloat, fileName: String) {
+        guard let device else {
+            print("MREC source: device 없음")
+            return
+        }
+        let format = device.activeFormat
+        let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        let subType = ClipSpec.fourCCText(format.formatDescription.mediaSubType.rawValue)
+        let codecs = recorder.output.availableVideoCodecTypes.map(\.rawValue).joined(separator: ",")
+        let minFD = device.activeVideoMinFrameDuration
+        let maxFD = device.activeVideoMaxFrameDuration
+
+        print("MREC source file=\(fileName) preset=\(session.sessionPreset.rawValue) "
+              + "activeFormat=\(dimensions.width)x\(dimensions.height) sub=\(subType) "
+              + "minFD=\(minFD.value)/\(minFD.timescale) maxFD=\(maxFD.value)/\(maxFD.timescale) "
+              + "colorSpace=\(colorSpaceText(device.activeColorSpace)) "
+              + "codecs=[\(codecs)] audioInput=\(hasAudioInput) frozen=\(Int(frozen))")
+    }
+
+    private func colorSpaceText(_ space: AVCaptureColorSpace) -> String {
+        // appleLog2 는 iOS 26.0+ 라 배포 타깃(17.0)에서는 가용성 분기가 필요하다.
+        if #available(iOS 26.0, *), space == .appleLog2 { return "appleLog2" }
+        switch space {
+        case .sRGB: return "sRGB"
+        case .P3_D65: return "P3_D65"
+        case .HLG_BT2020: return "HLG_BT2020"
+        case .appleLog: return "appleLog"
+        default: return "unknown(\(space.rawValue))"
+        }
     }
 
     // MARK: 기기 방향

@@ -13,6 +13,21 @@ struct ContentView: View {
 
             RotationDebugOverlay(controller: controller)
                 .padding()
+
+            VStack {
+                Spacer()
+                HStack(spacing: 12) {
+                    Button(controller.isRecording ? "STOP" : "REC") {
+                        controller.toggleRecording()
+                    }
+                    .tint(controller.isRecording ? .red : .accentColor)
+
+                    Button("COMPARE") { controller.compareRecorded() }
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.bottom, 40)
+            }
+            .frame(maxWidth: .infinity)
         }
         .task { await controller.start() }
         .onDisappear { controller.stop() }

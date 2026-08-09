@@ -251,14 +251,14 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 |---|---|
 |녹화 버튼 방식 (누르고 있기 vs 탭)|Phase 4 실사용 후|
 |전화 수신 시 부분 녹화분 처리|2-15 구현 시|
-|촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|1-3 구현 시|
+|촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|**결정됨(1-3)** — 어느 쪽도 명시하지 않는다. 아래 참조|
 |iOS 17 방향 API의 정확한 형태|1-9 구현 시|
 |전면 카메라 지원 여부|Phase 1 스펙 통일 검증 후|
 |Swift 6 언어 모드 승격|Phase 2 시작 시|
 |XcodeGen 프로젝트와 Xcode 템플릿 기본값 diff 확인|Phase 2 시작 시|
 |ClipSpec에 profile/level·채널 레이아웃 필드 추가 여부|1-8에서 실제 클립 확인 후|
 |프레임레이트 표시 정밀도 (VFR 실측 포함)|1-3에서 실측 후|
-|세션 방향을 3값(세로/가로좌/가로우)으로 두고 upsideDown(270°)은 촬영 차단할지|1-11 preferredTransform 실측 후 확정, 차단 로직은 2-9|
+|세션 방향을 3값(세로/가로좌/가로우)으로 두고 upsideDown(270°)은 촬영 차단할지|1-11 실측 완료(아래 표). upsideDown 은 capture 270° 만 확인됐고 transform 은 미확인 — 차단할 것이므로 불필요. 차단 로직은 2-9|
 
 ### capture 각도 실측 (1-2에서 관측)
 
@@ -280,3 +280,37 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 같은 조건에서 `videoRotationAngleForHorizonLevelPreview` 는 전 자세 90° 상수였다.
 인터페이스가 고정돼 레이어와 센서의 상대 관계가 안 변하기 때문이다.
 faceUp 에서 값이 유지되는 것은 테이블 촬영에 유리하다.
+
+### 촬영 스펙 실측 (1-3 / 1-11)
+
+실측 조건 — iPhone 12, 후면 광각, **카메라 설정을 하나도 지정하지 않은 기본 상태**에서
+9클립 촬영(세로 3 · 가로좌 3 · 가로우 3). 오염 클립 없음.
+
+관찰된 기본값. 9클립 전부 동일했다.
+
+|항목|값|
+|---|---|
+|`sessionPreset`|`AVCaptureSessionPresetHigh` (기본값, 미지정)|
+|`activeFormat`|1920×1080, `420v`|
+|해상도 (encoded / natural)|1920×1080 — **방향과 무관**|
+|프레임레이트|30fps 고정 (`activeVideoMinFrameDuration == maxFrameDuration == 1/30`)|
+|비디오 코덱|`hvc1` (HEVC)|
+|색|`colorPrimaries` / `transferFunction` / `YCbCrMatrix` 전부 `ITU_R_709_2`. 소스 `activeColorSpace` 는 `sRGB` (HDR 아님)|
+|오디오|AAC 48000Hz 1ch|
+|선택 가능 코덱|`hvc1`, `avc1`, `jpeg`|
+
+**결정: 아무것도 잠그지 않는다.** `sessionPreset` 도 `activeFormat` 도 명시하지 않는다.
+기본값이 이미 일정하고 9클립에서 흔들림이 없었다. 다른 기기에서 스펙이 흔들리면
+그때 잠근다. 폴백 경로는 미리 만들지 않는다.
+
+`preferredTransform` 실측 — 유일하게 자세에 따라 갈린 필드다.
+
+|자세|preferredTransform|각도|
+|---|---|---|
+|landscapeLeft|`[1 0 0 1 0 0]`|0° (항등)|
+|portrait|`[0 1 -1 0 1080 0]`|90°|
+|landscapeRight|`[-1 0 0 -1 1920 1080]`|180°|
+
+capture 각도 실측표와 정확히 일치한다. `videoRotationAngle` 이 그대로 트랙 매트릭스가
+된다. 같은 자세끼리는 transform 을 포함해 전 필드가 일치했으므로, 세션 방향만 고정하면
+재인코딩 없는 병합의 스펙 조건은 충족된다.

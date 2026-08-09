@@ -105,7 +105,7 @@ extension ClipSpec {
                 video = .present(Video(
                     naturalSize: naturalSize,
                     dimensions: CMVideoFormatDescriptionGetDimensions(format),
-                    mediaSubType: fourCC(format.mediaSubType.rawValue),
+                    mediaSubType: fourCCText(format.mediaSubType.rawValue),
                     nominalFrameRate: frameRate,
                     minFrameDuration: minFrameDuration,
                     preferredTransform: transform,
@@ -125,7 +125,7 @@ extension ClipSpec {
             if let format = formats.first {
                 if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee {
                     audio = .present(Audio(
-                        formatID: fourCC(asbd.mFormatID),
+                        formatID: fourCCText(asbd.mFormatID),
                         sampleRate: asbd.mSampleRate,
                         channelCount: asbd.mChannelsPerFrame
                     ))
@@ -156,7 +156,10 @@ extension ClipSpec {
     }
 
     /// FourCharCode → "avc1". 인쇄 불가 바이트는 \xNN 으로 이스케이프한다.
-    private static func fourCC(_ code: FourCharCode) -> String {
+    ///
+    /// 소스 설정(activeFormat)을 찍는 쪽에서도 같은 표기가 필요해서 열어둔다.
+    /// UI 의존이 없으므로 macOS 단독 컴파일 제약은 그대로다.
+    static func fourCCText(_ code: FourCharCode) -> String {
         let bytes = [
             UInt8(truncatingIfNeeded: code >> 24),
             UInt8(truncatingIfNeeded: code >> 16),

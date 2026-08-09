@@ -20,10 +20,24 @@ struct RotationDebugOverlay: View {
 
             Divider().overlay(.white.opacity(0.3)).padding(.vertical, 2)
 
+            // 동결 각도와 현재 capture 각도를 나란히 둔다.
+            // 녹화 중에 자세를 바꾸면 여기서 어긋나는 게 바로 보인다.
+            if controller.isRecording, let frozen = controller.frozenAngle {
+                row("REC", "frozen \(degrees(frozen)) / now \(degrees(controller.captureAngle))",
+                    frozen == controller.captureAngle ? "held" : "DRIFT")
+            } else {
+                row("rec", controller.recorderState, "")
+            }
+            row("clips", "\(controller.clipCount)",
+                controller.lastContaminated ? "\(controller.lastClipName) 오염" : controller.lastClipName)
+            row("compare", controller.compareState, "")
+
+            Divider().overlay(.white.opacity(0.3)).padding(.vertical, 2)
+
             row("session", controller.sessionState, "")
             row("coord", controller.coordinatorState, "")
             row("perm", "video \(controller.videoAuthorization.shortText)",
-                "audio \(controller.audioAuthorization.shortText)")
+                "audio \(controller.audioAuthorization.shortText) / in \(controller.hasAudioInput)")
         }
         .font(.system(size: 12, weight: .medium, design: .monospaced))
         .foregroundStyle(.white)
