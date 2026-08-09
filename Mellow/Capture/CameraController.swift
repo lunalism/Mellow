@@ -340,7 +340,7 @@ final class CameraController {
         let index = clipCount + 1
         let name = String(format: "spike_%03d_%@_%03d.mov",
                           index, deviceOrientation.shortText, Int(angle))
-        let url = Self.spikeDirectory().appendingPathComponent(name)
+        let url = ClipLibrary.directory().appendingPathComponent(name)
 
         // 0단계의 핵심. 결과 파일(ClipSpec)과 대조하려면 소스가 뭘 쓰고 있었는지
         // 같은 시점에 찍어둬야 한다. 둘이 갈리면 인코더 태깅 문제다.
@@ -431,15 +431,6 @@ final class CameraController {
         compareState = "compared \(recordedSpecs.count) clips (#\(compareCount))"
         print("########## 누적 \(recordedSpecs.count)개 대조 ##########")
         print(ClipSpec.compare(recordedSpecs))
-    }
-
-    /// 세션 디렉터리 구조(Documents/sessions/{uuid}/clips/)는 Phase 2 다.
-    /// 여기서는 평면 디렉터리 하나만 쓴다.
-    private static func spikeDirectory() -> URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let directory = documents.appendingPathComponent("spike", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 
     /// 소스 설정 스냅샷. ClipSpec 은 결과 파일을 보고, 이건 기기가 뭘 쓰는지를 본다.

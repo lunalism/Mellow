@@ -499,12 +499,30 @@ private func greatestCommonDivisor(_ a: Int64, _ b: Int64) -> Int64 {
     return x == 0 ? 1 : x
 }
 
+/// preferredTransform 의 회전각을 0 / 90 / 180 / 270 로 정규화한다.
+///
+/// 병합 그룹을 나누는 기준이다. 파일명이 아니라 이 값으로 묶어야
+/// "묶는 기준"과 "붙을 수 있는지 판정하는 기준"이 일치한다.
+func rotationAngleDegrees(of transform: CGAffineTransform) -> Int {
+    let radians = atan2(Double(transform.b), Double(transform.a))
+    let degrees = radians * 180 / .pi
+    let normalized = (degrees.rounded() + 360).truncatingRemainder(dividingBy: 360)
+    return Int(normalized)
+}
+
+extension ClipSpec.Video {
+    var rotationDegrees: Int { rotationAngleDegrees(of: preferredTransform) }
+}
+
+extension ClipSpec {
+    /// 비디오를 읽지 못했으면 nil. 그룹핑에서 제외해야 한다.
+    var videoRotationDegrees: Int? { video.spec?.rotationDegrees }
+}
+
 /// 여섯 값 그대로 + 회전각. 1-11(회전 정보 일치 확인)에서 각도가 바로 필요하다.
 private func transformText(_ t: CGAffineTransform) -> String {
     let values = [t.a, t.b, t.c, t.d, t.tx, t.ty].map(num).joined(separator: " ")
-    let degrees = atan2(Double(t.b), Double(t.a)) * 180 / .pi
-    let normalized = (degrees.rounded() + 360).truncatingRemainder(dividingBy: 360)
-    return "[\(values)]  \(num(CGFloat(normalized)))°"
+    return "[\(values)]  \(rotationAngleDegrees(of: t))°"
 }
 
 private func byteText(_ bytes: Int64) -> String {
