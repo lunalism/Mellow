@@ -258,3 +258,25 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 |XcodeGen 프로젝트와 Xcode 템플릿 기본값 diff 확인|Phase 2 시작 시|
 |ClipSpec에 profile/level·채널 레이아웃 필드 추가 여부|1-8에서 실제 클립 확인 후|
 |프레임레이트 표시 정밀도 (VFR 실측 포함)|1-3에서 실측 후|
+|세션 방향을 3값(세로/가로좌/가로우)으로 두고 upsideDown(270°)은 촬영 차단할지|1-11 preferredTransform 실측 후 확정, 차단 로직은 2-9|
+
+### capture 각도 실측 (1-2에서 관측)
+
+관찰 조건 — iPhone 12, 후면 광각(`builtInWideAngleCamera`), 인터페이스 Portrait 고정,
+`AVCaptureDevice.RotationCoordinator.videoRotationAngleForHorizonLevelCapture` 값.
+
+|기기 자세|capture 각도|
+|---|---|
+|portrait|90°|
+|landscapeLeft|0°|
+|landscapeRight|180°|
+|portraitUpsideDown|270°|
+|faceUp|직전 값 유지 (KVO 미발화)|
+
+네 자세가 전부 다른 각도다. `preferredTransform` 이 이 각도에서 나온다면 가로좌와
+가로우 클립은 서로 붙지 않는다. 세션 방향을 2값으로 두면 한 세션 안에 transform이
+다른 클립이 섞일 수 있다는 뜻이라, 위 결정 항목이 필요하다.
+
+같은 조건에서 `videoRotationAngleForHorizonLevelPreview` 는 전 자세 90° 상수였다.
+인터페이스가 고정돼 레이어와 센서의 상대 관계가 안 변하기 때문이다.
+faceUp 에서 값이 유지되는 것은 테이블 촬영에 유리하다.
