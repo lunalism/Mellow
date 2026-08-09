@@ -254,3 +254,5 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 |촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|1-3 구현 시|
 |iOS 17 방향 API의 정확한 형태|1-9 구현 시|
 |전면 카메라 지원 여부|Phase 1 스펙 통일 검증 후|
+|Swift 6 언어 모드 승격|Phase 2 시작 시|
+|XcodeGen 프로젝트와 Xcode 템플릿 기본값 diff 확인|Phase 2 시작 시|
