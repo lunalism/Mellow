@@ -57,39 +57,40 @@ mellow/
 
 ### 0-A. 저장소와 문서 (직접)
 
-- [ ] **0-1** GitHub 레포 생성
+- [x] **0-1** GitHub 레포 생성
     - 이름 `mellow`, private, `.gitignore`는 Swift 템플릿
     - 로컬에 클론
-- [ ] **0-2** 문서 배치
+- [x] **0-2** 문서 배치
     - 프로젝트 지침을 `CLAUDE.md`로 저장
     - `PRD.md`, `Tasks.md`를 루트에 복사
     - 첫 커밋
-- [ ] **0-3** Claude Code 연결
+- [x] **0-3** Claude Code 연결
     - 레포 폴더에서 실행, `CLAUDE.md`를 읽는지 확인
     - `Mellow_01` 채팅에서 첫 지시 프롬프트를 받아 전달
 
 ### 0-B. 프로젝트 생성 (Claude Code)
 
-- [ ] **0-4** Xcode 프로젝트 생성 (SwiftUI, iOS 17 타깃)
-    - `.xcodeproj`는 Claude Code가 직접 만들기 까다로운 형식이다. Xcode에서 직접 생성한 뒤 Claude Code에 넘기는 편이 안전하다
-    - 이후 **새 파일을 추가할 때마다 `.pbxproj`가 수정되므로**, Claude Code가 만든 파일이 빌드 대상에 포함됐는지 매번 확인한다
-- [ ] **0-5** `Info.plist` 권한 문구 작성
+- [x] **0-4** Xcode 프로젝트 생성 (SwiftUI, iOS 17 타깃)
+    - **실제로는 XcodeGen 으로 생성했다.** `project.yml` 이 원본이고 `.xcodeproj` 는 커밋하지 않는다. 아래 두 줄의 우려는 해당하지 않는다 — 새 파일은 `Mellow/` 에 두고 `xcodegen generate` 만 돌리면 빌드 대상에 자동으로 들어간다(검증 완료)
+    - ~~`.xcodeproj`는 Claude Code가 직접 만들기 까다로운 형식이다. Xcode에서 직접 생성한 뒤 Claude Code에 넘기는 편이 안전하다~~
+    - ~~이후 **새 파일을 추가할 때마다 `.pbxproj`가 수정되므로**, Claude Code가 만든 파일이 빌드 대상에 포함됐는지 매번 확인한다~~
+- [x] **0-5** `Info.plist` 권한 문구 작성
     - `NSCameraUsageDescription`
     - `NSMicrophoneUsageDescription`
     - `NSPhotoLibraryAddUsageDescription`
-- [ ] **0-6** 세로/가로 회전 지원 설정 (가로 촬영을 허용하므로 잠그지 않는다)
+- [x] **0-6** 세로/가로 회전 지원 설정 (가로 촬영을 허용하므로 잠그지 않는다)
 
 ### 0-C. 실기기 (직접)
 
-- [ ] **0-7** 실기기 빌드·설치 확인
+- [x] **0-7** 실기기 빌드·설치 확인
     - 시뮬레이터에는 카메라가 없어 Phase 1부터 실기기가 필수다
     - 무료 계정은 7일마다 재설치가 필요하므로 개발자 계정 등록 검토
 
 ### 게이트 0 — 통과 조건
 
-- [ ] 실기기에서 빈 앱이 실행된다
-- [ ] Claude Code가 만든 파일이 빌드에 포함된다
-- [ ] 커밋이 GitHub에 올라간다
+- [x] 실기기에서 빈 앱이 실행된다
+- [x] Claude Code가 만든 파일이 빌드에 포함된다
+- [x] 커밋이 GitHub에 올라간다
 
 ---
 
@@ -109,6 +110,9 @@ mellow/
 - [ ] **1-5** 10초 자동 정지 (`maxRecordedDuration` 활용 검토)
 - [ ] **1-6** 녹화 버튼: 누르는 동안 녹화 / 떼면 종료
 - [ ] **1-7** 1초 미만 클립 폐기
+    - **1-5·1-6·1-7 은 게이트 1 과 무관한 촬영 편의 기능이라 Phase 2 에서 UI 와 함께 붙인다.**
+      1-6 은 결정 대기 항목("녹화 버튼 방식 — Phase 4 실사용 후")이므로 실사용 전에 확정하지 않는다.
+      지금 만들면 다시 짤 가능성이 크다. 1-5 는 `maxRecordedDuration` 한 줄이라 언제 해도 부담이 없다.
 - [x] **1-8** 저장된 파일의 실제 스펙 검증
     - `AVAsset`에서 해상도·fps·코덱·오디오 포맷을 읽어 로그로 출력
     - **여러 클립이 정말 동일한 값인지 눈으로 확인한다**
