@@ -2,6 +2,9 @@
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
 
+## XcodeGen 생성물 — project.yml 이 원본이므로 커밋하지 않는다
+Mellow.xcodeproj/
+
 ## User settings
 xcuserdata/
 
