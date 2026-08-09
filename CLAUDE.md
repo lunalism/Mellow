@@ -42,6 +42,8 @@
 범위 밖(나중): 자막, BGM·비트 전환, 클립 순서 변경, 주간 리캡 알림,
 공유·소셜, 클라우드 백업.
 
+게이트 0 통과 (2026-08-09). 실기기 배포 확인, 자동 서명으로 동작.
+
 ## Diagnostics
 Mellow/Diagnostics/ClipSpec.swift 에는 UIKit/SwiftUI 의존을 넣지 않는다.
 macOS에서 swiftc로 단독 컴파일해 클립 스펙을 즉시 대조하기 위해서다.
