@@ -30,12 +30,22 @@ struct ContentView: View {
                         Button(group.label) { composition.play(group: group) }
                     }
                     if composition.groups.count >= 2 {
-                        Button("섞기") { composition.playMixed() }
+                        Button("ALL 측정") { composition.playAllForMeasurement() }
                     }
                     Button("RESCAN") { Task { await composition.scan() } }
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
+
+                HStack(spacing: 10) {
+                    Button("EXPORT") { composition.exportCurrent() }
+                        .tint(.orange)
+                    Text(composition.exportState)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
+                .buttonStyle(.bordered)
 
                 HStack(spacing: 12) {
                     Button(controller.isRecording ? "STOP" : "REC") {

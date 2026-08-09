@@ -21,8 +21,18 @@ final class CompositionController {
     private(set) var player: AVPlayer?
     var isPlayerPresented = false
 
+    private(set) var exportState = "-"
+    private(set) var exportMilliseconds: Double?
+
     private var statusObservation: NSKeyValueObservation?
     private var tappedAt: Date?
+
+    /// EXPORT 는 **마지막으로 조립한 컴포지션**에 대해 동작한다.
+    /// 다시 조립하지 않으므로 조립 시간이 익스포트 시간에 섞이지 않는다.
+    private var lastComposition: AVMutableComposition?
+    private var lastSpecs: [ClipSpec] = []
+    private var lastDegrees = 0
+    private var lastLabel = "-"
 
     func scan() async {
         libraryState = "스캔 중"
@@ -61,6 +71,21 @@ final class CompositionController {
         build(specs: picked, label: "섞기 \(picked.count)개")
     }
 
+    /// **측정 전용.** 전 클립을 방향 구분 없이 한 컴포지션에 넣는다.
+    ///
+    /// 방향이 섞이면 뒤 클립이 강제 회전되므로 화면 판정 대상이 아니다.
+    /// 그러나 passthrough 익스포트는 샘플을 복사하는 작업이고 회전은 트랙 매트릭스
+    /// 한 줄이라 **처리량 측정은 방향과 무관하게 정확하다.**
+    /// 1-19 의 "클립 20개 기준 3초 이내"를 추가 촬영 없이 재기 위한 경로다.
+    func playAllForMeasurement() {
+        let all = groups.flatMap(\.specs)
+        guard all.count > 1 else {
+            buildState = "클립이 부족하다"
+            return
+        }
+        build(specs: all, label: "ALL \(all.count)개 (측정 전용)")
+    }
+
     private func build(specs: [ClipSpec], label: String) {
         tappedAt = Date()
         readyMilliseconds = nil
@@ -71,6 +96,11 @@ final class CompositionController {
                 let result = try await ClipComposer.compose(specs)
                 print("########## 병합 \(label) ##########")
                 print(result.report)
+
+                lastComposition = result.composition
+                lastSpecs = specs
+                lastDegrees = result.appliedDegrees
+                lastLabel = label
 
                 let item = AVPlayerItem(asset: result.composition)
                 let player = AVPlayer(playerItem: item)
@@ -103,6 +133,76 @@ final class CompositionController {
                 }
             }
         }
+    }
+
+    // MARK: 익스포트 (1-17 ~ 1-20)
+
+    func exportCurrent() {
+        guard let composition = lastComposition, !lastSpecs.isEmpty else {
+            exportState = "먼저 병합해야 한다"
+            return
+        }
+        let specs = lastSpecs
+        let degrees = lastDegrees
+        let label = lastLabel
+        exportState = "익스포트 중 (\(label))"
+        exportMilliseconds = nil
+
+        Task {
+            let url = ClipExporter.nextExportURL(degrees: degrees, clipCount: specs.count)
+            do {
+                let result = try await ClipExporter.exportPassthrough(composition, to: url)
+                exportMilliseconds = result.milliseconds
+                await verifyAndSave(result: result, sources: specs, label: label)
+            } catch {
+                exportState = "익스포트 실패: \(error.localizedDescription)"
+                print("MEXP failed \(label): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// 재인코딩이 정말 없었는지 세 가지로 확인하고 사진 앱에 저장한다.
+    private func verifyAndSave(result: ClipExporter.Result,
+                               sources: [ClipSpec],
+                               label: String) async {
+        let sourceBytes = sources.compactMap(\.fileSize).reduce(0, +)
+        let ratio = sourceBytes > 0 && result.fileSize != nil
+            ? Double(result.fileSize!) / Double(sourceBytes)
+            : 0
+        let sourceSeconds = sources.reduce(0) { $0 + $1.duration }
+
+        print("########## 익스포트 \(label) ##########")
+        print(String(format: "MEXP file=%@ 소요=%.0f ms  분량=%.1f s  실시간 대비 %.0f배",
+                     result.url.lastPathComponent, result.milliseconds,
+                     sourceSeconds, sourceSeconds * 1000 / max(result.milliseconds, 1)))
+        print(String(format: "MEXP 크기 %lld B ÷ 소스 합 %lld B = %.4f",
+                     result.fileSize ?? 0, sourceBytes, ratio))
+
+        // 스펙 보존 확인. 첫 소스 클립과 대조해 길이·크기 외에 달라진 것이 있는지 본다.
+        var specNote = "결과 스펙 읽기 실패"
+        if let first = sources.first {
+            do {
+                var exported = try await ClipSpec.load(from: result.url)
+                exported.name = "EXPORT " + exported.name
+                print(ClipSpec.compare([first, exported]))
+                specNote = "대조 완료"
+            } catch {
+                print("MEXP spec-load-failed \(error)")
+            }
+        }
+
+        var saveNote = ""
+        do {
+            let status = try await PhotoLibrarySaver.save(result.url)
+            saveNote = " · 사진 저장 완료(\(status.shortText))"
+            print("MEXP saved-to-photos \(result.url.lastPathComponent)")
+        } catch {
+            saveNote = " · 사진 저장 실패: \(error.localizedDescription)"
+            print("MEXP photo-save-failed \(error.localizedDescription)")
+        }
+
+        exportState = String(format: "완료 %.2f s · 비율 %.3f · %@%@",
+                             result.milliseconds / 1000, ratio, specNote, saveNote)
     }
 
     func dismissPlayer() {
