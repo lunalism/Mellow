@@ -44,6 +44,9 @@ struct ContentView: View {
                     .tint(controller.isRecording ? .red : .accentColor)
 
                     Button("COMPARE") { controller.compareRecorded() }
+
+                    Button("SAVE") { controller.saveLastClipToPhotos() }
+                        .tint(.green)
                 }
                 .buttonStyle(.borderedProminent)
                 .padding(.bottom, 40)

@@ -31,6 +31,9 @@ struct RotationDebugOverlay: View {
             row("clips", "\(controller.clipCount)",
                 controller.lastContaminated ? "\(controller.lastClipName) 오염" : controller.lastClipName)
             row("compare", controller.compareState, "")
+            row("fail", "\(controller.saveFailureCount)",
+                controller.saveFailureCount > 0 ? controller.lastFailure : "")
+            row("save", controller.saveState, "photos \(controller.photoAuthorization)")
 
             Divider().overlay(.white.opacity(0.3)).padding(.vertical, 2)
 
@@ -38,6 +41,7 @@ struct RotationDebugOverlay: View {
             row("coord", controller.coordinatorState, "")
             row("perm", "video \(controller.videoAuthorization.shortText)",
                 "audio \(controller.audioAuthorization.shortText) / in \(controller.hasAudioInput)")
+            row("audio", controller.audioModeState, "")
         }
         .font(.system(size: 12, weight: .medium, design: .monospaced))
         .foregroundStyle(.white)

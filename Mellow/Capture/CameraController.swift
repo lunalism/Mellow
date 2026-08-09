@@ -41,6 +41,7 @@ final class CameraController {
     private(set) var sessionState = "미시작"
     private(set) var coordinatorState = "미생성"
     private(set) var hasAudioInput = false
+    private(set) var audioModeState = "-"
 
     // MARK: 녹화 상태 (1-4)
 
@@ -53,6 +54,13 @@ final class CameraController {
     /// 마지막 클립이 녹화 도중 자세가 바뀐 오염 클립인지.
     private(set) var lastContaminated = false
     private(set) var recordedSpecs: [ClipSpec] = []
+    /// 녹화가 파일을 남기지 못한 횟수. 0 이 아니면 촬영 데이터를 믿으면 안 된다.
+    private(set) var saveFailureCount = 0
+    private(set) var lastFailure = "-"
+    /// 사진 앱 저장 대상. 마지막으로 성공한 클립.
+    private(set) var lastClipURL: URL?
+    private(set) var saveState = "-"
+    private(set) var photoAuthorization = "미확인"
     /// COMPARE 결과는 콘솔로 나간다. 버튼이 먹었는지 화면에서 구분하기 위한 표시.
     private(set) var compareState = "-"
     private var compareCount = 0
@@ -154,14 +162,14 @@ final class CameraController {
                 failure = "비디오 입력 생성 실패: \(error.localizedDescription)"
             }
 
-            // 오디오 포맷 기본값을 관찰하려면 입력이 붙어 있어야 트랙이 생긴다.
-            // 오디오 관련 설정은 건드리지 않고 기본 마이크만 붙인다.
+            var audioModeText = "오디오 입력 없음"
             if failure == nil, audioAllowed, let microphone = AVCaptureDevice.default(for: .audio) {
                 do {
                     let audioInput = try AVCaptureDeviceInput(device: microphone)
                     if session.canAddInput(audioInput) {
                         session.addInput(audioInput)
                         addedAudio = true
+                        audioModeText = Self.applyStereoIfPossible(audioInput)
                     }
                 } catch {
                     print("MREC audio-input-failed \(error.localizedDescription)")
@@ -183,12 +191,37 @@ final class CameraController {
             Task { @MainActor in
                 self.device = camera
                 self.hasAudioInput = addedAudio
+                self.audioModeState = audioModeText
                 self.sessionState = failure ?? (running ? "실행 중" : "시작 실패")
                 // 레이어가 이미 윈도우에 붙어 있었다면 여기서 코디네이터가 만들어진다.
                 self.makeCoordinatorIfPossible()
                 self.log("configured")
             }
         }
+    }
+
+    /// 스테레오 녹음을 켠다. sessionQueue 에서 부른다.
+    ///
+    /// 기본값은 모노(`.none`)다. 기본 카메라 앱은 2ch 로 찍는데 우리는 1ch 였고,
+    /// 같은 조건에서 저역 에너지가 5배 차이났다(1-4 실측). 그 차이를 좁히려는 변경이다.
+    ///
+    /// iOS 18+ 전용이라 17 에서는 모노로 남는다. 기기 간 채널 수가 갈리지만
+    /// **한 기기 안에서는 일정**하므로 세션 내 스펙 일치는 깨지지 않는다.
+    /// 우리가 막아야 하는 것은 한 세션 안에서 갈리는 것이지 기기 간 차이가 아니다.
+    ///
+    /// 헤더 주의사항: 내장 마이크로 라우팅될 때만 적용되고 외장 마이크에서는 무시된다.
+    nonisolated private static func applyStereoIfPossible(_ input: AVCaptureDeviceInput) -> String {
+        guard #available(iOS 18.0, *) else {
+            print("MAUD stereo 미적용 — iOS 18 미만")
+            return "모노 (iOS 18 미만)"
+        }
+        guard input.isMultichannelAudioModeSupported(.stereo) else {
+            print("MAUD stereo 미적용 — 기기가 지원하지 않음")
+            return "모노 (기기 미지원)"
+        }
+        input.multichannelAudioMode = .stereo
+        print("MAUD stereo 적용 (multichannelAudioMode=.stereo)")
+        return "스테레오"
     }
 
     // MARK: 프리뷰 레이어 부착
@@ -337,10 +370,7 @@ final class CameraController {
         }
 
         let angle = captureAngle
-        let index = clipCount + 1
-        let name = String(format: "spike_%03d_%@_%03d.mov",
-                          index, deviceOrientation.shortText, Int(angle))
-        let url = ClipLibrary.directory().appendingPathComponent(name)
+        let (name, url) = nextClipDestination(angle: angle)
 
         // 0단계의 핵심. 결과 파일(ClipSpec)과 대조하려면 소스가 뭘 쓰고 있었는지
         // 같은 시점에 찍어둬야 한다. 둘이 갈리면 인코더 태깅 문제다.
@@ -359,6 +389,35 @@ final class CameraController {
                 self.isRecording = true
                 self.frozenAngle = angle
             }
+        }
+    }
+
+    /// 다음 클립의 파일명과 경로.
+    ///
+    /// clipCount 는 앱을 다시 켜면 0 으로 돌아가는데 파일명은 그 값으로 짓고 있었다.
+    /// 이전 실행에서 만든 파일과 이름이 겹치면 AVCaptureMovieFileOutput 이
+    /// `Cannot Save` 로 녹화를 실패시킨다(실제로 7번 중 3번이 이렇게 날아갔다).
+    /// 그래서 메모리 카운터가 아니라 **디스크에 있는 번호**에서 이어붙인다.
+    ///
+    /// 세션 디렉터리 구조는 Phase 2 라 여기서는 최소로만 막는다.
+    private func nextClipDestination(angle: CGFloat) -> (name: String, url: URL) {
+        let directory = ClipLibrary.directory()
+        let existing = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let highest = existing.compactMap { name -> Int? in
+            guard name.hasPrefix("spike_"), name.hasSuffix(".mov") else { return nil }
+            return Int(name.dropFirst("spike_".count).prefix(3))
+        }.max() ?? 0
+
+        var index = highest + 1
+        while true {
+            let name = String(format: "spike_%03d_%@_%03d.mov",
+                              index, deviceOrientation.shortText, Int(angle))
+            let url = directory.appendingPathComponent(name)
+            // 번호를 이어붙였어도 마지막으로 한 번 더 확인한다. 덮어쓰는 것보다 낫다.
+            if !FileManager.default.fileExists(atPath: url.path) {
+                return (name, url)
+            }
+            index += 1
         }
     }
 
@@ -394,6 +453,12 @@ final class CameraController {
         lastClipName = finalURL.lastPathComponent
         lastContaminated = contaminated
         recorderState = error == nil ? "종료" : "종료(에러)"
+        if let error {
+            // 저장 실패가 조용히 넘어가면 clipCount 가 안 늘어난 것으로만 드러나
+            // 촬영 중에는 알아채기 어렵다. 화면에 남긴다.
+            saveFailureCount += 1
+            lastFailure = "\(finalURL.lastPathComponent): \(error.localizedDescription)"
+        }
 
         print("MREC finished file=\(finalURL.lastPathComponent) "
               + "frozen=\(Int(frozen)) nowCapture=\(Int(current)) "
@@ -406,7 +471,29 @@ final class CameraController {
             return
         }
         clipCount += 1
+        lastClipURL = finalURL
         Task { await loadSpec(from: finalURL, contaminated: contaminated) }
+    }
+
+    /// 마지막으로 성공한 클립을 사진 앱에 저장한다. (1-18)
+    func saveLastClipToPhotos() {
+        guard let url = lastClipURL else {
+            saveState = "저장할 클립이 없다"
+            return
+        }
+        saveState = "저장 중 \(url.lastPathComponent)"
+        Task {
+            do {
+                let status = try await PhotoLibrarySaver.save(url)
+                photoAuthorization = status.shortText
+                saveState = "저장 완료 \(url.lastPathComponent)"
+                print("MSAVE ok file=\(url.lastPathComponent) auth=\(status.shortText)")
+            } catch {
+                photoAuthorization = PhotoLibrarySaver.currentStatus().shortText
+                saveState = "저장 실패: \(error.localizedDescription)"
+                print("MSAVE failed file=\(url.lastPathComponent) \(error.localizedDescription)")
+            }
+        }
     }
 
     private func loadSpec(from url: URL, contaminated: Bool) async {
@@ -446,11 +533,76 @@ final class CameraController {
         let minFD = device.activeVideoMinFrameDuration
         let maxFD = device.activeVideoMaxFrameDuration
 
+        logAudioSession(fileName: fileName)
+
         print("MREC source file=\(fileName) preset=\(session.sessionPreset.rawValue) "
               + "activeFormat=\(dimensions.width)x\(dimensions.height) sub=\(subType) "
               + "minFD=\(minFD.value)/\(minFD.timescale) maxFD=\(maxFD.value)/\(maxFD.timescale) "
               + "colorSpace=\(colorSpaceText(device.activeColorSpace)) "
               + "codecs=[\(codecs)] audioInput=\(hasAudioInput) frozen=\(Int(frozen))")
+    }
+
+    /// 오디오 런타임 값 관찰. **아무것도 설정하지 않는다.**
+    ///
+    /// AVCaptureSession 의 `automaticallyConfiguresApplicationAudioSession` 기본값이 YES 라
+    /// 카테고리와 마이크·폴라 패턴은 AVFoundation 이 이미 고르고 있다. 헤더는 무엇을
+    /// 고르는지 말해주지 않으므로 런타임에 읽어야 한다. mode 는 헤더에 언급이 없어서
+    /// 실제 값이 무엇인지가 이번 관찰의 핵심이다.
+    private func logAudioSession(fileName: String) {
+        let session = AVAudioSession.sharedInstance()
+
+        let inputs = session.currentRoute.inputs
+            .map { "\($0.portType.rawValue):\($0.portName)" }
+            .joined(separator: ",")
+
+        var dataSourceText = "없음"
+        var polarText = "없음"
+        var supportedText = "없음"
+        if let input = session.currentRoute.inputs.first {
+            if let selected = input.selectedDataSource {
+                dataSourceText = "\(selected.dataSourceName)"
+                    + (selected.location.map { "@\($0.rawValue)" } ?? "")
+                    + (selected.orientation.map { "/\($0.rawValue)" } ?? "")
+                polarText = selected.selectedPolarPattern?.rawValue ?? "미선택"
+                supportedText = (selected.supportedPolarPatterns ?? [])
+                    .map(\.rawValue).joined(separator: "|")
+                if supportedText.isEmpty { supportedText = "없음" }
+            }
+            if let sources = input.dataSources, !sources.isEmpty {
+                dataSourceText += "  (전체 \(sources.count): "
+                    + sources.map(\.dataSourceName).joined(separator: ",") + ")"
+            }
+        }
+
+        print("MAUD file=\(fileName) category=\(session.category.rawValue) "
+              + "mode=\(session.mode.rawValue) options=\(session.categoryOptions.rawValue) "
+              + "sampleRate=\(session.sampleRate) inputChannels=\(session.inputNumberOfChannels) "
+              + "route=[\(inputs)]")
+        // 스테레오일 때 좌/우가 어느 쪽으로 잡히는지. 가로 촬영에서 의미가 생긴다.
+        print("MAUD   inputOrientation=\(session.inputOrientation.rawValue) "
+              + "preferred=\(session.preferredInputOrientation.rawValue) "
+              + "appliedMode=\(audioModeState)")
+        print("MAUD   dataSource=\(dataSourceText)")
+        print("MAUD   polarPattern=\(polarText)  supported=[\(supportedText)]")
+        print("MAUD   captureInput=\(audioInputCapabilityText())")
+    }
+
+    /// AVCaptureDeviceInput 쪽에서 읽을 수 있는 값. 상당수가 iOS 18+ 라 분기한다.
+    private func audioInputCapabilityText() -> String {
+        guard let audioInput = session.inputs
+            .compactMap({ $0 as? AVCaptureDeviceInput })
+            .first(where: { $0.device.hasMediaType(.audio) }) else {
+            return "오디오 입력 없음"
+        }
+        guard #available(iOS 18.0, *) else {
+            return "multichannelAudioMode/windNoiseRemoval 사용 불가 (iOS 18+)"
+        }
+        let stereoSupported = audioInput.isMultichannelAudioModeSupported(.stereo)
+        let foaSupported = audioInput.isMultichannelAudioModeSupported(.firstOrderAmbisonics)
+        return "multichannelAudioMode=\(audioInput.multichannelAudioMode.rawValue) "
+            + "stereoSupported=\(stereoSupported) foaSupported=\(foaSupported) "
+            + "windNoiseRemovalSupported=\(audioInput.isWindNoiseRemovalSupported) "
+            + "windNoiseRemovalEnabled=\(audioInput.isWindNoiseRemovalEnabled)"
     }
 
     private func colorSpaceText(_ space: AVCaptureColorSpace) -> String {
