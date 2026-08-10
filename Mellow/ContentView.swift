@@ -19,6 +19,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
                 debugOverlay
+                controls
 
             case .permissionBlocked:
                 permissionMessage
@@ -64,6 +65,11 @@ struct ContentView: View {
             row("capture 각도", Self.describe(angle: controller.captureRotationAngle))
             row("기기 방향", Self.describe(orientation: controller.deviceOrientation))
             row("세션", controller.isRunning ? "running" : "stopped")
+            row("녹화", controller.isRecording ? "● recording" : "idle")
+            row("클립", "\(controller.recordedURLs.count)개")
+            if let error = controller.lastRecordingError {
+                row("오류", error)
+            }
         }
         .font(.system(.footnote, design: .monospaced))
         .foregroundStyle(.white)
@@ -71,6 +77,41 @@ struct ContentView: View {
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - 임시 컨트롤
+
+    // 1-4 확인용. 탭하면 시작, 다시 탭하면 종료.
+    // 누르고 있는 방식(1-6)과 10초 자동 정지(1-5)는 다음 단계다.
+    private var controls: some View {
+        VStack(spacing: 12) {
+            Button {
+                Task { await controller.reportRecordedComparison() }
+            } label: {
+                Text("전체 비교 (\(controller.recordedURLs.count))")
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.55), in: Capsule())
+            }
+            .disabled(controller.recordedURLs.isEmpty)
+
+            Button {
+                if controller.isRecording {
+                    controller.stopRecording()
+                } else {
+                    controller.startRecording()
+                }
+            } label: {
+                Circle()
+                    .fill(controller.isRecording ? .red : .white)
+                    .frame(width: 72, height: 72)
+                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
+            }
+        }
+        .padding(.bottom, 48)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 
     private func row(_ label: String, _ value: String) -> some View {

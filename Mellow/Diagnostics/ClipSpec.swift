@@ -20,10 +20,11 @@ struct VideoTrackSpec {
     let preferredTransform: CGAffineTransform
     /// 코덱 FourCC. 포맷 기술자가 없으면 nil.
     let codec: FourCharCode?
-    /// 사람이 읽는 용도로만 쓴다. 비교에는 쓰지 않는다 — Float 정밀도 탓에
+    /// 사람이 읽는 용도. 호환성 판정에는 쓰지 않는다 — Float 정밀도 탓에
     /// 같은 30000/1001 도 파일마다 마지막 자리가 갈린다 (29.97003 vs 29.970032).
     let nominalFrameRate: Float
-    /// 프레임 간격. 유리수라 정밀도 노이즈가 없어 프레임레이트 비교의 기준이 된다.
+    /// 트랙 전체에서 관측된 최소 프레임 간격. 호환성 판정에는 쓰지 않는다 —
+    /// 트랙이 길수록 지터를 만날 확률이 높아 값이 내려간다(differences 주석 참고).
     /// 가변 프레임레이트 파일에서는 invalid 가 나올 수 있다.
     let minFrameDuration: CMTime
     /// 트랙 자체의 길이(timeRange.duration).
@@ -136,7 +137,7 @@ struct SpecDifference {
     enum Kind {
         /// passthrough 병합 가능 여부를 가르는 항목. 다르면 문제다.
         case compatibility
-        /// 클립마다 다른 것이 정상인 항목(길이). 판정에 넣지 않는다.
+        /// 클립마다 다른 것이 정상인 항목(길이·프레임레이트). 판정에 넣지 않는다.
         ///
         /// 따로 찍은 클립은 길이가 항상 조금씩 다르다. 10초 자동 정지를 걸어도
         /// 프레임 경계에서 끝나는 지점이 클립마다 다르고, 짧은 클립을 남기면
@@ -220,10 +221,25 @@ extension ClipSpec {
                     equal: { $0 == $1 },
                     describe: { $0.map(Self.describe(fourCC:)) ?? "없음" })
 
-            // 프레임레이트 비교는 nominalFrameRate(Float) 가 아니라
-            // minFrameDuration(CMTime) 으로 한다. 정밀도 노이즈가 없다.
-            compareTime(.compatibility, "video.minFrameDuration",
+            // 프레임레이트는 둘 다 정보 항목이다. 판정에 넣지 않는다.
+            //
+            // minFrameDuration 은 트랙 전체에서 관측된 최소 프레임 간격이므로
+            // 트랙이 길수록 낮은 값이 나온다. 실측(iPhone 12): 7~10초 클립은
+            // 전부 20/600, 60~188초 클립은 전부 19/600. 방향과 무관하고 길이로만
+            // 갈렸다. 스펙 고정 실패가 아니라 표본 크기 효과이므로 호환성 판정
+            // 기준으로 부적절하다.
+            // 단, 이 판단은 1-12 병합에서 지터가 다른 클립이 실제로 재인코딩 없이
+            // 붙는 것이 확인되어야 확정이다.
+            //
+            // nominalFrameRate 는 Float 정밀도 탓에 같은 30000/1001 도 파일마다
+            // 마지막 자리가 갈린다. 값 확인용으로만 쓴다.
+            compareTime(.informational, "video.minFrameDuration",
                         lhs.minFrameDuration, rhs.minFrameDuration)
+
+            compare(.informational, "video.nominalFrameRate",
+                    lhs.nominalFrameRate, rhs.nominalFrameRate,
+                    equal: { $0 == $1 },
+                    describe: { "\($0)" })
 
             compareTime(.informational, "video.duration", lhs.duration, rhs.duration)
         case (nil, _?):
@@ -319,8 +335,8 @@ extension ClipSpec {
             print("   video.naturalSize    \(video.naturalSize.width) x \(video.naturalSize.height)")
             print("   video.transform      \(Self.describe(transform: video.preferredTransform))")
             print("   video.codec          \(video.codec.map(Self.describe(fourCC:)) ?? "없음")")
-            print("   video.minFrameDur    \(Self.describe(time: video.minFrameDuration))")
-            print("   video.frameRate      \(video.nominalFrameRate)  ※ 참고용, 비교엔 minFrameDur 사용")
+            print("   video.minFrameDur    \(Self.describe(time: video.minFrameDuration))  ※ 참고용")
+            print("   video.frameRate      \(video.nominalFrameRate)  ※ 참고용")
             print("   video.duration       \(Self.describe(time: video.duration))")
         } else {
             print("   video                트랙 없음")
@@ -373,7 +389,7 @@ extension ClipSpec {
         }
 
         if !info.isEmpty {
-            print("     · 길이 차이 \(info.count)개 — 클립마다 다른 것이 정상, 병합에 영향 없음")
+            print("     · 정보 차이 \(info.count)개 — 클립마다 다른 것이 정상, 병합에 영향 없음")
             for diff in info {
                 print("         \(diff.field)")
                 print("           기준  \(diff.base)")
