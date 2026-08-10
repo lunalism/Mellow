@@ -118,10 +118,17 @@ mellow/
       가드에서 반환되고, `.active` 수신 후 정상 시작. 권한 팝업 경로는 실기기
       재현이 불가능하나(팝업이 시스템 모달이라 홈 제스처·화면 잠금이 먹지 않는다)
       로그로 가드 동작이 확인됨
-- [ ] **1-3** 촬영 스펙 고정 (1080p / 30fps / H.264 / AAC)
-    - `sessionPreset` 또는 `activeFormat` 중 어느 쪽으로 고정할지 결정
-    - 기기별로 지원 포맷이 다르므로 폴백 경로 필요
-- [ ] **1-4** `AVCaptureMovieFileOutput`으로 파일 녹화
+- [x] **1-3** 촬영 스펙 고정 (1080p / 30fps / H.264 / AAC)
+    - `sessionPreset = .hd1920x1080`으로 고정. `activeFormat` 직접 지정은 하지 않았다
+    - **preset은 해상도만 잡는다.** fps는 `activeVideoMin/MaxFrameDuration`으로 따로 잠근다. 이 기기의 activeFormat 지원 범위가 **1.0~30.0**이라, 잠그지 않으면 저조도에서 클립마다 fps가 갈린다
+    - **기본 코덱은 H.264가 아니라 HEVC였다.** `availableVideoCodecTypes = hvc1, avc1, jpeg`이고 지정 전 `AVVideoCodecKey = hvc1`. `setOutputSettings`로 명시해야 avc1이 된다. 부수 효과로 비트레이트가 7.65Mbps → 15.3Mbps로 증가
+    - `automaticallyAdjustsVideoHDREnabled = false`. 단 `isVideoHDREnabled`는 true로 남아 있다(끌지 여부 미결정)
+    - 오디오는 지정하지 않았다. 실측 결과 AAC / 48000 / **1채널(모노)** 로 일관되게 나온다
+- [x] **1-4** `AVCaptureMovieFileOutput`으로 파일 녹화
+    - 임시 디렉터리에 `mellow-<UUID>.mov`
+    - 회전각은 녹화 시작 직전에 `videoRotationAngleForHorizonLevelCapture`를 한 번 읽어 고정한다. 녹화 중에는 바꾸지 않는다(PRD 8장)
+    - `.background` 진입 시 세션 정지 전에 녹화를 먼저 닫는다. 녹화 중 세션을 멈추면 파일이 온전하지 않을 수 있다
+    - 종료 오류 시 `AVErrorRecordingSuccessfullyFinishedKey`를 확인해 살릴 수 있는 파일은 살린다
 - [ ] **1-5** 10초 자동 정지 (`maxRecordedDuration` 활용 검토)
 - [ ] **1-6** 녹화 버튼: 누르는 동안 녹화 / 떼면 종료
 - [ ] **1-7** 1초 미만 클립 폐기
@@ -148,6 +155,7 @@ mellow/
 - [ ] **1-10** 가로로 찍은 클립의 저장 스펙 확인 (1920×1080이 맞는지)
 - [ ] **1-11** 회전 정보(`preferredTransform`)가 어떻게 기록되는지 확인
     - 가로 세션 클립끼리 붙일 때 이 값이 일치해야 passthrough가 가능하다
+    - 4방향 실측 완료 (CLAUDE.md "실측 preferredTransform"). 같은 방향이면 길이와 무관하게 값이 동일하고, 방향이 다르면 값이 다르다. 1-12에서 실제 병합 동작을 확인한 뒤 체크한다
 
 ### 1-C. 병합과 재생 ← **최대 고비**
 
@@ -280,8 +288,26 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 |---|---|
 |녹화 버튼 방식 (누르고 있기 vs 탭)|Phase 4 실사용 후|
 |전화 수신 시 부분 녹화분 처리|2-15 구현 시|
-|촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|1-3 구현 시|
+|세션 방향 모델 및 방향 혼재 허용 여부|1-12 병합, 1-17 익스포트 측정 후|
 |전면 카메라 지원 여부|Phase 1 스펙 통일 검증 후|
+
+**세션 방향 모델 — 배경**
+
+- PRD 7장의 2값 모델(portrait \| landscape)로는 가로L/가로R 혼재 시 한쪽이 거꾸로 재생된다. 세로/거꾸로도 동일한 문제
+- 문제가 두 층위로 나뉜다
+    - (a) 세로 계열 ↔ 가로 계열 혼재 — 표시 규격이 달라 레터박스 발생
+    - (b) 같은 계열 안의 180도 차이(90↔270, 0↔180) — 규격은 같고 회전만 반대
+    - (b)가 (a)보다 해결 난이도가 낮을 수 있다
+- `AVMutableComposition` 트랙은 `preferredTransform`을 하나만 갖는다
+- 검토할 선택지: 방향 고정으로 막기 / 섞인 세션만 재인코딩 / 같은 계열 안에서만 혼재 허용 / 기타
+- 판단에 필요한 것: 1-12에서 transform이 다른 클립의 실제 동작, 1-17에서 재인코딩 익스포트 소요 시간
+- 실측 transform 행렬은 CLAUDE.md "실측 preferredTransform" 참고
+
+**사용자 맥락 (확인된 사실)**
+
+- 거꾸로 촬영에는 실용적 이유가 있다. 아이폰은 카메라가 본체 한쪽 끝에 있어 낮은 앵글을 잡을 때 뒤집으면 촬영이 쉽다
+- 가로 촬영 시 좌우를 의식해서 고르는 사용자와 잡히는 대로 눕히는 사용자가 둘 다 존재한다
+- 따라서 방향 혼재를 단순히 차단하는 것은 사용자를 배제하는 결정이다
 
 **해소됨**
 
