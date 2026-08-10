@@ -6,6 +6,8 @@ import UIKit
 struct ContentView: View {
     @StateObject private var controller = CaptureSessionController()
     @Environment(\.scenePhase) private var scenePhase
+    /// 녹화 버튼을 누르고 있는 중인지. DragGesture 의 onChanged 중복 호출을 거른다.
+    @State private var isPressing = false
 
     var body: some View {
         ZStack {
@@ -67,8 +69,8 @@ struct ContentView: View {
             row("세션", controller.isRunning ? "running" : "stopped")
             row("녹화", controller.isRecording ? "● recording" : "idle")
             row("클립", "\(controller.recordedURLs.count)개")
-            if let error = controller.lastRecordingError {
-                row("오류", error)
+            if let outcome = controller.lastOutcome {
+                row("직전", Self.describe(outcome: outcome))
             }
         }
         .font(.system(.footnote, design: .monospaced))
@@ -97,18 +99,29 @@ struct ContentView: View {
             }
             .disabled(controller.recordedURLs.isEmpty)
 
-            Button {
-                if controller.isRecording {
-                    controller.stopRecording()
-                } else {
-                    controller.startRecording()
-                }
-            } label: {
-                Circle()
-                    .fill(controller.isRecording ? .red : .white)
-                    .frame(width: 72, height: 72)
-                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
-            }
+            // 누르는 동안 녹화, 떼면 종료 (1-6).
+            // 10초에 도달하면 떼지 않아도 프레임워크가 끊는다 (1-5).
+            //
+            // Button 은 탭이 끝나야 동작하므로 쓸 수 없다. minimumDistance 0 인
+            // DragGesture 가 손가락이 닿는 즉시 onChanged 를 보낸다.
+            Circle()
+                .fill(controller.isRecording ? .red : .white)
+                .frame(width: 72, height: 72)
+                .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            // onChanged 는 손가락이 움직일 때마다 온다. 첫 번만 받는다.
+                            guard !isPressing else { return }
+                            isPressing = true
+                            controller.startRecording()
+                        }
+                        .onEnded { _ in
+                            isPressing = false
+                            // 10초 한도로 이미 끝났으면 stopRecording 이 가드에서 반환한다.
+                            controller.stopRecording()
+                        }
+                )
         }
         .padding(.bottom, 48)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -127,6 +140,18 @@ struct ContentView: View {
     private static func describe(angle: CGFloat?) -> String {
         guard let angle else { return "—" }
         return "\(angle)"
+    }
+
+    /// 폐기된 경우가 조용히 묻히지 않도록 직전 결말을 그대로 보여준다.
+    private static func describe(outcome: CaptureSessionController.ClipOutcome) -> String {
+        switch outcome {
+        case let .saved(seconds, hitLimit):
+            return String(format: "저장 %.2fs", seconds) + (hitLimit ? " (10초 자동정지)" : "")
+        case let .discarded(seconds):
+            return String(format: "⌫ 폐기 %.2fs (1초 미만)", seconds)
+        case let .failed(message):
+            return "✕ \(message)"
+        }
     }
 
     private static func describe(orientation: UIDeviceOrientation) -> String {

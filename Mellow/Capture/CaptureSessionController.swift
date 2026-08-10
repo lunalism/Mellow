@@ -46,7 +46,16 @@ final class CaptureSessionController: ObservableObject {
     /// 이번 실행에서 찍은 클립들. 한 번에 비교하려고 모아둔다.
     /// Phase 2 에서 세션 개념이 들어오면 이 배열은 사라진다.
     @Published private(set) var recordedURLs: [URL] = []
-    @Published private(set) var lastRecordingError: String?
+    /// 직전 녹화가 어떻게 끝났는지. 폐기됐다는 사실이 화면에 드러나야 한다.
+    @Published private(set) var lastOutcome: ClipOutcome?
+
+    /// 녹화 한 건의 결말.
+    enum ClipOutcome {
+        case saved(seconds: Double, hitLimit: Bool)
+        /// 1초 미만이라 폐기 (1-7).
+        case discarded(seconds: Double)
+        case failed(String)
+    }
 
     /// 두 권한이 모두 허용되어야 프리뷰를 띄운다.
     var hasAllPermissions: Bool {
@@ -67,6 +76,8 @@ final class CaptureSessionController: ObservableObject {
     private var videoDevice: AVCaptureDevice?
     private var movieOutput: AVCaptureMovieFileOutput?
     private var recordingDelegate: MovieRecordingDelegate?
+    /// 녹화 버튼을 누른 시각. 파일 duration 과의 차이를 보려는 계측용.
+    private var pressedAt: UInt64?
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
 
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
@@ -172,6 +183,9 @@ final class CaptureSessionController: ObservableObject {
                     return
                 }
 
+                // 10초 자동 정지 (1-5)
+                CaptureSpec.applyRecordingLimit(to: output)
+
                 continuation.resume(returning: .success(device, output))
             }
         }
@@ -274,7 +288,9 @@ final class CaptureSessionController: ObservableObject {
         )
         // 델리게이트는 출력이 약하게 잡으므로 여기서 붙들어 둔다.
         recordingDelegate = delegate
-        lastRecordingError = nil
+        lastOutcome = nil
+        // 버튼을 누른 시점. 파일 duration 과 얼마나 벌어지는지 보려고 잰다.
+        pressedAt = DispatchTime.now().uptimeNanoseconds
 
         sessionQueue.async {
             if let angle, let connection = movieOutput.connection(with: .video) {
@@ -305,26 +321,71 @@ final class CaptureSessionController: ObservableObject {
     private func handleRecordingFinished(_ url: URL, error: Error?) async {
         isRecording = false
 
+        let pressedSeconds = pressedAt.map {
+            Double(DispatchTime.now().uptimeNanoseconds - $0) / 1_000_000_000
+        }
+        pressedAt = nil
+
+        // 10초 한도로 끊긴 경우도 에러로 온다. 정상 종료이므로 구분한다 (1-5).
+        var hitLimit = false
         if let error {
-            // 에러가 있어도 파일은 쓸 만한 경우가 있다.
+            hitLimit = (error as? AVError)?.code == .maximumDurationReached
             let usable = (error as NSError)
                 .userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? false
-            print("[rec] ✕ 종료 오류: \(error.localizedDescription) (파일 사용 가능=\(usable))")
+
+            if hitLimit {
+                print("[rec] ⏱ 10초 한도 도달로 자동 종료 (파일 사용 가능=\(usable))")
+            } else {
+                print("[rec] ✕ 종료 오류: \(error.localizedDescription) (파일 사용 가능=\(usable))")
+            }
+
             guard usable else {
-                lastRecordingError = error.localizedDescription
+                lastOutcome = .failed(error.localizedDescription)
+                Self.deleteFile(at: url)
                 return
             }
         }
 
+        // 스펙을 먼저 읽는다. 폐기 판정을 파일 duration 으로 하기 때문이다.
+        let spec: ClipSpec
+        do {
+            spec = try await ClipSpec.load(from: url)
+        } catch {
+            print("[rec] ✕ ClipSpec 읽기 실패: \(error) — 검증 불가라 저장하지 않는다")
+            lastOutcome = .failed("스펙 읽기 실패: \(error.localizedDescription)")
+            Self.deleteFile(at: url)
+            return
+        }
+
+        let seconds = CMTimeGetSeconds(spec.duration)
+        if let pressedSeconds {
+            print(String(format: "[rec] 누른 시간 %.3fs / 파일 duration %.3fs (차이 %.3fs)",
+                         pressedSeconds, seconds, pressedSeconds - seconds))
+        }
+
+        // 1초 미만은 클립으로 남기지 않는다 (1-7). 조용히 사라지면 안 되므로
+        // 로그와 화면 양쪽에 드러낸다.
+        guard CMTimeCompare(spec.duration, CaptureSpec.minClipDuration) >= 0 else {
+            print(String(format: "[rec] ⌫ 폐기 %.3fs — %.1f초 미만",
+                         seconds, CMTimeGetSeconds(CaptureSpec.minClipDuration)))
+            lastOutcome = .discarded(seconds: seconds)
+            Self.deleteFile(at: url)
+            return
+        }
+
         recordedURLs.append(url)
-        print("[rec] ■ 종료 \(url.lastPathComponent) — 누적 \(recordedURLs.count)개")
+        lastOutcome = .saved(seconds: seconds, hitLimit: hitLimit)
+        print("[rec] ■ 저장 \(url.lastPathComponent) — 누적 \(recordedURLs.count)개")
 
         // 찍자마자 실제 스펙을 확인한다. 1-3 의 고정이 먹혔는지 보는 지점이다.
+        spec.report()
+    }
+
+    private static func deleteFile(at url: URL) {
         do {
-            let spec = try await ClipSpec.load(from: url)
-            spec.report()
+            try FileManager.default.removeItem(at: url)
         } catch {
-            print("[rec] ✕ ClipSpec 읽기 실패: \(error)")
+            print("[rec] ✕ 파일 삭제 실패: \(error.localizedDescription)")
         }
     }
 

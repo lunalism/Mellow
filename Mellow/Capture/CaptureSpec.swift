@@ -22,6 +22,26 @@ enum CaptureSpec {
         CMTime(value: 1, timescale: CMTimeScale(frameRate))
     }
 
+    /// 클립 최대 길이 (1-5). 타이머가 아니라 프레임워크가 직접 끊는다.
+    static let maxClipDuration = CMTime(seconds: 10, preferredTimescale: 600)
+
+    /// 이 길이 미만이면 폐기한다 (1-7).
+    ///
+    /// 버튼을 누른 시간이 아니라 저장된 파일의 duration 으로 판정한다.
+    /// 녹화 시작에는 지연이 있어 두 값이 일치하지 않는다.
+    static let minClipDuration = CMTime(seconds: 1, preferredTimescale: 600)
+
+    // MARK: - 녹화 길이 제한
+
+    /// 10초 자동 정지를 건다.
+    ///
+    /// 이 한도로 종료되면 델리게이트에 `AVError.maximumDurationReached` 가
+    /// 에러로 전달되지만 파일은 정상이다. 실패로 처리하면 안 된다.
+    static func applyRecordingLimit(to output: AVCaptureMovieFileOutput) {
+        output.maxRecordedDuration = maxClipDuration
+        print("[spec] ✓ maxRecordedDuration = \(ClipSpec.describe(time: maxClipDuration))")
+    }
+
     // MARK: - (1) 해상도
 
     /// preset 을 지정한다. 실패해도 조용히 다른 preset 으로 넘어가지 않는다.
