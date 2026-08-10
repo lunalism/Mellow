@@ -1,0 +1,56 @@
+name: Mellow
+
+options:
+  bundleIdPrefix: com.lunalism
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    # Swift 6 언어 모드를 켜지 않는다.
+    # Xcode 16+ 는 SWIFT_VERSION 미지정 시 6 으로 해석하므로 명시적으로 5 로 고정한다.
+    # AVFoundation 동시성 어노테이션 문제 때문이며, Phase 2 에서 재검토한다.
+    SWIFT_VERSION: "5.0"
+
+targets:
+  Mellow:
+    type: application
+    platform: iOS
+    sources:
+      - path: Mellow
+    settings:
+      base:
+        # v0.1 은 iPhone 전용. iPad 는 지원하지 않는다.
+        TARGETED_DEVICE_FAMILY: "1"
+
+        # bundleIdPrefix 만 두면 타깃명이 붙어 com.lunalism.Mellow 가 되므로 명시한다.
+        PRODUCT_BUNDLE_IDENTIFIER: com.lunalism.mellow
+
+        # Xcode GUI 에서 서명을 설정해도 다음 xcodegen generate 때 사라진다.
+        # 유지되어야 하므로 project.yml 에 기록한다.
+        # Team ID 는 Apple Development 인증서의 OU 값이다 (CN 괄호 안 값이 아니다).
+        DEVELOPMENT_TEAM: T394S9X9HC
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Mellow/Info.plist
+      properties:
+        CFBundleDisplayName: Mellow
+        UILaunchScreen: {}
+
+        # 0-5 권한 문구
+        NSCameraUsageDescription: "10초 클립을 촬영하기 위해 카메라를 사용합니다."
+        NSMicrophoneUsageDescription: "영상과 함께 소리를 녹음하기 위해 마이크를 사용합니다."
+        NSPhotoLibraryAddUsageDescription: "완성된 영상을 사진 앱에 저장하기 위해 접근합니다."
+        # NSPhotoLibraryUsageDescription(읽기)은 넣지 않는다. v0.1 은 사진 앱에서 읽어오지 않는다.
+
+        # 0-6 회전 설정 — Portrait 전용으로 잠근다.
+        # iOS 17 의 AVCaptureDevice.RotationCoordinator 는 인터페이스 방향이 아니라
+        # 가속도계 기준 물리적 기기 방향을 추적하므로, Portrait 잠금 상태에서도
+        # 가로 촬영 감지와 가로 클립 저장이 가능하다.
+        # 잠그는 이유는 프리뷰 회전각을 상수로 만들어 Phase 1 파이프라인 검증에서
+        # 회전 변수를 제거하기 위함이다. 이 전제는 Phase 1 초반 실기기 테스트로
+        # 검증하며, 실패하면 이 설정만 되돌리면 된다.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
