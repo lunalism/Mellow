@@ -1,5 +1,3 @@
-# Tasks — 멜로우 v0.1
-
 PRD의 기능 요구사항을 실행 순서로 풀어놓은 문서다. 위에서부터 순서대로 진행한다. 각 Phase 끝의 **게이트**를 통과하지 못하면 다음 Phase로 넘어가지 않는다.
 
 ```
@@ -57,40 +55,48 @@ mellow/
 
 ### 0-A. 저장소와 문서 (직접)
 
-- [x] **0-1** GitHub 레포 생성
+- [ ] **0-1** GitHub 레포 생성
     - 이름 `mellow`, private, `.gitignore`는 Swift 템플릿
     - 로컬에 클론
-- [x] **0-2** 문서 배치
+- [ ] **0-2** 문서 배치
     - 프로젝트 지침을 `CLAUDE.md`로 저장
     - `PRD.md`, `Tasks.md`를 루트에 복사
     - 첫 커밋
-- [x] **0-3** Claude Code 연결
+- [ ] **0-3** Claude Code 연결
     - 레포 폴더에서 실행, `CLAUDE.md`를 읽는지 확인
     - `Mellow_01` 채팅에서 첫 지시 프롬프트를 받아 전달
 
 ### 0-B. 프로젝트 생성 (Claude Code)
 
 - [x] **0-4** Xcode 프로젝트 생성 (SwiftUI, iOS 17 타깃)
-    - **실제로는 XcodeGen 으로 생성했다.** `project.yml` 이 원본이고 `.xcodeproj` 는 커밋하지 않는다. 아래 두 줄의 우려는 해당하지 않는다 — 새 파일은 `Mellow/` 에 두고 `xcodegen generate` 만 돌리면 빌드 대상에 자동으로 들어간다(검증 완료)
-    - ~~`.xcodeproj`는 Claude Code가 직접 만들기 까다로운 형식이다. Xcode에서 직접 생성한 뒤 Claude Code에 넘기는 편이 안전하다~~
-    - ~~이후 **새 파일을 추가할 때마다 `.pbxproj`가 수정되므로**, Claude Code가 만든 파일이 빌드 대상에 포함됐는지 매번 확인한다~~
+    - **XcodeGen으로 관리한다.** `project.yml`이 단일 소스이고 `.xcodeproj`는 생성물이라 git에 커밋하지 않는다. clone 직후 `xcodegen generate`가 필요하다
+    - 새 Swift 파일을 추가한 뒤에는 `xcodegen generate`를 다시 실행하면 된다. `sources: Mellow` 디렉터리 전체가 대상이므로 빌드 포함 여부를 파일마다 확인할 필요가 없다
+    - `.pbxproj`를 직접 편집하지 않는다. 구조·빌드 설정 변경은 `project.yml`만 고친다
+    - Swift 언어 모드는 5로 고정했다 (`SWIFT_VERSION: "5.0"`). AVFoundation 동시성 어노테이션 문제 때문이며 Phase 2에서 재검토한다
 - [x] **0-5** `Info.plist` 권한 문구 작성
+    - `project.yml`의 `info.properties`에서 생성한다. Info.plist 파일을 직접 만들지 않는다
     - `NSCameraUsageDescription`
     - `NSMicrophoneUsageDescription`
     - `NSPhotoLibraryAddUsageDescription`
-- [x] **0-6** 세로/가로 회전 지원 설정 (가로 촬영을 허용하므로 잠그지 않는다)
+    - `NSPhotoLibraryUsageDescription`(읽기)은 넣지 않는다. v0.1은 사진 앱에서 읽어오는 기능이 없다
+- [x] **0-6** 앱을 **Portrait 전용으로 잠근다** (`UISupportedInterfaceOrientations`)
+    - iPhone·iPad 키 모두 `UIInterfaceOrientationPortrait` 하나만. iPad는 v0.1 지원 대상이 아니다
+    - 종전 서술("잠그면 가로 촬영 감지가 막힌다")은 틀린 전제라 폐기한다. iOS 17의 `AVCaptureDevice.RotationCoordinator`는 인터페이스 방향이 아니라 가속도계 기준 물리적 기기 방향을 추적한다. 따라서 앱을 Portrait로 잠가도 가로 촬영 감지와 가로 클립 저장이 가능하다
+    - Portrait 잠금은 프리뷰 회전각을 상수로 만들어 Phase 1 파이프라인 검증에서 회전 변수를 제거하기 위한 선택이다. 이 전제는 Phase 1 초반 실기기 테스트로 검증하며, 실패 시 이 설정만 되돌리면 된다
+    - 레이아웃은 세션 방향에 맞는 고정 구성 하나만 만들고, 기기를 돌릴 때 재배치되는 반응형 대응은 만들지 않는다
 
 ### 0-C. 실기기 (직접)
 
 - [x] **0-7** 실기기 빌드·설치 확인
     - 시뮬레이터에는 카메라가 없어 Phase 1부터 실기기가 필수다
-    - 무료 계정은 7일마다 재설치가 필요하므로 개발자 계정 등록 검토
+    - `xcodebuild build`는 설치까지 하지 않는다. 설치·실행은 `devicectl`로 따로 한다:
+      `xcrun devicectl list devices` → `... device install app --device <UDID> <Mellow.app>` → `... device process launch --device <UDID> com.lunalism.mellow`
 
 ### 게이트 0 — 통과 조건
 
 - [x] 실기기에서 빈 앱이 실행된다
-- [x] Claude Code가 만든 파일이 빌드에 포함된다
-- [x] 커밋이 GitHub에 올라간다
+- [x] `xcodegen generate` 후 새 Swift 파일이 빌드에 포함된다
+- [ ] 커밋이 GitHub에 올라간다
 
 ---
 
@@ -101,93 +107,75 @@ mellow/
 ### 1-A. 촬영
 
 - [x] **1-1** 카메라·마이크 권한 요청 및 상태 분기
+    - 두 권한이 모두 있어야 프리뷰를 시작한다. 설정 앱 이동 버튼은 2-13에서 붙인다
 - [x] **1-2** `AVCaptureSession` 구성 + 프리뷰 표시
     - 세션 구성은 백그라운드 큐에서, UI 갱신은 메인에서
-- [x] **1-3** 촬영 스펙 고정 (1080p / 30fps / H.264 / AAC)
+    - 세션 시작은 씬이 활성일 때만. 권한 팝업·구성 중에 앱을 내리면 백그라운드에서
+      `startRunning`이 불려 복귀해도 프리뷰가 살아나지 않는다
+    - `.inactive`에서는 정지하지 않는다. 권한 팝업·제어 센터·알림 배너에서도
+      발생해 프리뷰가 깜빡인다. `.background`에서만 정지한다
+    - **씬 활성 가드(P2)**: 구성 완료 시점(t=115.5ms)에 씬이 비활성이라 `start()`가
+      가드에서 반환되고, `.active` 수신 후 정상 시작. 권한 팝업 경로는 실기기
+      재현이 불가능하나(팝업이 시스템 모달이라 홈 제스처·화면 잠금이 먹지 않는다)
+      로그로 가드 동작이 확인됨
+- [ ] **1-3** 촬영 스펙 고정 (1080p / 30fps / H.264 / AAC)
     - `sessionPreset` 또는 `activeFormat` 중 어느 쪽으로 고정할지 결정
     - 기기별로 지원 포맷이 다르므로 폴백 경로 필요
-- [x] **1-4** `AVCaptureMovieFileOutput`으로 파일 녹화
+- [ ] **1-4** `AVCaptureMovieFileOutput`으로 파일 녹화
 - [ ] **1-5** 10초 자동 정지 (`maxRecordedDuration` 활용 검토)
 - [ ] **1-6** 녹화 버튼: 누르는 동안 녹화 / 떼면 종료
 - [ ] **1-7** 1초 미만 클립 폐기
-    - **1-5·1-6·1-7 은 게이트 1 과 무관한 촬영 편의 기능이라 Phase 2 에서 UI 와 함께 붙인다.**
-      1-6 은 결정 대기 항목("녹화 버튼 방식 — Phase 4 실사용 후")이므로 실사용 전에 확정하지 않는다.
-      지금 만들면 다시 짤 가능성이 크다. 1-5 는 `maxRecordedDuration` 한 줄이라 언제 해도 부담이 없다.
-- [x] **1-8** 저장된 파일의 실제 스펙 검증
+- [ ] **1-8** 저장된 파일의 실제 스펙 검증
     - `AVAsset`에서 해상도·fps·코덱·오디오 포맷을 읽어 로그로 출력
     - **여러 클립이 정말 동일한 값인지 눈으로 확인한다**
 
 ### 1-B. 방향
 
-- [x] **1-9** 기기 방향 감지
-    - iOS 17에서 `AVCaptureVideoOrientation`이 각도 기반 API로 대체된 것으로 알고 있으나 정확한 형태는 **구현 시 확인 필요**
-- [x] **1-10** 가로로 찍은 클립의 저장 스펙 확인 (1920×1080이 맞는지)
-- [x] **1-11** 회전 정보(`preferredTransform`)가 어떻게 기록되는지 확인
+- [ ] **1-9** 기기 방향 감지
+    - API 확정: `AVCaptureDevice.RotationCoordinator`(iOS 17+). `init(device:previewLayer:)`로 만들고 `videoRotationAngleForHorizonLevelPreview` / `...Capture`를 KVO로 관찰한다. 적용은 `AVCaptureConnection.videoRotationAngle`(설정 전 `isVideoRotationAngleSupported` 확인)
+    - **실측 각도** (iPhone 12, 후면 광각, Portrait 잠금. 1-2에서 측정)
+
+      |기기 방향|capture|preview|
+      |---|---|---|
+      |portrait|90|90|
+      |landscapeLeft|0|90|
+      |landscapeRight|180|90|
+      |portraitUpsideDown|270|90|
+
+    - Portrait 잠금 상태에서도 capture 각도가 정상적으로 변한다. preview는 90 고정
+    - 네 방향 모두 실측 완료
+    - 각도를 방향 상수로 매핑하는 테이블은 만들지 않는다. 기기·카메라마다 값이 다를 수 있어 위 표는 iPhone 12 참고치다
+- [ ] **1-10** 가로로 찍은 클립의 저장 스펙 확인 (1920×1080이 맞는지)
+- [ ] **1-11** 회전 정보(`preferredTransform`)가 어떻게 기록되는지 확인
     - 가로 세션 클립끼리 붙일 때 이 값이 일치해야 passthrough가 가능하다
 
 ### 1-C. 병합과 재생 ← **최대 고비**
 
-- [x] **1-12** 클립 2개를 `AVMutableComposition`으로 이어붙이기
+- [ ] **1-12** 클립 2개를 `AVMutableComposition`으로 이어붙이기
     - 비디오 트랙과 오디오 트랙을 각각 `insertTimeRange`
-- [x] **1-13** `AVPlayer`에 물려 즉시 재생
-- [x] **1-14** 이음새 검증 — 검은 프레임, 끊김, 오디오 어긋남
-- [x] **1-15** 클립 10개로 늘려서 동일 검증
-- [x] **1-16** 가로 세션 클립으로도 1-12~1-15 반복
+- [ ] **1-13** `AVPlayer`에 물려 즉시 재생
+- [ ] **1-14** 이음새 검증 — 검은 프레임, 끊김, 오디오 어긋남
+- [ ] **1-15** 클립 10개로 늘려서 동일 검증
+- [ ] **1-16** 가로 세션 클립으로도 1-12~1-15 반복
 
 ### 1-D. 내보내기
 
-- [x] **1-17** `AVAssetExportSession` + passthrough 프리셋으로 익스포트
-- [x] **1-18** 사진 앱 저장 (`PHPhotoLibrary`)
-- [x] **1-19** 저장 소요 시간 측정 (클립 20개 기준 3초 이내)
-- [x] **1-20** 사진 앱에서 재생해 화질·이음새 확인
+- [ ] **1-17** `AVAssetExportSession` + passthrough 프리셋으로 익스포트
+- [ ] **1-18** 사진 앱 저장 (`PHPhotoLibrary`)
+- [ ] **1-19** 저장 소요 시간 측정 (클립 20개 기준 3초 이내)
+- [ ] **1-20** 사진 앱에서 재생해 화질·이음새 확인
 
 ### 게이트 1 — 통과 조건
 
 아래를 만족해야 Phase 2로 넘어간다.
 
-- [x] 세로 클립 10개가 이음새 없이 붙어 재생된다
-- [x] 가로 클립 10개도 마찬가지다
-- [x] 오디오가 클립 경계에서 어긋나지 않는다
-- [x] passthrough 익스포트가 3초 이내에 끝난다
-- [x] 사진 앱에 저장된 결과물이 정상 재생된다
+- [ ] 세로 클립 10개가 이음새 없이 붙어 재생된다
+- [ ] 가로 클립 10개도 마찬가지다
+- [ ] 오디오가 클립 경계에서 어긋나지 않는다
+- [ ] passthrough 익스포트가 3초 이내에 끝난다
+- [ ] 사진 앱에 저장된 결과물이 정상 재생된다
 
 **통과 못 하면** 촬영 스펙 고정 방식(1-3)으로 돌아간다. `sessionPreset`으로 안 되면 `activeFormat` 직접 지정을 시도하고, 그래도 안 되면 세션 방향 고정 전략 자체를 재검토한다.
-
-### 게이트 1 실측 (iPhone 12, 20클립 486초)
-
-촬영 20개 전부 성공(실패 0). 그룹은 `0°×10 90°×10`. 클립이 계획보다 길어
-총 486초가 됐다 — 1-19 기준이 전제한 200초의 2.4배 분량이다.
-
-| |세로 10|가로 10|ALL 20 (측정 전용)|
-|---|---|---|---|
-|분량|287.540 s|198.445 s|485.985 s|
-|조립|104.7 ms|100.3 ms|172.2 ms|
-|ready (탭→재생 가능)|336.3 ms|194.1 ms|240.3 ms|
-|A/V 최종 어긋남|−0.0100 s (−0.30프레임)|−0.0100 s|−0.0200 s (−0.60프레임)|
-|클립당 평균 drift|−0.0010 s|−0.0010 s|−0.0010 s|
-|**추세**|**진동**|**진동**|**진동**|
-|익스포트|1,325 ms|920 ms|**2,336 ms**|
-|실시간 대비|217배|216배|208배|
-|크기 ÷ 소스 합|0.9991|0.9990|0.9990|
-
-**A/V drift 는 구조적 누적이 아니다.** 클립당 평균이 10개든 20개든 일정하게
-−0.001초다. 누적이라면 클립 수가 늘 때 클립당 값도 함께 커져야 한다.
-CMTime 타임스케일 반올림의 전형적 크기이고, 100개를 붙여도 0.1초 남짓으로
-예측된다. 오디오 삽입 방식을 손볼 이유가 없다. 클램프를 넣지 않은 판단이 옳았다 —
-넣었다면 이 숫자를 못 봤다.
-
-`videoCursor` 와 `소스 duration 합` 과 `composition.duration` 이 세 케이스 모두
-소수점 셋째 자리까지 동일하다. 비디오 쪽은 어긋남이 없다.
-
-**재인코딩이 없었음을 세 가지로 확인했다.**
-
-1. 스펙 보존 — 소스 클립과 익스포트 결과를 `ClipSpec.compare()` 로 대조해
-   코덱·해상도·`minFrameDuration`·`preferredTransform`·색 3종·오디오가 전부 일치.
-   유일한 불일치는 `nominalFrameRate` 30.001 vs 30.002 인데, 이 값은 트랙 평균에서
-   파생되는 추정값이라 길이가 다르면(38초 vs 287초) 소수 넷째 자리가 달라진다.
-   `minFrameDuration` 은 `19/600` 으로 동일하므로 실제 프레임 타이밍은 그대로다.
-2. 크기 비율 0.999 — 0.1% 감소는 컨테이너 헤더가 20개에서 1개로 합쳐진 몫이다.
-3. 속도 208~217배 실시간 — HEVC 1080p 재인코딩으로는 나올 수 없는 속도다.
 
 ---
 
@@ -242,6 +230,7 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 ### 3-A. 촬영 화면
 
 - [ ] **3-1** 풀스크린 프리뷰
+    - 백그라운드 복귀 시 `startRunning()`에 약 205ms가 소요된다(iPhone 12 실측, 5회 202~211ms, 편차 3ms). 프레임워크 내부 비용이라 단축 불가. 복귀 중 검은 화면 대신 직전 프레임이나 가림막을 보여주는 처리를 여기서 검토한다
 - [ ] **3-2** 10초 게이지 (실제 녹화 시간과 동기화)
 - [ ] **3-3** 녹화 버튼 (누르는 동안 녹화, 시각적 피드백)
 - [ ] **3-4** 하단 필름스트립 (촬영된 클립 썸네일)
@@ -291,125 +280,12 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 |---|---|
 |녹화 버튼 방식 (누르고 있기 vs 탭)|Phase 4 실사용 후|
 |전화 수신 시 부분 녹화분 처리|2-15 구현 시|
-|촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|**결정됨(1-3)** — 어느 쪽도 명시하지 않는다. 아래 참조|
-|iOS 17 방향 API의 정확한 형태|1-9 구현 시|
+|촬영 스펙 고정 방식 (`sessionPreset` vs `activeFormat`)|1-3 구현 시|
 |전면 카메라 지원 여부|Phase 1 스펙 통일 검증 후|
-|다른 기기에서 녹음 품질 재확인|개인 폰 확보 후|
-|Swift 6 언어 모드 승격|Phase 2 시작 시|
-|XcodeGen 프로젝트와 Xcode 템플릿 기본값 diff 확인|Phase 2 시작 시|
-|ClipSpec에 profile/level·채널 레이아웃 필드 추가 여부|1-8에서 실제 클립 확인 후|
-|프레임레이트 표시 정밀도 (VFR 실측 포함)|1-3에서 실측 후|
-|세션 방향을 3값(세로/가로좌/가로우)으로 두고 upsideDown(270°)은 촬영 차단할지|1-11·1-16 실측 완료(아래). 방향을 섞으면 뒤 클립이 강제 회전됨을 렌더 프레임으로 확인 — 3값 근거 유지. upsideDown 은 capture 270° 만 확인됐고 transform 은 미확인(차단할 것이므로 불필요). 차단 로직은 2-9|
 
-### capture 각도 실측 (1-2에서 관측)
+**해소됨**
 
-관찰 조건 — iPhone 12, 후면 광각(`builtInWideAngleCamera`), 인터페이스 Portrait 고정,
-`AVCaptureDevice.RotationCoordinator.videoRotationAngleForHorizonLevelCapture` 값.
-
-|기기 자세|capture 각도|
+|항목|결론|
 |---|---|
-|portrait|90°|
-|landscapeLeft|0°|
-|landscapeRight|180°|
-|portraitUpsideDown|270°|
-|faceUp|직전 값 유지 (KVO 미발화)|
-
-네 자세가 전부 다른 각도다. `preferredTransform` 이 이 각도에서 나온다면 가로좌와
-가로우 클립은 서로 붙지 않는다. 세션 방향을 2값으로 두면 한 세션 안에 transform이
-다른 클립이 섞일 수 있다는 뜻이라, 위 결정 항목이 필요하다.
-
-같은 조건에서 `videoRotationAngleForHorizonLevelPreview` 는 전 자세 90° 상수였다.
-인터페이스가 고정돼 레이어와 센서의 상대 관계가 안 변하기 때문이다.
-faceUp 에서 값이 유지되는 것은 테이블 촬영에 유리하다.
-
-### 촬영 스펙 실측 (1-3 / 1-11)
-
-실측 조건 — iPhone 12, 후면 광각, **카메라 설정을 하나도 지정하지 않은 기본 상태**에서
-9클립 촬영(세로 3 · 가로좌 3 · 가로우 3). 오염 클립 없음.
-
-관찰된 기본값. 9클립 전부 동일했다.
-
-|항목|값|
-|---|---|
-|`sessionPreset`|`AVCaptureSessionPresetHigh` (기본값, 미지정)|
-|`activeFormat`|1920×1080, `420v`|
-|해상도 (encoded / natural)|1920×1080 — **방향과 무관**|
-|프레임레이트|30fps 고정 (`activeVideoMinFrameDuration == maxFrameDuration == 1/30`)|
-|비디오 코덱|`hvc1` (HEVC)|
-|색|`colorPrimaries` / `transferFunction` / `YCbCrMatrix` 전부 `ITU_R_709_2`. 소스 `activeColorSpace` 는 `sRGB` (HDR 아님)|
-|오디오|AAC 48000Hz 1ch|
-|선택 가능 코덱|`hvc1`, `avc1`, `jpeg`|
-
-**결정: 아무것도 잠그지 않는다.** `sessionPreset` 도 `activeFormat` 도 명시하지 않는다.
-기본값이 이미 일정하고 9클립에서 흔들림이 없었다. 다른 기기에서 스펙이 흔들리면
-그때 잠근다. 폴백 경로는 미리 만들지 않는다.
-
-**결정: HDR 을 켜지 않는다. 709 SDR 을 유지한다.** 기본 카메라 앱은 같은 조건에서
-HLG BT.2020 으로 찍는다(`colorPrimaries`/`transferFunction`/`YCbCrMatrix` 대조로 확인).
-그래도 켜지 않는 근거는 셋이다.
-
-1. 9클립이 개입 없이 완벽히 일치한 것은 SDR 고정 덕이다. HDR 을 켜면 기기·조명
-   조건에 따라 갈릴 여지가 생기고, 세션 중간에 갈리면 병합이 깨진다. "기본값이 이미
-   일정하다"는 위 결정의 근거를 우리 손으로 깨는 셈이다.
-2. v0.2 재인코딩(자막·BGM)에 톤 매핑이 따라붙어 처리 비용과 복잡도가 올라간다.
-3. 10초 컷을 이어붙이는 구조에서는 클립 간 노출 차이로 밝기가 튈 수 있어
-   HDR 이득이 크지 않다.
-
-필요해지면 켜되, **그때 클립 스펙 일치 검증을 다시 한다**는 조건을 붙인다.
-
-프레임레이트도 같은 이유로 바꾸지 않는다. 우리 30.000 고정이 카메라 앱의 29.977
-(VFR 로 보임)보다 병합에 유리하다.
-
-**오디오 먹먹함 조사 (종료).** 아이폰 사진 앱에서 기본 카메라 앱 클립과 비교한 결과
-차이가 없어 이슈를 닫았다. Mac 재생에서만 얇게 들렸다. 아이폰 스피커는 저역을
-물리적으로 못 내서 iOS 가 재생 단에서 보정을 걸고, Mac 은 그 보정을 하지 않는다.
-
-**판정 환경을 사용자 환경(아이폰 사진 앱)과 일치시키는 것이 중요하다.** Mac 에서
-스펙트럼을 재고 청취하던 동안 존재하지 않는 문제를 쫓았다. 파일 스펙트럼이 다르다는
-것과 사람 귀에 다르게 들린다는 것은 별개의 주장이고, 재생 단 보정은 파형 분석에
-반영되지 않는다.
-
-기기별 차이는 다른 기기 확보 후 재확인한다.
-
-조사 과정에서 확인한 런타임 값(iPhone 12, 후면 카메라):
-`AVCaptureSession.automaticallyConfiguresApplicationAudioSession` 기본값 YES 가
-카테고리를 `PlayAndRecord`, 모드를 `VideoRecording` 으로 잡고 후면 마이크
-(Upper/Back)와 `Subcardioid` 패턴을 자동 선택한다. `multichannelAudioMode = .stereo`
-를 켜면 모드가 문서화되지 않은 `StereoCapture` 로 바뀌고 데이터 소스·폴라 패턴
-선택 개념이 사라진다(`selectedDataSource` 가 nil).
-
-`preferredTransform` 실측 — 유일하게 자세에 따라 갈린 필드다.
-
-|자세|preferredTransform|각도|
-|---|---|---|
-|landscapeLeft|`[1 0 0 1 0 0]`|0° (항등)|
-|portrait|`[0 1 -1 0 1080 0]`|90°|
-|landscapeRight|`[-1 0 0 -1 1920 1080]`|180°|
-
-capture 각도 실측표와 정확히 일치한다. `videoRotationAngle` 이 그대로 트랙 매트릭스가
-된다. 같은 자세끼리는 transform 을 포함해 전 필드가 일치했으므로, 세션 방향만 고정하면
-재인코딩 없는 병합의 스펙 조건은 충족된다.
-
-### 방향 섞은 병합의 실제 결과 (1-16)
-
-`AVMutableComposition` 의 비디오 트랙은 `preferredTransform` 을 **하나만** 가진다.
-첫 클립 것이 적용되고 나머지 클립의 회전은 병합 시점에 버려진다.
-
-`AVAssetImageGenerator(appliesPreferredTrackTransform: true)` 로 각 구간의 실제
-렌더 프레임 크기를 측정했다.
-
-|구성|seg1 (세로)|seg2 (가로좌)|seg3 (가로우)|
-|---|---|---|---|
-|각각 단독 병합|1080×1920|1920×1080|1920×1080|
-|세 개를 섞어 병합|1080×1920|**1080×1920**|**1080×1920**|
-
-소스가 같은데 결과가 달라진다. 즉 가로 클립 2개가 세로 프레임 안에서 90° 강제
-회전됐다. AVPlayer 는 소스별 transform 을 따로 처리하지 않는다. 화면상으로는
-피사체에 따라 알아채기 어려울 수 있으나 **회전은 실제로 일어난다.**
-
-**방향이 섞인 컴포지션은 passthrough 익스포트 결과물에서도 뒤 클립이 강제 회전된
-채로 굳는다. 사진 앱 재생으로 확인했다** (1-17/1-20, 가로 10 + 세로 10 = 20클립,
-`transform 적용 0° · 불일치 클립 10개`. 재생 중간부터 화면이 90° 누웠다).
-재생 시점의 현상이 아니라 최종 산출물에 남는다.
-
-한 세션에 방향을 섞으면 안 되는 이유가 여기서 확정됐다.
+|iOS 17 방향 API의 정확한 형태|`AVCaptureDevice.RotationCoordinator` + `AVCaptureConnection.videoRotationAngle`. 실측 각도는 1-9 참고 (1-2에서 확인)|
+|`portraitUpsideDown` 회전각|capture 270 / preview 90. 네 방향 실측 완료 (1-2에서 확인)|
