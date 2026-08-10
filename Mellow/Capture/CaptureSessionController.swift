@@ -43,6 +43,12 @@ final class CaptureSessionController: ObservableObject {
     // MARK: - 녹화 (1-4)
 
     @Published private(set) var isRecording = false
+    /// 표시용. 탭한 순간 바로 바뀐다.
+    ///
+    /// `isRecording` 은 델리게이트 콜백을 기다리므로 탭 직후 잠깐 false 다.
+    /// 버튼 색을 그 값에 물리면 탭이 씹힌 것처럼 보인다. 판단에는 쓰지 않는다 —
+    /// 시작·정지 가드는 전부 `intent` 를 본다.
+    @Published private(set) var isRecordingRequested = false
     /// 이번 실행에서 찍은 클립들. 한 번에 비교하려고 모아둔다.
     /// Phase 2 에서 세션 개념이 들어오면 이 배열은 사라진다.
     @Published private(set) var recordedURLs: [URL] = []
@@ -99,7 +105,12 @@ final class CaptureSessionController: ObservableObject {
     private var movieOutput: AVCaptureMovieFileOutput?
     private var recordingDelegate: MovieRecordingDelegate?
     /// 녹화 의도. 시작·정지 판단은 전부 이 값으로 한다.
-    private var intent: RecordingIntent = .idle
+    ///
+    /// 표시용 미러(`isRecordingRequested`)를 didSet 으로 함께 갱신한다.
+    /// 따로 갱신하면 둘이 어긋날 수 있고, 그게 바로 이 구조를 만든 이유다.
+    private var intent: RecordingIntent = .idle {
+        didSet { isRecordingRequested = (intent != .idle) }
+    }
     /// 녹화 버튼을 누른 시각. 파일 duration 과의 차이를 보려는 계측용.
     private var pressedAt: UInt64?
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
@@ -296,7 +307,24 @@ final class CaptureSessionController: ObservableObject {
 
     // MARK: - 녹화 (1-4)
 
-    /// 녹화를 시작한다. 길이 제한은 없다 — 10초 자동 정지는 1-5 에서 붙인다.
+    /// 탭 한 번을 처리한다. 시작할지 끊을지는 의도가 정한다.
+    ///
+    /// 탭 방식에도 누르고 있기와 같은 경쟁 조건이 있다 — 시작 콜백이 오기 전에
+    /// 조기 종료 탭이 들어올 수 있다. 그래서 `isRecording` 이 아니라 `intent` 로
+    /// 분기한다. `.starting` 에서의 정지는 `stopRecording()` 이 대기로 남긴다.
+    func toggleRecording() {
+        switch intent {
+        case .idle:
+            startRecording()
+        case .starting, .recording:
+            stopRecording()
+        case .stopPending, .stopping:
+            // 이미 정지가 예약돼 있다. 연타로 들어온 탭은 무시한다.
+            break
+        }
+    }
+
+    /// 녹화를 시작한다. 10초에 도달하면 프레임워크가 끊는다 (1-5).
     func startRecording() {
         // 중복 시작 가드도 isRecording 이 아니라 의도를 본다.
         guard let movieOutput, setupState == .configured, intent == .idle else { return }

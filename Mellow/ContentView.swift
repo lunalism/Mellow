@@ -81,8 +81,7 @@ struct ContentView: View {
 
     // MARK: - 임시 컨트롤
 
-    // 1-4 확인용. 탭하면 시작, 다시 탭하면 종료.
-    // 누르고 있는 방식(1-6)과 10초 자동 정지(1-5)는 다음 단계다.
+    // Phase 1 확인용. UI 는 3-3 에서 제대로 만든다.
     private var controls: some View {
         VStack(spacing: 12) {
             Button {
@@ -97,34 +96,18 @@ struct ContentView: View {
             }
             .disabled(controller.recordedURLs.isEmpty)
 
-            // 누르는 동안 녹화, 떼면 종료 (1-6).
-            // 10초에 도달하면 떼지 않아도 프레임워크가 끊는다 (1-5).
+            // 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
             //
-            // Button 은 탭이 끝나야 동작하므로 쓸 수 없다.
-            //
-            // DragGesture 도 쓰지 않는다. onEnded 는 제스처가 취소되면(알림 배너,
-            // 홈 인디케이터 스와이프, 백그라운드 전환) 호출되지 않는데, 중복
-            // onChanged 를 거르려고 뷰에 누름 플래그를 두면 그 플래그가 true 로
-            // 갇혀 다음 촬영 한 번을 통째로 잃는다. 플래그가 실제 상태를 따라가지
-            // 못하는 것 — 컨트롤러의 녹화 의도와 같은 종류의 버그다.
-            //
-            // onPressingChanged 는 누를 때 true, 떼거나 취소될 때 false 로
-            // 한 번씩만 온다. 뷰에 상태를 둘 필요가 없어 갇힐 플래그도 없다.
-            // minimumDuration 을 길게 잡아 perform 은 실질적으로 호출되지 않고,
-            // maximumDistance 를 크게 잡아 손가락이 조금 움직여도 끊기지 않는다.
-            Circle()
-                .fill(controller.isRecording ? .red : .white)
-                .frame(width: 72, height: 72)
-                .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
-                .onLongPressGesture(minimumDuration: 60, maximumDistance: 10_000) {
-                    // 10초면 자동 정지하므로 여기까지 오지 않는다.
-                } onPressingChanged: { pressing in
-                    if pressing {
-                        controller.startRecording()
-                    } else {
-                        controller.stopRecording()
-                    }
-                }
+            // 뷰에는 녹화 상태를 두지 않는다. 시작/정지 판단은 전부 컨트롤러의
+            // 의도가 하고, 여기서는 탭이 일어났다는 사실만 넘긴다.
+            Button {
+                controller.toggleRecording()
+            } label: {
+                Circle()
+                    .fill(controller.isRecordingRequested ? .red : .white)
+                    .frame(width: 72, height: 72)
+                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
+            }
         }
         .padding(.bottom, 48)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
