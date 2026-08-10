@@ -109,8 +109,17 @@ final class CaptureSessionController: ObservableObject {
     /// 표시용 미러(`isRecordingRequested`)를 didSet 으로 함께 갱신한다.
     /// 따로 갱신하면 둘이 어긋날 수 있고, 그게 바로 이 구조를 만든 이유다.
     private var intent: RecordingIntent = .idle {
-        didSet { isRecordingRequested = (intent != .idle) }
+        didSet {
+            isRecordingRequested = (intent != .idle)
+            guard oldValue != intent else { return }
+            // 전이를 전부 남긴다. .stopPending/.stopping 에 갇히는 경로를
+            // 눈으로 확인할 수 있어야 한다.
+            CaptureTrace.shared.event("intent \(oldValue) → \(intent)")
+        }
     }
+    /// 탭 횟수와 실제 녹화 시작 횟수. 연타에서 몇 번이 실제로 시작됐는지 본다.
+    private var tapCount = 0
+    private var startCount = 0
     /// 녹화 버튼을 누른 시각. 파일 duration 과의 차이를 보려는 계측용.
     private var pressedAt: UInt64?
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
@@ -313,6 +322,9 @@ final class CaptureSessionController: ObservableObject {
     /// 조기 종료 탭이 들어올 수 있다. 그래서 `isRecording` 이 아니라 `intent` 로
     /// 분기한다. `.starting` 에서의 정지는 `stopRecording()` 이 대기로 남긴다.
     func toggleRecording() {
+        tapCount += 1
+        CaptureTrace.shared.event("탭 #\(tapCount)  intent=\(intent)")
+
         switch intent {
         case .idle:
             startRecording()
@@ -327,8 +339,13 @@ final class CaptureSessionController: ObservableObject {
     /// 녹화를 시작한다. 10초에 도달하면 프레임워크가 끊는다 (1-5).
     func startRecording() {
         // 중복 시작 가드도 isRecording 이 아니라 의도를 본다.
-        guard let movieOutput, setupState == .configured, intent == .idle else { return }
+        guard let movieOutput, setupState == .configured, intent == .idle else {
+            CaptureTrace.shared.event("시작 거부  intent=\(intent) setup=\(setupState)")
+            return
+        }
         intent = .starting
+        startCount += 1
+        CaptureTrace.shared.event("녹화 시작 요청 #\(startCount)  (탭 \(tapCount)회 중)")
 
         // 회전 각도는 시작 직전에 한 번 읽어 고정한다. 녹화 중에는 바꾸지 않는다.
         // 이미 시작된 클립은 시작 시점의 방향을 유지한다(PRD 8장).
@@ -445,6 +462,11 @@ final class CaptureSessionController: ObservableObject {
             }
         }
 
+        // 종료가 어떤 경로였는지 타임라인에 남긴다. 알림 배너·인터럽션 검증에서
+        // wasInterrupted 와 시각을 맞춰 보기 위한 것이다.
+        CaptureTrace.shared.event(
+            "녹화 종료  hitLimit=\(hitLimit) error=\(error != nil)")
+
         // 스펙을 먼저 읽는다. 폐기 판정을 파일 duration 으로 하기 때문이다.
         let spec: ClipSpec
         do {
@@ -539,6 +561,11 @@ final class CaptureSessionController: ObservableObject {
                 let angle = coordinator.videoRotationAngleForHorizonLevelCapture
                 Task { @MainActor [weak self] in
                     self?.captureRotationAngle = angle
+                    // 녹화 중에 각도가 변했다는 사실이 남아야, 파일 transform 이
+                    // 시작 시점 값으로 고정됐음을 증명할 수 있다 (PRD 8장).
+                    let recording = self?.isRecording == true
+                    CaptureTrace.shared.event(
+                        "capture 각도 → \(angle)" + (recording ? "   ← 녹화 중" : ""))
                 }
             }
         ]
@@ -546,6 +573,7 @@ final class CaptureSessionController: ObservableObject {
 
     private func applyPreviewRotation(_ angle: CGFloat) {
         previewRotationAngle = angle
+        CaptureTrace.shared.event("preview 각도 → \(angle)")
 
         guard let connection = previewLayer?.connection,
               connection.isVideoRotationAngleSupported(angle) else { return }
@@ -559,11 +587,13 @@ final class CaptureSessionController: ObservableObject {
     private func startObservingSessionNotifications() {
         guard sessionObservers.isEmpty else { return }
 
+        // mark 가 아니라 event 로 찍는다. 인터럽션은 scenePhase 구간 밖에서도
+        // 일어나므로 구간에 묶이면 유실된다.
         func observe(_ name: Notification.Name, _ label: @escaping (Notification) -> String) {
             let observer = NotificationCenter.default.addObserver(
                 forName: name, object: session, queue: nil
             ) { notification in
-                CaptureTrace.shared.mark(label(notification))
+                CaptureTrace.shared.event(label(notification))
             }
             sessionObservers.append(observer)
         }

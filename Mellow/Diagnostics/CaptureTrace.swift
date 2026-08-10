@@ -27,6 +27,8 @@ final class CaptureTrace: @unchecked Sendable {
     #endif
 
     private let lock = NSLock()
+    /// 단발 이벤트의 시각 기준점. 프로세스 시작 이후 경과로 찍어 서로 대조하기 쉽게 한다.
+    private let baseline = DispatchTime.now().uptimeNanoseconds
     /// 현재 구간의 시작 시각. nil 이면 계측 중이 아니다.
     private var startedAt: UInt64?
     /// 직전 mark 시각. 구간별 증분을 내는 데 쓴다.
@@ -64,6 +66,17 @@ final class CaptureTrace: @unchecked Sendable {
         print("[trace]   \(Self.pad(label))"
               + "  t=\(Self.milliseconds(sinceStart))ms"
               + "  +\(Self.milliseconds(sincePrevious))ms")
+    }
+
+    /// 구간과 무관한 단발 이벤트.
+    ///
+    /// `mark` 는 `begin` 이후에만 찍히고 t= 가 직전 구간 시작 기준이라, 녹화·회전처럼
+    /// 구간 밖에서 흩어져 일어나는 일에는 맞지 않는다. 이쪽은 항상 찍히고 프로세스
+    /// 시작 이후 경과 시각을 붙여, 여러 이벤트를 시간순으로 대조할 수 있게 한다.
+    func event(_ label: String) {
+        guard Self.isEnabled else { return }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - baseline
+        print("[trace] · \(Self.milliseconds(elapsed))ms  \(label)")
     }
 
     /// 구간을 닫는다. 이후의 mark 는 무시된다.
