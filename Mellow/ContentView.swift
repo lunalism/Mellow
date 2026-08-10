@@ -6,6 +6,7 @@ import UIKit
 struct ContentView: View {
     @StateObject private var controller = CaptureSessionController()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showingPreview = false
 
     var body: some View {
         ZStack {
@@ -30,6 +31,11 @@ struct ContentView: View {
             case .idle:
                 ProgressView()
                     .tint(.white)
+            }
+        }
+        .fullScreenCover(isPresented: $showingPreview) {
+            PreviewScreen(urls: controller.recordedURLs) {
+                showingPreview = false
             }
         }
         .task {
@@ -84,17 +90,22 @@ struct ContentView: View {
     // Phase 1 확인용. UI 는 3-3 에서 제대로 만든다.
     private var controls: some View {
         VStack(spacing: 12) {
-            Button {
-                Task { await controller.reportRecordedComparison() }
-            } label: {
-                Text("전체 비교 (\(controller.recordedURLs.count))")
-                    .font(.footnote)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.55), in: Capsule())
+            HStack(spacing: 8) {
+                Button {
+                    Task { await controller.reportRecordedComparison() }
+                } label: {
+                    pill("전체 비교 (\(controller.recordedURLs.count))")
+                }
+                .disabled(controller.recordedURLs.isEmpty)
+
+                // 1-13 확인용 임시 동선. 제대로 된 화면은 3-12 에서 만든다.
+                Button {
+                    showingPreview = true
+                } label: {
+                    pill("미리보기 (\(controller.recordedURLs.count))")
+                }
+                .disabled(controller.recordedURLs.isEmpty)
             }
-            .disabled(controller.recordedURLs.isEmpty)
 
             // 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
             //
@@ -111,6 +122,15 @@ struct ContentView: View {
         }
         .padding(.bottom, 48)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private func pill(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.55), in: Capsule())
     }
 
     private func row(_ label: String, _ value: String) -> some View {
