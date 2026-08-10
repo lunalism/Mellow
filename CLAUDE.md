@@ -37,6 +37,11 @@
 - v0.1은 iPhone 전용이다. iPad는 지원하지 않는다. 카메라를 들고 촬영하는
   제품 특성과, iPad에서 흔들리는 "첫 클립이 세션 방향을 정한다"는 설계
   전제 때문이다.
+- 녹화 버튼은 **탭 방식**이다. 탭하면 시작, 10초에 자동 정지, 녹화 중
+  다시 탭하면 조기 종료. 누르고 있는 방식은 폐기했다 — 10초는 손가락으로
+  버티기에 길고, "언제 뗄지"를 계속 신경 쓰게 만들어 결정 최소화 원칙에
+  어긋난다. 조기 종료를 남기는 이유는 없으면 모든 클립이 10초로 강제되기
+  때문이다.
 - 앱은 Portrait 전용으로 잠근다. 방향 감지는 `AVCaptureDevice.RotationCoordinator`가
   담당한다. 인터페이스 방향이 아니라 가속도계 기준 물리적 기기 방향을 추적하므로
   Portrait 잠금과 무관하게 동작한다.
@@ -117,7 +122,17 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
   전부 합쳐 1.3ms로, 최적화할 여지가 없다.
 - 세션 시작 지연을 다룰 때 이 값이 기준이다. 205ms를 줄이려는 시도 대신
   그 시간 동안 무엇을 보여줄지를 다룬다.
-- 재측정이 필요하면 `CaptureTrace`를 켠다 (실행 인자 `-MellowTrace`).
+- 재측정이 필요하면 `CaptureTrace`를 켠다. 기본은 꺼져 있고 릴리스 빌드에서는
+  아예 컴파일되지 않는다. 실행 인자 `-MellowTrace`로 켠다:
+
+  ```
+  xcrun devicectl device process launch --console --terminate-existing \
+    --device <UDID> com.lunalism.mellow -- -MellowTrace
+  ```
+
+  Xcode에서는 Scheme > Run > Arguments Passed On Launch에 넣는다.
+  `--console`이 붙어 있어야 stdout이 보인다. 앱이 종료되면 콘솔 세션도
+  끊기고, 재설치해도 끊긴다 — 그때는 다시 띄워야 한다.
 - 알림 배너는 `wasInterrupted`를 발생시키지 않으며 세션도 멈추지 않는다.
   `scenePhase`는 `.active`로 재진입하지만 세션이 이미 running이라 호출이
   생략된다. `.inactive`에서 정지하지 않기로 한 결정이 실측으로 검증됨 —
