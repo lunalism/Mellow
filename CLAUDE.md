@@ -78,6 +78,29 @@
 - 이 표는 iPhone 12 기준이다. 각도→방향 매핑을 상수 테이블로
   하드코딩하지 않는다는 제약은 유지한다.
 
+## 실기기에서 촬영한 파일 회수
+
+앱이 임시 디렉터리에 쓴 클립을 Mac으로 가져올 수 있다.
+
+```
+xcrun devicectl device copy from --device <UDID> \
+  --domain-type appDataContainer --domain-identifier com.lunalism.mellow \
+  --source tmp --destination <로컬 경로>
+```
+
+Phase 1은 촬영한 클립 목록을 메모리에만 들고 있어서 앱을 재실행하면
+사라진다. 이 명령은 그 제약을 우회한다 — 파일 자체는 임시 디렉터리에
+남아 있으므로, 앱을 껐다 켠 뒤에도 지난 촬영분을 전부 가져올 수 있다.
+
+용도:
+- 콘솔 로그를 놓쳤을 때 파일에서 스펙·transform·duration을 되짚는다
+- 병합 실험을 Mac에서 반복한다. `ClipSpec.swift`가 UIKit에 의존하지
+  않으므로 `swiftc`로 바로 돌려볼 수 있다
+- 실기기 촬영 한 번으로 여러 번의 실험 재료를 확보한다
+
+Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목록이
+유지되지만, Mac에서 파일을 직접 뜯어보는 용도로는 계속 쓴다.
+
 ## 실측 성능 기준값
 
 문서나 추정이 아니라 실기기에서 잰 값이다. 성능 논의는 여기서 출발한다.
@@ -90,6 +113,10 @@
 - 세션 시작 지연을 다룰 때 이 값이 기준이다. 205ms를 줄이려는 시도 대신
   그 시간 동안 무엇을 보여줄지를 다룬다.
 - 재측정이 필요하면 `CaptureTrace`를 켠다 (실행 인자 `-MellowTrace`).
+- 알림 배너는 `wasInterrupted`를 발생시키지 않으며 세션도 멈추지 않는다.
+  `scenePhase`는 `.active`로 재진입하지만 세션이 이미 running이라 호출이
+  생략된다. `.inactive`에서 정지하지 않기로 한 결정이 실측으로 검증됨 —
+  정지했다면 알림이 올 때마다 200ms 재시작이 발생했을 것이다.
 
 ## 프로젝트 구조
 - 프로젝트는 XcodeGen으로 관리한다. `project.yml`이 단일 소스다.
