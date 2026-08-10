@@ -6,8 +6,6 @@ import UIKit
 struct ContentView: View {
     @StateObject private var controller = CaptureSessionController()
     @Environment(\.scenePhase) private var scenePhase
-    /// 녹화 버튼을 누르고 있는 중인지. DragGesture 의 onChanged 중복 호출을 거른다.
-    @State private var isPressing = false
 
     var body: some View {
         ZStack {
@@ -102,26 +100,31 @@ struct ContentView: View {
             // 누르는 동안 녹화, 떼면 종료 (1-6).
             // 10초에 도달하면 떼지 않아도 프레임워크가 끊는다 (1-5).
             //
-            // Button 은 탭이 끝나야 동작하므로 쓸 수 없다. minimumDistance 0 인
-            // DragGesture 가 손가락이 닿는 즉시 onChanged 를 보낸다.
+            // Button 은 탭이 끝나야 동작하므로 쓸 수 없다.
+            //
+            // DragGesture 도 쓰지 않는다. onEnded 는 제스처가 취소되면(알림 배너,
+            // 홈 인디케이터 스와이프, 백그라운드 전환) 호출되지 않는데, 중복
+            // onChanged 를 거르려고 뷰에 누름 플래그를 두면 그 플래그가 true 로
+            // 갇혀 다음 촬영 한 번을 통째로 잃는다. 플래그가 실제 상태를 따라가지
+            // 못하는 것 — 컨트롤러의 녹화 의도와 같은 종류의 버그다.
+            //
+            // onPressingChanged 는 누를 때 true, 떼거나 취소될 때 false 로
+            // 한 번씩만 온다. 뷰에 상태를 둘 필요가 없어 갇힐 플래그도 없다.
+            // minimumDuration 을 길게 잡아 perform 은 실질적으로 호출되지 않고,
+            // maximumDistance 를 크게 잡아 손가락이 조금 움직여도 끊기지 않는다.
             Circle()
                 .fill(controller.isRecording ? .red : .white)
                 .frame(width: 72, height: 72)
                 .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
-                            // onChanged 는 손가락이 움직일 때마다 온다. 첫 번만 받는다.
-                            guard !isPressing else { return }
-                            isPressing = true
-                            controller.startRecording()
-                        }
-                        .onEnded { _ in
-                            isPressing = false
-                            // 10초 한도로 이미 끝났으면 stopRecording 이 가드에서 반환한다.
-                            controller.stopRecording()
-                        }
-                )
+                .onLongPressGesture(minimumDuration: 60, maximumDistance: 10_000) {
+                    // 10초면 자동 정지하므로 여기까지 오지 않는다.
+                } onPressingChanged: { pressing in
+                    if pressing {
+                        controller.startRecording()
+                    } else {
+                        controller.stopRecording()
+                    }
+                }
         }
         .padding(.bottom, 48)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

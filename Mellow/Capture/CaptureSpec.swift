@@ -44,9 +44,11 @@ enum CaptureSpec {
 
     // MARK: - (1) 해상도
 
-    /// preset 을 지정한다. 실패해도 조용히 다른 preset 으로 넘어가지 않는다.
+    /// preset 을 지정한다.
+    ///
+    /// 반환값을 무시하면 다른 해상도로 촬영하면서 구성은 성공한 것처럼 보인다.
+    /// 호출부가 반드시 처리하도록 `@discardableResult` 를 붙이지 않는다.
     /// - Returns: 지정에 성공하면 true.
-    @discardableResult
     static func applyPreset(to session: AVCaptureSession) -> Bool {
         guard session.canSetSessionPreset(preset) else {
             print("[spec] ✕ preset \(preset.rawValue) 지원 안 함 — 현재 preset 유지: "

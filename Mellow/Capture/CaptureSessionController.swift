@@ -49,6 +49,28 @@ final class CaptureSessionController: ObservableObject {
     /// 직전 녹화가 어떻게 끝났는지. 폐기됐다는 사실이 화면에 드러나야 한다.
     @Published private(set) var lastOutcome: ClipOutcome?
 
+    /// 녹화 "의도". 실제 상태(`isRecording`)와 분리해서 든다.
+    ///
+    /// `isRecording` 은 델리게이트 콜백이 메인으로 넘어온 뒤에야 true 가 된다.
+    /// 그 사이에 손을 떼면 정지 요청이 통째로 사라져, 톡 누른 입력이 10초
+    /// 클립이 되어 버린다. 의도는 요청 즉시 동기적으로 바뀌므로 그 창이 없다.
+    ///
+    /// 같은 종류의 버그가 세션 생명주기(P2)와 녹화 버튼(DragGesture)에서도
+    /// 나왔다. 공통 원인은 **플래그가 실제 상태를 따라가지 못하는 것**이다.
+    /// 비동기 콜백으로만 갱신되는 값을 가드 조건으로 쓰면 항상 이 창이 생긴다.
+    /// 판단에 쓰는 값은 동기적으로 갱신되는 것이어야 한다.
+    private enum RecordingIntent {
+        case idle
+        /// 시작을 요청했고 아직 didStartRecording 이 오지 않음.
+        case starting
+        /// 시작 콜백을 받아 실제로 녹화 중.
+        case recording
+        /// 시작되기 전에 정지 요청이 들어옴. 시작되는 즉시 정지한다.
+        case stopPending
+        /// 정지를 출력에 요청했고 완료 콜백을 기다리는 중.
+        case stopping
+    }
+
     /// 녹화 한 건의 결말.
     enum ClipOutcome {
         case saved(seconds: Double, hitLimit: Bool)
@@ -76,6 +98,8 @@ final class CaptureSessionController: ObservableObject {
     private var videoDevice: AVCaptureDevice?
     private var movieOutput: AVCaptureMovieFileOutput?
     private var recordingDelegate: MovieRecordingDelegate?
+    /// 녹화 의도. 시작·정지 판단은 전부 이 값으로 한다.
+    private var intent: RecordingIntent = .idle
     /// 녹화 버튼을 누른 시각. 파일 duration 과의 차이를 보려는 계측용.
     private var pressedAt: UInt64?
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
@@ -125,8 +149,12 @@ final class CaptureSessionController: ObservableObject {
 
                 // 입력·출력 구성. 이 안에서는 세션이 열려 있다.
                 func build() -> Result {
-                    // (1) 해상도. 실패해도 조용히 넘어가지 않고 로그로 드러낸다.
-                    CaptureSpec.applyPreset(to: session)
+                    // (1) 해상도. 실패하면 구성을 중단한다.
+                    // 1-3 의 목적이 스펙 통일이므로 해상도를 모른 채 진행하면 안 된다.
+                    // fps 를 지원하지 않을 때 멈추는 것과 같은 성격이다.
+                    guard CaptureSpec.applyPreset(to: session) else {
+                        return .failure("이 기기에서 \(CaptureSpec.preset.rawValue) 를 쓸 수 없습니다.")
+                    }
 
                     guard let device = AVCaptureDevice.default(.builtInWideAngleCamera,
                                                                for: .video,
@@ -270,7 +298,9 @@ final class CaptureSessionController: ObservableObject {
 
     /// 녹화를 시작한다. 길이 제한은 없다 — 10초 자동 정지는 1-5 에서 붙인다.
     func startRecording() {
-        guard let movieOutput, setupState == .configured, !isRecording else { return }
+        // 중복 시작 가드도 isRecording 이 아니라 의도를 본다.
+        guard let movieOutput, setupState == .configured, intent == .idle else { return }
+        intent = .starting
 
         // 회전 각도는 시작 직전에 한 번 읽어 고정한다. 녹화 중에는 바꾸지 않는다.
         // 이미 시작된 클립은 시작 시점의 방향을 유지한다(PRD 8장).
@@ -306,20 +336,61 @@ final class CaptureSessionController: ObservableObject {
     }
 
     func stopRecording() {
-        guard let movieOutput, isRecording else { return }
-        sessionQueue.async {
-            guard movieOutput.isRecording else { return }
+        switch intent {
+        case .idle, .stopPending, .stopping:
+            return
+        case .starting:
+            // 출력이 아직 시작되지 않았다. 지금 stopRecording() 을 불러도 무시되므로
+            // 요청을 남겨 두었다가 시작 콜백에서 적용한다.
+            intent = .stopPending
+            print("[rec] 시작 전 정지 요청 — 시작되는 즉시 정지한다")
+            return
+        case .recording:
+            break
+        }
+
+        guard let movieOutput else {
+            intent = .idle
+            return
+        }
+        intent = .stopping
+
+        sessionQueue.async { [weak self, movieOutput] in
+            guard movieOutput.isRecording else {
+                // 이미 끝났다. 완료 콜백이 오지 않으므로 의도를 직접 되돌린다.
+                // 여기서 방치하면 .stopping 에 갇혀 버튼이 영영 죽는다.
+                Task { @MainActor in self?.resetIntentIfStopping() }
+                return
+            }
             movieOutput.stopRecording()
         }
+    }
+
+    private func resetIntentIfStopping() {
+        guard intent == .stopping else { return }
+        intent = .idle
     }
 
     private func handleRecordingStarted(_ url: URL) {
         isRecording = true
         print("[rec] ▶ 시작 \(url.lastPathComponent)")
+
+        switch intent {
+        case .stopPending:
+            // 시작 콜백이 오기 전에 손을 뗐다. 대기시켜 둔 정지를 지금 적용한다.
+            intent = .recording
+            stopRecording()
+        case .starting:
+            intent = .recording
+        case .idle, .recording, .stopping:
+            break
+        }
     }
 
     private func handleRecordingFinished(_ url: URL, error: Error?) async {
         isRecording = false
+        // 스펙을 읽는 동안 다음 녹화가 막히지 않도록 의도는 여기서 바로 푼다.
+        intent = .idle
 
         let pressedSeconds = pressedAt.map {
             Double(DispatchTime.now().uptimeNanoseconds - $0) / 1_000_000_000
