@@ -138,6 +138,27 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
   생략된다. `.inactive`에서 정지하지 않기로 한 결정이 실측으로 검증됨 —
   정지했다면 알림이 올 때마다 200ms 재시작이 발생했을 것이다.
 
+**익스포트 (Mac M2 기준, 실기기 환산은 비율로)**
+
+- passthrough는 실시간의 0.0029배, 재인코딩은 0.150배. 약 50배 차이.
+- 재인코딩은 preset이 비트레이트를 정하며 원본의 68.2%로 떨어진다.
+  유지하려면 `AVAssetWriter`가 필요하다.
+- 성능 측정은 내부 SSD에서 한다. USB 외장은 22배 느리다.
+
+## API 주의사항
+
+**AVAssetExportSession API 현행 형태** (2026-08 확인)
+
+- `export(to:as:)` async throws — 구 `exportAsynchronously`는 iOS 18에서 deprecated
+- `determineCompatibility(ofExportPreset:with:outputFileType:)` —
+  구 `exportPresets(compatibleWith:)`는 iOS 16에서 deprecated
+- `states(updateInterval:)`는 iOS 18+라 배포 타깃 17에서 못 쓴다
+
+**`AVMutableVideoComposition` 계열은 iOS 26/macOS 26에서 deprecated다.**
+대체 `AVVideoComposition.Configuration`이 iOS 26+라 배포 타깃 17에서는
+계속 구 API를 써야 한다. **iOS 17 타깃 컴파일 시 경고가 뜨지 않으므로
+방치되기 쉽다.** v0.2 자막 구현이 이 API에 의존한다.
+
 ## 프로젝트 구조
 - 프로젝트는 XcodeGen으로 관리한다. `project.yml`이 단일 소스다.
 - `.xcodeproj`는 생성물이며 git에 없다. clone 직후 `xcodegen generate` 필수.
