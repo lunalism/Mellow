@@ -227,12 +227,24 @@ struct ContentView: View {
     private var normalizeControls: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
+                // 녹화 중에는 누를 수 없다. 컨트롤러는 세션을 멈추기 전에
+                // stopRecording() 을 먼저 부르도록 요구하는데(setSceneActive 참고),
+                // 여기서 stop() 을 바로 부르면 그 순서를 건너뛰어 녹화 중이던
+                // 파일이 온전하지 않게 된다. 순서를 흉내내는 대신 상황 자체를
+                // 막는다 — stopRecording() 은 비동기라 같은 큐에 stop() 을 바로
+                // 얹으면 파일 마무리 전에 세션이 멈출 수 있고(2-15), 3-13 에서
+                // 지울 측정 버튼 때문에 그 경로를 한 군데 더 늘릴 이유가 없다.
+                //
+                // isRecording 과 의도를 함께 본다. 탭 직후 콜백이 오기 전
+                // (.starting) 구간은 isRecording 이 아직 false 다.
                 Button {
                     if controller.isRunning { controller.stop() } else { controller.start() }
                 } label: {
                     pill(controller.isRunning ? "카메라 정지" : "카메라 시작")
                 }
-                .disabled(normalizer.state.isBusy)
+                .disabled(normalizer.state.isBusy
+                          || controller.isRecording
+                          || controller.isRecordingRequested)
 
                 // B-1 / B-2. 마지막 클립 하나를 3회 정규화한다.
                 Button {
