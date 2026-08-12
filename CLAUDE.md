@@ -145,6 +145,13 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
   유지하려면 `AVAssetWriter`가 필요하다.
 - 성능 측정은 내부 SSD에서 한다. USB 외장은 22배 느리다.
 
+**실기기 익스포트·저장 (iPhone 12)**
+
+- passthrough 익스포트 277MB/s. Mac M2(660MB/s)의 42%.
+- 사진 앱 저장은 클립 3개(58MB)에 120~215ms.
+- `shouldMoveFile`은 복사(false)가 빠르다. 이동은 볼륨 경계에서
+  복사 후 삭제가 되는 것으로 보인다.
+
 ## API 주의사항
 
 **AVAssetExportSession API 현행 형태** (2026-08 확인)
