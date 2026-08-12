@@ -5,6 +5,7 @@ import UIKit
 // 녹화 버튼은 1-4 에서 붙인다.
 struct ContentView: View {
     @StateObject private var controller = CaptureSessionController()
+    @StateObject private var saver = SaveToPhotosController()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingPreview = false
 
@@ -107,6 +108,8 @@ struct ContentView: View {
                 .disabled(controller.recordedURLs.isEmpty)
             }
 
+            saveControls
+
             // 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
             //
             // 뷰에는 녹화 상태를 두지 않는다. 시작/정지 판단은 전부 컨트롤러의
@@ -122,6 +125,92 @@ struct ContentView: View {
         }
         .padding(.bottom, 48)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    // MARK: - 사진 앱 저장 (1-18)
+
+    // 1-18 확인용 임시 동선. 저장 화면은 3-13 에서 만든다.
+    //
+    // "파일 이동" 토글은 UI 가 아니라 계측 장치다. shouldMoveFile 을 켜고 끈 값을
+    // 실기기에서 둘 다 재려고 열어뒀다. 판단이 끝나면 지운다.
+    private var saveControls: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    Task { await saver.save(clips: controller.recordedURLs) }
+                } label: {
+                    pill("사진 앱에 저장 (\(controller.recordedURLs.count))")
+                }
+                .disabled(controller.recordedURLs.isEmpty || saver.state.isBusy)
+
+                Button {
+                    saver.moveFile.toggle()
+                } label: {
+                    pill(saver.moveFile ? "이동" : "복사")
+                }
+                .disabled(saver.state.isBusy)
+
+                // 1-19 준비. 세션 방향 모델 선택지 (c) 판단에 이 값이 필요하다.
+                // 사진 앱에 넣지 않고 재인코딩 비용만 잰다.
+                Button {
+                    Task { await saver.reencodeLastClip(controller.recordedURLs) }
+                } label: {
+                    pill("재인코딩 1개")
+                }
+                .disabled(controller.recordedURLs.isEmpty || saver.state.isBusy)
+            }
+
+            // 진행 중 / 완료 / 실패를 한 줄로. 실패 사유는 줄여 쓰지 않는다.
+            Group {
+                switch saver.state {
+                case .idle:
+                    if !saver.permission.isAuthorized && saver.permission != .undetermined {
+                        Text(Self.describe(photoPermission: saver.permission))
+                            .foregroundStyle(.orange)
+                    }
+                case .askingPermission, .merging, .exporting, .saving, .reencoding:
+                    Text("\(saver.state.label)…  \(saver.timings.summary)")
+                        .foregroundStyle(.white)
+                case .saved(let timings):
+                    Text("✓ 저장 완료  \(timings.summary)")
+                        .foregroundStyle(.green)
+                case .reencoded(let measurement):
+                    Text("✓ 재인코딩  \(measurement.summary)")
+                        .foregroundStyle(.green)
+                case .failed(let message):
+                    Text("✕ \(message)")
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.system(.caption2, design: .monospaced))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
+
+            // 회차별로 느려지는지 눈으로 본다 (1-19). 형식은 병합/익스포트/저장=합계.
+            if !saver.roundHistory.isEmpty {
+                Text(saver.roundHistory.suffix(6).joined(separator: "  "))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    /// 사진 앱 권한 안내. 설정 앱으로 보내는 버튼은 2-13 에서 붙인다.
+    private static func describe(photoPermission state: PermissionState) -> String {
+        switch state {
+        case .authorized:
+            return ""
+        case .undetermined:
+            return "사진 앱 권한이 아직 결정되지 않았습니다."
+        case .denied:
+            return "사진 앱 접근이 거부되어 있습니다. 설정 > Mellow 에서 '사진 추가만'을 허용해 주세요."
+        case .restricted:
+            return "사진 앱 접근이 기기 정책으로 제한되어 있습니다."
+        }
     }
 
     private func pill(_ text: String) -> some View {
