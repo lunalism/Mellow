@@ -194,6 +194,30 @@ passthrough는 반대로 Mac이 2.4배 빠르다(660 vs 277MB/s).
 계속 구 API를 써야 한다. **iOS 17 타깃 컴파일 시 경고가 뜨지 않으므로
 방치되기 쉽다.** v0.2 자막 구현이 이 API에 의존한다.
 
+**SwiftData `#Predicate`는 enum을 지원하지 않는다** (2026-08, Xcode 26.6 /
+SDK iOS 26.5 확인)
+
+`Codable` enum을 `@Model` 프로퍼티로 두면 `Schema.CompositeAttribute`로
+등록되고, CoreData가 그 이름으로 키패스를 찾지 못한다. SQLite 컬럼 자체는
+`VARCHAR`에 평문(`"portrait"`)으로 들어가지만 조회가 안 된다.
+**`Codable`을 떼는 것도 불가능하다** — `@Model` 프로퍼티는
+`PersistentModel` 준수를 요구한다. 빠져나갈 구멍이 없다.
+
+**배포 타깃 문제가 아니다.** 타깃을 26으로 올려도 동일하며 iOS 26
+런타임에서 직접 확인했다.
+
+**가장 위험한 형태**: `predicate { $0.orientation == nil }` 은
+**컴파일이 깨끗하게 통과하고 런타임에 `NSInvalidArgumentException`으로
+죽는다**(keypath not found). ObjC 예외라 Swift `catch`로 잡히지 않는다.
+지역 변수 캡처 방식은 그나마 `SwiftDataError.unsupportedPredicate`로
+던져지지만 조회가 되는 것은 아니다.
+
+**따라서 raw value 저장이 우회안이 아니라 유일한 방법이다.**
+enum은 API 표면에만 두고 저장·조회는 전부 `String`으로 한다.
+predicate는 타입 안의 `static func` 팩토리로 만들어 `private` 저장
+프로퍼티를 캡슐화한다. 계산 프로퍼티에 `@Transient`는 불필요하다 —
+애초에 저장 대상이 아니다.
+
 ## 프로젝트 구조
 - 프로젝트는 XcodeGen으로 관리한다. `project.yml`이 단일 소스다.
 - `.xcodeproj`는 생성물이며 git에 없다. clone 직후 `xcodegen generate` 필수.
