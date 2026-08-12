@@ -158,6 +158,15 @@ struct ContentView: View {
                     pill("재인코딩 1개")
                 }
                 .disabled(controller.recordedURLs.isEmpty || saver.state.isBusy)
+
+                // 1-21. 방향이 섞인 클립을 하나의 캔버스에 정방향으로 세운다.
+                // 결과는 사진 앱에 넣는다 — 정방향인지는 눈으로 봐야 한다.
+                Button {
+                    Task { await saver.fixOrientationAndSave(clips: controller.recordedURLs) }
+                } label: {
+                    pill("방향 교정")
+                }
+                .disabled(controller.recordedURLs.count < 2 || saver.state.isBusy)
             }
 
             // 진행 중 / 완료 / 실패를 한 줄로. 실패 사유는 줄여 쓰지 않는다.
@@ -168,7 +177,8 @@ struct ContentView: View {
                         Text(Self.describe(photoPermission: saver.permission))
                             .foregroundStyle(.orange)
                     }
-                case .askingPermission, .merging, .exporting, .saving, .reencoding:
+                case .askingPermission, .merging, .exporting, .saving,
+                     .reencoding, .fixingOrientation:
                     Text("\(saver.state.label)…  \(saver.timings.summary)")
                         .foregroundStyle(.white)
                 case .saved(let timings):
@@ -177,6 +187,11 @@ struct ContentView: View {
                 case .reencoded(let measurement):
                     Text("✓ 재인코딩  \(measurement.summary)")
                         .foregroundStyle(.green)
+                case .orientationFixed(let measurement):
+                    Text("✓ 방향 교정  \(measurement.summary)"
+                         + (measurement.canvasMismatches == 0 ? "  여백 없음"
+                            : "  ← 여백 \(measurement.canvasMismatches)개"))
+                        .foregroundStyle(measurement.canvasMismatches == 0 ? .green : .orange)
                 case .failed(let message):
                     Text("✕ \(message)")
                         .foregroundStyle(.red)

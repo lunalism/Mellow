@@ -19,12 +19,17 @@ final class SaveToPhotosController: ObservableObject {
         case saved(SaveTimings)
         case reencoding
         case reencoded(ReencodeMeasurement)
+        case fixingOrientation
+        case orientationFixed(OrientationFixMeasurement)
         case failed(String)
 
         var isBusy: Bool {
             switch self {
-            case .askingPermission, .merging, .exporting, .saving, .reencoding: return true
-            case .idle, .saved, .reencoded, .failed: return false
+            case .askingPermission, .merging, .exporting, .saving,
+                 .reencoding, .fixingOrientation:
+                return true
+            case .idle, .saved, .reencoded, .orientationFixed, .failed:
+                return false
             }
         }
 
@@ -38,6 +43,8 @@ final class SaveToPhotosController: ObservableObject {
             case .saved: return "완료"
             case .reencoding: return "재인코딩 중"
             case .reencoded: return "재인코딩 완료"
+            case .fixingOrientation: return "방향 교정 중"
+            case .orientationFixed: return "방향 교정 완료"
             case .failed: return "실패"
             }
         }
@@ -48,6 +55,8 @@ final class SaveToPhotosController: ObservableObject {
     @Published private(set) var timings = SaveTimings()
     /// 직전 단일 클립 재인코딩 측정값 (1-19).
     @Published private(set) var reencode = ReencodeMeasurement()
+    /// 직전 방향 교정 측정값 (1-21).
+    @Published private(set) var orientationFix = OrientationFixMeasurement()
     /// 이번 실행에서 돌린 저장 라운드들의 요약. 회차별로 느려지는지 본다.
     @Published private(set) var roundHistory: [String] = []
     /// 사진 앱 권한 상태. 거부 안내를 띄우는 근거.
@@ -242,5 +251,127 @@ final class SaveToPhotosController: ObservableObject {
         reencode = measurement
         measurement.log()
         state = .reencoded(measurement)
+    }
+
+    // MARK: - 방향 교정 재인코딩 (1-21)
+
+    /// 방향이 섞인 클립들을 하나의 캔버스에 정방향으로 세워 익스포트한다.
+    ///
+    /// 1-17 B-3a 와 같은 구성이다. 클립마다 instruction 을 두고 각
+    /// layerInstruction 에 그 클립의 원본 `preferredTransform` 을 넣는다.
+    /// 컴포지션 트랙 변환은 `prepareForOrientationFix` 가 identity 로 되돌린다.
+    ///
+    /// 결과는 사진 앱에 넣는다 — 4개가 전부 정방향으로 섰는지는 눈으로 봐야
+    /// 판정된다. 저장 시간은 교정 측정에 넣지 않는다.
+    func fixOrientationAndSave(clips urls: [URL]) async {
+        guard !state.isBusy else { return }
+        guard urls.count >= 2 else {
+            state = .failed("방향 교정은 클립 2개 이상이 필요합니다.")
+            return
+        }
+
+        state = .fixingOrientation
+
+        let round = Self.makeRoundDirectory()
+        defer { Self.discardRoundDirectory(round) }
+        let output = round.appendingPathComponent("orientation-fixed.mov")
+
+        var measurement = OrientationFixMeasurement()
+        measurement.clipCount = urls.count
+
+        let merge = await ClipMerger.merge(urls)
+        if let fatal = merge.fatal {
+            state = .failed("병합 실패 — \(fatal)")
+            return
+        }
+        measurement.compositionSeconds = CMTimeGetSeconds(merge.compositionDuration)
+
+        // 클립과 세그먼트를 짝으로 들고 다닌다. 걸러낸 뒤 인덱스로 원본을 찾으면
+        // transform 없는 클립 하나에 짝이 어긋나 엉뚱한 규격으로 판정하게 된다.
+        let paired: [(clip: MergedClip, segment: OrientationFix.Segment)] = merge.clips.compactMap { clip in
+            guard let transform = clip.sourceTransform else { return nil }
+            return (clip, OrientationFix.Segment(
+                timeRange: CMTimeRange(start: clip.start, duration: clip.advance),
+                transform: transform))
+        }
+        guard paired.count == merge.clips.count, let first = paired.first else {
+            state = .failed("preferredTransform 을 읽지 못한 클립이 있습니다.")
+            return
+        }
+
+        // 캔버스는 첫 클립의 표시 규격으로 잡는다. 계열 내 혼재라면 나머지도
+        // 같은 규격이라 정확히 들어찬다. 어긋나는 클립이 있으면 그만큼 여백이다.
+        let renderSize = MergeReport.renderedSize(first.clip.sourceNaturalSize ?? .zero,
+                                                  first.segment.transform)
+        measurement.renderSize = renderSize
+        measurement.canvasMismatches = paired.filter { pair in
+            let rendered = MergeReport.renderedSize(pair.clip.sourceNaturalSize ?? .zero,
+                                                    pair.segment.transform)
+            return Int(rendered.width) != Int(renderSize.width)
+                || Int(rendered.height) != Int(renderSize.height)
+        }.count
+
+        guard let videoComposition = OrientationFix.prepareForOrientationFix(
+            merge.composition,
+            segments: paired.map(\.segment),
+            renderSize: renderSize) else {
+            state = .failed("videoComposition 을 만들지 못했습니다.")
+            return
+        }
+        guard let asset = merge.composition.copy() as? AVComposition else {
+            state = .failed("컴포지션 스냅샷을 만들지 못했습니다.")
+            return
+        }
+
+        measurement.inputDataRate = await Self.averageVideoDataRate(of: urls)
+
+        do {
+            let started = CFAbsoluteTimeGetCurrent()
+            let outcome = try await ClipExporter.export(asset,
+                                                        preset: AVAssetExportPreset1920x1080,
+                                                        to: output,
+                                                        as: .mov,
+                                                        videoComposition: videoComposition)
+            measurement.elapsed = CFAbsoluteTimeGetCurrent() - started
+            measurement.outputBytes = outcome.fileSize ?? 0
+        } catch {
+            state = .failed("방향 교정 익스포트 실패 — \(error)")
+            return
+        }
+
+        measurement.outputDataRate = await Self.videoDataRate(of: output)
+
+        orientationFix = measurement
+        measurement.log()
+
+        // 눈으로 확인하려면 사진 앱에 있어야 한다. 저장 실패는 측정을 무효로
+        // 만들지 않으므로 상태만 바꾸고 측정값은 그대로 남긴다.
+        do {
+            _ = try await PhotoLibrarySaver.save(temporaryVideoAt: output, moveFile: moveFile)
+            state = .orientationFixed(measurement)
+        } catch {
+            let message = (error as? PhotoLibrarySaveError)?.description ?? "\(error)"
+            state = .failed("교정은 됐으나 저장 실패 — \(message)  [\(measurement.summary)]")
+        }
+    }
+
+    // MARK: - 비트레이트 읽기
+
+    private static func videoDataRate(of url: URL) async -> Float {
+        guard let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first,
+              let rate = try? await track.load(.estimatedDataRate) else { return 0 }
+        return rate
+    }
+
+    private static func averageVideoDataRate(of urls: [URL]) async -> Float {
+        var total: Float = 0
+        var counted = 0
+        for url in urls {
+            let rate = await videoDataRate(of: url)
+            guard rate > 0 else { continue }
+            total += rate
+            counted += 1
+        }
+        return counted > 0 ? total / Float(counted) : 0
     }
 }

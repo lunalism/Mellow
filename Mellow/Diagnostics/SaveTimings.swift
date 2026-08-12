@@ -117,3 +117,60 @@ struct ReencodeMeasurement: Equatable {
         }
     }
 }
+
+// 방향 교정 재인코딩 한 번의 측정값 (1-21).
+//
+// 세션 방향 모델을 정하는 마지막 값이다. 1-19 에서 단일 클립 재인코딩이
+// 실기기 96ms 로 나와 Mac 환산(1553ms)이 16배 틀렸음이 드러났는데,
+// 그 96ms 는 videoComposition 이 없는 단순 재인코딩이었다. 방향 교정은
+// AVMutableVideoComposition 을 붙이므로 같은 하드웨어 경로를 타는지가
+// 확인되지 않았다. 그 배수가 여기서 나온다.
+struct OrientationFixMeasurement: Equatable {
+    var clipCount = 0
+    var compositionSeconds: Double = 0
+    var elapsed: TimeInterval = 0
+    var outputBytes: Int64 = 0
+    /// 출력 비디오 트랙의 estimatedDataRate (bps). Mac 에서는 원본의 68.2% 로 떨어졌다.
+    var outputDataRate: Float = 0
+    /// 입력 클립들의 estimatedDataRate 평균 (bps).
+    var inputDataRate: Float = 0
+    /// renderSize. 계열 내 교정이면 모든 클립이 여기에 정확히 들어차야 한다.
+    var renderSize: CGSize = .zero
+    /// 캔버스와 규격이 어긋난 클립 수. 0 이 아니면 여백이 생긴다.
+    var canvasMismatches = 0
+
+    var realtimeRatio: Double { compositionSeconds > 0 ? elapsed / compositionSeconds : 0 }
+    /// 1-19 실측 단일 클립 재인코딩 96ms 대비 배수. 클립 수를 맞춰 비교한다.
+    var perClipMilliseconds: Double { clipCount > 0 ? elapsed * 1000 / Double(clipCount) : 0 }
+    var dataRateRatio: Double {
+        inputDataRate > 0 ? Double(outputDataRate) / Double(inputDataRate) : 0
+    }
+
+    var summary: String {
+        String(format: "%.0fms  클립당 %.0fms  실시간 %.3f배  비트레이트 %.1f%%",
+               elapsed * 1000, perClipMilliseconds, realtimeRatio, dataRateRatio * 100)
+    }
+
+    func log() {
+        guard CaptureTrace.isEnabled else { return }
+        print("[trace] ▶ 방향 교정 재인코딩 (videoComposition + Preset1920x1080)")
+        print("[trace]   클립       \(clipCount)개"
+              + String(format: "  영상 %.3fs", compositionSeconds))
+        print("[trace]   renderSize \(Int(renderSize.width))x\(Int(renderSize.height))"
+              + "  캔버스 어긋남 \(canvasMismatches)개"
+              + (canvasMismatches == 0 ? " (여백 없음)" : " ← 여백 발생"))
+        print("[trace]   소요       " + String(format: "%.1fms", elapsed * 1000))
+        print("[trace]   클립당     " + String(format: "%.1fms", perClipMilliseconds)
+              + "  ※ 단일 클립 단순 재인코딩 96ms 와 대조 (1-19)")
+        print("[trace]   실시간 대비 " + String(format: "%.4f배", realtimeRatio))
+        print("[trace]   비트레이트  "
+              + String(format: "%.3f → %.3fMbps  (%.1f%%)",
+                       inputDataRate / 1_000_000, outputDataRate / 1_000_000,
+                       dataRateRatio * 100)
+              + "  ※ Mac 에서는 68.2%")
+        if outputBytes > 0 {
+            print("[trace]   출력       "
+                  + String(format: "%.2fMB", Double(outputBytes) / 1_000_000))
+        }
+    }
+}
