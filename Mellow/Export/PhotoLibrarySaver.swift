@@ -126,7 +126,7 @@ enum PhotoLibrarySaver {
     ///   여기서는 이미 정해진 상태를 확인만 한다 — 팝업 대기가 저장 시간에
     ///   섞이면 안 되고, 거부된 상태라면 익스포트까지 간 것 자체가 낭비다.
     static func save(temporaryVideoAt url: URL,
-                     moveFile: Bool = true) async throws -> PhotoLibrarySaveOutcome {
+                     moveFile: Bool = false) async throws -> PhotoLibrarySaveOutcome {
 
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw PhotoLibrarySaveError.fileMissing(url)
@@ -145,24 +145,26 @@ enum PhotoLibrarySaver {
             try await PHPhotoLibrary.shared().performChanges {
                 let request = PHAssetCreationRequest.forAsset()
 
-                // shouldMoveFile 을 켠다.
+                // shouldMoveFile 은 끈다. 복사한다.
                 //
                 // 켜면 파일 데이터를 복제하지 않고 라이브러리로 옮기며, 에셋 생성이
-                // 성공하면 원본이 사라진다. 끄면(기본값) 복사본이 만들어진다.
+                // 성공하면 원본이 사라진다. 끄면 복사본이 만들어진다.
                 //
-                // 켜는 이유는 두 가지다.
-                //   (1) 최대 디스크 사용량이 절반이 된다. 클립 30개 세션의 익스포트
-                //       결과가 579MB 인데(1-17 실측), 복사면 저장이 끝날 때까지
-                //       원본과 사본이 동시에 존재해 1.1GB 를 요구한다.
-                //   (2) 바이트 복사가 없어 더 빠르다.
+                // 처음엔 켜는 쪽으로 짰다. 바이트 복사가 없어 빠르고 최대 디스크
+                // 사용량이 절반이 될 것으로 봤다. **실측이 그 전제를 부정했다.**
                 //
-                // 켜도 되는 이유는, 이 파일이 우리가 방금 만든 단발 임시 파일이고
-                // 아무도 열고 있지 않기 때문이다. 헤더에 "열려 있거나 하드링크된
-                // 파일을 옮으려 하면 실패한다"고 되어 있는데, 익스포트 세션은 이미
-                // 파일을 닫았고 미리보기 AVPlayer 가 물고 있는 것은 원본 클립들이지
-                // 이 결과 파일이 아니다.
+                //   1-18 (1회)  저장 구간 복사 120ms / 이동 215ms — 이동이 1.8배 느림
+                //   1-19 (3회씩) 저장 구간 중앙값 복사 146ms / 이동 163ms — 차이 없음
                 //
-                // 실기기에서 복사와 이동을 둘 다 재서 확인한다 (moveFile 인자).
+                // 1-18 의 1.8배는 노이즈였고, 반복하니 성능 차이가 없다. 임시
+                // 디렉터리와 사진 라이브러리 컨테이너가 다른 볼륨이라 이동도 결국
+                // 복사 후 삭제로 떨어지는 것으로 보인다.
+                //
+                // 성능이 같다면 복사가 낫다. 이동은 사진 앱이 파일을 가져간 뒤
+                // 실패하면 재시도할 원본이 남지 않는다. 디스크 사용량은 어차피
+                // 저장 직후 임시 파일을 지우므로 잠깐만 2배다.
+                //
+                // moveFile 인자는 1-19 측정용으로 열어둔 것이며 기본값은 복사다.
                 let options = PHAssetResourceCreationOptions()
                 options.shouldMoveFile = moveFile
 

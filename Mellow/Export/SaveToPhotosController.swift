@@ -53,9 +53,9 @@ final class SaveToPhotosController: ObservableObject {
     /// 사진 앱 권한 상태. 거부 안내를 띄우는 근거.
     @Published private(set) var permission: PermissionState = .undetermined
 
-    /// 파일을 옮길지 복사할지. shouldMoveFile 판단 근거를 실기기에서 재려고 열어둔다.
-    /// 제품 기본값은 이동이며, 이 스위치는 1-18/1-19 측정용이다.
-    @Published var moveFile = true
+    /// 파일을 옮길지 복사할지. 1-19 실측에서 성능 차이가 없어 **복사로 확정**했다.
+    /// 스위치는 1-21 등에서 다시 대조할 일이 있어 남겨둔다.
+    @Published var moveFile = false
 
     init() {
         permission = PhotoLibrarySaver.currentPermission()
