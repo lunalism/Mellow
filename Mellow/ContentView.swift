@@ -6,6 +6,7 @@ import UIKit
 struct ContentView: View {
     @StateObject private var controller = CaptureSessionController()
     @StateObject private var saver = SaveToPhotosController()
+    @StateObject private var normalizer = ClipNormalizeController()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingPreview = false
 
@@ -109,6 +110,7 @@ struct ContentView: View {
             }
 
             saveControls
+            normalizeControls
 
             // 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
             //
@@ -208,6 +210,103 @@ struct ContentView: View {
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    // MARK: - 단일 클립 정규화 측정 (B 라운드)
+
+    // 1-21 의 클립당 2281ms 는 4클립을 한 번에 교정한 값을 나눈 것이라
+    // 낙관적 하한이다. 실제 시나리오는 클립 하나가 단독으로, 카메라가 도는
+    // 상태에서 정규화되는 것이다. 그 값을 재는 임시 동선이며 3-13 에서 지운다.
+    //
+    // "카메라" 버튼은 UI 가 아니라 측정 조건 스위치다. 세션을 멈춘 채로
+    // 재면 B-1, 프리뷰가 살아 있는 채로 재면 B-2 다.
+    private var normalizeControls: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    if controller.isRunning { controller.stop() } else { controller.start() }
+                } label: {
+                    pill(controller.isRunning ? "카메라 정지" : "카메라 시작")
+                }
+                .disabled(normalizer.state.isBusy)
+
+                // B-1 / B-2. 마지막 클립 하나를 3회 정규화한다.
+                Button {
+                    Task {
+                        await normalizer.measureRepeat(controller.recordedURLs,
+                                                       cameraRunning: controller.isRunning)
+                    }
+                } label: {
+                    pill("정규화 ×3")
+                }
+                .disabled(controller.recordedURLs.isEmpty || normalizer.state.isBusy)
+
+                // B-3. 마지막 4개를 연속으로. 발열 추이를 본다.
+                Button {
+                    Task {
+                        await normalizer.measureSequence(controller.recordedURLs,
+                                                         cameraRunning: controller.isRunning)
+                    }
+                } label: {
+                    pill("연속 4개")
+                }
+                .disabled(controller.recordedURLs.count < 4 || normalizer.state.isBusy)
+
+                // B-5. 교체가 성립하는지, 실패 시 원본이 살아남는지.
+                Button {
+                    Task { await normalizer.checkReplace(controller.recordedURLs) }
+                } label: {
+                    pill("교체 확인")
+                }
+                .disabled(controller.recordedURLs.isEmpty || normalizer.state.isBusy)
+
+                // 조건을 바꿔 처음부터 다시 잴 때. 앱을 재실행하지 않고
+                // 세로 다음 가로를 재는 경우가 있다.
+                Button {
+                    normalizer.clearHistory()
+                } label: {
+                    pill("기록 지우기")
+                }
+                .disabled(normalizer.history.isEmpty || normalizer.state.isBusy)
+            }
+
+            Group {
+                switch normalizer.state {
+                case .idle:
+                    EmptyView()
+                case .running(let label):
+                    Text("\(label)…").foregroundStyle(.white)
+                case .done(let summary):
+                    Text("✓ \(summary)").foregroundStyle(.green)
+                case .failed(let message):
+                    Text("✕ \(message)").foregroundStyle(.red)
+                }
+            }
+            .font(.system(.caption2, design: .monospaced))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
+
+            // 조건을 바꿔가며 연달아 재는 화면이다. 직전 값을 덮어쓰면 콘솔을
+            // 놓쳤을 때 앞 조건이 통째로 사라지므로 실행 내내 쌓아서 보여준다.
+            if !normalizer.history.isEmpty {
+                Text(normalizer.history.suffix(16).joined(separator: "\n"))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
+
+            if !normalizer.replaceReport.isEmpty {
+                Text(normalizer.replaceReport.joined(separator: "\n"))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
             }
