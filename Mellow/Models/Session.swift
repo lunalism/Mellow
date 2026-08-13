@@ -44,17 +44,26 @@ final class Session {
 // MARK: - 방향
 
 extension Session {
-    /// `orientationRaw` 하나에서 읽어내는 세 가지 상태.
+    /// `orientationRaw` 와 `clips` 에서 읽어내는 네 가지 상태.
     ///
-    /// `Orientation?` 만으로는 **미정과 값 손상이 구분되지 않는다.**
-    /// 둘 다 `nil` 로 보이지만 전자는 아직 첫 클립이 없는 정상 상태이고
-    /// 후자는 클립이 있는데 방향 값만 깨진 상태다. 정합성 복구(2-16)가
-    /// 둘을 갈라 봐야 하므로 상태를 타입으로 남긴다.
+    /// `Orientation?` 만으로는 **정상적인 미정과 값 손상이 구분되지 않는다.**
+    /// 전부 `nil` 로 보이지만 성질이 다르다. 정합성 복구(2-16)가 이들을
+    /// 갈라 봐야 하므로 상태를 타입으로 남긴다.
     ///
-    /// 저장 프로퍼티를 늘리지 않는다 — 세 상태 전부 `orientationRaw` 에서 파생된다.
+    /// **`orientationRaw` 가 `nil` 이 되는 경로는 둘이다.** 아직 첫 클립이
+    /// 없어서(정상) 와, 값이 있었는데 사라져서(손상). 클립 유무가 이 둘을
+    /// 가른다 — 클립이 있는데 방향이 없는 세션은 존재할 수 없는 상태다.
+    /// 이를 `.unset` 으로 뭉뚱그리면 2-8이 "아직 미정" 으로 보고 다음 촬영에
+    /// 방향을 다시 맡기며, 반대 계열이 나오면 **한 세션에 세로·가로가 섞여
+    /// 정규화로도 복구되지 않는다.**
+    ///
+    /// 저장 프로퍼티를 늘리지 않는다 — 네 상태 전부 `orientationRaw` 와
+    /// `clips` 관계에서 파생된다.
     enum OrientationState: Equatable {
-        /// 아직 방향이 정해지지 않았다. 첫 클립이 정한다.
+        /// 아직 방향이 정해지지 않았다. 첫 클립이 정한다. **정상 상태다.**
         case unset
+        /// 클립이 있는데 방향 값이 없다. 존재할 수 없는 상태이며 복구 대상이다.
+        case missing
         /// 정상적으로 해석된 방향.
         case decided(Orientation)
         /// 값이 있는데 `Orientation` 으로 해석되지 않는다. 복구 대상이다.
@@ -62,14 +71,19 @@ extension Session {
     }
 
     /// 표시 경로에서도 불리므로 크래시하거나 throw 하지 않는다.
+    ///
+    /// `clips` 를 읽으면 관계가 fault in 되지만, 세션 목록이 어차피 클립 수와
+    /// 총 길이를 표시하므로(PRD 4.2) 실질적인 추가 비용은 없다.
     var orientationState: OrientationState {
-        guard let raw = orientationRaw else { return .unset }
+        guard let raw = orientationRaw else {
+            return clips.isEmpty ? .unset : .missing
+        }
         guard let value = Orientation(rawValue: raw) else { return .corrupted(rawValue: raw) }
         return .decided(value)
     }
 
-    /// 해석된 방향만 돌려준다. 미정과 손상은 둘 다 `nil` 이며,
-    /// 그 둘을 구분해야 하면 `orientationState` 를 본다.
+    /// 해석된 방향만 돌려준다. `.decided` 가 아닌 세 상태는 전부 `nil` 이며,
+    /// 그들을 구분해야 하면 `orientationState` 를 본다.
     ///
     /// 계산 프로퍼티이므로 `@Transient` 는 필요 없다. 애초에 저장 대상이 아니다.
     var orientation: Orientation? {
