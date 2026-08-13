@@ -216,6 +216,26 @@ cannot be shared across concurrency contexts")`로 `Sendable`이 막혀 있다.
 - 메타데이터: `Library/Application Support/Mellow.store`
 - 영상: `Documents/sessions/{uuid}/clips/`
 
+## 파일 경로 규칙
+
+**`SessionFileStore`만 세션 디렉터리 경로를 안다** (2-3). 다른 곳에서
+경로를 조합하지 않는다. 2-4·2-5·2-12·2-16·2-D가 전부 이 타입을 거친다.
+
+- **절대 경로를 저장하지 않는다.** iOS는 앱 재설치·복원 시 컨테이너 경로가
+  바뀐다. 저장되는 것은 `Session.id`와 `Clip.fileName`뿐이고 절대 경로는
+  매번 조합한다. 이 타입에는 경로를 **돌려주는** API만 있고 **받아 보관하는**
+  API가 없다 — 규칙을 깰 표면 자체를 두지 않는다
+- 루트를 주입받는다. 앱은 `SessionFileStore.shared`를 쓰고, Mac 하네스는
+  임시 디렉터리를 준다. 전역 상수로 박으면 하네스가 실제 `~/Documents`를
+  건드린다
+- 삭제는 "이미 없음"(`false` 반환)과 실패(throw)를 구분한다
+- **`sessions/`는 iCloud 백업에서 제외한다.** 완성본은 사진 앱에 저장되어
+  그쪽에서 백업되고, `sessions/`는 그것을 만들기 위한 작업 파일이다.
+  클립 30개가 570MB라 백업에 넣으면 사용자 iCloud 용량을 조용히 먹는다.
+  **맞바꾼 것은 기기 복원 시 세션이 사라진다는 것이다.** Phase 4에서 다시 본다
+- 정규화 임시 파일은 `.itemReplacementDirectory`에 만든다.
+  `replaceItemAt`이 원자적이려면 같은 볼륨이어야 하기 때문이다
+
 `Application Support`를 쓰는 이유는 스토어가 앱 내부 데이터이기 때문이다.
 `Documents`는 사용자에게 보이는 자리이며 파일 공유를 켜면 노출된다.
 **둘이 다른 디렉터리라는 사실이 2-16에서 중요하다** — 한쪽만 살아남는
