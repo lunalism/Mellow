@@ -191,6 +191,39 @@ passthrough는 반대로 Mac이 2.4배 빠르다(660 vs 277MB/s).
   원본 길이와 무관하게 같은 값으로 수렴하므로, 정규화한 클립의
   duration 메타데이터는 갱신해야 한다.
 
+## SwiftData 사용 원칙
+
+**메인 컨텍스트 전용이다 (2-2 확정).** 별도 `ModelContext`나 `ModelActor`를
+만들지 않는다. 모든 읽기·쓰기는 `@Environment(\.modelContext)`로 받는
+메인 컨텍스트에서 한다.
+
+- 2-3 ~ 2-12가 전부 메인 컨텍스트로 충분하다
+- 백그라운드에서 SwiftData를 쓰는 곳은 **2-18의 `Clip.duration` 갱신
+  한 곳뿐**이다. 정규화가 끝난 뒤의 쓰기 한 번이라 급하지 않고 메인으로
+  hop 하면 된다
+- `ModelActor`를 지금 깔면 컨텍스트 간 동기화·`PersistentIdentifier`
+  전달·두 컨텍스트가 같은 객체를 다르게 보는 문제가 **지금 없는 문제로
+  새로 들어온다**
+- 나중에 필요해지면 추가하는 것은 국소적이지만, 지금 깔았다가 걷어내는
+  것은 그 위에 쌓인 2-3 ~ 2-12를 전부 건드려야 한다
+
+`ModelContext`는 SDK에서 `@available(*, unavailable, message: "contexts
+cannot be shared across concurrency contexts")`로 `Sendable`이 막혀 있다.
+컨텍스트를 격리 경계 너머로 넘기는 것은 지원되지 않는 사용법이다.
+
+**저장 위치가 갈라져 있다.**
+
+- 메타데이터: `Library/Application Support/Mellow.store`
+- 영상: `Documents/sessions/{uuid}/clips/`
+
+`Application Support`를 쓰는 이유는 스토어가 앱 내부 데이터이기 때문이다.
+`Documents`는 사용자에게 보이는 자리이며 파일 공유를 켜면 노출된다.
+**둘이 다른 디렉터리라는 사실이 2-16에서 중요하다** — 한쪽만 살아남는
+복원이 성립하므로 고아 파일과 고아 메타데이터가 양방향으로 생길 수 있다.
+
+`mainContext.autosaveEnabled`는 기본 `true`다(실측). 삽입·삭제가 명시적
+`save()` 없이 반영된다.
+
 ## Swift 언어 모드
 
 **언어 모드 5를 유지한다 (`SWIFT_VERSION: "5.0"`). 2-18 착수 직전에

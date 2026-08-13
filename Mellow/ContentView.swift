@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import UIKit
 
 // 1-1 / 1-2 확인용 화면. 프리뷰와 디버그 오버레이만 있다.
@@ -9,6 +10,10 @@ struct ContentView: View {
     @StateObject private var normalizer = ClipNormalizeController()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingPreview = false
+
+    // 2-2 저장 확인용. 메인 컨텍스트만 쓴다 — 별도 컨텍스트를 만들지 않는다.
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Session.createdAt, order: .reverse) private var sessions: [Session]
 
     var body: some View {
         ZStack {
@@ -34,6 +39,10 @@ struct ContentView: View {
                 ProgressView()
                     .tint(.white)
             }
+
+            // switch 밖에 둔다 — 시뮬레이터에는 카메라가 없어 setupState 가
+            // .configured 로 가지 않는다. 저장 확인은 카메라와 무관해야 한다.
+            storeProbe
         }
         .fullScreenCover(isPresented: $showingPreview) {
             PreviewScreen(urls: controller.recordedURLs) {
@@ -85,6 +94,63 @@ struct ContentView: View {
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - 저장 확인 (2-2)
+
+    // SwiftData 가 실제로 살아남는지 눈으로 보는 자리다. 게이트 2의
+    // "앱을 강제 종료했다 켜도 세션과 클립이 그대로 남아 있다" 를 미리 본다.
+    //
+    // 3-13 에서 다른 측정 버튼과 함께 지운다. 그때까지 남기는 이유는
+    // 2-3(파일 관리자) 이후로도 세션이 제대로 쌓이는지 확인할 자리가
+    // 필요하기 때문이다. 홈 화면은 3-8 에서 만든다.
+    private var storeProbe: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Text("세션 \(sessions.count)개")
+                .font(.system(.footnote, design: .monospaced))
+
+            // 최근 3개만. 목록 화면이 아니라 살아남았는지 보는 자리다.
+            ForEach(sessions.prefix(3)) { session in
+                Text(verbatim: "\(session.title) · \(Self.describe(session.orientationState))")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    modelContext.insert(Session(title: Self.probeTitle()))
+                } label: {
+                    pill("세션 +1")
+                }
+
+                Button {
+                    for session in sessions { modelContext.delete(session) }
+                } label: {
+                    pill("전부 삭제")
+                }
+                .disabled(sessions.isEmpty)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(12)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private static func probeTitle() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: Date())
+    }
+
+    private static func describe(_ state: Session.OrientationState) -> String {
+        switch state {
+        case .unset: return "미정"
+        case .missing: return "방향 없음(손상)"
+        case .decided(let orientation): return orientation.rawValue
+        case .corrupted(let raw): return "손상(\(raw))"
+        }
     }
 
     // MARK: - 임시 컨트롤
