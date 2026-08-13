@@ -502,6 +502,15 @@ final class CaptureSessionController: ObservableObject {
         spec.report()
     }
 
+    /// 세션에 저장된 클립을 Phase 1 임시 목록에서 뺀다 (2-4).
+    ///
+    /// 파일이 세션 디렉터리로 **이동**했으므로 이 목록의 URL 은 더 이상
+    /// 가리키는 것이 없다. 남겨두면 미리보기·비교가 죽은 경로를 잡는다.
+    /// 이 목록 자체가 3-13 에서 사라진다.
+    func forgetRecorded(_ url: URL) {
+        recordedURLs.removeAll { $0 == url }
+    }
+
     private static func deleteFile(at url: URL) {
         do {
             try FileManager.default.removeItem(at: url)

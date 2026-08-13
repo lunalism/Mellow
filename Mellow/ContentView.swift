@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CoreMedia
 import UIKit
 
 // 1-1 / 1-2 확인용 화면. 프리뷰와 디버그 오버레이만 있다.
@@ -14,6 +15,7 @@ struct ContentView: View {
     // 2-2 저장 확인용. 메인 컨텍스트만 쓴다 — 별도 컨텍스트를 만들지 않는다.
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Session.createdAt, order: .reverse) private var sessions: [Session]
+    @State private var probeNote: String?
 
     var body: some View {
         ZStack {
@@ -111,20 +113,47 @@ struct ContentView: View {
 
             // 최근 3개만. 목록 화면이 아니라 살아남았는지 보는 자리다.
             ForEach(sessions.prefix(3)) { session in
-                Text(verbatim: "\(session.title) · \(Self.describe(session.orientationState))")
+                Text(verbatim: "\(session.title) · \(session.clips.count)컷 · "
+                     + Self.describe(session.orientationState))
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.7))
             }
 
+            if let note = probeNote {
+                Text(verbatim: note)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.yellow.opacity(0.8))
+            }
+
             HStack(spacing: 8) {
                 Button {
-                    modelContext.insert(Session(title: Self.probeTitle()))
+                    // 2-6 이 아니다. 디렉터리까지 만들어 둬야 클립을 받을 수 있다.
+                    let session = Session(title: Self.probeTitle())
+                    do {
+                        try SessionFileStore.shared.createSessionDirectory(session.id)
+                        modelContext.insert(session)
+                        probeNote = nil
+                    } catch {
+                        probeNote = "세션 디렉터리 실패: \(error)"
+                    }
                 } label: {
                     pill("세션 +1")
                 }
 
+                // 2-4 확인용. 자동 연결은 2-6·2-7 이 들어와야 성립한다.
                 Button {
-                    for session in sessions { modelContext.delete(session) }
+                    Task { await saveLastClipToNewestSession() }
+                } label: {
+                    pill("클립 저장")
+                }
+                .disabled(sessions.isEmpty || controller.recordedURLs.isEmpty)
+
+                Button {
+                    for session in sessions {
+                        try? SessionFileStore.shared.removeSessionDirectory(session.id)
+                        modelContext.delete(session)
+                    }
+                    probeNote = nil
                 } label: {
                     pill("전부 삭제")
                 }
@@ -136,6 +165,26 @@ struct ContentView: View {
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    /// 마지막으로 찍은 클립을 최신 세션에 저장한다 (2-4 확인용).
+    ///
+    /// **duration 은 파일에서 읽는다.** 버튼을 누른 시간이 아니다 (1-7).
+    /// 1초 미만 폐기는 컨트롤러가 이미 걸러내므로 여기까지 오지 않는다.
+    private func saveLastClipToNewestSession() async {
+        guard let session = sessions.first,
+              let source = controller.recordedURLs.last else { return }
+        do {
+            let spec = try await ClipSpec.load(from: source)
+            let clip = try ClipStore(context: modelContext)
+                .save(clipAt: source,
+                      duration: CMTimeGetSeconds(spec.duration),
+                      to: session)
+            controller.forgetRecorded(source)
+            probeNote = String(format: "저장 order=%d %.3fs", clip.order, clip.duration)
+        } catch {
+            probeNote = "저장 실패: \(error)"
+        }
     }
 
     private static func probeTitle() -> String {
