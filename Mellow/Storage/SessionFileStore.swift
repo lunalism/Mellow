@@ -148,6 +148,27 @@ struct SessionFileStore {
         }
     }
 
+    /// 세션에 들인 파일을 밖으로 되돌린다. `adopt` 의 역방향.
+    ///
+    /// 클립 저장이 메타데이터 단계에서 실패했을 때 쓴다 (2-5 리뷰).
+    /// **되돌려야 호출부가 같은 원본 URL 로 재시도할 수 있다** — 지우면
+    /// 녹화본의 유일한 사본이 사라진다.
+    ///
+    /// 목적지 디렉터리가 없으면 만든다. 되돌릴 자리는 보통
+    /// `temporaryDirectory` 이고 시스템이 언제든 비울 수 있으므로,
+    /// 되돌려 놓았다고 해서 영원히 남는다는 뜻은 아니다.
+    func release(fileName: String, in id: UUID, to destination: URL) throws {
+        do {
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: clipURL(fileName: fileName, in: id),
+                                             to: destination)
+        } catch {
+            throw SessionFileError.mapping(error)
+        }
+    }
+
     // MARK: 삭제
 
     /// 세션 디렉터리를 통째로 지운다 (2-12).
