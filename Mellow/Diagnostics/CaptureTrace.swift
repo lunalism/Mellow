@@ -21,7 +21,7 @@ final class CaptureTrace: @unchecked Sendable {
     ///   CLI:   xcrun devicectl device process launch --console \
     ///            --device <UDID> com.lunalism.mellow -MellowTrace
     #if DEBUG
-    static var isEnabled = ProcessInfo.processInfo.arguments.contains("-MellowTrace")
+    static let isEnabled = ProcessInfo.processInfo.arguments.contains("-MellowTrace")
     #else
     static let isEnabled = false
     #endif

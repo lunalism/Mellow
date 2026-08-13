@@ -74,6 +74,7 @@ mellow/
     - 새 Swift 파일을 추가한 뒤에는 `xcodegen generate`를 다시 실행하면 된다. `sources: Mellow` 디렉터리 전체가 대상이므로 빌드 포함 여부를 파일마다 확인할 필요가 없다
     - `.pbxproj`를 직접 편집하지 않는다. 구조·빌드 설정 변경은 `project.yml`만 고친다
     - Swift 언어 모드는 5로 고정했다 (`SWIFT_VERSION: "5.0"`). AVFoundation 동시성 어노테이션 문제 때문이며 Phase 2에서 재검토한다
+    - **2-2에서 재검토 완료 — 5를 유지하고 2-18 착수 직전에 다시 본다.** 근거는 아래 "Swift 언어 모드 재검토 (2-2)" 참고
 - [x] **0-5** `Info.plist` 권한 문구 작성
     - `project.yml`의 `info.properties`에서 생성한다. Info.plist 파일을 직접 만들지 않는다
     - `NSCameraUsageDescription`
@@ -334,6 +335,54 @@ mellow/
 - `FileManager.replaceItemAt` 방식이 성립한다. 정상 교체 후 트랙이 온전하고, 잘못된 대상 URL과 새 파일 없음 두 경우 모두 throw 하며 **원본이 크기까지 동일하게 살아남는다.** 두 계열에서 확인했다
 
 측정 코드는 `NormalizeMeasurement.swift` / `ClipNormalizeController.swift` 와 `ContentView`의 측정 버튼이며 3-13에서 제거한다.
+
+---
+
+## Swift 언어 모드 재검토 (2-2)
+
+0-4에서 미뤄둔 판단. **결론: 5를 유지하고 2-18 착수 직전에 다시 본다.**
+
+**실측 (Xcode 26.6 / SDK iOS 26.5).** 언어 모드 6에서 깨지는 곳은
+**총 3건 · 2파일**이다.
+
+|파일|건수|내용|성격|
+|---|---|---|---|
+|`CaptureTrace.swift:24`|1|`static var isEnabled` 가 nonisolated 전역 가변 상태|**해소함.** 쓰기가 없어 `let` 으로 바꿨다|
+|`ClipNormalizeController.swift:160,288`|2|`AVComposition` 을 `@MainActor` 에서 nonisolated 함수로 sending|남은 블로커|
+
+**Phase 1 카메라 파이프라인은 0건이다.** 0-4 당시 "AVFoundation 동시성
+어노테이션 문제"라는 인상보다 범위가 훨씬 좁았다.
+`CaptureSessionController`는 경고 3건뿐이고 언어 모드 6에서도 에러가
+아니다. **2-1 모델 3개는 Swift 6에서 경고조차 없이 통과한다** (단독
+컴파일로 확인).
+
+**`#Predicate` 매크로 전개의 `KeyPath` Sendable 경고는 실체가 없다.**
+언어 모드 5 + strict concurrency 에서만 "this is an error in the Swift 6
+language mode"로 뜨고, 실제 언어 모드 6에서는 나오지 않는다.
+
+**그런데도 5를 유지하는 이유.**
+
+- 남은 블로커는 `AVComposition`이 격리 경계를 넘는 문제다. **SDK 26.5에서도
+  `AVComposition`은 여전히 non-Sendable이다** — 0-4의 원인이 해소되지 않았다
+- `sending` 파라미터로는 안 된다. 호출부가 `Prepared` 구조체를 계속 들고
+  있어 소유권 이전이 성립하지 않는다(실제로 시도해 확인)
+- 제대로 고치려면 "prepare + export를 메인 밖에서 한 단위로 돌린다"는
+  **정규화 경로의 동시성 계약**을 정해야 한다. 그 계약의 진짜 소비자는
+  2-18이고, 지금 정하면 **3-13에서 삭제될 측정 코드의 호출 형태에 맞춰
+  설계**하게 된다
+- `ClipNormalizeController`는 B 라운드 측정 코드다. 지금 구조를 바꾸면
+  1.77초의 근거가 된 코드 형태가 달라진다
+- 2-3 ~ 2-16이 만들 코드는 **메인 컨텍스트 전용**이라 언어 모드 5에서도
+  동시성 부채가 거의 쌓이지 않는다
+
+**언제 다시 보나: 2-18 착수 직전.** 그때는 `AVComposition` 경계 문제를
+어차피 풀어야 하고(정규화가 백그라운드로 돌아야 한다), 2-19의 직렬 큐가
+이 프로젝트에서 동시성 검사가 가장 값어치 있는 지점이다. 무기한 미룸이
+아니다.
+
+**중간 경로(`SWIFT_STRICT_CONCURRENCY=complete` 유지)는 택하지 않았다.**
+경고가 1건에서 9건으로 늘고 그중 3건은 위의 실체 없는 `#Predicate` 경고다.
+경고를 무시하는 습관이 생기는 값이 얻는 것보다 크다.
 
 ---
 
