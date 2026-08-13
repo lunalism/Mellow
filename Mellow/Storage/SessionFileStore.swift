@@ -119,6 +119,35 @@ struct SessionFileStore {
         }
     }
 
+    // MARK: 들이기
+
+    /// 밖에서 만들어진 파일을 세션으로 들인다. **이동이다.**
+    ///
+    /// 녹화가 끝난 파일은 `temporaryDirectory` 에 있다. 목적지와 같은 볼륨
+    /// (둘 다 앱 컨테이너)이라 이동은 rename 이고 디스크를 두 배로 쓰지 않는다.
+    /// 순서와 근거는 `ClipStore.save(clipAt:...)` 참고 (2-4).
+    ///
+    /// **실패하면 원본은 제자리에 남는다.** `moveItem` 이 원본을 건드리기
+    /// 전에 실패하므로 재시도 여지가 그대로다.
+    ///
+    /// 목적지 디렉터리가 없으면 만든다. 2-6 이 세션을 만들 때 이미 있지만
+    /// 지워졌을 가능성이 있어 보장하고 간다.
+    ///
+    /// - Note: 목적지에 같은 이름이 이미 있으면 실패한다. 조용히 덮어쓰지
+    ///   않는다 — 클립 파일명은 클립 id 에서 나오므로 겹치면 그것 자체가
+    ///   버그다 (2-4).
+    func adopt(fileAt source: URL, as fileName: String, in id: UUID) throws {
+        do {
+            try FileManager.default.createDirectory(at: clipsDirectory(id),
+                                                    withIntermediateDirectories: true)
+            try excludeSessionsRootFromBackup()
+            try FileManager.default.moveItem(at: source,
+                                             to: clipURL(fileName: fileName, in: id))
+        } catch {
+            throw SessionFileError.mapping(error)
+        }
+    }
+
     // MARK: 삭제
 
     /// 세션 디렉터리를 통째로 지운다 (2-12).

@@ -449,6 +449,15 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
     - 실패는 `.outOfSpace` / `.notPermitted` / `.failed(underlying:)` 셋으로
       접는다. **`.outOfSpace`를 따로 둔 이유는 2-14다** — 뭉뚱그리면
       "공간을 비우세요"를 말할 근거가 사라진다
+    - **`adopt(fileAt:as:in:)` 추가 (2-4 직후).** 밖에서 만들어진 파일을
+      세션으로 들이는 동작. 2-4가 쓰면서 `FileManager` 직접 호출과
+      `SessionFileError.mapping` 호출이 이 타입 밖으로 새어나간 것을 보고
+      되돌렸다. **경로에 이어 파일 변경 표면도 여기로 모았다** — 2-3에서
+      절대 경로 금지를 API 형태로 강제한 것과 같은 논리다.
+      2-18의 `replaceItemAt`이 같은 모양이 될 것이므로 지금 막지 않으면
+      새어나감이 두 곳으로 늘어난다.
+      `replace(clipNamed:with:in:)`은 만들지 않았다 — 2-18에서 실제 요구가
+      드러날 때 붙인다. 지금 만들면 소비자 없는 API가 하나 더 생긴다
 
     **임시 파일 위치 — `.itemReplacementDirectory` (확정)**
 

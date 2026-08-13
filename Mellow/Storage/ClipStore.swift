@@ -91,15 +91,18 @@ struct ClipStore {
         // 파일명은 클립 id 에서 나온다. `order` 로 짓지 않는다 — 2-5 가
         // 삭제 후 order 를 재정렬하는데, 그때마다 파일을 개명할 수는 없다.
         let fileName = "\(clipID.uuidString).mov"
-        let destination = files.clipURL(fileName: fileName, in: sessionID)
 
-        // 1) 파일. 디렉터리는 2-6 이 세션을 만들 때 이미 있지만, 지워졌을
-        //    가능성이 있으므로 보장하고 간다. 이미 있으면 아무 일도 없다.
+        // 1) 파일. 이동·디렉터리 보장·에러 분류가 전부 SessionFileStore 안에
+        //    있다. 이 층은 FileManager 를 직접 부르지 않는다.
         do {
-            try files.createSessionDirectory(sessionID)
-            try FileManager.default.moveItem(at: sourceURL, to: destination)
+            try files.adopt(fileAt: sourceURL, as: fileName, in: sessionID)
+        } catch let error as SessionFileError {
+            throw ClipSaveError.file(error)
         } catch {
-            throw ClipSaveError.file(SessionFileError.mapping(error))
+            // `adopt` 는 늘 `SessionFileError` 로 접어서 던지므로 여기 오지
+            // 않는다. 그래도 열어두면 `ClipSaveError` 가 아닌 것이 새어나가
+            // 호출부의 분류가 깨지므로 막아둔다.
+            throw ClipSaveError.file(.failed(underlying: error))
         }
 
         // 2) 메타데이터.
