@@ -148,6 +148,15 @@ struct ContentView: View {
                 }
                 .disabled(sessions.isEmpty || controller.recordedURLs.isEmpty)
 
+                // 2-5 확인용. 2-11(마지막 컷 undo)이 아니다 — 여기서는
+                // 최신 세션의 마지막 컷을 그냥 지운다.
+                Button {
+                    deleteLastClipOfNewestSession()
+                } label: {
+                    pill("컷 삭제")
+                }
+                .disabled(sessions.first?.clips.isEmpty ?? true)
+
                 Button {
                     for session in sessions {
                         try? SessionFileStore.shared.removeSessionDirectory(session.id)
@@ -184,6 +193,23 @@ struct ContentView: View {
             probeNote = String(format: "저장 order=%d %.3fs", clip.order, clip.duration)
         } catch {
             probeNote = "저장 실패: \(error)"
+        }
+    }
+
+    /// 최신 세션의 마지막 컷을 지운다 (2-5 확인용).
+    ///
+    /// 방향 초기화는 하지 않는다 — `sessionBecameEmpty` 를 받아 표시만 하고,
+    /// 실제 초기화는 2-10 의 몫이다.
+    private func deleteLastClipOfNewestSession() {
+        guard let session = sessions.first,
+              let clip = session.orderedClips.last else { return }
+        do {
+            let result = try ClipStore(context: modelContext).delete(clip)
+            probeNote = "삭제 남은 \(result.remainingCount)컷"
+                + " 파일=\(result.fileRemoved ? "지움" : "없었음")"
+                + (result.sessionBecameEmpty ? " · 비었음(2-10 대상)" : "")
+        } catch {
+            probeNote = "삭제 실패: \(error)"
         }
     }
 

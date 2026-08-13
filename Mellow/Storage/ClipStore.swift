@@ -26,6 +26,22 @@ enum ClipSaveError: Error, CustomStringConvertible {
     }
 }
 
+/// 클립 삭제 실패.
+///
+/// **메타데이터 단계만 실패로 본다.** 파일 삭제가 실패해도 사용자가 본
+/// 결과는 이미 "지워짐"이고 남는 것은 2-16 이 치울 고아 파일뿐이다.
+enum ClipDeleteError: Error, CustomStringConvertible {
+    /// 메타데이터를 지우지 못했다. **클립도 파일도 그대로 남아 있다.**
+    case metadata(underlying: Error)
+
+    var description: String {
+        switch self {
+        case .metadata(let underlying):
+            return "클립을 지우지 못했습니다 — \(underlying)"
+        }
+    }
+}
+
 /// 메인 컨텍스트 전용이다 (CLAUDE.md "SwiftData 사용 원칙").
 @MainActor
 struct ClipStore {
@@ -156,7 +172,102 @@ struct ClipStore {
     /// **이미 있는 order 와 겹친다.** 겹치면 정렬이 모호해져 완성본의 컷
     /// 순서가 흔들린다. 빈 번호가 생기는 것은 정렬에 아무 영향이 없다 —
     /// **틈은 무해하고 중복은 해롭다.**
+    ///
+    /// 2-16 이 파일 없는 메타데이터를 지우면 재정렬 없이 틈이 생길 수 있다.
+    /// 그 경로가 있는 한 이 선택은 계속 유효하다.
     private func nextOrder(in session: Session) -> Int {
         (session.clips.map(\.order).max() ?? -1) + 1
+    }
+
+    // MARK: - 삭제 (2-5)
+
+    /// 클립 하나를 지운 결과.
+    struct Deletion {
+        /// 이 세션에 남은 클립 수.
+        let remainingCount: Int
+        /// 파일이 실제로 있었고 지워졌으면 `true`.
+        /// 이미 없었으면 `false` — 실패가 아니다.
+        let fileRemoved: Bool
+
+        /// **이 삭제로 클립이 0개가 되었는가.**
+        /// 2-10(클립 0개면 방향 미정으로 초기화)이 이 값을 본다.
+        var sessionBecameEmpty: Bool { remainingCount == 0 }
+    }
+
+    /// 클립을 지운다. 파일과 메타데이터를 함께 없애고 `order` 를 다시 매긴다.
+    ///
+    /// # 순서: 메타데이터 먼저, 파일 나중 — **2-4와 반대다**
+    ///
+    /// 순서가 뒤집힌 것이지 원칙이 뒤집힌 것이 아니다. 지키는 것은 늘 하나다:
+    /// **메타데이터가 있으면 파일도 있다.**
+    ///
+    /// - 저장에서는 파일을 먼저 놓아야 메타데이터가 파일보다 앞서지 않는다
+    /// - 삭제에서는 메타데이터를 먼저 지워야 메타데이터가 파일보다 오래 남지 않는다
+    ///
+    /// 파일을 먼저 지우면 그 사이에 죽었을 때 **파일 없는 클립**이 남는다.
+    /// 화면에는 컷이 있는데 재생도 병합도 안 되는 상태이고, 2-16 이 돌기
+    /// 전까지 그 세션이 깨진다. 반대로 메타데이터를 먼저 지우면 남는 것은
+    /// **고아 파일**뿐이라 2-16 이 조용히 치우면 끝난다.
+    ///
+    /// # 재정렬은 삭제와 같은 저장 단위다
+    ///
+    /// 삭제와 재번호를 다 해놓고 `save()` 를 한 번 부른다. 그래서
+    /// **재정렬이 절반만 반영되는 상태는 스토어에 생기지 않는다** — 저장이
+    /// 실패하면 통째로 되돌아가고 클립은 그대로 남는다.
+    ///
+    /// 남은 클립 전부에 0부터 다시 매긴다. 뒤쪽만 당기지 않는 이유는 이미
+    /// 있던 틈(2-16 이 만든)도 같이 메워지기 때문이다. 값이 그대로인 클립은
+    /// 건드리지 않는다.
+    ///
+    /// `fileName` 은 클립 id 에서 나오므로 **재정렬해도 파일을 개명하지
+    /// 않는다** (2-4 결정).
+    ///
+    /// # 마지막 클립도 같은 경로다
+    ///
+    /// 재정렬할 뒤쪽이 없을 뿐이고 분기하지 않는다. 2-11(마지막 컷 undo)이
+    /// 이 함수를 그대로 쓴다.
+    @discardableResult
+    func delete(_ clip: Clip) throws -> Deletion {
+        let session = clip.session
+        let fileName = clip.fileName
+
+        // 남길 클립을 지금 정한다. 삭제 후의 `session.clips` 를 믿지 않는다 —
+        // 관계가 언제 갱신되는지에 기대지 않기 위해서다.
+        let remaining = (session?.clips ?? [])
+            .filter { $0.id != clip.id }
+            .sorted { $0.order < $1.order }
+
+        // 1) 메타데이터. 삭제와 재번호가 한 단위다.
+        context.delete(clip)
+        for (index, each) in remaining.enumerated() where each.order != index {
+            each.order = index
+        }
+
+        do {
+            try context.save()
+        } catch {
+            // 통째로 되돌린다. 클립은 살아 있고 파일도 그대로다.
+            // 인메모리 객체는 stale 이므로 이 에러를 받은 쪽은 다시 읽어야 한다
+            // (CLAUDE.md "API 주의사항").
+            context.rollback()
+            throw ClipDeleteError.metadata(underlying: error)
+        }
+
+        // 2) 파일. 여기서 실패해도 **되돌리지 않는다.**
+        //
+        // 메타데이터가 이미 사라져 사용자가 본 결과는 이미 "지워짐"이다.
+        // 남는 것은 고아 파일이고 2-16 이 치운다. 되돌리려고 메타데이터를
+        // 되살리면 오히려 지운 컷이 되살아나 사용자를 놀라게 한다.
+        var fileRemoved = false
+        if let sessionID = session?.id {
+            do {
+                fileRemoved = try files.removeClip(fileName: fileName, in: sessionID)
+            } catch {
+                // 삼키지 않고 흔적을 남긴다. 실패해도 호출부에는 성공이다.
+                print("[clip] ✕ 파일 삭제 실패 \(fileName) — \(error). 고아로 남으며 2-16 이 치운다")
+            }
+        }
+
+        return Deletion(remainingCount: remaining.count, fileRemoved: fileRemoved)
     }
 }
