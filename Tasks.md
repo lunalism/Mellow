@@ -360,8 +360,13 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
       클립 유무가 이 둘을 가른다. 처음에는 전자만 고려해 `.unset`으로
       뭉뚱그렸고 Codex adversarial review에서 지적받아 고쳤다 — 뭉뚱그리면
       2-8이 방향을 다시 정해 계열 혼재가 만들어질 수 있다
-    - predicate 팩토리는 `matching(_:)` / `orientationUnset()` /
+    - predicate 팩토리는 `matching(_:)` / `orientationRawIsNil()` /
       `inProgress()` 세 개. 전부 `String`을 캡처한다
+    - **`orientationRawIsNil()`은 저장 상태 기준이라 `.unset`과 `.missing`을
+      함께 반환한다.** 조회로는 갈리지 않으므로 구분이 필요하면 결과를
+      `orientationState`로 다시 걸러야 한다. 2-8이 이를 빠뜨리면 `.missing`
+      세션에 방향을 다시 정해 계열 혼재가 만들어진다. 팩토리를 나눌지는
+      2-7·2-16의 실제 사용 형태를 보고 정한다
     - 클립 순서는 모델의 `orderedClips`가 책임진다. SwiftData의 to-many
       관계는 순서를 보장하지 않으므로 호출부에 맡기지 않는다
 - [ ] **2-2** `ModelContainer` 설정 및 앱 진입점 연결

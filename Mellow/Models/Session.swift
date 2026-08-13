@@ -107,11 +107,19 @@ extension Session {
         return #Predicate<Session> { $0.orientationRaw == raw }
     }
 
-    /// 방향이 아직 정해지지 않은 세션.
+    /// 방향 값이 저장돼 있지 않은 세션. **저장 상태 기준이지 의미 기준이 아니다.**
+    ///
+    /// **`.unset` 과 `.missing` 을 함께 반환한다.** 둘 다 `orientationRaw` 가
+    /// `nil` 이라 조회로는 갈리지 않는다. 전자는 첫 클립이 아직 없는 정상
+    /// 상태이고 후자는 클립이 있는데 값이 사라진 손상 상태다.
+    /// **구분해야 하면 결과를 `orientationState` 로 다시 걸러라** — 특히
+    /// "방향 미정이니 첫 클립이 정하면 된다" 로 이어지는 경로(2-8)에서는
+    /// 반드시 걸러야 한다. `.missing` 세션에 그 판단을 적용하면 방향이 다른
+    /// 계열로 다시 정해져 한 세션에 세로·가로가 섞인다.
     ///
     /// `$0.orientation == nil` 은 컴파일이 통과하고 런타임에 ObjC 예외로 죽는다.
     /// 그 형태를 쓸 일이 없도록 여기서 대신 만든다.
-    static func orientationUnset() -> Predicate<Session> {
+    static func orientationRawIsNil() -> Predicate<Session> {
         #Predicate<Session> { $0.orientationRaw == nil }
     }
 
