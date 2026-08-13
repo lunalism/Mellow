@@ -343,12 +343,21 @@ Phase 1에서 검증된 파이프라인 위에 세션 개념을 올린다.
 
 ### 2-A. 저장 계층
 
-- [ ] **2-1** SwiftData 모델 정의 (`Session`, `Clip`, `Orientation`)
+- [x] **2-1** SwiftData 모델 정의 (`Session`, `Clip`, `Orientation`)
     - **스키마 형태 확정 (A 라운드).** `Orientation`은 `String` raw value로
       저장하고 계산 프로퍼티로 감싼다. `#Predicate`가 enum을 지원하지 않기
       때문이며, 근거는 CLAUDE.md "API 주의사항" 참고. 확정된 설계 결정(방향
       2값)에는 영향이 없다 — 바뀌는 것은 영속화 형태뿐이다.
       `Clip`에는 enum 필드를 두지 않으므로 이 제약에 걸리지 않는다.
+    - `Mellow/Models/` 아래 `Orientation` / `Session` / `Clip` 세 파일
+    - **`Session.OrientationState` (`unset` / `decided` / `corrupted`)로
+      미정과 값 손상을 구분한다.** `Orientation?` 만으로는 둘 다 `nil`로
+      보인다. 저장 프로퍼티는 늘리지 않았다 — 세 상태 전부 `orientationRaw`
+      에서 파생된다. 복구는 2-16의 몫이며 여기서는 판별 수단만 남겼다
+    - predicate 팩토리는 `matching(_:)` / `orientationUnset()` /
+      `inProgress()` 세 개. 전부 `String`을 캡처한다
+    - 클립 순서는 모델의 `orderedClips`가 책임진다. SwiftData의 to-many
+      관계는 순서를 보장하지 않으므로 호출부에 맡기지 않는다
 - [ ] **2-2** `ModelContainer` 설정 및 앱 진입점 연결
 - [ ] **2-3** 파일 관리자 구현
     - 세션 디렉터리 생성 / 삭제
