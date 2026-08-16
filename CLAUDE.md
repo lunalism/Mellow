@@ -137,8 +137,8 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
   전부 합쳐 1.3ms로, 최적화할 여지가 없다.
 - 세션 시작 지연을 다룰 때 이 값이 기준이다. 205ms를 줄이려는 시도 대신
   그 시간 동안 무엇을 보여줄지를 다룬다.
-- 재측정이 필요하면 `CaptureTrace`를 켠다. 기본은 꺼져 있고 릴리스 빌드에서는
-  아예 컴파일되지 않는다. 실행 인자 `-MellowTrace`로 켠다:
+- 재측정이 필요하면 `CaptureTrace`를 켠다. 기본은 꺼져 있다. 실행 인자
+  `-MellowTrace`로 켠다:
 
   ```
   xcrun devicectl device process launch --console --terminate-existing \
@@ -148,6 +148,27 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
   Xcode에서는 Scheme > Run > Arguments Passed On Launch에 넣는다.
   `--console`이 붙어 있어야 stdout이 보인다. 앱이 종료되면 콘솔 세션도
   끊기고, 재설치해도 끊긴다 — 그때는 다시 띄워야 한다.
+
+## 계측 코드와 릴리스 빌드
+
+**"`#if DEBUG`가 있다"와 "릴리스에 안 들어간다"는 다른 말이다.** 무엇을
+감쌌느냐로 갈린다. 이진을 직접 확인한 값이다(2-A).
+
+|타입|감싼 범위|Release 이진|
+|---|---|---|
+|`CaptureTrace`|`isEnabled` 한 줄|**타입이 그대로 들어간다** (심볼 38건)|
+|`StoreProbeLog`|파일 전체 + 호출부|들어가지 않는다 (심볼 0건, `[probe]` 문자열 0건)|
+
+`CaptureTrace`에서 릴리스에 제외되는 것은 `-MellowTrace` 인자를 읽는 줄
+하나뿐이다. `isEnabled`가 `false` 상수가 되어 각 메서드가 즉시 반환하므로
+**동작은 꺼지지만 타입·메서드·로그 문자열은 이진에 남는다.**
+
+**이 구분이 필요한 이유는 "`CaptureTrace`는 릴리스에 안 들어가니 괜찮다"를
+근거로 판단하면 틀리기 때문이다.** 앱 크기나 문자열 노출을 따질 때, 또는
+새 계측기를 넣으며 선례로 삼을 때 실제와 어긋난다.
+
+`CaptureTrace`도 파일 전체로 감쌀지는 정하지 않았다. 3-13에서 프로브·측정
+코드를 정리할 때 함께 본다.
 - 알림 배너는 `wasInterrupted`를 발생시키지 않으며 세션도 멈추지 않는다.
   `scenePhase`는 `.active`로 재진입하지만 세션이 이미 running이라 호출이
   생략된다. `.inactive`에서 정지하지 않기로 한 결정이 실측으로 검증됨 —

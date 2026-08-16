@@ -229,7 +229,18 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 Button {
                     for session in sessions {
-                        try? SessionFileStore.shared.removeSessionDirectory(session.id)
+                        // `try?` 로 삼키지 않는다. 프로브의 일은 어긋난 것을
+                        // 드러내는 것인데, 디렉터리 삭제가 실패해도 메타데이터는
+                        // 지워지므로 조용하면 고아 파일이 왜 생겼는지 알 수 없다.
+                        // Codex 리뷰 ②와 같은 종류다.
+                        do {
+                            try SessionFileStore.shared.removeSessionDirectory(session.id)
+                        } catch {
+                            #if DEBUG
+                            StoreProbeLog.failure(
+                                "세션 디렉터리 삭제 \(session.id.uuidString)", error)
+                            #endif
+                        }
                         modelContext.delete(session)
                     }
                     probeNote = nil
