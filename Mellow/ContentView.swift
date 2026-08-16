@@ -11,6 +11,9 @@ struct ContentView: View {
     @StateObject private var normalizer = ClipNormalizeController()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingPreview = false
+    /// 하단 측정 버튼(1-13~1-21)을 접어 둔다. 2-A 검증에는 쓰지 않고
+    /// 프리뷰만 가린다. 3-13 에서 측정 동선과 함께 통째로 사라진다.
+    @State private var showingTools = false
 
     // 2-2 저장 확인용. 메인 컨텍스트만 쓴다 — 별도 컨텍스트를 만들지 않는다.
     @Environment(\.modelContext) private var modelContext
@@ -28,9 +31,6 @@ struct ContentView: View {
                 }
                 .ignoresSafeArea()
 
-                debugOverlay
-                controls
-
             case .permissionBlocked:
                 permissionMessage
 
@@ -42,9 +42,20 @@ struct ContentView: View {
                     .tint(.white)
             }
 
-            // switch 밖에 둔다 — 시뮬레이터에는 카메라가 없어 setupState 가
-            // .configured 로 가지 않는다. 저장 확인은 카메라와 무관해야 한다.
-            storeProbe
+            // 오버레이는 switch 밖에, **하나의 레이아웃 안에** 둔다.
+            //
+            // 좌상단과 우상단을 각각 `maxWidth: .infinity` 로 띄우면 둘이
+            // 같은 자리를 차지해 글씨가 겹친다 (2-A 에서 드러남). 한 VStack
+            // 안에 넣으면 겹칠 방법이 없고 가운데가 프리뷰로 비워진다.
+            //
+            // 저장 프로브가 switch 밖에 있어야 하는 이유는 그대로다 —
+            // 시뮬레이터에는 카메라가 없어 setupState 가 .configured 로 가지
+            // 않지만 저장 확인은 카메라와 무관해야 한다.
+            VStack(spacing: 0) {
+                topStrip
+                Spacer(minLength: 0)
+                bottomStrip
+            }
         }
         .fullScreenCover(isPresented: $showingPreview) {
             PreviewScreen(urls: controller.recordedURLs) {
@@ -52,6 +63,13 @@ struct ContentView: View {
             }
         }
         .task {
+            // 2-A. 재실행 후 스토어와 파일이 함께 살아남았는지 이 한 줄이 판정한다.
+            // 카메라 구성보다 먼저 찍는다 — 촬영 로그에 섞이면 읽기 어렵다.
+            #if DEBUG
+            StoreProbeLog.inventory(sessions, label: "앱 실행 직후")
+            StoreProbeLog.selfTest(sessions)
+            #endif
+
             CaptureTrace.shared.begin("최초 실행 (.task)")
             // 구성이 끝나는 시점에 세션을 시작해도 되는 상태인지 컨트롤러가 알아야 한다.
             controller.setSceneActive(scenePhase == .active)
@@ -74,6 +92,38 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - 오버레이 배치
+
+    /// 촬영 디버그(좌)와 세션 상태(우). **HStack 이라 겹치지 않는다.**
+    private var topStrip: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if controller.setupState == .configured {
+                debugOverlay
+            }
+            Spacer(minLength: 0)
+            sessionReadout
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
+    /// 프로브 버튼과 녹화 버튼. 측정 동선은 접혀 있다.
+    private var bottomStrip: some View {
+        VStack(spacing: 10) {
+            probeButtons
+
+            if showingTools, controller.setupState == .configured {
+                measurementTools
+            }
+
+            if controller.setupState == .configured {
+                recordButton
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 28)
+    }
+
     // MARK: - 디버그 오버레이
 
     // 0-6 에서 앱을 Portrait 로 잠갔다. 그 전제가 맞는지 확인하는 화면이다.
@@ -92,10 +142,8 @@ struct ContentView: View {
         }
         .font(.system(.footnote, design: .monospaced))
         .foregroundStyle(.white)
-        .padding(12)
+        .padding(10)
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - 저장 확인 (2-2)
@@ -106,8 +154,10 @@ struct ContentView: View {
     // 3-13 에서 다른 측정 버튼과 함께 지운다. 그때까지 남기는 이유는
     // 2-3(파일 관리자) 이후로도 세션이 제대로 쌓이는지 확인할 자리가
     // 필요하기 때문이다. 홈 화면은 3-8 에서 만든다.
-    private var storeProbe: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+    /// 위에는 상태만 둔다. **버튼 줄이 넓어서 좌상단 디버그 패널과
+    /// 겹치던 것이 겹침의 실제 원인이었다** — 버튼은 아래로 내렸다.
+    private var sessionReadout: some View {
+        VStack(alignment: .trailing, spacing: 4) {
             Text("세션 \(sessions.count)개")
                 .font(.system(.footnote, design: .monospaced))
 
@@ -123,8 +173,18 @@ struct ContentView: View {
                 Text(verbatim: note)
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.yellow.opacity(0.8))
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .foregroundStyle(.white)
+        .padding(10)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: 210, alignment: .trailing)
+    }
 
+    private var probeButtons: some View {
+        VStack(spacing: 6) {
             HStack(spacing: 8) {
                 Button {
                     // 2-6 이 아니다. 디렉터리까지 만들어 둬야 클립을 받을 수 있다.
@@ -133,8 +193,14 @@ struct ContentView: View {
                         try SessionFileStore.shared.createSessionDirectory(session.id)
                         modelContext.insert(session)
                         probeNote = nil
+                        #if DEBUG
+                        StoreProbeLog.createdSession(session)
+                        #endif
                     } catch {
                         probeNote = "세션 디렉터리 실패: \(error)"
+                        #if DEBUG
+                        StoreProbeLog.failure("세션 디렉터리", error)
+                        #endif
                     }
                 } label: {
                     pill("세션 +1")
@@ -156,7 +222,11 @@ struct ContentView: View {
                     pill("컷 삭제")
                 }
                 .disabled(sessions.first?.clips.isEmpty ?? true)
+            }
 
+            // 버튼이 다섯이 되어 한 줄에 들어가지 않는다. 파괴적인 것과
+            // 읽기만 하는 것을 아래 줄로 내린다.
+            HStack(spacing: 8) {
                 Button {
                     for session in sessions {
                         try? SessionFileStore.shared.removeSessionDirectory(session.id)
@@ -167,13 +237,41 @@ struct ContentView: View {
                     pill("전부 삭제")
                 }
                 .disabled(sessions.isEmpty)
+
+                // 2-5 의 재정렬은 **가운데를 지워야** 보인다. 위의 "컷 삭제" 는
+                // 마지막 컷이라 뒤에 당길 것이 없어 order 가 그대로다.
+                Button {
+                    deleteMiddleClipOfNewestSession()
+                } label: {
+                    pill("가운데 삭제")
+                }
+                .disabled((sessions.first?.clips.count ?? 0) < 3)
+
+                // 2-A 계측. 지금 상태를 콘솔에 통째로 찍는다. 강제 종료 전후를
+                // 같은 형식으로 비교하려고 열어뒀다. 3-13 에서 함께 지운다.
+                //
+                // 버튼째로 감싼다. 호출부만 비우면 릴리스에서 아무 일도
+                // 일어나지 않는 버튼이 화면에 남는다.
+                #if DEBUG
+                Button {
+                    StoreProbeLog.inventory(sessions, label: "버튼 요청")
+                } label: {
+                    pill("재고")
+                }
+                #endif
+
+                // Phase 1 측정 동선은 접어 둔다. 2-A 에 쓰지 않으면서
+                // 프리뷰를 통째로 가린다.
+                Button {
+                    showingTools.toggle()
+                } label: {
+                    pill(showingTools ? "도구 ▾" : "도구 ▸")
+                }
             }
         }
         .foregroundStyle(.white)
-        .padding(12)
+        .padding(8)
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
     /// 마지막으로 찍은 클립을 최신 세션에 저장한다 (2-4 확인용).
@@ -189,10 +287,16 @@ struct ContentView: View {
                 .save(clipAt: source,
                       duration: CMTimeGetSeconds(spec.duration),
                       to: session)
+            #if DEBUG
+            StoreProbeLog.savedClip(clip, in: session, from: source)
+            #endif
             controller.forgetRecorded(source)
             probeNote = String(format: "저장 order=%d %.3fs", clip.order, clip.duration)
         } catch {
             probeNote = "저장 실패: \(error)"
+            #if DEBUG
+            StoreProbeLog.failure("클립 저장", error)
+            #endif
         }
     }
 
@@ -203,13 +307,53 @@ struct ContentView: View {
     private func deleteLastClipOfNewestSession() {
         guard let session = sessions.first,
               let clip = session.orderedClips.last else { return }
+        // 삭제 후에는 `clip` 을 읽지 않는다. 이름은 지우기 전에 챙긴다.
+        #if DEBUG
+        let fileName = clip.fileName
+        #endif
         do {
             let result = try ClipStore(context: modelContext).delete(clip)
             probeNote = "삭제 남은 \(result.remainingCount)컷"
                 + " 파일=\(result.fileRemoved ? "지움" : "없었음")"
                 + (result.sessionBecameEmpty ? " · 비었음(2-10 대상)" : "")
+            #if DEBUG
+            StoreProbeLog.deletedClip(fileName: fileName, in: session, result: result)
+            #endif
         } catch {
             probeNote = "삭제 실패: \(error)"
+            #if DEBUG
+            StoreProbeLog.failure("클립 삭제", error)
+            #endif
+        }
+    }
+
+    /// 최신 세션의 **가운데** 컷을 지운다 (2-5 재정렬 확인용).
+    ///
+    /// 마지막 컷 삭제는 뒤에 당길 것이 없어 `order` 가 그대로다. 재정렬이
+    /// 실제로 도는지 보려면 뒤에 컷이 남아 있는 자리를 지워야 한다.
+    private func deleteMiddleClipOfNewestSession() {
+        guard let session = sessions.first else { return }
+        let ordered = session.orderedClips
+        guard ordered.count >= 3 else { return }
+        let clip = ordered[ordered.count / 2]
+
+        #if DEBUG
+        let fileName = clip.fileName
+        print("[probe] 삭제 전 order 목록 = "
+              + ordered.map { "\($0.order)" }.joined(separator: ","))
+        #endif
+
+        do {
+            let result = try ClipStore(context: modelContext).delete(clip)
+            probeNote = "가운데 삭제 남은 \(result.remainingCount)컷"
+            #if DEBUG
+            StoreProbeLog.deletedClip(fileName: fileName, in: session, result: result)
+            #endif
+        } catch {
+            probeNote = "삭제 실패: \(error)"
+            #if DEBUG
+            StoreProbeLog.failure("가운데 삭제", error)
+            #endif
         }
     }
 
@@ -231,7 +375,10 @@ struct ContentView: View {
     // MARK: - 임시 컨트롤
 
     // Phase 1 확인용. UI 는 3-3 에서 제대로 만든다.
-    private var controls: some View {
+    //
+    // **2-A 에서는 접어 둔다.** 이 줄들이 프리뷰를 거의 다 가려서 무엇을
+    // 찍는지 볼 수 없다. "도구" 버튼으로 펼친다.
+    private var measurementTools: some View {
         VStack(spacing: 12) {
             HStack(spacing: 8) {
                 Button {
@@ -252,22 +399,22 @@ struct ContentView: View {
 
             saveControls
             normalizeControls
-
-            // 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
-            //
-            // 뷰에는 녹화 상태를 두지 않는다. 시작/정지 판단은 전부 컨트롤러의
-            // 의도가 하고, 여기서는 탭이 일어났다는 사실만 넘긴다.
-            Button {
-                controller.toggleRecording()
-            } label: {
-                Circle()
-                    .fill(controller.isRecordingRequested ? .red : .white)
-                    .frame(width: 72, height: 72)
-                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
-            }
         }
-        .padding(.bottom, 48)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    /// 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
+    ///
+    /// 뷰에는 녹화 상태를 두지 않는다. 시작/정지 판단은 전부 컨트롤러의
+    /// 의도가 하고, 여기서는 탭이 일어났다는 사실만 넘긴다.
+    private var recordButton: some View {
+        Button {
+            controller.toggleRecording()
+        } label: {
+            Circle()
+                .fill(controller.isRecordingRequested ? .red : .white)
+                .frame(width: 72, height: 72)
+                .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
+        }
     }
 
     // MARK: - 사진 앱 저장 (1-18)
