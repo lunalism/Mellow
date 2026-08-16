@@ -237,6 +237,22 @@ cannot be shared across concurrency contexts")`로 `Sendable`이 막혀 있다.
 - 메타데이터: `Library/Application Support/Mellow.store`
 - 영상: `Documents/sessions/{uuid}/clips/`
 
+**스토어는 파일 하나가 아니라 셋이다** (실기기 실측, 2-A). SQLite가 WAL
+모드로 열리기 때문이며, `MellowModelContainer.storeURL`이 가리키는 것은
+본체 하나뿐이다.
+
+```
+Mellow.store       77,824B    ← 첫 실행 이후 변하지 않았다
+Mellow.store-wal  350,232B    ← 세션·클립이 전부 여기 있다
+Mellow.store-shm   32,768B
+```
+
+**스토어를 파일 단위로 다루는 코드는 세 파일을 함께 다뤄야 한다.**
+`-wal`만 유실되면 메타데이터가 통째로 사라진 것처럼 보이고, 2-16이 그
+상태에서 고아 판정을 돌리면 **세션 디렉터리의 영상을 전부 지운다.**
+`Application Support`는 백업 대상이고 `sessions/`는 제외이므로 복원
+시나리오가 실제로 이 경로를 밟는다. 자세한 것은 Tasks.md 2-16 참고.
+
 ## 파일 경로 규칙
 
 **`SessionFileStore`만 세션 디렉터리 경로를 안다** (2-3). 다른 곳에서
@@ -246,6 +262,9 @@ cannot be shared across concurrency contexts")`로 `Sendable`이 막혀 있다.
   바뀐다. 저장되는 것은 `Session.id`와 `Clip.fileName`뿐이고 절대 경로는
   매번 조합한다. 이 타입에는 경로를 **돌려주는** API만 있고 **받아 보관하는**
   API가 없다 — 규칙을 깰 표면 자체를 두지 않는다
+    - **실기기로 확인됐다** (2-A). 하루에 재설치 8회 동안 컨테이너 UUID가
+      매번 바뀌었고(`3DEA1D9B` → … → `6F969794`), **경로만 바뀌고 세션·클립
+      데이터는 그대로 따라왔다.** `tmp`의 파일도 mtime까지 보존된다
 - 루트를 주입받는다. 앱은 `SessionFileStore.shared`를 쓰고, Mac 하네스는
   임시 디렉터리를 준다. 전역 상수로 박으면 하네스가 실제 `~/Documents`를
   건드린다
