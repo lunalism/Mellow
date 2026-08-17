@@ -93,10 +93,11 @@ enum StoreProbeLog {
         for session in sessions {
             let directory = files.sessionDirectory(session.id)
             let onDisk = listClipFiles(in: session.id)
-            print("[probe]  · \(session.title)  id=\(session.id.uuidString)")
+            print("[probe]  · \(session.displayTitle)  id=\(session.id.uuidString)")
             print("[probe]    디렉터리=\(exists(directory) ? "있음" : "없음")"
                   + "  방향=\(describe(session.orientationState))"
-                  + "  메타 \(session.clips.count)컷 / \(onDisk.summary)")
+                  + "  메타 \(session.clips.count)컷 / \(onDisk.summary)"
+                  + "  이어가기=\(session.isResumable ? "가능" : "불가")")
 
             var accounted = Set<String>()
             for clip in session.orderedClips {
@@ -167,11 +168,19 @@ enum StoreProbeLog {
 
     // MARK: - 버튼별 흔적
 
-    static func createdSession(_ session: Session) {
-        let directory = files.sessionDirectory(session.id)
-        print("[probe] + 세션 \(session.title)  id=\(session.id.uuidString)")
-        print("[probe]   디렉터리 \(directory.path)")
-        print("[probe]   clips/ 생성=\(exists(files.clipsDirectory(session.id)))"
+    /// 세션 시작 결과 (2-6·2-7).
+    ///
+    /// **새로 만든 것과 이어간 것이 구분돼 보여야 한다.** 2-7 의 확인이
+    /// 정확히 그 구분이기 때문이다.
+    static func started(_ start: SessionStore.Start) {
+        let session = start.session
+        print("[probe] \(start.isNew ? "+ 새 세션" : "▶ 이어가기")"
+              + "  \(session.displayTitle)  id=\(session.id.uuidString)")
+        print("[probe]   제목저장값=\"\(session.title)\""
+              + "  방향=\(describe(session.orientationState))"
+              + "  \(session.clips.count)컷")
+        print("[probe]   디렉터리 \(files.sessionDirectory(session.id).path)")
+        print("[probe]   clips/ 있음=\(exists(files.clipsDirectory(session.id)))"
               + "  백업제외=\(describeBackupExclusion(files.sessionsRoot))")
     }
 
@@ -182,7 +191,7 @@ enum StoreProbeLog {
         print("[probe]        → \(exists(source) ? "⚠ 아직 있음 (이동이 아니라 복사?)" : "사라짐 ✓")")
         print("[probe]   목적 \(destination.path)")
         print("[probe]        → \(exists(destination) ? "있음 \(size(of: destination))" : "⚠ 없음")")
-        print("[probe]   세션 \(session.title) 의 order 목록 = "
+        print("[probe]   세션 \(session.displayTitle) 의 order 목록 = "
               + session.orderedClips.map { "\($0.order)" }.joined(separator: ","))
     }
 

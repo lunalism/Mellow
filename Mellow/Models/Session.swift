@@ -95,6 +95,78 @@ extension Session {
     }
 }
 
+// MARK: - 표시 이름 (2-6)
+
+extension Session {
+    /// 목록·상세에 보여줄 이름. **저장하지 않고 매번 만든다.**
+    ///
+    /// `title` 이 비어 있으면 `createdAt` 에서 `8월 9일 세션` 형태를 만든다
+    /// (PRD F-01). 자동 생성분을 `title` 에 넣어 저장하지 않는 이유는 둘이다.
+    ///
+    /// - `createdAt` 에서 언제든 다시 만들 수 있는 값이다. "파생 가능한 값을
+    ///   저장하지 않는다" 는 원칙이 여기에도 걸린다
+    /// - **사용자가 입력한 제목과 자동 생성분이 구분되어야 한다.** 저장해
+    ///   버리면 둘이 같은 문자열이 되어, 나중에 제목 편집이 붙을 때 "사용자가
+    ///   지은 이름" 과 "우리가 지어준 이름" 을 가릴 수 없다. 빈 문자열이
+    ///   "아직 이름을 짓지 않았다" 를 뜻한다
+    ///
+    /// 공백만 입력한 경우도 비어 있는 것으로 본다. 저장 시점에 다듬지만
+    /// (`SessionStore`), 밖에서 만든 `Session` 이 들어올 수 있으므로 여기서도 본다.
+    var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? Self.autoTitle(for: createdAt) : trimmed
+    }
+
+    /// `8월 9일 세션`.
+    ///
+    /// **`DateFormatter` 를 쓰지 않는다.** 처음에는 로케일을 `ko_KR` 로 고정한
+    /// `static let` 포매터를 뒀는데, `DateFormatter` 가 non-Sendable 이라
+    /// **언어 모드 6에서 깨지는 곳을 3건에서 4건으로 늘린다.** 그 3건이라는
+    /// 숫자가 2-18 재검토의 근거이므로(CLAUDE.md "Swift 언어 모드") 조용히
+    /// 바꿀 수 없다. `Calendar` 로 월·일만 뽑아 조립하면 정적 상태도, 로케일
+    /// 의존도 함께 사라지고 문자열은 같다.
+    ///
+    /// **타임존은 기기 로컬이다.** 사용자에게는 그것이 맞다 — 밤 11시에 찍은
+    /// 세션이 다음 날짜로 보이면 안 된다. 대신 파생값이라 **여행하면 이름이
+    /// 하루 밀려 보일 수 있다**(서울에서 만든 세션이 LA 에서 하루 앞으로).
+    /// 감수한 트레이드오프이며 근거는 Tasks.md 2-6 참고.
+    static func autoTitle(for date: Date) -> String {
+        let calendar = Calendar.current
+        return "\(calendar.component(.month, from: date))월 "
+            + "\(calendar.component(.day, from: date))일 세션"
+    }
+}
+
+// MARK: - 이어가기 (2-7)
+
+extension Session {
+    /// **이어서 촬영할 수 있는 세션인가.**
+    ///
+    /// `isClosed == false` 이고 방향이 `.unset` 또는 `.decided` 일 때만 참이다.
+    ///
+    /// **`.missing` / `.corrupted` 를 제외하는 것이 이 판정의 핵심이다.**
+    /// 클립이 있는데 방향이 없거나 깨진 세션을 이어가면 2-8 이 그 세션의
+    /// 방향을 **다시** 정하게 되고, 먼저 찍힌 클립과 계열이 다르면 한 세션에
+    /// 세로·가로가 섞인다. 정규화는 계열 내 180도만 흡수하므로 그 상태는
+    /// 복구되지 않는다.
+    ///
+    /// 제외된 세션은 사라지지 않는다. 목록에는 그대로 보이고 미리보기·삭제도
+    /// 된다. 복구는 2-16 의 몫이며, 복구되면 다시 이어갈 수 있게 된다.
+    ///
+    /// **계산 프로퍼티이므로 `#Predicate` 에 넣을 수 없다.** `orientationState`
+    /// 가 `clips` 관계를 세기 때문이며, enum 미지원과는 별개의 제약이다.
+    /// 조회는 `inProgress()` 로 하고 이 판정은 Swift 에서 한다 (`SessionStore`).
+    var isResumable: Bool {
+        guard !isClosed else { return false }
+        switch orientationState {
+        case .unset, .decided:
+            return true
+        case .missing, .corrupted:
+            return false
+        }
+    }
+}
+
 // MARK: - 조회
 
 /// predicate 는 전부 여기 모아 둔다. `orientationRaw` 가 `private` 이라

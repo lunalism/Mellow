@@ -107,13 +107,17 @@ struct SessionFileStore {
     ///
     /// **메타데이터보다 먼저 성공해야 한다.** 디렉터리 없이 `Session` 만
     /// 만들어지면 클립을 쓸 자리가 없는 세션이 남는다 (2-6).
-    @discardableResult
-    func createSessionDirectory(_ id: UUID) throws -> URL {
+    ///
+    /// - Note: **경로를 돌려주지 않는다.** 원래 `URL` 을 반환했으나 소비자가
+    ///   끝내 나타나지 않았다 — 2-6(`SessionStore.create`)이 첫 진짜 소비자인데
+    ///   그쪽도 쓰지 않는다. 경로를 받아 보관하면 "절대 경로를 저장하지
+    ///   않는다" 를 깨는 표면이 되고, 필요하면 `sessionDirectory(id)` 로 다시
+    ///   조합하면 된다.
+    func createSessionDirectory(_ id: UUID) throws {
         do {
             try FileManager.default.createDirectory(at: clipsDirectory(id),
                                                     withIntermediateDirectories: true)
-            try excludeSessionsRootFromBackup()
-            return sessionDirectory(id)
+            excludeSessionsRootFromBackup()
         } catch {
             throw SessionFileError.mapping(error)
         }
@@ -140,7 +144,7 @@ struct SessionFileStore {
         do {
             try FileManager.default.createDirectory(at: clipsDirectory(id),
                                                     withIntermediateDirectories: true)
-            try excludeSessionsRootFromBackup()
+            excludeSessionsRootFromBackup()
             try FileManager.default.moveItem(at: source,
                                              to: clipURL(fileName: fileName, in: id))
         } catch {
@@ -286,7 +290,22 @@ struct SessionFileStore {
     /// 넣으면 사용자의 iCloud 용량을 조용히 먹는다.
     ///
     /// 루트에만 걸면 하위 전체에 적용된다. 세션마다 걸 필요가 없다.
-    private func excludeSessionsRootFromBackup() throws {
+    ///
+    /// # 실패해도 던지지 않는다 (2-7 리뷰)
+    ///
+    /// 원래는 `throws` 였고 `createSessionDirectory` / `adopt` 이 같은 `do` 안에서
+    /// 불렀다. 그래서 `setResourceValues` 가 실패하면 **세션 생성 자체가 실패했다** —
+    /// 백업 편의 하나 때문에 앱을 못 쓰게 된다.
+    ///
+    /// 게다가 **막으면서 새기까지 했다.** 디렉터리는 이 호출 전에 이미 만들어지므로
+    /// 실패한 시도마다 디렉터리가 남고, 재시도는 새 `Session` UUID 로 가서 고아가
+    /// 하나씩 쌓인다.
+    ///
+    /// **조용히 넘기지는 않는다.** 2-3 이 백업 제외를 결정한 이유가 "사용자 iCloud
+    /// 용량을 조용히 먹는 것을 막는다" 였으므로, 제외가 실패했다는 사실은 드러나야
+    /// 한다. 다만 지금은 그 신호가 콘솔까지만 간다 — 사용자에게 알리는 경로는
+    /// 없다(Tasks.md 2-3 참고).
+    private func excludeSessionsRootFromBackup() {
         var root = sessionsRoot
         let current = try? root.resourceValues(forKeys: [.isExcludedFromBackupKey])
         guard current?.isExcludedFromBackup != true else { return }
@@ -296,7 +315,8 @@ struct SessionFileStore {
         do {
             try root.setResourceValues(values)
         } catch {
-            throw SessionFileError.mapping(error)
+            print("[files] ✕ 백업 제외 실패 \(root.path) — \(error). "
+                  + "sessions/ 가 iCloud 백업에 포함된다")
         }
     }
 }

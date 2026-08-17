@@ -20,6 +20,23 @@ struct ContentView: View {
     @Query(sort: \Session.createdAt, order: .reverse) private var sessions: [Session]
     @State private var probeNote: String?
 
+    /// **`startOrResume` 이 돌려준 세션.** 클립 저장·삭제가 전부 이것을 향한다.
+    ///
+    /// 예전에는 `sessions.first`(최신)를 썼는데, 그러면 **세션을 시작한 곳과
+    /// 클립이 들어가는 곳이 달라질 수 있다.** 이어가기 후보에서 빠진 세션이
+    /// 최신인 경우가 실제로 있다(방향이 없거나 깨진 세션). 그 상태로는 2-8이
+    /// "첫 클립 저장과 방향 확정이 같은 저장 단위인가" 를 확인해도 무엇을
+    /// 확인한 것인지 알 수 없다.
+    ///
+    /// **객체가 아니라 id 를 든다.** 저장 실패로 `rollback()` 이 돌면 인메모리
+    /// 객체는 stale 로 남는다(CLAUDE.md "API 주의사항"). id 로 매번 다시 찾으면
+    /// 사라진 세션은 자연히 `nil` 이 된다.
+    @State private var activeSessionID: UUID?
+
+    private var activeSession: Session? {
+        activeSessionID.flatMap { id in sessions.first { $0.id == id } }
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -163,8 +180,9 @@ struct ContentView: View {
 
             // 최근 3개만. 목록 화면이 아니라 살아남았는지 보는 자리다.
             ForEach(sessions.prefix(3)) { session in
-                Text(verbatim: "\(session.title) · \(session.clips.count)컷 · "
-                     + Self.describe(session.orientationState))
+                Text(verbatim: "\(session.displayTitle) · \(session.clips.count)컷 · "
+                     + Self.describe(session.orientationState)
+                     + (session.isResumable ? "" : " · 이어가기 불가"))
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.7))
             }
@@ -186,42 +204,48 @@ struct ContentView: View {
     private var probeButtons: some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
+                // 2-6·2-7. **프로브가 자기 순서를 들고 있지 않는다** — 생성
+                // 경로가 둘이 되면 실기기에서 검증한 것과 실사용이 갈린다.
+                // 3-13 에서 이 버튼이 사라져도 `SessionStore` 는 남는다.
                 Button {
-                    // 2-6 이 아니다. 디렉터리까지 만들어 둬야 클립을 받을 수 있다.
-                    let session = Session(title: Self.probeTitle())
                     do {
-                        try SessionFileStore.shared.createSessionDirectory(session.id)
-                        modelContext.insert(session)
-                        probeNote = nil
+                        let start = try SessionStore(context: modelContext)
+                            .startOrResume()
+                        // 이후 클립 저장·삭제가 **이 세션**을 향한다.
+                        activeSessionID = start.session.id
+                        probeNote = start.isNew
+                            ? "새 세션 \(start.session.displayTitle)"
+                            : "이어가기 \(start.session.displayTitle)"
+                              + " · \(start.session.clips.count)컷"
                         #if DEBUG
-                        StoreProbeLog.createdSession(session)
+                        StoreProbeLog.started(start)
                         #endif
                     } catch {
-                        probeNote = "세션 디렉터리 실패: \(error)"
+                        probeNote = "세션 시작 실패: \(error)"
                         #if DEBUG
-                        StoreProbeLog.failure("세션 디렉터리", error)
+                        StoreProbeLog.failure("세션 시작", error)
                         #endif
                     }
                 } label: {
-                    pill("세션 +1")
+                    pill("세션 시작")
                 }
 
-                // 2-4 확인용. 자동 연결은 2-6·2-7 이 들어와야 성립한다.
+                // 2-4 확인용. **"세션 시작" 이 돌려준 세션에만 넣는다.**
                 Button {
-                    Task { await saveLastClipToNewestSession() }
+                    Task { await saveLastClipToActiveSession() }
                 } label: {
                     pill("클립 저장")
                 }
-                .disabled(sessions.isEmpty || controller.recordedURLs.isEmpty)
+                .disabled(activeSession == nil || controller.recordedURLs.isEmpty)
 
                 // 2-5 확인용. 2-11(마지막 컷 undo)이 아니다 — 여기서는
-                // 최신 세션의 마지막 컷을 그냥 지운다.
+                // 진행 중 세션의 마지막 컷을 그냥 지운다.
                 Button {
-                    deleteLastClipOfNewestSession()
+                    deleteLastClipOfActiveSession()
                 } label: {
                     pill("컷 삭제")
                 }
-                .disabled(sessions.first?.clips.isEmpty ?? true)
+                .disabled(activeSession?.clips.isEmpty ?? true)
             }
 
             // 버튼이 다섯이 되어 한 줄에 들어가지 않는다. 파괴적인 것과
@@ -252,11 +276,11 @@ struct ContentView: View {
                 // 2-5 의 재정렬은 **가운데를 지워야** 보인다. 위의 "컷 삭제" 는
                 // 마지막 컷이라 뒤에 당길 것이 없어 order 가 그대로다.
                 Button {
-                    deleteMiddleClipOfNewestSession()
+                    deleteMiddleClipOfActiveSession()
                 } label: {
                     pill("가운데 삭제")
                 }
-                .disabled((sessions.first?.clips.count ?? 0) < 3)
+                .disabled((activeSession?.clips.count ?? 0) < 3)
 
                 // 2-A 계측. 지금 상태를 콘솔에 통째로 찍는다. 강제 종료 전후를
                 // 같은 형식으로 비교하려고 열어뒀다. 3-13 에서 함께 지운다.
@@ -285,12 +309,15 @@ struct ContentView: View {
         .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    /// 마지막으로 찍은 클립을 최신 세션에 저장한다 (2-4 확인용).
+    /// 마지막으로 찍은 클립을 **진행 중 세션**에 저장한다 (2-4 확인용).
+    ///
+    /// **`startOrResume` 이 돌려준 세션에 넣는다.** 최신 세션이 아니다 —
+    /// 둘이 다를 수 있고, 다르면 2-8 이 무엇을 확인한 것인지 알 수 없다.
     ///
     /// **duration 은 파일에서 읽는다.** 버튼을 누른 시간이 아니다 (1-7).
     /// 1초 미만 폐기는 컨트롤러가 이미 걸러내므로 여기까지 오지 않는다.
-    private func saveLastClipToNewestSession() async {
-        guard let session = sessions.first,
+    private func saveLastClipToActiveSession() async {
+        guard let session = activeSession,
               let source = controller.recordedURLs.last else { return }
         do {
             let spec = try await ClipSpec.load(from: source)
@@ -311,12 +338,12 @@ struct ContentView: View {
         }
     }
 
-    /// 최신 세션의 마지막 컷을 지운다 (2-5 확인용).
+    /// 진행 중 세션의 마지막 컷을 지운다 (2-5 확인용).
     ///
     /// 방향 초기화는 하지 않는다 — `sessionBecameEmpty` 를 받아 표시만 하고,
     /// 실제 초기화는 2-10 의 몫이다.
-    private func deleteLastClipOfNewestSession() {
-        guard let session = sessions.first,
+    private func deleteLastClipOfActiveSession() {
+        guard let session = activeSession,
               let clip = session.orderedClips.last else { return }
         // 삭제 후에는 `clip` 을 읽지 않는다. 이름은 지우기 전에 챙긴다.
         #if DEBUG
@@ -338,12 +365,12 @@ struct ContentView: View {
         }
     }
 
-    /// 최신 세션의 **가운데** 컷을 지운다 (2-5 재정렬 확인용).
+    /// 진행 중 세션의 **가운데** 컷을 지운다 (2-5 재정렬 확인용).
     ///
     /// 마지막 컷 삭제는 뒤에 당길 것이 없어 `order` 가 그대로다. 재정렬이
     /// 실제로 도는지 보려면 뒤에 컷이 남아 있는 자리를 지워야 한다.
-    private func deleteMiddleClipOfNewestSession() {
-        guard let session = sessions.first else { return }
+    private func deleteMiddleClipOfActiveSession() {
+        guard let session = activeSession else { return }
         let ordered = session.orderedClips
         guard ordered.count >= 3 else { return }
         let clip = ordered[ordered.count / 2]
@@ -366,12 +393,6 @@ struct ContentView: View {
             StoreProbeLog.failure("가운데 삭제", error)
             #endif
         }
-    }
-
-    private static func probeTitle() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: Date())
     }
 
     private static func describe(_ state: Session.OrientationState) -> String {
