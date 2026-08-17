@@ -167,6 +167,29 @@ struct ClipStore {
             //   이 에러를 받은 쪽은 인메모리 세션을 믿지 말고 다시 읽어야 한다
             context.rollback()
 
+            // **`rollback()` 만으로는 유령 클립이 남는다** (2-7 에서 같은 것을
+            // 발견해 여기도 재봤다). `allowsSave: false` 하네스 실측:
+            //
+            // - 새 컨테이너로 스토어 재조회 → **0개.** 스토어는 깨끗하다
+            // - 같은 컨텍스트 재조회 → **1개**
+            // - `session.clips` / `orderedClips` → **1개.** 병합 대상에 들어간다
+            // - `orientationState` 가 `.unset` → **`.missing` 으로 바뀐다**
+            //
+            // 마지막 둘이 `SessionStore` 보다 나쁘다. 파일은 `release` 로
+            // 되돌아갔는데 화면에는 클립이 남아 있으니 **2-4 가 피하려던
+            // "파일 없는 메타데이터" 가 인메모리에 정확히 만들어진다.** 게다가
+            // `.missing` 이 되면 2-7 이 그 세션을 이어가기 후보에서 빼버린다.
+            //
+            // **두 군데를 따로 풀어야 한다.** 관계는 우리가 들고 있는 참조가
+            // 쥐고 있고, 컨텍스트 등록은 재조회해서 나오는 인스턴스가 쥐고 있다.
+            // 둘은 같은 객체가 아니라서 한쪽만 손보면 다른 쪽이 남는다 (실측).
+            //
+            //   보유 `clip.session = nil` 만  → 컨텍스트에 남는다
+            //   재조회 `delete` 만            → 관계에 남는다
+            //   재조회 인스턴스의 `session = nil` → 관계에 남는다 (보유 참조가 아니다)
+            clip.session = nil
+            purgePhantom(id: clipID)
+
             // 옮긴 파일을 **원래 자리로 되돌린다. 지우지 않는다.**
             //
             // 지우면 방금 찍은 녹화본의 유일한 사본이 사라지고, 같은
@@ -201,6 +224,20 @@ struct ClipStore {
     /// 그 경로가 있는 한 이 선택은 계속 유효하다.
     private func nextOrder(in session: Session) -> Int {
         (session.clips.map(\.order).max() ?? -1) + 1
+    }
+
+    /// 저장에 실패해 롤백된 클립이 컨텍스트에 남아 있으면 걷어낸다.
+    ///
+    /// `SessionStore.purgePhantom(id:)` 와 같은 모양이다. **합치지 않았다** —
+    /// 제네릭으로 뽑으려면 `id: UUID` 를 요구하는 프로토콜을 새로 만들고 두
+    /// 모델에 채택시켜야 하는데, 그 표면이 이 8줄짜리 `private` 함수 둘보다
+    /// 크다. 그리고 세 번째 소비자가 생길 것 같지 않다 — **`insert` 하는 곳만
+    /// 해당하고**, 2-12a(`isClosed` 갱신)와 2-18(`duration` 갱신)은 둘 다
+    /// 업데이트라 이 문제에 걸리지 않는다. 세 번째가 실제로 오면 그때 뽑는다.
+    private func purgePhantom(id: UUID) {
+        guard let phantom = try? context.fetch(FetchDescriptor<Clip>())
+            .first(where: { $0.id == id }) else { return }
+        context.delete(phantom)
     }
 
     // MARK: - 삭제 (2-5)
