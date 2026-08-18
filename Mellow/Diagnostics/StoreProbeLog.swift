@@ -193,6 +193,9 @@ enum StoreProbeLog {
         print("[probe]        → \(exists(destination) ? "있음 \(size(of: destination))" : "⚠ 없음")")
         print("[probe]   세션 \(session.displayTitle) 의 order 목록 = "
               + session.orderedClips.map { "\($0.order)" }.joined(separator: ","))
+        // 2-8. 첫 클립 저장 직후 방향이 붙었는지가 여기서 보여야 한다.
+        // `.missing` 이 찍히면 방향 확정이 같은 저장 단위에 들어가지 않은 것이다.
+        print("[probe]   방향=\(describe(session.orientationState))")
     }
 
     /// 삭제 결과.

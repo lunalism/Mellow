@@ -86,12 +86,61 @@ extension Session {
     /// 그들을 구분해야 하면 `orientationState` 를 본다.
     ///
     /// 계산 프로퍼티이므로 `@Transient` 는 필요 없다. 애초에 저장 대상이 아니다.
+    ///
+    /// **읽기 전용이다 (2-8).** 예전에는 setter 가 있었는데, getter 가
+    /// `.decided` 일 때만 값을 주므로 `if session.orientation == nil { 세팅 }`
+    /// 이 **`.missing` 과 `.corrupted` 까지 덮어썼다.** 손상된 세션의 방향을
+    /// 다음 촬영이 새로 정하게 되고, 계열이 다르면 한 세션에 세로·가로가
+    /// 섞여 정규화로도 복구되지 않는다. 쓰기는 아래 `decideOrientation(_:)`
+    /// 하나로 모으고 가드를 그 안에 둔다 — **함정을 API 표면에서 없앤다.**
     var orientation: Orientation? {
-        get {
-            guard case .decided(let value) = orientationState else { return nil }
-            return value
-        }
-        set { orientationRaw = newValue?.rawValue }
+        guard case .decided(let value) = orientationState else { return nil }
+        return value
+    }
+
+    /// **첫 클립이 세션 방향을 정한다 (2-8).**
+    ///
+    /// `orientationState` 가 `.unset` 일 때만 값을 쓴다. 나머지 셋은 전부
+    /// 거절한다 — 이유가 상태마다 다르다.
+    ///
+    /// - `.decided` — 이미 정해졌다. 두 번째 이후 클립이 전부 여기 해당하며
+    ///   **정상 경로다.** 거절이 실패를 뜻하지 않는다
+    /// - `.missing` / `.corrupted` — 클립이 있는데 방향이 없거나 깨진 상태다.
+    ///   여기에 새 방향을 붙이면 **먼저 찍힌 클립과 계열이 다를 수 있고,
+    ///   계열 간 혼재는 정규화로 복구되지 않는다.** 복구는 2-16 의 몫이다
+    ///
+    /// **가드를 `#Predicate` 로 옮길 수 없다.** `orientationState` 가 `clips`
+    /// 관계를 세기 때문이다. 조회는 저장 상태 기준(`orientationRawIsNil()`),
+    /// 판정은 코드에서 — 이 모델의 구조가 그렇다.
+    ///
+    /// 호출은 **클립 기록과 같은 저장 단위 안에서** 일어나야 한다. 그 자리가
+    /// `ClipStore.save` 의 `alsoApply` 다.
+    ///
+    /// - Returns: 이번 호출이 실제로 방향을 정했으면 `true`.
+    ///   **`@discardableResult` 를 붙이지 않는다** — 이 값을 봐야 저장 실패
+    ///   시 되돌릴 대상인지 알 수 있다. 남의 결정을 지우면 안 된다
+    func decideOrientation(_ orientation: Orientation) -> Bool {
+        guard orientationState == .unset else { return false }
+        orientationRaw = orientation.rawValue
+        return true
+    }
+
+    /// **저장 실패 복구 전용 (2-8).** `ClipStore.save` 의 `revertOnFailure` 가
+    /// 부른다. 다른 곳에서 부를 일이 없다.
+    ///
+    /// `decideOrientation` 이 `true` 를 돌려준 **바로 그 호출**만 되돌린다.
+    /// 판단은 호출부가 한다 — 이 함수는 상태를 보지 않으므로, 이미 정해져
+    /// 있던 방향에 대고 부르면 남의 결정을 지운다.
+    ///
+    /// **2-10 의 `resetOrientation()` 과 다른 것이다.** 이름을 겹치지 않게
+    /// 둔 이유가 그것이다.
+    ///
+    /// - 이쪽은 **저장이 실패해 없던 일이 된 것**을 인메모리에서 지운다.
+    ///   스토어에는 애초에 들어가지 않았다
+    /// - 저쪽은 **클립이 0개가 되어 방향을 다시 물어야 하는 것**을 저장까지
+    ///   해서 초기화한다
+    func undoOrientationDecision() {
+        orientationRaw = nil
     }
 }
 

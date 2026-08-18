@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
+import CoreMedia
+import CoreGraphics
 
-// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7).
+// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8).
 //
 // Mellow/ 밖에 둔다. project.yml 의 sources 는 Mellow 디렉터리만 훑으므로
 // 여기 있는 파일은 앱 타깃에 들어가지 않는다. `ExportBench.swift` 와 같은
@@ -19,7 +21,12 @@ import SwiftData
 //     Mellow/Storage/SessionFileStore.swift \
 //     Mellow/Storage/SessionStore.swift \
 //     Mellow/Storage/ClipStore.swift \
+//     Mellow/Diagnostics/ClipSpec.swift \
 //     Tools/StorageCheck.swift -o /tmp/storagecheck && /tmp/storagecheck
+//
+// `ClipSpec.swift` 가 2-8 에서 들어왔다. 방향 도출(E군)이 그 파일의
+// `VideoTrackSpec.orientation` 을 검증한다. UIKit 비의존이라 Mac 에서
+// 그대로 컴파일된다 — 그 제약을 지키는 이유가 이것이다.
 //
 // 실패가 있으면 exit 1 이다. CoreData 가 stderr 로 뱉는 소음은 무시해도 된다 —
 // 저장 실패를 일부러 유도하는 구간에서 나온다.
@@ -79,6 +86,7 @@ struct StorageCheck {
         setbuf(stdout, nil)
         try sessionStoreSuite()
         try clipStoreSuite()
+        orientationSuite()
 
         print("\n─────────────────────────────")
         print(failures == 0 ? "전부 통과" : "✗ 실패 \(failures)건")
@@ -92,6 +100,8 @@ struct StorageCheck {
         let root = try makeRoot("sessionstore")
         defer { try? FileManager.default.removeItem(at: root) }
         let files = SessionFileStore(documentsDirectory: root)
+        // 9군이 `ClipStore.save` 를 거치므로 옮길 원본 파일이 필요하다.
+        let scratch = root.appending(path: "tmp", directoryHint: .isDirectory)
 
         // ── 1. 빈 스토어에서 시작하면 새로 만든다
         print("\n1) 빈 스토어 — startOrResume")
@@ -133,7 +143,13 @@ struct StorageCheck {
               blank.displayTitle)
 
         // ── 4. .missing 세션만 있으면 새로 만든다
-        print("\n4) .missing 세션만 있을 때")
+        //
+        // **여기서는 클립을 일부러 직접 삽입한다.** 9군과 반대다. 2-8 이후
+        // `.missing` 은 정상 경로로 만들어지지 않으므로(`ClipStore.save` 를
+        // 거치면 같은 저장 단위에서 방향이 붙는다), 손상 상태를 재현하려면
+        // 저장 계층을 우회하는 수밖에 없다. 2-8 이전에 만들어져 기기에 남아
+        // 있는 세션이 정확히 이 모양이다.
+        print("\n4) .missing 세션만 있을 때 (손상 상태는 직접 삽입으로만 만들어진다)")
         let d = try makeContext()
         let storeD = SessionStore(context: d, files: files)
         let broken = try storeD.startOrResume().session
@@ -232,29 +248,57 @@ struct StorageCheck {
         check("컨텍스트에도 유령이 남지 않는다 (rollback + 재조회 delete)",
               survivors.isEmpty, "\(survivors.count)개")
 
-        // ── 9. 2-8 이 없으면 클립 하나로 이어가기가 끊긴다
+        // ── 9. 첫 클립이 방향을 정하고, 이어가기가 유지된다 (2-8)
         //
-        // **고치지 않고 넘긴 문제를 실행 결과로 남긴다.** 방향을 쓰는 코드가
-        // 없어(`ClipStore.save` 의 `alsoApply` 호출부 0) 클립이 들어가는 순간
-        // 세션이 `.missing` 이 되고 F-01 AC 가 깨진다.
+        // **이 군은 반드시 `ClipStore.save` 를 거쳐야 한다.** 예전에는
+        // `i.insert(Clip(...))` 로 클립을 직접 넣었는데, 그러면 `alsoApply` 를
+        // 타지 않아 **2-8 구현이 아무리 옳아도 결과가 `.missing` 그대로였다.**
+        // 방향 확정은 `ClipStore.save` 의 저장 단위 안에서만 일어나므로,
+        // 클립을 넣는 경로가 실사용과 같아야 이 군이 무엇이든 검증한다.
+        // 직접 삽입으로 되돌리면 이 검증이 **조용히 무력해진다.**
         //
-        // **2-8 이 들어오면 아래 네 줄의 기대값이 뒤집혀야 한다.** 그때 2-8 이
-        // 이 문제를 닫았다고 말할 수 있다.
-        print("\n9) 2-8 미착수 상태 — 클립 하나로 이어가기가 끊긴다")
+        // 2-7 이 `.missing` 을 이어가기 후보에서 제외하는데 방향을 쓰는 코드가
+        // 없던 동안에는 모든 세션이 클립 하나에 `.missing` 이 되어 F-01 AC 가
+        // 깨졌다("탭할 때마다 세션이 새로 생긴다"). 아래 네 줄이 그것이
+        // 닫혔는지를 본다.
+        print("\n9) 2-8 — 첫 클립이 방향을 정하고 이어가기가 유지된다")
         let i = try makeContext()
         let storeI = SessionStore(context: i, files: files)
+        let clipsI = ClipStore(context: i, files: files)
         let live = try storeI.startOrResume().session
         check("클립 0개일 때는 이어갈 수 있다", live.isResumable)
         check("실제로 이어간다", !(try storeI.startOrResume().isNew))
 
-        i.insert(Clip(order: 0, fileName: "z.mov", duration: 9.9, session: live))
-        try i.save()
-        check("클립이 하나 들어가면 .missing 이 된다", live.orientationState == .missing)
-        check("그래서 이어갈 수 없게 된다", !live.isResumable)
-        check("⚠ 세션이 새로 생긴다 — F-01 AC 가 깨진다",
-              try storeI.startOrResume().isNew)
-        check("세션이 2개가 됐다", try count(i) == 2, "\(try count(i))개")
-        print("     ↑ 2-8(방향 확정)이 들어오면 이 네 줄의 기대값이 뒤집혀야 한다")
+        // 실사용 호출부(`ContentView.saveLastClipToActiveSession`)와 같은 모양이다.
+        var decided = false
+        _ = try clipsI.save(clipAt: try makeSource(scratch, "s9-first.mov"),
+                            duration: 9.9,
+                            to: live,
+                            alsoApply: { decided = $0.decideOrientation(.portrait) },
+                            revertOnFailure: { if decided { $0.undoOrientationDecision() } })
+
+        check("첫 클립이 방향을 정한다 (decideOrientation == true)", decided)
+        check("클립이 하나 들어가면 .decided 다",
+              live.orientationState == .decided(.portrait), "\(live.orientationState)")
+        check("그래서 계속 이어갈 수 있다", live.isResumable)
+        check("세션이 새로 생기지 않는다 — F-01 AC",
+              !(try storeI.startOrResume().isNew))
+        check("세션이 1개 그대로", try count(i) == 1, "\(try count(i))개")
+
+        // 두 번째 클립은 방향을 **다시 정하지 않는다.** `false` 가 정상이며
+        // 실패가 아니다. 여기에 반대 계열을 넣어 보는 이유는, 가드가 없으면
+        // 한 세션에 세로·가로가 섞이기 때문이다 (계열 간은 정규화로도 복구 불가).
+        var decidedAgain = false
+        _ = try clipsI.save(clipAt: try makeSource(scratch, "s9-second.mov"),
+                            duration: 9.9,
+                            to: live,
+                            alsoApply: { decidedAgain = $0.decideOrientation(.landscape) },
+                            revertOnFailure: { if decidedAgain { $0.undoOrientationDecision() } })
+
+        check("두 번째 클립은 방향을 정하지 않는다 (false 가 정상)", !decidedAgain)
+        check("방향이 첫 클립 것으로 유지된다",
+              live.orientationState == .decided(.portrait), "\(live.orientationState)")
+        check("클립 2컷", live.clips.count == 2, "\(live.clips.count)컷")
     }
 
     // MARK: - 2-4 · 2-5  클립 저장과 삭제
@@ -371,5 +415,146 @@ struct StorageCheck {
         }
         check("클립 0개", bs.clips.isEmpty, "\(bs.clips.count)개")
         check("sessionBecameEmpty 가 선다 (2-10 대상)", becameEmpty)
+
+        // ══ D. 2-8 회귀 — 저장 실패 시 세션 방향이 되돌아간다
+        //
+        // **A 군이 커버하지 않는 경로다.** A 는 `alsoApply` 를 넘기지 않고
+        // 부른 것이라 되돌릴 세션 변경이 애초에 없었다. 방향을 세팅한 채
+        // 실패시켜야 `revertOnFailure` 가 도는지 알 수 있다.
+        //
+        // **왜 이 회귀가 중요한가.** 클립 삽입은 `insert` 라 롤백 후 유령이
+        // 남고, 방향은 `update` 라 롤백해도 인메모리에 새 값이 그대로 남는다.
+        // 걷어내지 않으면 스토어는 "방향 없음 · 클립 없음" 인데 인메모리는
+        // **"방향 있음 · 클립 없음"** 이 된다. `orientationState` 가
+        // `.decided` 라 다음 촬영이 방향을 이미 정해진 것으로 읽고, 2-9 가
+        // 들어오면 클립이 하나도 없는 세션에서 녹화가 막힌다.
+        //
+        // **스토어에는 흔적이 없어 2-16 이 이 어긋남을 영영 검출하지 못한다.**
+        // 그래서 규율이 아니라 코드로 막고, 그 코드가 사는지를 여기서 본다.
+        print("\nD) 2-8 회귀 — 저장 실패 시 방향 되돌리기 (allowsSave: false)")
+        let dURL = root.appending(path: "D.store")
+        let dWritable = try makeContext(url: dURL)
+        let dSeededID = try SessionStore(context: dWritable, files: files)
+            .startOrResume().session.id
+
+        let dro = try makeContext(url: dURL, allowsSave: false)
+        guard let dSession = try dro.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == dSeededID }) else {
+            check("읽기 전용 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        check("사전 상태: 방향 .unset", dSession.orientationState == .unset)
+
+        let dSource = try makeSource(scratch, "rec-d.mov")
+        var dDecided = false
+        var dThrown: Error?
+        do {
+            _ = try ClipStore(context: dro, files: files)
+                .save(clipAt: dSource,
+                      duration: 9.9,
+                      to: dSession,
+                      alsoApply: { dDecided = $0.decideOrientation(.landscape) },
+                      revertOnFailure: { if dDecided { $0.undoOrientationDecision() } })
+            check("save 가 실패해야 한다", false, "성공해버렸다")
+        } catch {
+            dThrown = error
+        }
+        check("alsoApply 가 실제로 방향을 정했다 — 되돌릴 것이 있다", dDecided)
+        if let e = dThrown as? ClipSaveError, case .metadata = e {
+            check("ClipSaveError.metadata 로 분류", true)
+        } else {
+            check("ClipSaveError.metadata 로 분류", false, "\(String(describing: dThrown))")
+        }
+        // ★ revert 가 없으면 여기서 .decided(landscape) 가 나온다.
+        check("★ 인메모리 방향이 .unset 으로 돌아온다",
+              dSession.orientationState == .unset, "\(dSession.orientationState)")
+        check("클립 관계가 0개", dSession.clips.isEmpty, "\(dSession.clips.count)개")
+        let dFresh = try makeContext(url: dURL)
+        let dOnDisk = try dFresh.fetch(FetchDescriptor<Clip>()).count
+        check("재조회한 스토어에도 클립 0개", dOnDisk == 0, "\(dOnDisk)개")
+        check("원본이 release 로 되돌아왔다",
+              FileManager.default.fileExists(atPath: dSource.path))
+        let dLeftovers = (try? files.clipFileNames(in: dSeededID)) ?? []
+        check("세션 디렉터리에 남은 파일이 없다", dLeftovers.isEmpty, "\(dLeftovers)")
+
+        // 되돌린 뒤에도 세션이 멀쩡한지. 방향이 `.unset` 이고 클립이 0개이므로
+        // 다음 촬영이 방향을 다시 정할 수 있어야 한다 — 2-7 의 이어가기 후보다.
+        check("이어가기 가능이 유지된다", dSession.isResumable)
+    }
+
+    // MARK: - 2-8  방향 도출 (VideoTrackSpec)
+
+    /// `preferredTransform` 과 `naturalSize` 로 세션 방향을 판정한다.
+    ///
+    /// **파일 없이 값만 넣어 확인한다.** 판정이 순수 계산이라 촬영도 I/O 도
+    /// 필요 없다 — 그 점이 이 프로퍼티를 `VideoTrackSpec` 에 둔 이유이기도 하다.
+    ///
+    /// 케이스는 CLAUDE.md "실측 preferredTransform" 표 그대로다 (iPhone 12).
+    /// **계열 내 180도 쌍이 같은 결과를 내는지가 핵심이다** — 세로(90)와
+    /// 거꾸로(270)가 둘 다 `.portrait`, 가로L(0)과 가로R(180)이 둘 다
+    /// `.landscape` 여야 한다. 좌우 차이는 2-D 의 정규화가 흡수하므로
+    /// `Orientation` 이 2값으로 충분하다는 전제가 여기에 걸려 있다.
+    @MainActor
+    static func orientationSuite() {
+        print("\nE) 2-8 — preferredTransform 에서 방향 도출 (실측표 4케이스)")
+
+        /// 방향 판정에 쓰이는 두 값만 실제 값으로 채운다. 나머지는 판정에
+        /// 관여하지 않으므로 그럴듯한 값이면 된다.
+        func track(_ size: CGSize, _ transform: CGAffineTransform) -> VideoTrackSpec {
+            VideoTrackSpec(naturalSize: size,
+                           preferredTransform: transform,
+                           codec: nil,
+                           nominalFrameRate: 30,
+                           minFrameDuration: CMTime(value: 20, timescale: 600),
+                           duration: CMTime(value: 5980, timescale: 600))
+        }
+
+        let hd = CGSize(width: 1920, height: 1080)
+
+        // CLAUDE.md 실측표. 네 방향 모두 naturalSize 는 1920×1080 이고
+        // 회전은 transform 이 들고 있다.
+        let portrait = track(hd, CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0))
+        let upsideDown = track(hd, CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1920))
+        let landscapeL = track(hd, CGAffineTransform(a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0))
+        let landscapeR = track(hd, CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 1920, ty: 1080))
+
+        check("세로(capture 90) → portrait", portrait.orientation == .portrait,
+              "\(String(describing: portrait.orientation))")
+        check("거꾸로(capture 270) → portrait", upsideDown.orientation == .portrait,
+              "\(String(describing: upsideDown.orientation))")
+        check("가로L(capture 0) → landscape", landscapeL.orientation == .landscape,
+              "\(String(describing: landscapeL.orientation))")
+        check("가로R(capture 180) → landscape", landscapeR.orientation == .landscape,
+              "\(String(describing: landscapeR.orientation))")
+
+        // 계열 내 180도 쌍. 위 네 줄과 중복처럼 보이지만 **보는 것이 다르다** —
+        // 위는 각 값이 맞는지를, 여기는 쌍이 서로 같은지를 본다. 판정이
+        // 각도별로 갈리기 시작하면 여기가 먼저 깨진다.
+        check("★ 세로 계열 180도 쌍이 같은 결과",
+              portrait.orientation == upsideDown.orientation)
+        check("★ 가로 계열 180도 쌍이 같은 결과",
+              landscapeL.orientation == landscapeR.orientation)
+        check("계열끼리는 다르다", portrait.orientation != landscapeL.orientation)
+
+        // 렌더 규격으로 판정한다는 것은, 회전이 폭·높이를 실제로 맞바꾼다는 뜻이다.
+        let rendered = hd.applying(portrait.preferredTransform)
+        check("세로 클립의 렌더 규격이 1080×1920",
+              abs(rendered.width) == 1080 && abs(rendered.height) == 1920,
+              "\(abs(rendered.width))×\(abs(rendered.height))")
+
+        // 정사각은 판정 불가다. 한쪽으로 임의로 붙이면 판정 불가가 조용히
+        // 정상값으로 둔갑하고, 2-8 은 그것을 방향으로 확정해 버린다.
+        let square = track(CGSize(width: 1080, height: 1080), .identity)
+        check("정사각은 nil — 임의로 한쪽에 붙이지 않는다", square.orientation == nil,
+              "\(String(describing: square.orientation))")
+
+        // 세로로 찍힌 파일을 세로 세션에 넣는 실사용 조합. 2-8 호출부가
+        // 하는 일이 이 한 줄이다.
+        let session = Session(title: "")
+        check("도출값으로 방향을 정할 수 있다",
+              portrait.orientation.map { session.decideOrientation($0) } == true)
+        check("세션이 .decided(portrait) 가 된다",
+              session.orientationState == .decided(.portrait),
+              "\(session.orientationState)")
     }
 }

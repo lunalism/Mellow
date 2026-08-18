@@ -64,6 +64,52 @@ struct ClipSpec {
     }
 }
 
+// MARK: - 방향 (2-8)
+
+extension VideoTrackSpec {
+
+    /// 이 트랙이 **화면에 그려지는 규격**으로 판정한 세션 방향.
+    ///
+    /// # 각도가 아니라 렌더 규격으로 판정한다
+    ///
+    /// `preferredTransform` 의 각 성분을 방향 상수로 매핑하는 테이블을 만들지
+    /// 않는다 (CLAUDE.md 확정 사항). 값이 기기·카메라에 따라 다를 수 있기
+    /// 때문이다. 대신 `naturalSize` 에 변환을 적용해 **실제로 그려지는 폭과
+    /// 높이**를 구하고 그 둘만 비교한다. 이쪽은 기기와 무관하게 성립한다 —
+    /// 어떤 행렬이 오든 결과가 1080×1920 이면 세로, 1920×1080 이면 가로다.
+    ///
+    /// `CGSize.applying(_:)` 는 이동 성분(tx·ty)을 무시하고 회전·스케일만
+    /// 적용한다. 회전이 들어가면 폭·높이가 음수로 나올 수 있어 절대값을 쓴다.
+    ///
+    /// # 계열 내 180도를 구분하지 않는다
+    ///
+    /// `Orientation` 이 2값인 이유와 같다. 세로(90)와 거꾸로(270)는 렌더
+    /// 규격이 똑같이 1080×1920 이라 이 판정에서 같은 값이 나온다. 그것이
+    /// 의도다 — 좌우 차이는 2-D 의 정규화가 흡수한다.
+    ///
+    /// **180도 차이를 봐야 하는 쪽은 `preferredTransform` 을 직접 읽어라.**
+    /// 2-17 이 그렇게 한다. 이 프로퍼티는 원본 접근을 대체하지 않고 덧붙일
+    /// 뿐이며, `VideoTrackSpec` 은 두 값을 그대로 들고 있다.
+    ///
+    /// # 공유 수단이다
+    ///
+    /// 2-8(첫 클립이 세션 방향을 정한다) · 2-16(정합성 복구가 방향을 되짚는다)
+    /// · 2-17(정규화 대상 판별)이 **같은 이 프로퍼티를 쓴다.** 판정 수단이
+    /// 갈라지면 세 곳이 같은 파일을 다르게 볼 수 있다.
+    ///
+    /// - Returns: 정사각(폭 == 높이)이면 `nil`. 현실적으로 나오지 않지만
+    ///   한쪽으로 임의로 붙이지 않는다 — 그렇게 하면 판정 불가가 조용히
+    ///   정상값으로 둔갑한다.
+    var orientation: Orientation? {
+        let rendered = naturalSize.applying(preferredTransform)
+        let width = abs(rendered.width)
+        let height = abs(rendered.height)
+        if width > height { return .landscape }
+        if height > width { return .portrait }
+        return nil
+    }
+}
+
 // MARK: - 읽기
 
 extension ClipSpec {

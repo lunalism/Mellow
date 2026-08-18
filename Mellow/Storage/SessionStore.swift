@@ -193,6 +193,11 @@ struct SessionStore {
     /// 생성 직후 세션 방향은 **미정**이다(F-01). 확정은 첫 클립 저장과 같은
     /// 저장 단위에서 일어나야 하며(2-8), 그 자리는 `ClipStore.save` 의
     /// `alsoApply` 다. 여기서 손대면 "클립이 없는데 방향이 있는" 세션이 생긴다.
+    ///
+    /// **그 상태는 저장 실패 경로로도 만들어질 수 있다.** `alsoApply` 가 정한
+    /// 방향은 `update` 라 `rollback()` 이 인메모리를 되돌리지 않아서, 클립만
+    /// 사라지고 방향이 남는다. `ClipStore.save` 의 `revertOnFailure` 가 그것을
+    /// 걷어낸다 — 그쪽 실패 경로 주석에 같은 설명이 있다.
     private func create(title: String) throws -> Session {
         // 공백만 입력한 것은 입력하지 않은 것으로 본다. 저장 시점에 다듬어야
         // `title` 이 비었다는 사실이 "이름을 짓지 않았다" 와 정확히 같아진다.

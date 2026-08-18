@@ -316,20 +316,69 @@ struct ContentView: View {
     ///
     /// **duration 은 파일에서 읽는다.** 버튼을 누른 시간이 아니다 (1-7).
     /// 1초 미만 폐기는 컨트롤러가 이미 걸러내므로 여기까지 오지 않는다.
+    ///
+    /// # 방향도 같은 `spec` 에서 나온다 (2-8)
+    ///
+    /// `duration` 을 얻으려고 이미 `ClipSpec.load` 를 `await` 하고 있으므로
+    /// **방향 판정에 드는 추가 파일 I/O 가 없다.** 판정을 여기(async)에서
+    /// 끝내고 `alsoApply` 에는 **값만** 넘긴다 — `ClipStore` 는 동기이고
+    /// `@MainActor` 라 그 안에서 파일을 읽을 수 없다.
+    ///
+    /// **`captureRotationAngle` 을 쓰지 않는다.** 그것은 *지금* 각도이고,
+    /// 녹화와 이 버튼 사이에 임의의 시간과 회전이 끼어든다. 클립별 방향의
+    /// 진실은 파일에 기록된 `preferredTransform` 뿐이다.
+    ///
+    /// 계열 불일치(세로 세션에 가로 클립) 차단은 **여기 없다.** 2-9 의 몫이며
+    /// 그때까지 열려 있는 알려진 갭이다.
     private func saveLastClipToActiveSession() async {
         guard let session = activeSession,
               let source = controller.recordedURLs.last else { return }
         do {
             let spec = try await ClipSpec.load(from: source)
+
+            // 방향을 못 정하면 **저장하지 않는다.**
+            //
+            // 방향 없이 클립만 넣으면 세션이 `.missing` 이 되는데, 2-1 은 그
+            // 상태를 "값이 있었는데 사라진 손상" 으로 정의했다. 정상 경로가
+            // `.missing` 을 만들면 그 정의가 거짓이 되고 2-16 이 손상과
+            // 정상을 가릴 수 없게 된다. 비디오 트랙이 없는 파일은 애초에
+            // 병합·재생이 성립하지 않으므로 메타데이터만 남기는 쪽이 더 나쁘다.
+            //
+            // **파일은 지우지 않고 `forgetRecorded` 도 부르지 않는다.**
+            // "어느 경우에도 녹화본을 지우지 않는다"가 계약이고, 목록에
+            // 남겨둬야 재시도 여지가 있다.
+            guard let video = spec.video else {
+                probeNote = "저장 거부: 비디오 트랙 없음 — 파일은 남겨둔다"
+                print("[clip] ✕ 저장 거부 \(source.lastPathComponent)"
+                      + " — 비디오 트랙이 없다. 파일은 지우지 않는다")
+                return
+            }
+            guard let orientation = video.orientation else {
+                probeNote = "저장 거부: 방향 판정 불가 — 파일은 남겨둔다"
+                print("[clip] ✕ 저장 거부 \(source.lastPathComponent)"
+                      + " — 렌더 규격이 정사각이라 방향을 정할 수 없다."
+                      + " 파일은 지우지 않는다")
+                return
+            }
+
+            // **이번 호출이 실제로 방향을 정했는지**를 들고 있어야 한다.
+            // 두 번째 이후 클립은 `.decided` 라 `false` 가 나오고 그것이
+            // 정상이다. 저장이 실패했을 때 그 경우까지 되돌리면 **남의
+            // 결정을 지운다** — 이미 스토어에 있던 방향이 사라진다.
+            var decided = false
             let clip = try ClipStore(context: modelContext)
                 .save(clipAt: source,
                       duration: CMTimeGetSeconds(spec.duration),
-                      to: session)
+                      to: session,
+                      alsoApply: { decided = $0.decideOrientation(orientation) },
+                      revertOnFailure: { if decided { $0.undoOrientationDecision() } })
             #if DEBUG
             StoreProbeLog.savedClip(clip, in: session, from: source)
             #endif
             controller.forgetRecorded(source)
             probeNote = String(format: "저장 order=%d %.3fs", clip.order, clip.duration)
+                + (decided ? " · 방향 확정 \(orientation.rawValue)"
+                           : " · 방향 유지 \(Self.describe(session.orientationState))")
         } catch {
             probeNote = "저장 실패: \(error)"
             #if DEBUG
