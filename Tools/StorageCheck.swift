@@ -159,6 +159,41 @@ struct StorageCheck {
         check("이어가기 후보가 아니다", !broken.isResumable)
         check("resumableSession 이 nil", try storeD.resumableSession() == nil)
 
+        // 2-8. **`.missing` 세션에는 방향을 새로 붙이지 않는다.**
+        //
+        // **실기기로는 도달할 수 없는 분기라 여기가 유일한 검증 수단이다.**
+        // `decideOrientation` 은 `ClipStore.save` 에 넘긴 세션에만 불리고, 그
+        // 세션은 `startOrResume` 이 돌려준 것이며, `isResumable` 필터가
+        // `.missing` 을 제외한다 — 앱 UI 로는 인자가 될 방법 자체가 없다.
+        //
+        // 실기기 검증에서 "손상 세션에 방향이 안 붙었다" 를 통과로 적었다가
+        // 철회했다. **손대지 않은 세션이 안 변하는 것은 2-7 의 제외 동작이지
+        // 2-8 의 가드가 아니다.** 가드를 실제로 때리는 것은 이 두 줄뿐이다.
+        //
+        // 막지 않으면 먼저 찍힌 클립과 계열이 다른 방향이 붙고, 계열 간
+        // 혼재는 정규화로도 복구되지 않는다. 복구는 2-16 의 몫이다.
+        check("`.missing` 에는 방향을 정하지 않는다",
+              !broken.decideOrientation(.landscape))
+        check("거절 후에도 .missing 그대로", broken.orientationState == .missing,
+              "\(broken.orientationState)")
+
+        // **`.corrupted` 는 같은 방식으로 못 덮는다.** 클립을 직접 삽입하면
+        // `.missing` 이 되지만, `.corrupted` 는 `orientationRaw` 에
+        // `Orientation` 으로 해석되지 않는 문자열이 들어가 있어야 한다.
+        //
+        // 그 문자열을 넣을 방법이 없다. `orientationRaw` 는 `private` 이고,
+        // 쓰는 곳 셋이 전부 유효값만 넣는다 — `init` 은 `Orientation?`,
+        // `decideOrientation` 은 `Orientation`, `undoOrientationDecision` 은
+        // `nil` 이다. 하네스가 같은 모듈로 컴파일돼도 `private` 은 파일 밖에서
+        // 안 뚫린다.
+        //
+        // 남은 수단은 스토어 SQLite 를 직접 열어 컬럼을 고치는 것뿐인데,
+        // CoreData 의 `Z` 접두 스키마에 하네스를 묶게 된다. **할지 말지는
+        // 2-16 에서 정한다** — 거기서 `.corrupted` 복구를 실제로 만들 때
+        // 픽스처가 필요해지고, 그때 이 비용을 지불할 이유가 생긴다.
+        //
+        // 지금 덮이는 것은 `.missing`(위 두 줄)과 `.decided`(9군)뿐이다.
+
         let start4 = try storeD.startOrResume()
         check("새 세션을 만든다", start4.isNew)
         check("망가진 세션이 아니다", start4.session.id != broken.id)
