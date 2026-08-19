@@ -366,6 +366,13 @@ struct ContentView: View {
             // 정상이다. 저장이 실패했을 때 그 경우까지 되돌리면 **남의
             // 결정을 지운다** — 이미 스토어에 있던 방향이 사라진다.
             var decided = false
+            #if DEBUG
+            // 2-8. 이 클립에서 도출한 방향. 두 번째 이후 클립은 가드에 막혀
+            // 세션 방향을 바꾸지 않으므로, 이 줄이 없으면 도출이 틀려도
+            // "세션 방향 유지 ✓" 로 통과해 버린다.
+            print("[probe]   도출 방향=\(orientation.rawValue)"
+                  + "  transform=\(ClipSpec.describe(transform: video.preferredTransform))")
+            #endif
             let clip = try ClipStore(context: modelContext)
                 .save(clipAt: source,
                       duration: CMTimeGetSeconds(spec.duration),
