@@ -267,7 +267,8 @@ swiftc -parse-as-library -D DEBUG \
   Mellow/Models/Orientation.swift Mellow/Models/Session.swift \
   Mellow/Models/Clip.swift Mellow/Storage/SessionFileStore.swift \
   Mellow/Storage/SessionStore.swift Mellow/Storage/ClipStore.swift \
-  Mellow/Diagnostics/ClipSpec.swift Tools/StorageCheck.swift \
+  Mellow/Capture/RecordingGate.swift Mellow/Diagnostics/ClipSpec.swift \
+  Tools/StorageCheck.swift \
   -o /tmp/storagecheck && /tmp/storagecheck
 ```
 

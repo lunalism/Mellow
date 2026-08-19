@@ -21,6 +21,7 @@ import CoreGraphics
 //     Mellow/Storage/SessionFileStore.swift \
 //     Mellow/Storage/SessionStore.swift \
 //     Mellow/Storage/ClipStore.swift \
+//     Mellow/Capture/RecordingGate.swift \
 //     Mellow/Diagnostics/ClipSpec.swift \
 //     Tools/StorageCheck.swift -o /tmp/storagecheck && /tmp/storagecheck
 //
@@ -92,6 +93,7 @@ struct StorageCheck {
         try sessionStoreSuite()
         try clipStoreSuite()
         orientationSuite()
+        recordingGateSuite()
 
         print("\n─────────────────────────────")
         print(failures == 0 ? "전부 통과" : "✗ 실패 \(failures)건")
@@ -596,5 +598,71 @@ struct StorageCheck {
         check("세션이 .decided(portrait) 가 된다",
               session.orientationState == .decided(.portrait),
               "\(session.orientationState)")
+    }
+
+    // MARK: - 2-9  방향 불일치 차단 (RecordingGate)
+
+    /// 세션 방향과 기기 계열을 대조하는 판정.
+    ///
+    /// **이 군이 돌 수 있는 이유가 `RecordingGate` 가 UIKit 을 모르기
+    /// 때문이다.** 판정 소스는 `UIDevice.current.orientation` 이지만
+    /// (2-9 (A)) 그 타입을 판정 함수까지 들이지 않고 **계열에서 잘랐다** —
+    /// `UIDeviceOrientation` 을 인자로 받게 만들었으면 여기서 못 돈다
+    /// (macOS 에 UIKit 이 없다. 실측: `no such module 'UIKit'`).
+    ///
+    /// 잘라낸 쪽(`UIDeviceOrientation.family`)에는 우리 로직이 없다 —
+    /// UIKit 의 `isPortrait` / `isLandscape` 를 그대로 부르는 세 줄이라
+    /// 검증할 것이 없고, 판단은 전부 이쪽에 있다.
+    @MainActor
+    static func recordingGateSuite() {
+        print("\nF) 2-9 — 방향 불일치 차단 판정")
+
+        func decide(_ session: Session.OrientationState,
+                    _ device: Orientation?) -> RecordingGate.Decision {
+            RecordingGate.decide(session: session, device: device)
+        }
+
+        // ── 지시된 네 경우
+        check("세로 세션 + 기기 세로 → 통과",
+              decide(.decided(.portrait), .portrait) == .allowed)
+        check("세로 세션 + 기기 가로 → 차단",
+              decide(.decided(.portrait), .landscape) == .blocked(required: .portrait),
+              "\(decide(.decided(.portrait), .landscape))")
+        check("세로 세션 + 계열 없음 → 통과 (2-9 (B))",
+              decide(.decided(.portrait), nil) == .allowed)
+        check("미정 세션 + 기기 가로 → 통과 (첫 클립이 정한다)",
+              decide(.unset, .landscape) == .allowed)
+
+        // ── 반대 계열도 대칭인지. 한쪽만 맞으면 판정이 방향에 치우친 것이다
+        check("가로 세션 + 기기 가로 → 통과",
+              decide(.decided(.landscape), .landscape) == .allowed)
+        check("가로 세션 + 기기 세로 → 차단",
+              decide(.decided(.landscape), .portrait) == .blocked(required: .landscape),
+              "\(decide(.decided(.landscape), .portrait))")
+
+        // ── 차단이 **맞춰야 할 방향**을 들고 있어야 안내 문구를 만들 수 있다
+        check("차단은 세션 방향을 실어 보낸다",
+              decide(.decided(.portrait), .landscape).required == .portrait)
+        check("통과는 실어 보낼 것이 없다",
+              decide(.decided(.portrait), .portrait).required == nil)
+
+        // ── 도달 불가 경로. 분기를 만들지 않았다는 것을 고정한다
+        //
+        // `.missing` / `.corrupted` 세션은 `isResumable` 필터에 걸려 촬영
+        // 화면의 활성 세션이 될 수 없다(2-8 에서 확인). 여기서 통과가 나오는
+        // 것은 **특별 처리를 만들지 않았다는 뜻**이며, 만약 이 경로가 실제로
+        // 열린다면 고칠 곳은 판정이 아니라 2-7 의 필터다.
+        check("`.missing` 은 통과 — 특별 처리를 만들지 않았다",
+              decide(.missing, .landscape) == .allowed)
+        check("`.corrupted` 도 통과",
+              decide(.corrupted(rawValue: "portrai"), .landscape) == .allowed)
+
+        // ── 계열 내 180도는 애초에 구분되지 않는다
+        //
+        // 세로/거꾸로가 둘 다 `.portrait` 로 접혀 들어오므로 이 판정은 그
+        // 차이를 볼 수단이 없다. **없는 것이 맞다** — 막으면 로우앵글
+        // 촬영이 막힌다. 접히는 것 자체는 E군이 transform 으로 확인한다.
+        check("계열 내 180도는 판정에 들어오지 않는다 (E군과 짝)",
+              decide(.decided(.portrait), .portrait) == .allowed)
     }
 }

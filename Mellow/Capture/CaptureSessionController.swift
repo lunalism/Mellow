@@ -4,6 +4,45 @@
 @preconcurrency import AVFoundation
 import UIKit
 
+// 기기 방향 → 계열 (2-9).
+//
+// **여기가 UIKit 경계다.** 판정 자체는 `RecordingGate` 가 하고 이 확장은
+// UIKit 이 이미 제공하는 판정을 그대로 옮기기만 한다 — 우리 로직이 없으므로
+// 하네스에서 검증할 것도 없다. 반대로 `RecordingGate` 는 UIKit 을 모르므로
+// Mac 하네스에서 값만 넣어 돌릴 수 있다.
+//
+// **각도를 해석하지 않는다.** `isPortrait` / `isLandscape` 는 UIKit 의
+// `UIOrientation.h` 에 있는 함수이고, 우리 코드에 각도 상수가 들어가지 않는다.
+extension UIDeviceOrientation {
+
+    /// 세로/가로 계열. `.faceUp` / `.faceDown` / `.unknown` 은 `nil` 이다.
+    ///
+    /// `nil` 을 "판정 불가" 로 두는 것이 결정이다 (2-9 (B)). 마지막 값을
+    /// 기억하지 않는다.
+    var family: Orientation? {
+        if isPortrait { return .portrait }
+        if isLandscape { return .landscape }
+        return nil
+    }
+
+    #if DEBUG
+    /// 로그용 이름. **`#if DEBUG` 로 감싼다** — 릴리스 이진에 문자열을
+    /// 남기지 않는다 (CLAUDE.md "계측 코드와 릴리스 빌드").
+    var debugName: String {
+        switch self {
+        case .unknown: return "unknown"
+        case .portrait: return "portrait"
+        case .portraitUpsideDown: return "portraitUpsideDown"
+        case .landscapeLeft: return "landscapeLeft"
+        case .landscapeRight: return "landscapeRight"
+        case .faceUp: return "faceUp"
+        case .faceDown: return "faceDown"
+        @unknown default: return "unknown(\(rawValue))"
+        }
+    }
+    #endif
+}
+
 // AVCaptureSession 의 구성·구동과 회전각 관찰을 담당한다.
 //
 // 세션 구성과 start/stop 은 전용 serial queue 에서, 상태 공개는 메인에서 한다.
@@ -351,6 +390,24 @@ final class CaptureSessionController: ObservableObject {
         // 이미 시작된 클립은 시작 시점의 방향을 유지한다(PRD 8장).
         // 각도를 방향 상수로 매핑하지 않고 값을 그대로 넣는다.
         let angle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture
+
+        #if DEBUG
+        // 2-9. **판정 소스와 파일 transform 소스가 다르다.**
+        //
+        //   버튼 차단 판정 ← UIDevice.current.orientation      (UIKit)
+        //   파일 transform ← videoRotationAngleForHorizonLevelCapture (RotationCoordinator)
+        //
+        // 둘이 어긋나면 **버튼은 통과시켰는데 파일은 다른 계열로 찍힌다.**
+        // 그 클립을 2-8 이 세션 방향과 다른 계열로 판정하고, 계열 간 혼재는
+        // 정규화로도 복구되지 않는다. 두 값이 항상 일치하는지는 확인된 바가
+        // 없으므로(2-9 조사) **여기서 함께 찍어 실기기로 확인한다.**
+        //
+        // 2-8 의 `도출 방향=` 과 같은 성격의 로그다 — 값 하나만 보면 맞아
+        // 보이는 것을, 근거와 나란히 놓아야 갈린다.
+        print("[rec] 판정 \(deviceOrientation.family?.rawValue ?? "없음")"
+              + "  UIDevice=\(deviceOrientation.debugName)"
+              + "  capture각도=\(angle.map { "\($0)" } ?? "—")")
+        #endif
 
         let url = Self.makeTemporaryMovieURL()
         let delegate = MovieRecordingDelegate(

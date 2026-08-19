@@ -134,6 +134,9 @@ struct ContentView: View {
             }
 
             if controller.setupState == .configured {
+                // 2-9. 안내는 버튼 바로 위에 둔다 — 막힌 것과 이유가 함께
+                // 보여야 한다. 배치는 3-6이 다듬는다.
+                orientationNotice
                 recordButton
             }
         }
@@ -490,10 +493,64 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - 방향 불일치 차단 (2-9)
+
+    /// 세션 방향과 기기 계열을 대조한 결과.
+    ///
+    /// **판정은 `RecordingGate`가 하고 뷰는 그리기만 한다.** 뷰 안에
+    /// 인라인으로 묻으면 하네스에서 못 돈다 — 그쪽은 UIKit 없이 컴파일된다.
+    ///
+    /// 활성 세션이 없으면 대조할 방향이 없으므로 통과다. 이 화면은 3-3에서
+    /// 실제 촬영 화면으로 교체되지만 **판정 자체는 그대로 옮겨간다.**
+    private var recordingGate: RecordingGate.Decision {
+        guard let session = activeSession else { return .allowed }
+        return RecordingGate.decide(session: session.orientationState,
+                                    device: controller.deviceOrientation.family)
+    }
+
+    /// 지금 녹화 버튼을 막아야 하는가.
+    ///
+    /// **녹화 중에는 막지 않는다.** 이 버튼이 조기 종료를 겸하기 때문이다
+    /// (1-6 탭 방식). 녹화 중 폰을 돌렸다고 버튼을 비활성하면 **시작한
+    /// 녹화를 끊을 수 없게 되고**, 10초가 다 찰 때까지 갇힌다.
+    ///
+    /// 녹화 중 회전을 허용하는 것은 이미 정해져 있다 — PRD 8장
+    /// "진행 중인 녹화는 중단하지 않는다. 이미 시작된 클립은 시작 시점
+    /// 방향 유지". 그 결정과 짝이 맞아야 한다.
+    private var isRecordingBlocked: Bool {
+        guard !controller.isRecordingRequested else { return false }
+        return recordingGate.isBlocked
+    }
+
+    /// 차단 중일 때만 뜨는 안내 한 줄 (2-9 (D)).
+    ///
+    /// **최소 문구다. 카피·배치·등장 방식은 3-6이 다듬는다.** 여기서 하는
+    /// 일은 "버튼이 죽었는데 이유가 없는" 상태를 만들지 않는 것뿐이다.
+    ///
+    /// **세션 방향을 상시 표시하지 않는다** — 촬영 화면에 상시 표시를 두지
+    /// 않는 것이 결정이고(3-6), 어긋났을 때만 뜬다. 상시 배지는 프리뷰를
+    /// 가리면서 정보를 더하지 않는다.
+    @ViewBuilder
+    private var orientationNotice: some View {
+        if let required = isRecordingBlocked ? recordingGate.required : nil {
+            // 무엇이 잘못됐는지가 아니라 **무엇을 하면 되는지**를 말한다.
+            Text(required == .portrait ? "세로로 들고 촬영하세요" : "가로로 들고 촬영하세요")
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.6), in: Capsule())
+        }
+    }
+
     /// 탭하면 녹화 시작, 10초에 자동 정지, 그전에 끊고 싶으면 다시 탭 (1-6).
     ///
     /// 뷰에는 녹화 상태를 두지 않는다. 시작/정지 판단은 전부 컨트롤러의
     /// 의도가 하고, 여기서는 탭이 일어났다는 사실만 넘긴다.
+    ///
+    /// **방향 차단은 여기서 막는다 (2-9).** 컨트롤러의 시작 가드에 방향
+    /// 조건을 넣지 않는다 — 그쪽은 상태 기계(`intent`)용이고, 방향은
+    /// 사용자가 폰을 돌리면 해소되는 화면 조건이다.
     private var recordButton: some View {
         Button {
             controller.toggleRecording()
@@ -502,7 +559,11 @@ struct ContentView: View {
                 .fill(controller.isRecordingRequested ? .red : .white)
                 .frame(width: 72, height: 72)
                 .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 4).padding(-6))
+                // 비활성이 눈으로 구분돼야 한다. 흐리게 + 살짝 작게.
+                .opacity(isRecordingBlocked ? 0.35 : 1)
+                .scaleEffect(isRecordingBlocked ? 0.92 : 1)
         }
+        .disabled(isRecordingBlocked)
     }
 
     // MARK: - 사진 앱 저장 (1-18)
