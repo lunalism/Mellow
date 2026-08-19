@@ -173,6 +173,64 @@ Phase 2에서 파일 관리(2-3)와 SwiftData가 들어오면 앱 안에서 목�
 
 `CaptureTrace`도 파일 전체로 감쌀지는 정하지 않았다. 3-13에서 프로브·측정
 코드를 정리할 때 함께 본다.
+
+`SessionStore`의 `[session]` 로그는 2-8 후속으로 감쌌다. "후보가 여럿" 블록이
+세션 id와 사용자 입력 제목을 찍고 있었고 `#if DEBUG`가 없었다. 개수만 찍는
+"제외 N개" 줄은 세션을 특정하지 않아 그대로 뒀다 — Release에 남아 있다.
+
+### 이진 확인 방법 — 두 번 헛짚었다
+
+**Debug 빌드는 코드가 `Mellow.app/Mellow`가 아니라 `Mellow.app/Mellow.debug.dylib`
+에 들어간다.** 본체는 58KB 스텁이고 실제 코드는 2.5MB dylib에 있다.
+
+**본체만 세면 Debug에서도 0건이 나와 "Debug에도 없다"로 읽힌다.** 그러면
+비교 대상이 사라져 "Release에 없다"는 것이 감쌌기 때문인지 애초에 없었기
+때문인지 구분되지 않는다. `#if DEBUG`가 실제로 무엇을 뺐는지 보려면 **두
+파일을 갈라 봐야 한다.**
+
+`strings`는 쓰지 마라. **ASCII만 뽑아 한글 로그 문자열을 통째로 놓친다.**
+`grep -a`를 쓰고, 패턴에 대괄호가 있으면(`[probe]`, `[session]`) **`-F`를
+반드시 붙여라** — 안 붙이면 문자 클래스로 해석되어 `[probe]`가 p·r·o·b·e
+아무 글자에나 매칭돼 수백 건이 나온다.
+
+```
+B=~/Library/Developer/Xcode/DerivedData/Mellow-*/Build/Products
+grep -aoF '[probe]' $B/Debug-iphonesimulator/Mellow.app/Mellow.debug.dylib | wc -l
+grep -aoF '[probe]' $B/Release-iphonesimulator/Mellow.app/Mellow | wc -l
+```
+
+실측(2-8 후속):
+
+|문자열|Debug (dylib)|Release|
+|---|---|---|
+|`이어갈 수 있는 세션이`|1|**0**|
+|`남겨둠`|1|**0**|
+|`이어가기 후보에서 제외`|1|1 (감싸지 않았다)|
+|`[probe]`|39|**0**|
+
+**이 절이 이진 확인의 근거 문서인데 확인 방법 자체가 틀려 있었다.** 위 두
+함정(dylib · `strings`)이 겹쳐 같은 검사에서 두 번 헛짚었으므로 방법을 여기
+적어둔다.
+
+### 하네스는 `-D DEBUG`로 빌드한다
+
+`Tools/StorageCheck.swift`는 `swiftc`로 직접 컴파일하는데, **`-D DEBUG`가
+없으면 `#if DEBUG` 블록이 컴파일에서 빠진다.** 6군이 검증하려는
+`[session] ⚠ 이어갈 수 있는 세션이 …` 로그가 아예 안 찍히고, 그러면 군
+제목("위에 `[session] ⚠` 로그가 찍혀야 한다")이 거짓이 된다.
+
+```
+swiftc -parse-as-library -D DEBUG \
+  Mellow/Models/Orientation.swift Mellow/Models/Session.swift \
+  Mellow/Models/Clip.swift Mellow/Storage/SessionFileStore.swift \
+  Mellow/Storage/SessionStore.swift Mellow/Storage/ClipStore.swift \
+  Mellow/Diagnostics/ClipSpec.swift Tools/StorageCheck.swift \
+  -o /tmp/storagecheck && /tmp/storagecheck
+```
+
+앱의 Debug 빌드와 같은 조건으로 맞추는 것이기도 하다. 파일 헤더에도 같은
+명령이 있지만, **하네스를 처음 돌리는 사람은 그 파일을 열기 전에 여기를
+본다.** 소스 목록이 늘면 양쪽을 함께 고친다.
 - 알림 배너는 `wasInterrupted`를 발생시키지 않으며 세션도 멈추지 않는다.
   `scenePhase`는 `.active`로 재진입하지만 세션이 이미 running이라 호출이
   생략된다. `.inactive`에서 정지하지 않기로 한 결정이 실측으로 검증됨 —
