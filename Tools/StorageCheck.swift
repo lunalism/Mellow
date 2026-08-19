@@ -14,7 +14,7 @@ import CoreGraphics
 // 있으면 또 사라지므로 한 파일 · 한 명령으로 모아 둔다.
 //
 // 빌드와 실행:
-//   swiftc -parse-as-library \
+//   swiftc -parse-as-library -D DEBUG \
 //     Mellow/Models/Orientation.swift \
 //     Mellow/Models/Session.swift \
 //     Mellow/Models/Clip.swift \
@@ -27,6 +27,11 @@ import CoreGraphics
 // `ClipSpec.swift` 가 2-8 에서 들어왔다. 방향 도출(E군)이 그 파일의
 // `VideoTrackSpec.orientation` 을 검증한다. UIKit 비의존이라 Mac 에서
 // 그대로 컴파일된다 — 그 제약을 지키는 이유가 이것이다.
+//
+// **`-D DEBUG` 가 필요하다.** `SessionStore` 의 "후보가 여럿" 로그가
+// `#if DEBUG` 로 감싸여 있어(세션 id·제목을 찍으므로 릴리스에서 뺐다),
+// 빼고 빌드하면 6군이 확인하려는 로그가 아예 안 찍힌다. 앱의 Debug
+// 빌드와 같은 조건으로 맞추는 것이기도 하다.
 //
 // 실패가 있으면 exit 1 이다. CoreData 가 stderr 로 뱉는 소음은 무시해도 된다 —
 // 저장 실패를 일부러 유도하는 구간에서 나온다.

@@ -121,6 +121,19 @@ struct SessionStore {
 
         guard let newest = candidates.first else { return nil }
 
+        // **`#if DEBUG` 로 감싼다 — 세션 id 와 사용자가 입력한 제목을 찍는다.**
+        //
+        // `StoreProbeLog` 를 파일 전체로 감싼 근거와 같다(Codex 리뷰 ③):
+        // 파일 경로·세션 id 를 stdout 에 뿌리는 계측은 릴리스에 남기지
+        // 않는다. `displayTitle` 은 사용자 입력이고, 세션 id 는 세션
+        // 디렉터리 이름이라 파일 경로 단서가 된다.
+        //
+        // **바로 위 "제외 N개" 줄은 감싸지 않는다.** 개수만 찍고 세션을
+        // 특정하지 않으므로 성격이 다르다.
+        //
+        // 3-13 에서 프로브·측정 코드를 정리할 때 이 줄도 함께 본다.
+        // 한 줄짜리라 미루면 잊히므로 여기서 선반영했다.
+        #if DEBUG
         if candidates.count > 1 {
             print("[session] ⚠ 이어갈 수 있는 세션이 \(candidates.count)개다. "
                   + "최신 하나만 이어간다 — \(newest.id.uuidString)")
@@ -129,6 +142,7 @@ struct SessionStore {
                       + "\(other.displayTitle) · \(other.clips.count)컷")
             }
         }
+        #endif
 
         return newest
     }
