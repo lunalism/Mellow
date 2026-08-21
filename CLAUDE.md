@@ -302,6 +302,29 @@ swiftc -parse-as-library -D DEBUG \
 cannot be shared across concurrency contexts")`로 `Sendable`이 막혀 있다.
 컨텍스트를 격리 경계 너머로 넘기는 것은 지원되지 않는 사용법이다.
 
+**⚠ 이 원칙 위에 얹혀 있는 것이 있다 — 깨면 함께 깨진다.**
+
+`ClipStore.delete`는 삭제 **전에** 계산한 `remaining` 스냅샷으로 "이
+삭제로 클립이 0개가 되는가"를 판단한다(2-10). `context.delete(clip)`이
+관계를 그 자리에서 비우지 않아 `session.clips`를 믿을 수 없기 때문이다.
+
+**그 스냅샷이 유효한 근거는 `@MainActor` + 비동기 중단점 없음이다** —
+계산부터 `save()`까지 다른 삭제·삽입이 끼어들 수 없다. 그리고 그것은
+**메인 컨텍스트 전용이라는 이 원칙 위에 서 있다.** 백그라운드
+`ModelContext`나 비-`MainActor` 삭제 호출이 생기면 전제가 깨지고,
+깨지면 "0개가 되는가" 판정이 틀려 **방향이 남거나 `.missing`이
+만들어진다.**
+
+**재검토 트리거**: 2-18(정규화 경로의 동시성 계약을 정하는 자리이며,
+**백그라운드에서 SwiftData를 쓰는 유일한 지점으로 예고돼 있다** —
+`Clip.duration` 갱신) · 2-20(백그라운드 정규화와 미리보기·저장 동기화).
+둘 중 어느 쪽이든 이 원칙을 건드리면 `ClipStore.delete`의 격리 전제를
+함께 봐야 한다.
+
+출처는 코덱스 적대적 검토(2-10, `661bdbc`). 우리 주석은 `remaining`이
+동기 스냅샷이라는 데까지 적었고, **그것이 무엇 위에 서 있는지**는
+그 검토가 짚었다.
+
 **저장 위치가 갈라져 있다.**
 
 - 메타데이터: `Library/Application Support/Mellow.store`
