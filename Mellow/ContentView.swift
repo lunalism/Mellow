@@ -251,9 +251,22 @@ struct ContentView: View {
                 .disabled(activeSession?.clips.isEmpty ?? true)
             }
 
-            // 버튼이 다섯이 되어 한 줄에 들어가지 않는다. 파괴적인 것과
-            // 읽기만 하는 것을 아래 줄로 내린다.
+            // 파괴적인 것을 아래 줄로 내린다.
             HStack(spacing: 8) {
+                // 2-12 확인용. **`전부 삭제` 와 다른 경로다.**
+                //
+                // 저쪽은 `ClipStore`·`SessionStore` 를 안 거치고
+                // `modelContext.delete(session)` 을 직접 부르는 초기화 수단이고,
+                // 이쪽이 2-12 가 만든 `SessionStore.delete(_:)` 를 탄다.
+                // **실기기 검증은 반드시 이 버튼으로 한다** — 저쪽을 쓰면
+                // 검증 대상이 아닌 코드를 확인하게 된다.
+                Button {
+                    deleteActiveSession()
+                } label: {
+                    pill("세션 삭제")
+                }
+                .disabled(activeSession == nil)
+
                 Button {
                     for session in sessions {
                         // `try?` 로 삼키지 않는다. 프로브의 일은 어긋난 것을
@@ -284,7 +297,11 @@ struct ContentView: View {
                     pill("가운데 삭제")
                 }
                 .disabled((activeSession?.clips.count ?? 0) < 3)
+            }
 
+            // 읽기만 하는 것은 다시 한 줄 내린다. 파괴적인 줄에 섞으면 오탭이
+            // 무섭고, 한 줄에 다섯이면 iPhone 12 폭에서 넘친다.
+            HStack(spacing: 8) {
                 // 2-A 계측. 지금 상태를 콘솔에 통째로 찍는다. 강제 종료 전후를
                 // 같은 형식으로 비교하려고 열어뒀다. 3-13 에서 함께 지운다.
                 //
@@ -421,6 +438,38 @@ struct ContentView: View {
             probeNote = "삭제 실패: \(error)"
             #if DEBUG
             StoreProbeLog.failure("클립 삭제", error)
+            #endif
+        }
+    }
+
+    /// 활성 세션을 통째로 지운다 (2-12 확인용).
+    ///
+    /// **`SessionStore.delete(_:)` 를 탄다.** `전부 삭제` 버튼과 경로가 다르다 —
+    /// 그쪽은 저장 계층을 우회하는 초기화 수단이고, 2-12 가 검증할 대상은
+    /// 이쪽이다.
+    ///
+    /// 삭제 후 `activeSessionID` 를 비운다. 안 비우면 `activeSession` 이
+    /// 사라진 세션을 계속 찾고, 다음 `세션 시작` 이 무엇을 잡았는지 흐려진다.
+    private func deleteActiveSession() {
+        guard let session = activeSession else { return }
+        #if DEBUG
+        let id = session.id
+        let clipCount = session.clips.count
+        #endif
+        do {
+            let result = try SessionStore(context: modelContext).delete(session)
+            activeSessionID = nil
+            probeNote = "세션 삭제 · 디렉터리="
+                + (result.directoryRemoved ? "지움" : "이미 없었음")
+            #if DEBUG
+            StoreProbeLog.deletedSession(id: id, clipCount: clipCount, result: result)
+            #endif
+        } catch {
+            // **`activeSessionID` 를 비우지 않는다.** 세션이 그대로 살아 있고
+            // 재시도할 수 있어야 한다.
+            probeNote = "세션 삭제 실패: \(error)"
+            #if DEBUG
+            StoreProbeLog.failure("세션 삭제", error)
             #endif
         }
     }

@@ -42,6 +42,23 @@ enum SessionStartError: Error, CustomStringConvertible {
     }
 }
 
+/// 세션 삭제 실패 (2-12).
+///
+/// **메타데이터 단계만 실패로 본다.** `ClipStore.delete` 와 같은 계약이다 —
+/// 디렉터리 삭제가 실패해도 메타데이터가 이미 사라져 사용자가 본 결과는
+/// 이미 "지워짐" 이고, 남는 것은 2-16 이 치울 고아 디렉터리뿐이다.
+enum SessionDeleteError: Error, CustomStringConvertible {
+    /// 메타데이터를 지우지 못했다. **세션도 클립도 디렉터리도 그대로 남아 있다.**
+    case metadata(underlying: Error)
+
+    var description: String {
+        switch self {
+        case .metadata(let underlying):
+            return "세션을 지우지 못했습니다 — \(underlying)"
+        }
+    }
+}
+
 @MainActor
 struct SessionStore {
 
@@ -263,6 +280,116 @@ struct SessionStore {
         }
 
         return session
+    }
+
+    // MARK: - 삭제 (2-12)
+
+    /// 세션 하나를 지운 결과.
+    struct Deletion {
+        /// 디렉터리가 실제로 있었고 지워졌으면 `true`.
+        /// 이미 없었으면 `false` — **실패가 아니다.**
+        let directoryRemoved: Bool
+    }
+
+    /// 세션을 지운다. 메타데이터(세션 + 클립)와 디렉터리를 함께 없앤다.
+    ///
+    /// # 순서: 메타데이터 먼저, 디렉터리 나중
+    ///
+    /// CLAUDE.md "메타데이터와 파일의 정합성" 이 세션 층에도 그대로 걸린다 —
+    /// **메타데이터가 있으면 파일도 있다.** 어긋나면 고아 디렉터리 쪽으로
+    /// 떨어지고 2-16 이 조용히 치운다.
+    ///
+    /// **뒤집으면 안 되는 이유를 실측으로 굳혔다** (2-12 조사, 반증 실험).
+    /// 디렉터리를 먼저 지우고 `save()` 를 실패시켰더니 재실행 시점에
+    /// **세션 1개 · 클립 2개 · 디렉터리 없음** 이 남았다. 화면에는 컷이 있는데
+    /// 재생도 병합도 안 되는 세션이며, **스토어에 영구히 남는다.**
+    /// 메타 먼저면 저장이 실패해도 디렉터리를 아직 안 건드렸으므로 그 상태가
+    /// 만들어지지 않는다.
+    ///
+    /// # 클립을 하나씩 지우지 않는다
+    ///
+    /// `Session.clips` 의 `deleteRule: .cascade` 가 클립 메타데이터를 함께
+    /// 지운다. **선언을 믿지 않고 실측했다** (2-12 조사) — 이 프로젝트는
+    /// SwiftData 선언 동작이 예상과 다른 것을 세 번 밟았다(`#Predicate` enum
+    /// 미지원 · `transaction` 이 롤백하지 않음 · `rollback()` 이 insert 를
+    /// 인메모리에 남김).
+    ///
+    /// 새 컨테이너 재조회에서 `Clip` 0개, 같은 컨텍스트에도 유령 0개였고,
+    /// **`clips` 관계를 한 번도 읽지 않고 지워도 돌았다.** 목록에서 세션을
+    /// 골라 지우는 실사용이 그 모양이라 따로 확인했다.
+    ///
+    /// 파일은 cascade 가 지우지 않는다 — 그것이 아래 2)가 있는 이유다.
+    ///
+    /// # 디렉터리 삭제 실패는 실패가 아니다
+    ///
+    /// 2-5 와 같은 계약이다. 메타데이터가 이미 사라져 **사용자가 본 결과는
+    /// 이미 "지워짐"** 이고, 되돌리려고 메타데이터를 되살리면 지운 세션이
+    /// 목록에 다시 나타나 더 놀란다.
+    ///
+    /// **손실 규모는 2-5 보다 크다** — 클립 하나가 아니라 세션 전체(30컷이면
+    /// 570MB)가 고아로 남는다. 그래도 결론은 같다. 사용자가 명시적으로
+    /// "지운다" 를 눌렀고, 이 실패로 눈에 보이는 결과를 뒤집는 것이 더 나쁘다.
+    ///
+    /// # 사진 앱의 완성본은 건드리지 않는다
+    ///
+    /// 우리 소유가 아니다. 2-12a 로 닫힌 세션이라도 사용자가 이미 자기
+    /// 라이브러리에 가진 것이고, 지우는 것은 **앱 내부 데이터뿐**이다.
+    @discardableResult
+    func delete(_ session: Session) throws -> Deletion {
+        // id 를 지금 챙긴다. 삭제 후에 `session` 을 읽지 않는다.
+        let id = session.id
+
+        // 1) 메타데이터. `.cascade` 가 클립을 함께 데려간다.
+        context.delete(session)
+        do {
+            try context.save()
+        } catch {
+            // 통째로 되돌린다. 세션도 클립도 살아 있고 디렉터리는 애초에
+            // 손대지 않았다.
+            //
+            // **인메모리를 되돌리지 않는다. 되돌릴 대상이 없기 때문이다.**
+            // 2-10 이 `ClipStore.delete` 의 `catch` 에서 방향과 `order` 를
+            // 명시적으로 복원한 것과 다른데, 그쪽은 **`fetch` 를 아무리 돌려도
+            // 스스로 고쳐지지 않는** stale 이었다. 여기는 다르다 —
+            // **2회차 조회부터 저절로 맞는다**(바로 아래).
+            //
+            // 탈락한 두 안:
+            //
+            // - `context.insert(session)` 으로 되살리기 — 이미 스토어에 있는
+            //   객체를 `insert` 하는 것이 계약상 맞는지 불확실하다
+            // - `catch` 에서 더미 `fetch<Session>` 을 한 번 더 돌려 2회차를
+            //   앞당기기 — `fetch` 는 대상을 지정하는 API 가 아니라 **전체를
+            //   다시 읽는** API 다. 되돌릴 대상이 세션 하나여도 흔드는 범위는
+            //   같고, 2-10 에서 같은 이유로 탈락시켰다(`purgePhantom` 이 "방금
+            //   만든 id 하나만" 걷어내는 것과 대비된다)
+            //
+            // ⚠ **알려진 동작: 같은 컨텍스트의 첫 `fetch` 가 거짓말한다.**
+            // 나중에 발견될 버그가 아니라 지금 아는 동작이다.
+            //
+            //     rollback 후 fetch<Session> 1회차 → 0개
+            //     rollback 후 fetch<Session> 2회차 → 1개   (3회 반복 실측)
+            //
+            // 스토어는 온전하고 `session.isDeleted` 도 `false` 이며 클립은
+            // 그 사이에도 살아 있다. **실사용에서는 이렇게 나타난다** — 삭제
+            // 실패 에러를 던진 직후 `@Query` 가 다시 도는데 그 조회가 1회차라
+            // **세션이 목록에서 사라진다.** 사용자는 "삭제 실패 에러를 보면서
+            // 동시에 목록에서 사라진 화면" 을 보고, 앱을 다시 켜면 부활한다.
+            // 3-8(세션 목록)·3-15(에러 표시)가 이 사실을 알아야 한다.
+            context.rollback()
+            throw SessionDeleteError.metadata(underlying: error)
+        }
+
+        // 2) 디렉터리. 여기서 실패해도 **되돌리지 않는다.**
+        var directoryRemoved = false
+        do {
+            directoryRemoved = try files.removeSessionDirectory(id)
+        } catch {
+            // 삼키지 않고 흔적을 남긴다. 실패해도 호출부에는 성공이다.
+            print("[session] ✕ 디렉터리 삭제 실패 \(id.uuidString) — \(error)."
+                  + " 고아로 남으며 2-16 이 치운다")
+        }
+
+        return Deletion(directoryRemoved: directoryRemoved)
     }
 
     /// 저장에 실패해 롤백된 세션이 컨텍스트에 남아 있으면 걷어낸다.

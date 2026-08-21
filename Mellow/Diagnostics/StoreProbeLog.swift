@@ -247,6 +247,26 @@ enum StoreProbeLog {
                  : "  ⚠ " + problems.joined(separator: " · ")))
     }
 
+    /// 세션 삭제 결과 (2-12).
+    ///
+    /// **디렉터리가 실제로 사라졌는지를 파일시스템에 다시 물어 찍는다.**
+    /// `directoryRemoved` 는 `SessionFileStore` 가 돌려준 값이고, 아래
+    /// `실제 확인=` 은 우리가 직접 본 것이다. 둘이 갈리면 계약이 깨진 것이며
+    /// 게이트 2 의 "세션 삭제 후 디렉터리가 파일시스템에서 사라진다" 가
+    /// 정확히 이 줄로 판정된다.
+    ///
+    /// **클립 수는 지우기 전 값이다.** `.cascade` 가 몇 개를 데려갔는지
+    /// 알아야 하는데 삭제 후에는 셀 대상이 없다.
+    static func deletedSession(id: UUID,
+                               clipCount: Int,
+                               result: SessionStore.Deletion) {
+        let directory = files.sessionDirectory(id)
+        print("[probe] ⌦ 세션 삭제  \(id.uuidString)")
+        print("[probe]   디렉터리 \(result.directoryRemoved ? "지움" : "이미 없었음")"
+              + "  실제 확인=\(exists(directory) ? "⚠ 아직 있음" : "없음 ✓")")
+        print("[probe]   cascade 로 함께 지워질 클립 \(clipCount)개")
+    }
+
     static func failure(_ label: String, _ error: Error) {
         print("[probe] ✕ \(label) — \(error)")
     }

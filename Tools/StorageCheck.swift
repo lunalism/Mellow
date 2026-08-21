@@ -3,7 +3,7 @@ import SwiftData
 import CoreMedia
 import CoreGraphics
 
-// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8 · 2-9 · 2-10).
+// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8 · 2-9 · 2-10 · 2-12).
 //
 // Mellow/ 밖에 둔다. project.yml 의 sources 는 Mellow 디렉터리만 훑으므로
 // 여기 있는 파일은 앱 타깃에 들어가지 않는다. `ExportBench.swift` 와 같은
@@ -668,6 +668,147 @@ struct StorageCheck {
         // 이것이다** — 어느 쪽을 골라도 검증할 수단이 없다. 2-16 에서
         // `.corrupted` 복구를 만들 때 함께 정한다 (Tasks.md 2-10 · 2-16).
         print("  · `.corrupted` + 클립 0개 — **확인 불가.** 만들 수단이 없다 (2-16 에서 정한다)")
+
+        // ══ H. 2-12 — 세션 삭제
+        //
+        // **`.cascade` 는 선언이지 관측이 아니었다.** 이 프로젝트는 SwiftData
+        // 선언 동작이 예상과 다른 것을 세 번 밟았다(`#Predicate` enum 미지원 ·
+        // `transaction` 이 롤백하지 않음 · `rollback()` 이 insert 를 인메모리에
+        // 남김). 2-12 본문이 "클립을 하나씩 지울 필요가 없다" 를 전제로 삼으므로
+        // 여기서 값으로 고정한다.
+        print("\nH) 2-12 — 세션 삭제와 cascade")
+
+        // ── H-1. 정상 삭제
+        let iURL = root.appending(path: "I.store")
+        let iCtx = try makeContext(url: iURL)
+        let iSession = try SessionStore(context: iCtx, files: files).startOrResume().session
+        let iStore = ClipStore(context: iCtx, files: files)
+        for n in 0..<2 {
+            var d = false
+            _ = try iStore.save(clipAt: try makeSource(scratch, "i-\(n).mov"),
+                                duration: 9.9, to: iSession,
+                                alsoApply: { d = $0.decideOrientation(.portrait) },
+                                revertOnFailure: { if d { $0.undoOrientationDecision() } })
+        }
+        let iID = iSession.id
+        check("사전: 세션 1 · 클립 2 · 파일 2",
+              iSession.clips.count == 2
+              && ((try? files.clipFileNames(in: iID))?.count ?? 0) == 2)
+
+        let iResult = try SessionStore(context: iCtx, files: files).delete(iSession)
+        check("디렉터리를 지웠다 (directoryRemoved)", iResult.directoryRemoved)
+        check("디렉터리가 실제로 없다",
+              !FileManager.default.fileExists(atPath: files.sessionDirectory(iID).path))
+
+        let iSameS = try iCtx.fetch(FetchDescriptor<Session>()).count
+        let iSameC = try iCtx.fetch(FetchDescriptor<Clip>()).count
+        check("같은 컨텍스트에 세션 유령이 없다", iSameS == 0, "\(iSameS)개")
+        check("★ 같은 컨텍스트에 클립 유령이 없다 — cascade", iSameC == 0, "\(iSameC)개")
+
+        let iFresh = try makeContext(url: iURL)
+        let iDiskS = try iFresh.fetch(FetchDescriptor<Session>()).count
+        let iDiskC = try iFresh.fetch(FetchDescriptor<Clip>()).count
+        check("스토어에 세션 0개", iDiskS == 0, "\(iDiskS)개")
+        check("★ 스토어에 클립 0개 — cascade 가 실제로 돈다", iDiskC == 0, "\(iDiskC)개")
+
+        // ── H-2. 관계를 fault in 하지 않고 삭제해도 cascade 가 도는가
+        //
+        // **실사용이 이 모양이다.** 목록에서 세션을 골라 지울 때 `clips` 를
+        // 읽었다는 보장이 없다. 관계가 fault 상태면 cascade 가 대상을 모를
+        // 수 있으므로 따로 본다.
+        let jURL = root.appending(path: "J.store")
+        let jCtx = try makeContext(url: jURL)
+        let jSession = try SessionStore(context: jCtx, files: files).startOrResume().session
+        let jStore = ClipStore(context: jCtx, files: files)
+        for n in 0..<3 {
+            var d = false
+            _ = try jStore.save(clipAt: try makeSource(scratch, "j-\(n).mov"),
+                                duration: 9.9, to: jSession,
+                                alsoApply: { d = $0.decideOrientation(.portrait) },
+                                revertOnFailure: { if d { $0.undoOrientationDecision() } })
+        }
+        let jID = jSession.id
+
+        // 새 컨텍스트로 다시 열어 관계를 한 번도 건드리지 않은 인스턴스를 얻는다.
+        let jCold = try makeContext(url: jURL)
+        guard let jFetched = try jCold.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == jID }) else {
+            check("차가운 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        // `.clips` 를 읽지 않고 그대로 넘긴다.
+        _ = try SessionStore(context: jCold, files: files).delete(jFetched)
+        let jDiskC = try makeContext(url: jURL).fetch(FetchDescriptor<Clip>()).count
+        check("★ 관계를 안 읽어도 cascade 가 돈다", jDiskC == 0, "\(jDiskC)개")
+
+        // ── H-3. 이미 없는 디렉터리 — 실패가 아니다
+        let kURL = root.appending(path: "K.store")
+        let kCtx = try makeContext(url: kURL)
+        let kSession = try SessionStore(context: kCtx, files: files).startOrResume().session
+        let kID = kSession.id
+        _ = try files.removeSessionDirectory(kID)      // 미리 지워 둔다
+        let kResult = try SessionStore(context: kCtx, files: files).delete(kSession)
+        check("이미 없으면 directoryRemoved = false — 실패가 아니다",
+              !kResult.directoryRemoved)
+        check("메타데이터는 지워졌다",
+              (try makeContext(url: kURL).fetch(FetchDescriptor<Session>()).count) == 0)
+
+        // ── H-4. ⚠ 삭제 실패 후 **첫 조회가 거짓말한다** (알려진 동작)
+        //
+        // 2-12 가 인메모리를 되돌리지 않기로 한 근거가 "2회차부터 저절로
+        // 맞는다" 이다. **그 근거 자체를 회귀로 박는다** — 이것이 바뀌면
+        // 2-12 항목과 코드 주석의 서술이 통째로 틀려진다.
+        //
+        // 2-10 의 stale 과 성질이 다르다. 그쪽은 `fetch` 를 아무리 돌려도
+        // 안 고쳐져 명시적 복원이 필요했다.
+        print("\nH-4) 2-12 — 삭제 실패 후 첫 조회 vs 두 번째 조회 (allowsSave: false)")
+        let lURL = root.appending(path: "L.store")
+        let lCtx = try makeContext(url: lURL)
+        let lSession = try SessionStore(context: lCtx, files: files).startOrResume().session
+        let lStore = ClipStore(context: lCtx, files: files)
+        for n in 0..<2 {
+            var d = false
+            _ = try lStore.save(clipAt: try makeSource(scratch, "l-\(n).mov"),
+                                duration: 9.9, to: lSession,
+                                alsoApply: { d = $0.decideOrientation(.portrait) },
+                                revertOnFailure: { if d { $0.undoOrientationDecision() } })
+        }
+        let lID = lSession.id
+
+        let lro = try makeContext(url: lURL, allowsSave: false)
+        guard let l = try lro.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == lID }) else {
+            check("읽기 전용 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        var lThrown: Error?
+        do { _ = try SessionStore(context: lro, files: files).delete(l) }
+        catch { lThrown = error }
+        if let e = lThrown as? SessionDeleteError, case .metadata = e {
+            check("SessionDeleteError.metadata 로 분류", true)
+        } else {
+            check("SessionDeleteError.metadata 로 분류", false, "\(String(describing: lThrown))")
+        }
+
+        let first = try lro.fetch(FetchDescriptor<Session>()).count
+        let second = try lro.fetch(FetchDescriptor<Session>()).count
+        check("★ 첫 조회는 0개 — 화면에서 사라진다 (알려진 동작)",
+              first == 0, "\(first)개")
+        check("★ 두 번째 조회는 1개 — 저절로 맞는다. 그래서 되돌리지 않는다",
+              second == 1, "\(second)개")
+        let lClips = try lro.fetch(FetchDescriptor<Clip>()).count
+        check("클립은 그 사이에도 살아 있다", lClips == 2, "\(lClips)개")
+        check("보유 참조가 isDeleted 가 아니다", !l.isDeleted)
+
+        let lFresh = try makeContext(url: lURL)
+        let lDiskS = try lFresh.fetch(FetchDescriptor<Session>()).count
+        let lDiskC = try lFresh.fetch(FetchDescriptor<Clip>()).count
+        check("스토어는 온전하다 (세션 1 · 클립 2)",
+              lDiskS == 1 && lDiskC == 2, "세션 \(lDiskS) / 클립 \(lDiskC)")
+        check("★ 디렉터리를 안 건드렸다 — 메타 먼저의 값어치",
+              FileManager.default.fileExists(atPath: files.sessionDirectory(lID).path))
+        let lFiles = (try? files.clipFileNames(in: lID))?.count ?? 0
+        check("클립 파일도 그대로다", lFiles == 2, "\(lFiles)개")
     }
 
     // MARK: - 2-8  방향 도출 (VideoTrackSpec)
