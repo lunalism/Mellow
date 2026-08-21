@@ -132,7 +132,7 @@ extension Session {
     /// 판단은 호출부가 한다 — 이 함수는 상태를 보지 않으므로, 이미 정해져
     /// 있던 방향에 대고 부르면 남의 결정을 지운다.
     ///
-    /// **2-10 의 `resetOrientation()` 과 다른 것이다.** 이름을 겹치지 않게
+    /// **아래 `resetOrientation()` 과 다른 것이다.** 이름을 겹치지 않게
     /// 둔 이유가 그것이다.
     ///
     /// - 이쪽은 **저장이 실패해 없던 일이 된 것**을 인메모리에서 지운다.
@@ -141,6 +141,56 @@ extension Session {
     ///   해서 초기화한다
     func undoOrientationDecision() {
         orientationRaw = nil
+    }
+
+    /// **클립이 0개가 되면 방향을 미정으로 되돌린다 (2-10).**
+    ///
+    /// 호출은 `ClipStore.delete` 안에서, **삭제와 같은 저장 단위 안에서**
+    /// 일어난다. 밖에서 부르면 두 번째 저장이 되고 그 사이 실패가
+    /// "클립 0개 + 방향 남음" 을 만든다 — 2-10 이 없애려는 바로 그 상태다.
+    ///
+    /// **`.decided` 일 때만 초기화한다.** 나머지 셋은 건드리지 않으며 이유가
+    /// 각각 다르다.
+    ///
+    /// - `.unset` — 이미 미정이다. 할 일이 없다
+    /// - `.missing` — raw 가 이미 `nil` 이라 **클립이 0개가 되는 순간 저절로
+    ///   `.unset` 이 된다.** `orientationState` 가 계산 프로퍼티이기 때문이다
+    /// - `.corrupted` — 값이 파싱되지 않아 `orientation` getter 가 `nil` 을
+    ///   준다. **적용될 방향 자체가 없으므로 2-10 이 고치려는 증상이 여기엔
+    ///   없다** — 2-10 이 막는 것은 "먼저 지운 클립의 방향이 새 클립에 그대로
+    ///   적용되는 것" 이고, `.corrupted` 는 가드에 막히는 쪽이다. **확정이
+    ///   아니라 유보이며** 2-16 에서 `.corrupted` 복구를 만들 때 함께 정한다
+    ///
+    /// - Returns: 이번 호출이 지운 방향. `nil` 이면 아무것도 하지 않았다.
+    ///
+    ///   **`Bool` 이 아닌 이유가 있다.** 저장이 실패하면 되돌려야 하는데
+    ///   `decideOrientation` 으로는 되돌릴 수 없다 — 그 함수의 가드가
+    ///   `.unset` 을 요구하는데, 실패 시점의 상태는 **`.missing`** 이라
+    ///   막힌다(하네스 실측). 롤백이 인메모리를 되돌리지 않아 raw 는 `nil`
+    ///   인데 삭제된 클립은 관계에 되살아나 있기 때문이다. 되돌리려면
+    ///   **이전 값**이 있어야 하므로 그것을 돌려준다.
+    ///
+    ///   `@discardableResult` 를 붙이지 않는다. `decideOrientation` 과 같은
+    ///   이유다 — 이 값을 봐야 되돌릴 대상인지 알 수 있다.
+    func resetOrientation() -> Orientation? {
+        guard case .decided(let previous) = orientationState else { return nil }
+        orientationRaw = nil
+        return previous
+    }
+
+    /// **저장 실패 복구 전용 (2-10).** `ClipStore.delete` 의 `catch` 가 부른다.
+    ///
+    /// `resetOrientation()` 이 값을 돌려준 **바로 그 호출**만 되돌린다.
+    /// 판단은 호출부가 한다 — 이 함수는 상태를 보지 않는다.
+    ///
+    /// `undoOrientationDecision()` 과 짝을 이루지만 **방향이 반대다.**
+    /// 저쪽은 새로 정한 값을 지우고, 이쪽은 지운 값을 되살린다.
+    ///
+    /// 가드가 없는 것은 되살릴 대상이 `.missing` 이기 때문이다. 상태를 보고
+    /// 거절하는 가드를 넣으면 **되돌리기가 그 가드에 막힌다** — 그것이
+    /// `decideOrientation` 을 쓰지 못하는 이유이기도 하다.
+    func undoOrientationReset(_ previous: Orientation) {
+        orientationRaw = previous.rawValue
     }
 }
 

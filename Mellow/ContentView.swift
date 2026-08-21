@@ -399,8 +399,9 @@ struct ContentView: View {
 
     /// 진행 중 세션의 마지막 컷을 지운다 (2-5 확인용).
     ///
-    /// 방향 초기화는 하지 않는다 — `sessionBecameEmpty` 를 받아 표시만 하고,
-    /// 실제 초기화는 2-10 의 몫이다.
+    /// **방향 초기화는 여기서 하지 않는다.** `ClipStore.delete` 안에서
+    /// 삭제와 같은 저장 단위로 끝난다(2-10). 여기서는 `sessionBecameEmpty` 를
+    /// 받아 표시만 한다.
     private func deleteLastClipOfActiveSession() {
         guard let session = activeSession,
               let clip = session.orderedClips.last else { return }
@@ -412,7 +413,7 @@ struct ContentView: View {
             let result = try ClipStore(context: modelContext).delete(clip)
             probeNote = "삭제 남은 \(result.remainingCount)컷"
                 + " 파일=\(result.fileRemoved ? "지움" : "없었음")"
-                + (result.sessionBecameEmpty ? " · 비었음(2-10 대상)" : "")
+                + (result.sessionBecameEmpty ? " · 비었음 방향미정" : "")
             #if DEBUG
             StoreProbeLog.deletedClip(fileName: fileName, in: session, result: result)
             #endif

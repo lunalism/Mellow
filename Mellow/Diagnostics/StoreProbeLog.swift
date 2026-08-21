@@ -223,7 +223,14 @@ enum StoreProbeLog {
         print("[probe]   파일 \(result.fileRemoved ? "지움" : "이미 없었음")"
               + "  실제 확인=\(exists(url) ? "⚠ 아직 있음" : "없음 ✓")")
         print("[probe]   남은 \(result.remainingCount)컷"
-              + (result.sessionBecameEmpty ? "  · 비었음(2-10 대상)" : ""))
+              + (result.sessionBecameEmpty ? "  · 비었음" : ""))
+
+        // **방향을 반드시 찍는다 (2-10).** 초기화는 `ClipStore.delete` 안에서
+        // 일어나므로 **호출부에는 흔적이 없다.** 이 줄이 없으면 실기기에서
+        // 2-10 이 실제로 돌았는지 관측할 방법이 없다 — 2-8 에서 `도출 방향=`
+        // 로그가 없었으면 항목 4 판정이 성립하지 않았던 것과 같은 자리다.
+        print("[probe]   방향=\(describe(session.orientationState))"
+              + (result.sessionBecameEmpty ? "  ← 0컷이므로 미정이어야 한다" : ""))
 
         let orders = session.orderedClips.map(\.order)
         var problems: [String] = []

@@ -317,7 +317,12 @@ struct ClipStore {
         let fileRemoved: Bool
 
         /// **이 삭제로 클립이 0개가 되었는가.**
-        /// 2-10(클립 0개면 방향 미정으로 초기화)이 이 값을 본다.
+        ///
+        /// **방향 초기화(2-10)는 이 값을 보고 하는 것이 아니다.** 그것은
+        /// `delete` 안에서 같은 저장 단위로 끝난다. 이 값이 남아 있는 것은
+        /// 호출부의 UI 갱신(3-5 undo 버튼 비활성)과 **하네스가 "이 삭제로
+        /// 0개가 됐다" 를 관측할 지점**이 필요하기 때문이다. `orientationState`
+        /// 만 보면 결과는 보이지만 신호가 보이지 않는다.
         var sessionBecameEmpty: Bool { remainingCount == 0 }
     }
 
@@ -353,6 +358,20 @@ struct ClipStore {
     ///
     /// 재정렬할 뒤쪽이 없을 뿐이고 분기하지 않는다. 2-11(마지막 컷 undo)이
     /// 이 함수를 그대로 쓴다.
+    ///
+    /// # 클립이 0개가 되면 방향을 미정으로 되돌린다 (2-10)
+    ///
+    /// **호출부가 아니라 여기서 한다.** 삭제·재번호와 **같은 저장 단위**여야
+    /// 하기 때문이다. 밖에서 하면 이 `save()` 가 끝난 뒤라 두 번째 저장이 되고,
+    /// 그 사이 실패가 "클립 0개 + 방향 남음" 을 만든다 — 2-10 이 없애려는
+    /// 바로 그 상태다. 2-8 이 대칭인 문제(첫 클립 저장과 방향 확정)를 같은
+    /// 방식으로 풀었다.
+    ///
+    /// `save` 가 `alsoApply` 클로저로 받는 것과 **비대칭인데 이유가 있다.**
+    /// 저쪽은 정책이 호출부마다 다르지만(두 번째 이후 클립은 되돌리면 안 된다),
+    /// 이쪽은 undo(2-11)든 개별 삭제(3-11)든 2-16 의 정리든 **정책이 전부
+    /// 같다** — "0개가 되면 미정으로". 갈라질 여지가 없으므로 밖으로 뺄 이유가
+    /// 없고, 빼면 넘기는 것을 잊을 자리만 생긴다.
     @discardableResult
     func delete(_ clip: Clip) throws -> Deletion {
         let session = clip.session
@@ -364,19 +383,75 @@ struct ClipStore {
             .filter { $0.id != clip.id }
             .sorted { $0.order < $1.order }
 
-        // 1) 메타데이터. 삭제와 재번호가 한 단위다.
+        // 재번호 **이전** 값. 저장이 실패하면 여기로 되돌린다.
+        //
+        // `rollback()` 은 스토어만 되돌리고 우리가 들고 있는 객체는 재번호된
+        // 값을 그대로 들고 있다. 실측: 클립 3개에서 가운데를 지우다 실패하면
+        // 관계가 `[0, 1, 1]` — **중복이다.** 지운 클립이 되살아나면서 재번호된
+        // 뒤쪽과 겹친다. "틈은 무해하고 중복은 해롭다"(2-4)에 정면으로 걸린다.
+        let previousOrders = remaining.map(\.order)
+
+        // 1) 메타데이터. 삭제 · 재번호 · 방향 초기화가 한 단위다.
         context.delete(clip)
         for (index, each) in remaining.enumerated() where each.order != index {
             each.order = index
         }
 
+        // **방향 초기화는 삭제 뒤다.** 순서가 2-8 의 거울상이며 이유도 반대다.
+        //
+        // 2-8 은 `alsoApply` 를 `insert` **앞**에 둬야 했다. 클립이 먼저 붙으면
+        // 세션이 `.missing` 으로 보여 `decideOrientation` 의 가드가 막았다.
+        // 여기서는 반대로 **"0개가 되는가" 를 확인한 뒤**여야 한다 — 확인 없이
+        // 방향을 지우면 `raw nil + 클립 있음` 이 되어 **`.missing` 을 직접
+        // 만든다.** 2-1 리뷰의 "클립 0개 확인은 순서 문제가 아니라 불변식
+        // 문제다" 가 이 말이다.
+        //
+        // 그 확인을 `remaining` 으로 한다. `context.delete(clip)` 이 관계를
+        // 그 자리에서 비우지 않기 때문이다 — **삭제 직후에도 `session.clips`
+        // 에는 지운 클립이 남아 있다**(실측). 위에서 `remaining` 을 미리
+        // 정해 둔 이유가 여기서 한 번 더 쓰인다.
+        //
+        // 그래서 `save()` 전까지 세션은 잠깐 `.missing` 으로 보인다. 2-8 이
+        // 저장 단위 안에서 `.missing` 을 스쳐 지나가는 것과 같은 성질이고,
+        // **이 구간은 전부 동기이며 메인 액터라 아무도 그 상태를 읽지 않는다.**
+        // 저장이 끝나면 관계에서 클립이 빠져 `.unset` 이 된다.
+        let previousOrientation = remaining.isEmpty ? session?.resetOrientation() : nil
+
         do {
             try context.save()
         } catch {
-            // 통째로 되돌린다. 클립은 살아 있고 파일도 그대로다.
-            // 인메모리 객체는 stale 이므로 이 에러를 받은 쪽은 다시 읽어야 한다
-            // (CLAUDE.md "API 주의사항").
+            // **스토어 기준으로만** 통째로 되돌린다. 클립은 살아 있고 파일도
+            // 그대로다.
             context.rollback()
+
+            // 인메모리는 되돌아가지 않는다. **우리가 건드린 둘을 명시적으로
+            // 복원한다.** 안 하면 롤백 후 남는 것이 이렇다(하네스 실측):
+            //
+            // - 방향: raw 가 `nil` 인데 지운 클립이 관계에 되살아나
+            //   **`orientationState` 가 `.missing`** 이 된다. 2-7 이 그 세션을
+            //   이어가기 후보에서 빼고, 2-9 는 `orientation == nil` 을 보고
+            //   판정한다
+            // - `order`: 재번호된 값이 남아 **중복이 생긴다**(위 참고)
+            //
+            // **컨텍스트를 통째로 다시 조회해서 새로 고치는 방법은 쓰지 않는다.**
+            // 그러면 우리가 건드린 것 말고 같은 컨텍스트의 모든 세션이 함께
+            // 갱신되고, `@Query` 로 그리는 화면이 그 순간 무엇을 보는지 통제하지
+            // 못한다. 2-4 에서 유령 insert 를 걷어낼 때 같은 갈림길에서
+            // `purgePhantom(id:)` 로 **방금 만든 id 하나만** 걷어내기로 한 것과
+            // 같은 판단이다.
+            //
+            // 되돌린 값은 스토어에 있는 값과 같으므로 다음 저장에 얹혀도 무해하다.
+            if let previousOrientation {
+                session?.undoOrientationReset(previousOrientation)
+            }
+            for (each, previous) in zip(remaining, previousOrders) where each.order != previous {
+                each.order = previous
+            }
+
+            // 위 복원은 **우리가 건드린 것**만 되돌린다. 이 컨텍스트의 다른
+            // 미저장 변경은 `rollback()` 에 함께 쓸려갔으므로, 이 에러를 받은
+            // 쪽은 인메모리를 넓게 믿지 말고 다시 읽는 것이 여전히 옳다
+            // (CLAUDE.md "API 주의사항").
             throw ClipDeleteError.metadata(underlying: error)
         }
 

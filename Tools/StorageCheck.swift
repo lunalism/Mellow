@@ -3,7 +3,7 @@ import SwiftData
 import CoreMedia
 import CoreGraphics
 
-// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8).
+// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8 · 2-9 · 2-10).
 //
 // Mellow/ 밖에 둔다. project.yml 의 sources 는 Mellow 디렉터리만 훑으므로
 // 여기 있는 파일은 앱 타깃에 들어가지 않는다. `ExportBench.swift` 와 같은
@@ -408,7 +408,17 @@ struct StorageCheck {
         check("이어가기 가능이 유지된다", session.isResumable)
 
         // ══ B. 2-4 회귀 — 정상 저장
-        print("\nB) 2-4 회귀 — 정상 저장")
+        //
+        // **`alsoApply` 를 반드시 넘긴다 (2-10 에서 고쳤다).** 예전에는 넘기지
+        // 않고 저장했는데, 그러면 클립이 쌓여도 방향이 붙지 않아 이 세션이
+        // **`.missing`** 이 된다 — 2-8 이 "정상 경로로는 만들어지지 않는다" 고
+        // 한 상태를 저장 계층을 거치고도 하네스가 만들고 있었다. 파라미터가
+        // 옵셔널이라 안 넘겨도 조용히 통과한다.
+        //
+        // **그 여파는 C군에서 터진다.** 방향이 없는 세션은 클립을 전부 지워도
+        // `.unset` 이 되므로, 2-10 이 있든 없든 결과가 같아 회귀를 물지 못한다.
+        // 2-8 이 9군을 `ClipStore.save` 경유로 고친 것과 같은 종류의 구멍이다.
+        print("\nB) 2-4 회귀 — 정상 저장 (2-8 경유)")
         let b = try makeContext()
         let bs = try SessionStore(context: b, files: files).startOrResume().session
         let clips = ClipStore(context: b, files: files)
@@ -416,9 +426,16 @@ struct StorageCheck {
         var saved: [Clip] = []
         for i in 0..<4 {
             let src = try makeSource(scratch, "b-\(i).mov")
-            let clip = try clips.save(clipAt: src, duration: 9.9 + Double(i) / 100, to: bs)
+            var decided = false
+            let clip = try clips.save(
+                clipAt: src,
+                duration: 9.9 + Double(i) / 100,
+                to: bs,
+                alsoApply: { decided = $0.decideOrientation(.portrait) },
+                revertOnFailure: { if decided { $0.undoOrientationDecision() } })
             saved.append(clip)
             check("order=\(i) 로 붙는다", clip.order == i, "order=\(clip.order)")
+            check("첫 클립만 방향을 정한다", decided == (i == 0), "decided=\(decided)")
             check("원본이 사라진다 (이동)",
                   !FileManager.default.fileExists(atPath: src.path))
             check("목적지에 있다",
@@ -430,9 +447,12 @@ struct StorageCheck {
         let onDiskCount = try files.clipFileNames(in: bs.id).count
         check("메타 4컷 / 파일 4개", bs.clips.count == 4 && onDiskCount == 4,
               "메타 \(bs.clips.count) / 파일 \(onDiskCount)")
+        // C군이 회귀를 물려면 여기서 방향이 실제로 붙어 있어야 한다.
+        check("★ 세션 방향이 .decided(portrait) — C군의 전제",
+              bs.orientationState == .decided(.portrait), "\(bs.orientationState)")
 
-        // ══ C. 2-5 회귀 — 삭제와 재정렬
-        print("\nC) 2-5 회귀 — 삭제와 재정렬")
+        // ══ C. 2-5 회귀 — 삭제와 재정렬, 그리고 2-10 방향 초기화
+        print("\nC) 2-5 회귀 — 삭제와 재정렬 / 2-10 방향 초기화")
         let middle = bs.orderedClips[2]
         let middleName = middle.fileName
         let result = try clips.delete(middle)
@@ -451,12 +471,22 @@ struct StorageCheck {
         check("order 가 0,1", bs.orderedClips.map(\.order) == [0, 1],
               "\(bs.orderedClips.map(\.order))")
 
+        // 마지막 한 컷을 남기기 전까지는 방향이 그대로여야 한다. 0개가 되는
+        // 순간에만 초기화되는 것이 2-10 이고, 그 전에 지워지면 다음 촬영이
+        // 남아 있는 클립과 다른 계열로 방향을 다시 정할 수 있다.
+        check("아직 방향이 유지된다 (2컷 남음)",
+              bs.orientationState == .decided(.portrait), "\(bs.orientationState)")
+
         var becameEmpty = false
         for clip in bs.orderedClips {
             becameEmpty = try clips.delete(clip).sessionBecameEmpty
         }
         check("클립 0개", bs.clips.isEmpty, "\(bs.clips.count)개")
-        check("sessionBecameEmpty 가 선다 (2-10 대상)", becameEmpty)
+        check("sessionBecameEmpty 가 선다", becameEmpty)
+        // ★ 2-10 이 없으면 여기서 .decided(portrait) 가 그대로 나온다.
+        check("★ 2-10 — 클립 0개가 되면 방향이 .unset 으로 돌아온다",
+              bs.orientationState == .unset, "\(bs.orientationState)")
+        check("이어가기 후보로 남는다", bs.isResumable)
 
         // ══ D. 2-8 회귀 — 저장 실패 시 세션 방향이 되돌아간다
         //
@@ -522,6 +552,122 @@ struct StorageCheck {
         // 되돌린 뒤에도 세션이 멀쩡한지. 방향이 `.unset` 이고 클립이 0개이므로
         // 다음 촬영이 방향을 다시 정할 수 있어야 한다 — 2-7 의 이어가기 후보다.
         check("이어가기 가능이 유지된다", dSession.isResumable)
+
+        // ══ G. 2-10 회귀 — 삭제가 실패했을 때 인메모리 복원
+        //
+        // **D군의 거울상이다.** D는 저장 실패 시 *새로 정한* 방향을 걷어내고,
+        // G는 삭제 실패 시 *지운* 방향을 되살린다. 둘 다 `rollback()` 이
+        // 스토어만 되돌리기 때문에 필요한 코드다.
+        //
+        // **복원하지 않으면 `.missing` 이 만들어진다** (하네스 실측). raw 는
+        // `nil` 인데 삭제된 클립이 관계에 되살아나기 때문이다. 2-16 이
+        // "`.missing` 은 2-8 이후 도달 불가" 라고 적은 전제에 **'2-10 을
+        // 올바로 만들었을 때'** 라는 단서가 붙는 이유가 이것이다.
+        //
+        // **`order` 복원은 2-5 결함 수정이다. 2-10 이 아니다.** 삭제 실패 후
+        // 재번호가 인메모리에 남아 되살아난 클립과 겹치는 것은 2-10 과 무관하게
+        // 이미 있던 것이고, 오염원이 같은 `catch` 라 같은 자리에서 고칠 뿐이다.
+        print("\nG) 2-10 회귀 — 삭제 실패 시 인메모리 복원 (allowsSave: false)")
+
+        // ── G-1. 마지막 컷 삭제 실패 → 방향이 되살아나는가
+        let gURL = root.appending(path: "G.store")
+        let gWritable = try makeContext(url: gURL)
+        let gSession = try SessionStore(context: gWritable, files: files)
+            .startOrResume().session
+        let gStore = ClipStore(context: gWritable, files: files)
+        var gDecided = false
+        _ = try gStore.save(clipAt: try makeSource(scratch, "g-0.mov"),
+                            duration: 9.9, to: gSession,
+                            alsoApply: { gDecided = $0.decideOrientation(.portrait) },
+                            revertOnFailure: { if gDecided { $0.undoOrientationDecision() } })
+        let gSeededID = gSession.id
+        check("사전: 방향 .decided(portrait) · 1컷",
+              gSession.orientationState == .decided(.portrait) && gSession.clips.count == 1,
+              "\(gSession.orientationState) / \(gSession.clips.count)컷")
+
+        let gro = try makeContext(url: gURL, allowsSave: false)
+        guard let g = try gro.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == gSeededID }) else {
+            check("읽기 전용 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        var gThrown: Error?
+        do { _ = try ClipStore(context: gro, files: files).delete(g.orderedClips[0]) }
+        catch { gThrown = error }
+        if let e = gThrown as? ClipDeleteError, case .metadata = e {
+            check("ClipDeleteError.metadata 로 분류", true)
+        } else {
+            check("ClipDeleteError.metadata 로 분류", false, "\(String(describing: gThrown))")
+        }
+        // ★ 복원이 없으면 여기서 .missing 이 나온다.
+        check("★ 방향이 .decided(portrait) 로 되살아난다",
+              g.orientationState == .decided(.portrait), "\(g.orientationState)")
+        check("`.missing` 이 만들어지지 않았다", g.orientationState != .missing)
+        check("2-7 이 이어가기 후보에서 빼지 않는다", g.isResumable)
+        check("2-9 가 읽는 orientation 이 살아 있다", g.orientation == .portrait,
+              "\(String(describing: g.orientation))")
+        check("클립이 되살아나 있다 (삭제가 없던 일이 됐다)", g.clips.count == 1,
+              "\(g.clips.count)컷")
+        let gOnDisk = try makeContext(url: gURL).fetch(FetchDescriptor<Clip>()).count
+        check("스토어도 온전하다", gOnDisk == 1, "\(gOnDisk)개")
+        let gFiles = (try? files.clipFileNames(in: gSeededID)) ?? []
+        check("파일도 그대로다", gFiles.count == 1, "\(gFiles.count)개")
+
+        // ── G-2. 가운데 컷 삭제 실패 → order 에 중복이 남지 않는가 (2-5 결함)
+        //
+        // **가운데여야 한다.** 마지막 컷은 재번호가 애초에 돌지 않아
+        // (`each.order != index` 가 전부 거짓) 이 결함이 드러나지 않는다.
+        let hURL = root.appending(path: "H.store")
+        let hWritable = try makeContext(url: hURL)
+        let hSession = try SessionStore(context: hWritable, files: files)
+            .startOrResume().session
+        let hStore = ClipStore(context: hWritable, files: files)
+        for i in 0..<3 {
+            var hDecided = false
+            _ = try hStore.save(clipAt: try makeSource(scratch, "h-\(i).mov"),
+                                duration: 9.9, to: hSession,
+                                alsoApply: { hDecided = $0.decideOrientation(.portrait) },
+                                revertOnFailure: { if hDecided { $0.undoOrientationDecision() } })
+        }
+        let hSeededID = hSession.id
+
+        let hro = try makeContext(url: hURL, allowsSave: false)
+        guard let h = try hro.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == hSeededID }) else {
+            check("읽기 전용 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        check("사전: order 가 0,1,2", h.orderedClips.map(\.order) == [0, 1, 2],
+              "\(h.orderedClips.map(\.order))")
+        _ = try? ClipStore(context: hro, files: files).delete(h.orderedClips[1])
+
+        // ★ 복원이 없으면 여기서 [0, 1, 1] 이 나온다 — 중복이다.
+        //
+        // **`fetch` 를 돌리기 전에 읽어야 한다.** 같은 컨텍스트에서 그 타입을
+        // 다시 조회하면 스토어 값으로 복원되어 결함이 가려진다(실측). 삭제
+        // 실패 직후 곧바로 읽는 호출부가 실제로 보는 값이 이것이다.
+        let hOrders = h.orderedClips.map(\.order)
+        check("★ order 에 중복이 없다 (2-5 결함 수정)",
+              Set(hOrders).count == hOrders.count, "\(hOrders)")
+        check("order 가 0,1,2 로 되돌아왔다", hOrders == [0, 1, 2], "\(hOrders)")
+        check("방향은 건드리지 않았다 (0개가 아니므로)",
+              h.orientationState == .decided(.portrait), "\(h.orientationState)")
+        let hOnDisk = try makeContext(url: hURL)
+            .fetch(FetchDescriptor<Clip>()).map(\.order).sorted()
+        check("스토어의 order 도 0,1,2", hOnDisk == [0, 1, 2], "\(hOnDisk)")
+
+        // ── G-3. `.corrupted` 세션은 클립 0개가 되어도 불변인가 — **확인 불가**
+        //
+        // 억지로 만들지 않는다. `orientationRaw` 가 `private` 이고 쓰는 곳
+        // 넷이 전부 유효값이나 `nil` 만 넣어서(`init` · `decideOrientation` ·
+        // `undoOrientationDecision` · `resetOrientation`) 해석 불가 문자열을
+        // 넣을 방법이 없다. 스토어 SQLite 를 직접 고치는 수밖에 없는데
+        // CoreData 의 `Z` 접두 스키마에 하네스를 묶는 비용이다.
+        //
+        // **`.corrupted` 를 건드리지 않기로 한 것이 확정이 아니라 유보인 이유가
+        // 이것이다** — 어느 쪽을 골라도 검증할 수단이 없다. 2-16 에서
+        // `.corrupted` 복구를 만들 때 함께 정한다 (Tasks.md 2-10 · 2-16).
+        print("  · `.corrupted` + 클립 0개 — **확인 불가.** 만들 수단이 없다 (2-16 에서 정한다)")
     }
 
     // MARK: - 2-8  방향 도출 (VideoTrackSpec)
