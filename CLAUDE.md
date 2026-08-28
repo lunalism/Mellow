@@ -273,7 +273,10 @@ swiftc -parse-as-library -D DEBUG \
   Mellow/Models/Orientation.swift Mellow/Models/Session.swift \
   Mellow/Models/Clip.swift Mellow/Storage/SessionFileStore.swift \
   Mellow/Storage/SessionStore.swift Mellow/Storage/ClipStore.swift \
-  Mellow/Capture/RecordingGate.swift Mellow/Diagnostics/ClipSpec.swift \
+  Mellow/Capture/RecordingGate.swift Mellow/Capture/CameraPermissions.swift \
+  Mellow/Diagnostics/ClipSpec.swift \
+  Mellow/Merge/ClipMerger.swift Mellow/Merge/ClipExporter.swift \
+  Mellow/Export/PhotoLibrarySaver.swift Mellow/Export/SessionExportPipeline.swift \
   Tools/StorageCheck.swift \
   -o /tmp/storagecheck && /tmp/storagecheck
 ```
@@ -281,6 +284,11 @@ swiftc -parse-as-library -D DEBUG \
 앱의 Debug 빌드와 같은 조건으로 맞추는 것이기도 하다. 파일 헤더에도 같은
 명령이 있지만, **하네스를 처음 돌리는 사람은 그 파일을 열기 전에 여기를
 본다.** 소스 목록이 늘면 양쪽을 함께 고친다.
+
+병합·익스포트·사진 저장 계열 4파일과 `CameraPermissions`는 2-12a에서
+들어왔다. **하네스가 실행하는 것이 아니라 컴파일에만 필요하다** —
+`SessionStore.init`의 파이프라인 기본값이 `SessionExportPipeline`을
+참조하기 때문이다. 닫기 검증(N군)은 전부 스텁 파이프라인으로 돈다.
 
 ## SwiftData 사용 원칙
 

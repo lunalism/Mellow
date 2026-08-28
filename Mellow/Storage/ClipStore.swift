@@ -26,12 +26,18 @@ enum ClipSaveError: Error, CustomStringConvertible {
     /// 판단하고 3-15가 사용자 주도 재시도를 붙인다.
     case metadata(underlying: Error)
 
+    /// 세션이 닫혀 있다 (2-12a). **파일은 옮기지 않았고 메타데이터도 없다** —
+    /// 가드가 `adopt` 앞에 있어 되돌릴 것이 만들어지기 전에 던진다.
+    case sessionClosed
+
     var description: String {
         switch self {
         case .file(let error):
             return "클립 파일을 옮기지 못했습니다 — \(error)"
         case .metadata(let underlying):
             return "클립 정보를 기록하지 못했습니다 — \(underlying)"
+        case .sessionClosed:
+            return "닫힌 세션에는 클립을 추가할 수 없습니다."
         }
     }
 }
@@ -44,10 +50,15 @@ enum ClipDeleteError: Error, CustomStringConvertible {
     /// 메타데이터를 지우지 못했다. **클립도 파일도 그대로 남아 있다.**
     case metadata(underlying: Error)
 
+    /// 세션이 닫혀 있다 (2-12a). **아무것도 지우지 않았다.**
+    case sessionClosed
+
     var description: String {
         switch self {
         case .metadata(let underlying):
             return "클립을 지우지 못했습니다 — \(underlying)"
+        case .sessionClosed:
+            return "닫힌 세션의 클립은 삭제할 수 없습니다."
         }
     }
 }
@@ -127,6 +138,13 @@ struct ClipStore {
               recordedAt: Date = Date(),
               alsoApply sessionChanges: ((Session) -> Void)? = nil,
               revertOnFailure sessionRevert: ((Session) -> Void)? = nil) throws -> Clip {
+
+        // 닫힌 세션은 읽기 전용이다 (2-12a). **`adopt` 앞에서 던진다** —
+        // 파일을 옮긴 뒤에 걸리면 되돌릴 것이 생긴다. 여기서 걸리면 원본은
+        // 제자리 그대로이고 아무 일도 일어나지 않은 것과 같다.
+        guard !session.isClosed else {
+            throw ClipSaveError.sessionClosed
+        }
 
         let sessionID = session.id
         let clipID = UUID()
@@ -374,6 +392,13 @@ struct ClipStore {
     /// 없고, 빼면 넘기는 것을 잊을 자리만 생긴다.
     @discardableResult
     func delete(_ clip: Clip) throws -> Deletion {
+        // 닫힌 세션은 읽기 전용이다 (2-12a). 완성본이 이미 사진 앱에 있으므로
+        // 여기서 클립이 빠지면 완성본과 세션 내용이 어긋난다. 세션이 없는
+        // 클립(관계가 끊긴 상태)은 가드 대상이 아니다 — 지울 수 있어야 한다.
+        guard clip.session?.isClosed != true else {
+            throw ClipDeleteError.sessionClosed
+        }
+
         let session = clip.session
         let fileName = clip.fileName
 

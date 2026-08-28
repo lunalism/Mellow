@@ -33,6 +33,12 @@ struct ContentView: View {
     /// 사라진 세션은 자연히 `nil` 이 된다.
     @State private var activeSessionID: UUID?
 
+    /// 닫기(2-12a)가 도는 동안 재진입을 막는다. `close` 의 `await` 구간에는
+    /// 세션이 아직 열려 있어("닫는 중" 상태를 스키마에 두지 않는다) 같은
+    /// 버튼이 두 번 돌면 완성본이 중복 저장될 수 있다. 3-13 의 저장 버튼도
+    /// 같은 이유로 busy 상태를 가진다.
+    @State private var isClosingSession = false
+
     private var activeSession: Session? {
         activeSessionID.flatMap { id in sessions.first { $0.id == id } }
     }
@@ -251,8 +257,19 @@ struct ContentView: View {
                 .disabled(activeSession?.clips.isEmpty ?? true)
             }
 
-            // 파괴적인 것을 아래 줄로 내린다.
+            // 파괴적인 것을 아래 줄로 내린다. `세션 닫기` 는 파괴적이지는
+            // 않지만 비가역이라(재개방 없음) 같은 줄에 둔다.
             HStack(spacing: 8) {
+                // 2-12a 확인용. 활성 세션을 닫는다 — 병합·익스포트·사진 앱
+                // 저장·`isClosed` 기록까지 `SessionStore.close` 가 다 한다.
+                // 실사용 버튼은 3-13 이 만들고 이 프로브는 그때 사라진다.
+                Button {
+                    Task { await closeActiveSession() }
+                } label: {
+                    pill(isClosingSession ? "닫는 중…" : "세션 닫기")
+                }
+                .disabled(activeSession == nil || isClosingSession)
+
                 // 2-12 확인용. **`전부 삭제` 와 다른 경로다.**
                 //
                 // 저쪽은 `ClipStore`·`SessionStore` 를 안 거치고
@@ -470,6 +487,32 @@ struct ContentView: View {
             probeNote = "세션 삭제 실패: \(error)"
             #if DEBUG
             StoreProbeLog.failure("세션 삭제", error)
+            #endif
+        }
+    }
+
+    /// 활성 세션을 닫는다 (2-12a 확인용).
+    ///
+    /// **`startOrResume` 이 돌려준 세션을 닫는다.** 다른 프로브와 같은 규율이다
+    /// — 대상이 갈리면 무엇을 검증했는지 알 수 없다.
+    ///
+    /// 성공·실패 어느 쪽이든 `isClosed` 실제 값을 로그에 남긴다. 실패면
+    /// `false` 여야 한다("열린 채로 남는다" 계약) — 값이 `true` 로 찍히면
+    /// 계약이 깨진 것이다.
+    private func closeActiveSession() async {
+        guard let session = activeSession, !isClosingSession else { return }
+        isClosingSession = true
+        defer { isClosingSession = false }
+        do {
+            try await SessionStore(context: modelContext).close(session)
+            probeNote = "세션 닫힘 · isClosed=\(session.isClosed)"
+            #if DEBUG
+            StoreProbeLog.closeAttempt(session, error: nil)
+            #endif
+        } catch {
+            probeNote = "닫기 실패: \(error) · isClosed=\(session.isClosed)"
+            #if DEBUG
+            StoreProbeLog.closeAttempt(session, error: error)
             #endif
         }
     }

@@ -3,7 +3,7 @@ import SwiftData
 import CoreMedia
 import CoreGraphics
 
-// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8 · 2-9 · 2-10 · 2-12).
+// 저장 계층 확인 하네스 (2-4 · 2-5 · 2-6 · 2-7 · 2-8 · 2-9 · 2-10 · 2-12 · 2-12a).
 //
 // Mellow/ 밖에 둔다. project.yml 의 sources 는 Mellow 디렉터리만 훑으므로
 // 여기 있는 파일은 앱 타깃에 들어가지 않는다. `ExportBench.swift` 와 같은
@@ -22,12 +22,22 @@ import CoreGraphics
 //     Mellow/Storage/SessionStore.swift \
 //     Mellow/Storage/ClipStore.swift \
 //     Mellow/Capture/RecordingGate.swift \
+//     Mellow/Capture/CameraPermissions.swift \
 //     Mellow/Diagnostics/ClipSpec.swift \
+//     Mellow/Merge/ClipMerger.swift \
+//     Mellow/Merge/ClipExporter.swift \
+//     Mellow/Export/PhotoLibrarySaver.swift \
+//     Mellow/Export/SessionExportPipeline.swift \
 //     Tools/StorageCheck.swift -o /tmp/storagecheck && /tmp/storagecheck
 //
 // `ClipSpec.swift` 가 2-8 에서 들어왔다. 방향 도출(E군)이 그 파일의
 // `VideoTrackSpec.orientation` 을 검증한다. UIKit 비의존이라 Mac 에서
 // 그대로 컴파일된다 — 그 제약을 지키는 이유가 이것이다.
+//
+// 병합·익스포트·사진 저장 계열(`ClipMerger` 이하 4파일 + `CameraPermissions`)은
+// 2-12a 에서 들어왔다. **N군이 실행하는 것이 아니라 컴파일에만 필요하다** —
+// `SessionStore.init` 의 파이프라인 기본값이 `SessionExportPipeline` 을
+// 참조하기 때문이다. N군 자체는 전부 스텁 파이프라인으로 돈다.
 //
 // **`-D DEBUG` 가 필요하다.** `SessionStore` 의 "후보가 여럿" 로그가
 // `#if DEBUG` 로 감싸여 있어(세션 id·제목을 찍으므로 릴리스에서 뺐다),
@@ -88,10 +98,11 @@ struct StorageCheck {
     }
 
     @MainActor
-    static func main() throws {
+    static func main() async throws {
         setbuf(stdout, nil)
         try sessionStoreSuite()
         try clipStoreSuite()
+        try await sessionCloseSuite()
         orientationSuite()
         recordingGateSuite()
 
@@ -809,6 +820,261 @@ struct StorageCheck {
               FileManager.default.fileExists(atPath: files.sessionDirectory(lID).path))
         let lFiles = (try? files.clipFileNames(in: lID))?.count ?? 0
         check("클립 파일도 그대로다", lFiles == 2, "\(lFiles)개")
+    }
+
+    // MARK: - 2-12a  세션 닫기
+
+    /// 스텁 파이프라인. 받은 URL 을 기록하고 지정된 대로 성공/실패한다.
+    ///
+    /// **호출 기록이 검증의 절반이다.** "이미 닫힌 세션에 재호출해도
+    /// 무해하다" 는 파이프라인이 다시 불리지 않았다는 것이고(완성본 중복
+    /// 없음), "가드에 걸리면 무변화" 는 아예 불리지 않았다는 것이다.
+    /// 던졌다/안 던졌다만 보면 그 둘이 안 보인다.
+    final class StubPipeline {
+        struct Failure: Error {}
+        var calls: [[URL]] = []
+        var shouldFail = false
+
+        // 격리하지 않는다. `close` 가 메인 액터에서 부르고 하네스도 전부
+        // 메인 액터라 경합이 없다 — 언어 모드 5 기준이다.
+        var closure: ([URL]) async throws -> Void {
+            { urls in
+                self.calls.append(urls)
+                if self.shouldFail { throw Failure() }
+            }
+        }
+    }
+
+    /// `close` 검증 (2-12a). 전 케이스 스텁 파이프라인으로 돈다 —
+    /// 실제 병합·익스포트·사진 저장은 실기기 게이트의 몫이다.
+    @MainActor
+    static func sessionCloseSuite() async throws {
+        let root = try makeRoot("close")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = SessionFileStore(documentsDirectory: root)
+        let scratch = root.appending(path: "tmp", directoryHint: .isDirectory)
+
+        /// 픽스처는 실사용 경로로 만든다 — `ClipStore.save` 를 타서 방향이
+        /// `.decided` 가 되는 것까지가 픽스처의 일이다 (B군 ★ 방식. 직접
+        /// 삽입으로 만들면 `.missing` 이 되어 검증이 조용히 무력해진다).
+        func seedSession(_ context: ModelContext, clips: Int, tag: String) throws -> Session {
+            let session = try SessionStore(context: context, files: files)
+                .startOrResume().session
+            let store = ClipStore(context: context, files: files)
+            for n in 0..<clips {
+                var decided = false
+                _ = try store.save(clipAt: try makeSource(scratch, "\(tag)-\(n).mov"),
+                                   duration: 9.9, to: session,
+                                   alsoApply: { decided = $0.decideOrientation(.portrait) },
+                                   revertOnFailure: { if decided { $0.undoOrientationDecision() } })
+            }
+            if clips > 0 {
+                check("★ 픽스처: 방향 .decided(portrait) — 실사용 경로를 탔다",
+                      session.orientationState == .decided(.portrait),
+                      "\(session.orientationState)")
+            }
+            return session
+        }
+
+        // ══ N-1. 가드 — 클립 0개 (= `.unset`. 정의상 0컷 세션이 곧 `.unset` 이다)
+        print("\nN-1) 2-12a — 닫기 가드: 클립 0개 (.unset)")
+        let a = try makeContext()
+        let emptySession = try seedSession(a, clips: 0, tag: "n1")
+        check("픽스처: .unset · 0컷",
+              emptySession.orientationState == .unset && emptySession.clips.isEmpty)
+        let stubA = StubPipeline()
+        var aThrown: Error?
+        do {
+            try await SessionStore(context: a, files: files, pipeline: stubA.closure)
+                .close(emptySession)
+        } catch { aThrown = error }
+        if let e = aThrown as? SessionCloseError, case .empty = e {
+            check("SessionCloseError.empty 로 던진다", true)
+        } else {
+            check("SessionCloseError.empty 로 던진다", false,
+                  "\(String(describing: aThrown))")
+        }
+        check("isClosed == false 그대로", !emptySession.isClosed)
+        check("파이프라인이 불리지 않았다", stubA.calls.isEmpty,
+              "\(stubA.calls.count)회")
+
+        // ══ N-2. 가드 — `.missing`
+        //
+        // 손상 상태는 직접 삽입으로만 만들어진다 (sessionStoreSuite 4군과
+        // 같은 수단). `.corrupted` 는 그 수단으로도 못 만든다 — G-3 과 같은
+        // 제약이며, 가드가 `.decided` 를 요구하는 형태라 분기는 같다.
+        print("\nN-2) 2-12a — 닫기 가드: .missing")
+        let b = try makeContext()
+        let broken = try SessionStore(context: b, files: files).startOrResume().session
+        b.insert(Clip(order: 0, fileName: "x.mov", duration: 9.9, session: broken))
+        try b.save()
+        check("픽스처: .missing", broken.orientationState == .missing,
+              "\(broken.orientationState)")
+        let stubB = StubPipeline()
+        var bThrown: Error?
+        do {
+            try await SessionStore(context: b, files: files, pipeline: stubB.closure)
+                .close(broken)
+        } catch { bThrown = error }
+        if let e = bThrown as? SessionCloseError, case .orientationUnresolved = e {
+            check("SessionCloseError.orientationUnresolved 로 던진다", true)
+        } else {
+            check("SessionCloseError.orientationUnresolved 로 던진다", false,
+                  "\(String(describing: bThrown))")
+        }
+        check("isClosed == false 그대로", !broken.isClosed)
+        check("파이프라인이 불리지 않았다", stubB.calls.isEmpty)
+        print("  · `.corrupted` 가드 — **확인 불가.** 상태를 만들 수단이 없다"
+              + " (G-3 과 같은 제약. 가드는 `.decided` 요구라 분기는 `.missing` 과 같다)")
+
+        // ══ N-3. 정상 닫기 (스텁 성공)
+        print("\nN-3) 2-12a — 정상 닫기")
+        let cURL = root.appending(path: "N3.store")
+        let c = try makeContext(url: cURL)
+        let live = try seedSession(c, clips: 2, tag: "n3")
+        let stubC = StubPipeline()
+        try await SessionStore(context: c, files: files, pipeline: stubC.closure).close(live)
+
+        check("파이프라인이 한 번 불렸다", stubC.calls.count == 1,
+              "\(stubC.calls.count)회")
+        let expected = live.orderedClips.map {
+            files.clipURL(fileName: $0.fileName, in: live.id)
+        }
+        check("★ 넘어간 URL 이 저장 계층 조합과 일치한다 — order 순",
+              stubC.calls.first == expected)
+        check("그 URL 에 파일이 실제로 있다",
+              expected.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        check("★ isClosed == true (인메모리)", live.isClosed)
+        let cFresh = try makeContext(url: cURL).fetch(FetchDescriptor<Session>())
+        check("★ 재조회로도 닫혀 있다", cFresh.first?.isClosed == true)
+        check("이어가기 불가가 된다", !live.isResumable)
+        check("다음 startOrResume 은 새로 만든다",
+              try SessionStore(context: c, files: files).startOrResume().isNew)
+
+        // 재호출 — 무해. 던지지 않고, 파이프라인이 다시 불리지 않는다
+        // (완성본 중복이 생기지 않는다).
+        var reThrown: Error?
+        do {
+            try await SessionStore(context: c, files: files, pipeline: stubC.closure)
+                .close(live)
+        } catch { reThrown = error }
+        check("★ 닫힌 세션에 재호출 — 던지지 않는다", reThrown == nil,
+              "\(String(describing: reThrown))")
+        check("★ 파이프라인이 다시 불리지 않았다", stubC.calls.count == 1,
+              "\(stubC.calls.count)회")
+        check("상태 불변 (isClosed == true)", live.isClosed)
+
+        // ══ N-4. 파이프라인 실패 — 세션 무변화
+        print("\nN-4) 2-12a — 파이프라인 실패")
+        let dURL = root.appending(path: "N4.store")
+        let d = try makeContext(url: dURL)
+        let dSession = try seedSession(d, clips: 2, tag: "n4")
+        let stubD = StubPipeline()
+        stubD.shouldFail = true
+        var dThrown: Error?
+        do {
+            try await SessionStore(context: d, files: files, pipeline: stubD.closure)
+                .close(dSession)
+        } catch { dThrown = error }
+        if let e = dThrown as? SessionCloseError, case .pipeline = e {
+            check("SessionCloseError.pipeline 로 분류", true)
+        } else {
+            check("SessionCloseError.pipeline 로 분류", false,
+                  "\(String(describing: dThrown))")
+        }
+        check("★ 열린 채 남는다 (isClosed == false)", !dSession.isClosed)
+        check("클립 2컷 그대로", dSession.clips.count == 2, "\(dSession.clips.count)컷")
+        check("방향 유지", dSession.orientationState == .decided(.portrait),
+              "\(dSession.orientationState)")
+        check("이어가기 가능 유지", dSession.isResumable)
+        check("파일도 그대로", ((try? files.clipFileNames(in: dSession.id))?.count ?? 0) == 2)
+        let dFresh = try makeContext(url: dURL).fetch(FetchDescriptor<Session>())
+        check("재조회로도 열려 있다", dFresh.first?.isClosed == false)
+
+        // ══ N-5. 파이프라인 성공 + `isClosed` 기록 실패 (allowsSave: false)
+        //
+        // **사진 앱에는 완성본이 있는데 세션은 열린 채인 케이스다** — AC 가
+        // 허용으로 확정한 상태. 되돌림이 없으면 스토어는 "열림" 인데
+        // 인메모리가 "닫힘" 이 되어 화면과 가드가 거짓 세션을 본다.
+        print("\nN-5) 2-12a — 기록 실패 시 되돌림 (allowsSave: false)")
+        let eURL = root.appending(path: "N5.store")
+        let eWritable = try makeContext(url: eURL)
+        let eSeeded = try seedSession(eWritable, clips: 1, tag: "n5")
+        let eID = eSeeded.id
+
+        let ero = try makeContext(url: eURL, allowsSave: false)
+        guard let eSession = try ero.fetch(FetchDescriptor<Session>())
+            .first(where: { $0.id == eID }) else {
+            check("읽기 전용 컨텍스트에서 세션을 찾는다", false)
+            return
+        }
+        let stubE = StubPipeline()
+        var eThrown: Error?
+        do {
+            try await SessionStore(context: ero, files: files, pipeline: stubE.closure)
+                .close(eSession)
+        } catch { eThrown = error }
+        if let e = eThrown as? SessionCloseError, case .metadata = e {
+            check("SessionCloseError.metadata 로 분류", true)
+        } else {
+            check("SessionCloseError.metadata 로 분류", false,
+                  "\(String(describing: eThrown))")
+        }
+        check("파이프라인은 돌았다 — 사진 앱에 완성본이 남는 케이스",
+              stubE.calls.count == 1, "\(stubE.calls.count)회")
+        // ★ 되돌림이 없으면 여기서 true 가 나온다 (update 는 rollback 이
+        //   인메모리를 되돌리지 않는다).
+        check("★ isClosed 가 false 로 되돌아왔다 (인메모리)", !eSession.isClosed)
+        let eFresh = try makeContext(url: eURL).fetch(FetchDescriptor<Session>())
+        check("★ 재조회한 스토어도 열려 있다", eFresh.first?.isClosed == false)
+        check("이어가기 후보로 남는다", eSession.isResumable)
+
+        // ══ N-6. 닫힌 세션 읽기 전용 가드 (ClipStore)
+        //
+        // N-3 이 닫아 둔 세션을 그대로 쓴다.
+        print("\nN-6) 2-12a — 닫힌 세션의 클립 추가·삭제 가드")
+        let mSource = try makeSource(scratch, "n6-blocked.mov")
+        var mSaveThrown: Error?
+        do {
+            _ = try ClipStore(context: c, files: files)
+                .save(clipAt: mSource, duration: 9.9, to: live)
+        } catch { mSaveThrown = error }
+        if let e = mSaveThrown as? ClipSaveError, case .sessionClosed = e {
+            check("★ save → ClipSaveError.sessionClosed", true)
+        } else {
+            check("★ save → ClipSaveError.sessionClosed", false,
+                  "\(String(describing: mSaveThrown))")
+        }
+        check("파일이 옮겨지지 않았다 — 원본 제자리 (가드가 adopt 앞)",
+              FileManager.default.fileExists(atPath: mSource.path))
+        check("세션 디렉터리에 새 파일이 없다",
+              ((try? files.clipFileNames(in: live.id))?.count ?? -1) == 2)
+        check("메타 2컷 그대로", live.clips.count == 2, "\(live.clips.count)컷")
+
+        var mDeleteThrown: Error?
+        do {
+            _ = try ClipStore(context: c, files: files).delete(live.orderedClips[0])
+        } catch { mDeleteThrown = error }
+        if let e = mDeleteThrown as? ClipDeleteError, case .sessionClosed = e {
+            check("★ delete → ClipDeleteError.sessionClosed", true)
+        } else {
+            check("★ delete → ClipDeleteError.sessionClosed", false,
+                  "\(String(describing: mDeleteThrown))")
+        }
+        check("클립 2컷 그대로", live.clips.count == 2, "\(live.clips.count)컷")
+        check("파일 2개 그대로",
+              ((try? files.clipFileNames(in: live.id))?.count ?? -1) == 2)
+
+        // 세션 삭제는 가드 대상이 아니다 — 닫힌 세션도 삭제 가능이 확정
+        // 계약이다 (PRD F-07 AC). 사진 앱의 완성본은 우리 소유가 아니라
+        // 건드리지 않는다(스텁이라 여기서는 관측 대상이 없다).
+        let closedDeletion = try SessionStore(context: c, files: files).delete(live)
+        check("★ 닫힌 세션 삭제는 된다 — 가드 미적용", closedDeletion.directoryRemoved)
+        let cAfter = try c.fetch(FetchDescriptor<Session>()).count
+        check("남은 세션 1개 (N-3 의 startOrResume 이 만든 것)", cAfter == 1,
+              "\(cAfter)개")
+        let cClips = try c.fetch(FetchDescriptor<Clip>()).count
+        check("cascade 도 그대로 돈다 — 클립 0개", cClips == 0, "\(cClips)개")
     }
 
     // MARK: - 2-8  방향 도출 (VideoTrackSpec)

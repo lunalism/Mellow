@@ -267,6 +267,21 @@ enum StoreProbeLog {
         print("[probe]   cascade 로 함께 지워질 클립 \(clipCount)개")
     }
 
+    /// 세션 닫기 결과 (2-12a). **성공·실패 어느 쪽이든 `isClosed` 실제 값이
+    /// 보여야 한다** — "실패하면 열린 채" 계약이 실기기에서 성립하는지를
+    /// 이 줄로 판정한다.
+    static func closeAttempt(_ session: Session, error: Error?) {
+        if let error {
+            print("[probe] ✕ 세션 닫기 실패  id=\(session.id.uuidString) — \(error)")
+            print("[probe]   isClosed=\(session.isClosed)  ← 실패면 false 여야 한다 (열린 채 계약)")
+        } else {
+            print("[probe] ⏹ 세션 닫힘  id=\(session.id.uuidString)")
+            print("[probe]   isClosed=\(session.isClosed)  \(session.clips.count)컷"
+                  + "  방향=\(describe(session.orientationState))")
+            print("[probe]   이어가기=\(session.isResumable ? "⚠ 아직 가능 — 닫혔으면 불가여야 한다" : "불가 ✓")")
+        }
+    }
+
     static func failure(_ label: String, _ error: Error) {
         print("[probe] ✕ \(label) — \(error)")
     }

@@ -59,15 +59,62 @@ enum SessionDeleteError: Error, CustomStringConvertible {
     }
 }
 
+/// 세션 닫기 실패 (2-12a). **어느 케이스든 세션은 열린 채 남는다.**
+///
+/// 네 케이스 중 사진 앱에 에셋이 남는 것은 `.metadata` 뿐이다. 파이프라인은
+/// 에셋 생성과 성공 판정을 같은 `performChanges` 단위에 두므로
+/// (`SessionExportPipeline` 상단 주석), `.pipeline` 로 던져진 시점에 사진
+/// 앱은 비어 있다.
+enum SessionCloseError: Error, CustomStringConvertible {
+    /// 클립이 0개다. 저장할 것이 없다 — 삭제(2-12)만 가능하다.
+    case empty
+    /// 방향이 확정되지 않았다 (`.missing` / `.corrupted`). 병합이 성립하지
+    /// 않으며, 다시 닫을 수 있게 만드는 것은 2-16 복구뿐이다.
+    case orientationUnresolved
+    /// 병합·익스포트·사진 저장 어딘가에서 실패했다. **세션은 무변화이고
+    /// 사진 앱에 에셋도 없다.**
+    case pipeline(underlying: Error)
+    /// 사진 저장까지 성공했는데 `isClosed` 를 기록하지 못했다. **세션은
+    /// 열린 채 남고, 사진 앱에는 완성본이 있다.** 재닫기가 완성본을 하나 더
+    /// 만들 수 있고 허용한다 (Tasks.md 2-12a AC).
+    case metadata(underlying: Error)
+
+    var description: String {
+        switch self {
+        case .empty:
+            return "저장할 클립이 없습니다."
+        case .orientationUnresolved:
+            return "세션 방향이 확정되지 않아 저장할 수 없습니다."
+        case .pipeline(let underlying):
+            return "완성본을 저장하지 못했습니다 — \(underlying)"
+        case .metadata(let underlying):
+            return "저장은 됐지만 세션을 닫지 못했습니다 — \(underlying)"
+        }
+    }
+}
+
 @MainActor
 struct SessionStore {
 
     let context: ModelContext
     let files: SessionFileStore
 
-    init(context: ModelContext, files: SessionFileStore = .shared) {
+    /// 닫기(2-12a)의 저장 파이프라인. 클립 URL 목록을 받아 사진 앱 저장까지
+    /// 끝낸다. 기본값이 실제 경로(`SessionExportPipeline.saveToPhotos`)이고
+    /// 하네스가 스텁으로 갈아끼운다.
+    ///
+    /// **주입인 이유가 곧 검증 구조다.** 저장 계층은 AVFoundation·Photos 를
+    /// import 하지 않고, 하네스는 스텁으로 `close` 의 가드·성공·실패·되돌림
+    /// 전체를 값으로 확인한다. 붙박이로 넣으면 그 검증이 성립하지 않는다.
+    let pipeline: ([URL]) async throws -> Void
+
+    init(context: ModelContext,
+         files: SessionFileStore = .shared,
+         pipeline: @escaping ([URL]) async throws -> Void
+            = SessionExportPipeline.saveToPhotos(clips:)) {
         self.context = context
         self.files = files
+        self.pipeline = pipeline
     }
 
     /// 세션을 시작한 결과. **새로 만든 것과 이어간 것을 구분한다.**
@@ -390,6 +437,86 @@ struct SessionStore {
         }
 
         return Deletion(directoryRemoved: directoryRemoved)
+    }
+
+    // MARK: - 닫기 (2-12a)
+
+    /// 세션을 닫는다 — 완성본을 사진 앱에 저장하고, **성공한 뒤에만**
+    /// `isClosed = true` 를 기록한다.
+    ///
+    /// # 계약: 닫기 = 사진 앱 저장
+    ///
+    /// 저장 버튼과 닫기 버튼을 따로 만들지 않는다(CLAUDE.md 제품 원칙).
+    /// 실패하면 어느 단계였든 세션은 **열린 채** 남는다 — "닫는 중" 상태를
+    /// 스키마에 두지 않으므로(Tasks.md 2-12a) 중간 상태가 없다.
+    ///
+    /// # 실패 케이스는 둘로 접힌다
+    ///
+    /// |실패 지점|세션|사진 앱|
+    /// |---|---|---|
+    /// |파이프라인 (`.pipeline`)|무변화 — 메타데이터를 만지기 전이다|에셋 없음|
+    /// |`isClosed` 기록 (`.metadata`)|열린 채 (되돌림)|**에셋 있음**|
+    ///
+    /// 뒤 케이스에서 재닫기는 완성본을 하나 더 만들 수 있고 **허용한다.**
+    /// 막으려면 "저장됐는데 안 닫힘" 을 스키마로 기억해야 하는데, 그것이
+    /// 탈락안 "저장과 닫기는 독립" 이 만들던 상태다.
+    ///
+    /// # `await` 동안 세션은 아직 열려 있다
+    ///
+    /// 파이프라인이 도는 동안(수 초) 메인 액터가 비므로 다른 코드가 세션을
+    /// 만질 수 있다 — 닫히기 전이라 `ClipStore` 가드도 막지 않는다. 그 창은
+    /// 호출부의 busy 상태가 덮는다(프로브의 `isClosingSession`, 3-13 의 저장
+    /// 진행 표시). 저장 진행 표시가 곧 "닫는 중" 구간이라는 결정과 같은 말이다.
+    ///
+    /// # 되돌림은 코드로 한다
+    ///
+    /// `isClosed` 갱신은 update 라 `rollback()` 이 인메모리를 되돌리지 않는다
+    /// (CLAUDE.md "API 주의사항"). `ClipStore.delete` 가 `previousOrders` 를
+    /// 명시적으로 복원하는 것과 같은 자리다. 되돌린 값은 스토어 값과 같으므로
+    /// 다음 저장에 얹혀도 무해하다.
+    func close(_ session: Session) async throws {
+        // 이미 닫힌 세션은 무해하게 끝낸다 (AC "반복 호출 무해").
+        // 파이프라인을 부르지 않으므로 완성본이 다시 만들어지지 않는다.
+        guard !session.isClosed else { return }
+
+        // 가드 둘. 클립 0개가 먼저다 — 0개면 방향도 `.unset` 이라 뒤 가드에
+        // 걸리는데, 사용자에게 말할 것은 "방향이 없다" 가 아니라 "저장할 것이
+        // 없다" 이기 때문이다.
+        let ordered = session.orderedClips
+        guard !ordered.isEmpty else {
+            throw SessionCloseError.empty
+        }
+        guard case .decided = session.orientationState else {
+            throw SessionCloseError.orientationUnresolved
+        }
+
+        // 클립 URL 은 저장 계층 기준으로 조합한다. Phase 1 의 임시 목록
+        // (`recordedURLs`)이 아니다 — 그쪽은 재실행하면 사라지고, 세션에
+        // 저장된 클립은 애초에 들어 있지 않다.
+        let urls = ordered.map { files.clipURL(fileName: $0.fileName, in: session.id) }
+
+        // 파이프라인. 던지면 세션은 무변화다 — 메타데이터를 만지기 전이므로
+        // 되돌릴 것이 없다.
+        do {
+            try await pipeline(urls)
+        } catch {
+            throw SessionCloseError.pipeline(underlying: error)
+        }
+
+        // 저장이 성공한 뒤에만 닫는다. `save()` 를 명시적으로 부른다 —
+        // autosave 에 맡기면 실패를 관측하지 못한다 (`create` 와 같은 판단).
+        session.isClosed = true
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            // update 는 rollback 이 인메모리를 되돌리지 않는다. 여기서 코드로
+            // 되돌리지 않으면 스토어는 "열림" 인데 인메모리는 "닫힘" 이 되어,
+            // 화면이 닫힌 세션을 그리고 `ClipStore` 가드가 클립 추가를 막는다
+            // — 실제로는 열린 세션인데.
+            session.isClosed = false
+            throw SessionCloseError.metadata(underlying: error)
+        }
     }
 
     /// 저장에 실패해 롤백된 세션이 컨텍스트에 남아 있으면 걷어낸다.
