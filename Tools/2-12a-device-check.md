@@ -69,6 +69,10 @@ xcodegen generate
 > xcrun devicectl device process launch --console --terminate-existing \
 >   --device <UDID> com.lunalism.mellow | tee /tmp/2-12a-device.log
 > ```
+>
+> **⚠ 디버거 attach로는 프로브 stdout이 Xcode 콘솔에 잡히지 않는다**
+> (2-12a 게이트에서 관측). 이미 떠 있는 앱에 attach 해서 로그를 기다리지
+> 마라 — Run으로 띄운 프로세스만 잡힌다.
 
 ### 0-1. 기준선 받아 적기
 
