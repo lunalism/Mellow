@@ -480,6 +480,8 @@ Thumbnail은 다시 생성할 수 있는 Cache Data로 취급한다.
 
 Temporary Import와 Export File은 Temporary Directory 또는 별도의 Temporary Workspace에서 관리한다.
 
+Recording과 Import에서 재실행 복구에 필요한 Staging Media와 Operation 정보는 복구 가능성을 유지할 수 있는 저장 수명으로 관리하며 일반 Disposable Temporary Data와 동일하게 정리하지 않는다.
+
 ---
 
 ## 24. MediaStore
@@ -497,7 +499,7 @@ SwiftUI View 또는 Feature View Model에서 FileManager를 직접 사용하지 
 - Atomic File Move
 - Clip File 삭제
 - Project Media 삭제
-- Orphaned Media 정리
+- Recovery Classification 이후 Confirmed Orphan 정리
 - Storage Availability 확인 지원
 
 `MediaStore`는 Actor 기반으로 구성하는 방향을 사용한다.
@@ -508,18 +510,96 @@ SwiftUI View 또는 Feature View Model에서 FileManager를 직접 사용하지 
 
 ## 25. Safe Media Write
 
-새로운 Clip은 파일 생성이 시작되었다는 이유만으로 Project의 정상 Clip으로 취급하지 않는다.
+Recording과 Import는 다음 Media Commit Lifecycle을 공통으로 따른다.
 
-다음 Flow를 우선한다.
+이 계약은 `DECISIONS.md`의 ADR-020을 따르며 최초 Production Media를 생성하는 Phase 4 이전에 확정되어 있어야 한다.
 
-1. Temporary 또는 Staging Location에 Media 생성
-2. Media File 존재 여부 확인
-3. AVAsset으로 정상적으로 읽을 수 있는지 확인
-4. 필요한 Metadata 확인
-5. 필요한 경우 1080p Working Media로 정규화
-6. Project Media Directory로 안전하게 이동
-7. Project Metadata에 Clip 추가
-8. Temporary Data 정리
+### Media Commit Lifecycle
+
+1. Media Operation 시작
+2. Durable Operation Identity 확보
+3. Staging에 Media 작성
+4. Staged Media 작성 완료
+5. Staged Media Validation
+6. 필요한 경우 Normalization
+7. Final Working Media Validation
+8. Project-owned Media 위치로 Materialization
+9. Clip Metadata Persistence
+10. Commit Complete
+11. Temporary / Intermediate Cleanup
+
+Process Death 이후에도 Operation과 Media의 관계를 식별하고 처리 완료 지점을 확인할 수 있는 Durable Operation Identity가 필요하다.
+
+Operation Identity, 대상 Project Identity, Clip Identity와 관련 Media의 연결은 재실행 후에도 복구와 중복 Commit 방지에 사용할 수 있어야 한다.
+
+Operation 정보의 Persistence는 정상 Clip Metadata의 등록과 구별하며 Media 생성 전에 Operation 정보를 남기는 것이 Committed Clip 생성을 의미하지 않는다.
+
+Sidecar Manifest, Persistence Record 등 구체적인 Durable Representation이나 Type / Class 이름은 강제하지 않는다.
+
+구현 시점에 이 계약을 만족하는 가장 단순한 방법을 선택할 수 있다.
+
+### Definition of Committed Clip
+
+Clip은 다음 조건을 모두 만족한 뒤에만 Commit 완료로 인정한다.
+
+- Project-owned Final Media가 존재한다.
+- Final Media Validation이 성공했다.
+- 해당 Media를 참조하는 Clip Metadata Persistence가 성공했다.
+- Project가 여전히 유효한 상태다.
+
+Commit 완료 전 Media는 정상 Project Clip으로 사용자 UI에 노출하지 않는다.
+
+SwiftUI State의 Recording Progress 또는 Import Progress는 Committed Clip을 의미하지 않는다.
+
+Final Media File이 존재해도 Metadata Persistence가 완료되지 않았다면 Committed Clip이 아니다.
+
+Project 유효성 확인과 Metadata Commit은 삭제되었거나 존재하지 않는 Project의 Late Result가 정상 Clip으로 등록되지 않도록 일관성을 유지해야 한다.
+
+### Validation Contract
+
+Staged Media와 Final Working Media의 Validation은 최소한 다음 성질을 확인한다.
+
+- File이 존재한다.
+- 읽기 가능한 Media Resource다.
+- 최소 하나의 유효한 Video Track이 존재한다.
+- Duration이 유효하다.
+- 현재 Phase에서 확정된 Clip Duration Policy를 준수한다.
+- 필요한 Audio / Video Track Metadata에 접근할 수 있다.
+- 불완전한 Write 또는 Partial Output을 Final Media로 취급하지 않는다.
+
+Import Source 전체에 Project Clip의 최대 10초 제한을 적용하지 않으며 Project에서 사용할 Segment에 확정된 Clip Duration Policy를 적용한다.
+
+Normalization을 수행했다면 그 Output을 Final Media로 등록하기 전에 다시 Validation한다.
+
+HDR / SDR, Codec / Container, 최소 Clip 길이 등 Pending 값을 Validation 구현 편의를 위해 임의로 확정하지 않는다.
+
+### Failure Boundary Contract
+
+| Boundary | 기대 결과 |
+| --- | --- |
+| A. Media File 생성 전 실패 | Committed Clip은 없으며 Operation을 안전하게 정리할 수 있다. |
+| B. Media Write 도중 실패 | Partial Output을 Committed Media로 등록하지 않으며 Incomplete Output과 Completed Staging Media를 구별할 수 있어야 한다. |
+| C. Staged Media 작성 완료 후 Crash | Valid Staging Media는 Recovery Candidate로 보존하며 단순 Temporary Cleanup으로 즉시 제거하지 않는다. |
+| D. Validation 실패 | 정상 Clip Metadata를 등록하지 않으며 Invalid Candidate의 Cleanup 가능 여부는 Source Ownership과 Operation State를 확인한 뒤 판단한다. |
+| E. Normalization 도중 실패 | Incomplete Normalized Result는 Final Media가 아니며 Valid Source / Staging Media를 보존하여 Retry 또는 Recovery가 가능하게 한다. |
+| F. Final Working Media 생성 후 Metadata Persistence 실패 | Media를 즉시 Orphan으로 삭제하지 않으며 Recoverable Operation의 Candidate를 보존하여 재실행 후 Metadata Commit을 재시도할 수 있어야 한다. |
+| G. Metadata Persistence 성공 후 UI Update 이전 Crash | Relaunch 시 Persisted Metadata를 Source of Truth로 사용하며 동일 Clip을 중복 생성하지 않는다. |
+| H. Cleanup 실패 | 이미 Committed Clip의 유효성에 영향을 주지 않으며 Cleanup을 재시도할 수 있어야 한다. |
+
+### Atomicity and Ordering
+
+File과 SwiftData Metadata를 하나의 Atomic Transaction으로 취급하지 않는다.
+
+가능한 File Finalization은 동일 Container / Filesystem 내 Atomic Move 또는 Rename을 우선한다.
+
+Partial Filename 또는 Staging Namespace는 Final Project Media와 명확히 구별되어야 한다.
+
+- Valid Final Media 확보 전 Clip Metadata를 Commit하지 않는다.
+- Metadata Persistence 완료 전 사용자에게 Committed Clip으로 표시하지 않는다.
+- Commit 완료 전 Recovery Information을 파괴하지 않는다.
+- Temporary / Intermediate Cleanup은 Commit 또는 Recovery Classification 이후 수행한다.
+
+MediaStore와 ProjectRepository 사이의 실패 경계는 Durable Operation 정보와 59절의 Reconciliation으로 복구할 수 있어야 한다.
 
 Media 생성이 실패했는데 정상적인 Clip Metadata만 남는 상황을 방지한다.
 
@@ -699,6 +779,12 @@ Imported Video는 사용자가 Clip 추가를 확정한 후 Project-owned Media�
 Mellow Working Media는 1080p 기준으로 정규화한다.
 
 이 과정에서 Photos의 원본 Video는 변경하지 않는다.
+
+Import는 25절의 공통 Media Commit Lifecycle을 사용하며 Source Validation과 Normalized Output의 Final Validation을 구별한다.
+
+Normalization 실패 시 Valid Source / Staging Media를 보존하고 Materialization 이후 Metadata Persistence 실패 시 Recovery Candidate로 유지한다.
+
+이 보존 계약은 진행 중이거나 복구 가능한 Import를 위한 것이며 Commit 이후 원본 Source Reference 유지와 Re-trim 범위는 40절의 미결정 사항으로 유지한다.
 
 ---
 
@@ -1024,13 +1110,81 @@ Export를 완료했다고 Draft를 자동 삭제하지 않는다.
 
 ## 59. Draft Recovery
 
-앱 실행 시 Project Metadata와 Media File의 일관성을 검증할 수 있어야 한다.
+App Launch 또는 필요한 Recovery 시점에 Project Metadata, Media File과 Durable Operation 정보의 일관성을 Reconciliation할 수 있어야 한다.
 
-Metadata가 있지만 Media File이 없는 경우 해당 Clip을 손상된 상태로 인식한다.
+### Recovery Classification
 
-Media File이 있지만 Metadata가 없는 경우 Orphaned Media로 판단할 수 있다.
+다음 상태는 개념적으로 구분하며 정확한 Enum 이름이나 구현 Type을 강제하지 않는다.
+
+| 분류 | 의미 |
+| --- | --- |
+| Active / In-progress Operation | 현재 진행 중인 Operation이 소유하거나 필요로 하는 Media다. |
+| Recoverable Media | Durable Operation과 연결되어 Validation, 후속 처리 또는 Metadata Commit을 재개할 수 있는 Media다. |
+| Committed Media | 25절의 Committed Clip 조건을 충족한 Clip이 참조하는 Media다. |
+| Discardable Temporary Media | Ownership과 Operation State 확인 결과 복구 또는 현재 작업에 필요하지 않아 폐기 가능하다고 확정된 Temporary / Intermediate Artifact다. |
+| Confirmed Orphan | 아래 Orphan Contract의 모든 조건을 확인하여 정상 사용자 Media로 복구할 근거가 없다고 판정한 Media다. |
+
+Metadata가 존재하지 않는다는 사실만으로 File을 Confirmed Orphan으로 판단해서는 안 된다.
+
+Recovery Candidate 여부를 먼저 확인한다.
+
+Project-owned Media Directory에 있지만 Metadata가 없는 File도 저장 중단의 결과일 수 있으므로 즉시 삭제하지 않는다.
+
+### Confirmed Orphan Contract
+
+Confirmed Orphan은 최소한 다음 조건을 모두 만족해야 한다.
+
+- Committed Clip Metadata에서 참조되지 않는다.
+- Active Operation이 소유하지 않는다.
+- Recoverable Operation과 연결되지 않는다.
+- 현재 사용 중인 작업이 필요로 하지 않는다.
+- Recovery / Reconciliation 결과 정상 사용자 Media로 복구할 근거가 없다.
+
+이 조건을 확인하기 전에 Orphan으로 간주한 Destructive Cleanup을 수행하지 않는다.
+
+Known Disposable Temporary Namespace의 명백한 Incomplete Artifact와 Project-owned Unknown Media를 동일하게 취급하지 않는다.
+
+소유권이나 복구 가능성이 불명확한 Media는 자동으로 폐기 가능한 것으로 분류하지 않는다.
+
+### Reconciliation Contract
+
+| 확인된 상태 | 기대 결과 |
+| --- | --- |
+| Committed Metadata + Valid Media | 정상 상태를 유지한다. |
+| Committed Metadata + Missing / Corrupt Media | Damaged / Missing 상태를 감지하고 다른 Clip과 Draft를 보호한다. |
+| Valid Materialized Media + Missing Metadata + Recoverable Operation | Project 유효성을 확인한 뒤 동일 Operation / Clip Identity로 Metadata Commit을 재개할 수 있어야 한다. |
+| Valid Staging Media + Recoverable Completed Operation | Staging Write가 완료된 Operation의 가능한 Validation 또는 후속 처리를 재개한다. |
+| Valid Source + Incomplete Normalization Output | 폐기 가능하다고 확인된 Incomplete Derived Output을 정리하고 Valid Source를 보존한다. |
+| Deleted / Nonexistent Project에 속한 Late Result | Project를 재생성하거나 Clip Metadata를 Commit하지 않으며 Artifact는 Ownership과 Recovery Classification에 따라 처리한다. |
+| Confirmed Disposable Artifacts | 정상 Committed Media와 Recovery Candidate에 영향을 주지 않고 안전하게 Cleanup한다. |
+
+Persisted Metadata가 존재하면 이미 완료된 Commit을 다시 신규 Commit으로 수행하지 않는다.
+
+파일과 Metadata 사이의 불일치를 발견한 경우 정상 Clip으로 노출하기 전에 위 계약에 따라 상태를 판정한다.
 
 하나의 손상된 Clip 때문에 앱 전체가 Crash하거나 모든 Draft를 열 수 없게 되어서는 안 된다.
+
+### Idempotency and Uniqueness
+
+Recovery와 Reconciliation은 앱 재실행마다 반복되어도 안전하고 Idempotent해야 한다.
+
+동일 Recovery Operation을 여러 번 수행해도 다음을 보장한다.
+
+- 같은 Clip이 중복 등록되지 않는다.
+- 동일 Media가 여러 Clip으로 중복 등록되지 않는다.
+- 정상 Committed Media가 삭제되지 않는다.
+- 이미 Cleanup된 Temporary Artifact 때문에 오류가 반복되지 않는다.
+- 완료된 Operation을 다시 신규 Operation처럼 처리하지 않는다.
+
+Media Operation Identity와 Clip Identity를 사용해 Duplicate Commit을 방지하며 구체적인 Database Uniqueness 구현 방법은 코드 단계에서 선택할 수 있다.
+
+Cleanup 실패는 Committed Clip을 실패 상태로 되돌리지 않으며 재시도 시에도 위 보존 조건을 유지한다.
+
+### Scope Boundary
+
+이 계약은 Recording / Import의 저장 완료, 복구 후보 분류와 Cleanup 경계를 정의한다.
+
+Delete / Undo와 Preview / Export의 Active-consumer Lifecycle 세부 계약은 B03 Step 3에서 별도로 다루며 여기서 확정하지 않는다.
 
 ---
 
@@ -1138,6 +1292,8 @@ Thumbnail 생성, Media Import, Composition 생성, Export 준비가 Main Thread
 Task Cancellation을 무시하고 불필요한 Media Processing을 계속 수행하지 않는다.
 
 취소된 Temporary Media는 안전하게 정리한다.
+
+Recording / Import의 Temporary Media는 취소 또는 실패 사실만으로 폐기하지 않으며 25절과 59절에 따라 Recovery Candidate 여부와 Source Ownership을 먼저 확인하고 Discardable Artifact만 정리한다.
 
 Recording Stop은 일반 Task Cancellation과 별개의 Camera Operation으로 관리한다.
 
@@ -1323,6 +1479,14 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - 4K Input to 1080p Output
 - 30 fps Output
 - Export File 생성
+- Recording / Import Media Commit의 Failure Boundary A–H
+- Materialization 이후 Metadata Persistence 실패와 Relaunch Recovery
+- Normalization 실패 시 Valid Source 보존
+- Reconciliation 반복 시 Duplicate Commit 방지
+- Recovery Classification 이후 Cleanup과 Cleanup Idempotency
+- Missing / Corrupt Media와 Multiple Draft Isolation
+
+Media Commit의 기본 Failure Boundary 검증은 Recording을 구현하는 Phase 4부터 수행하고 Phase 6에서 Import에 적용하며 Phase 10에서 반복 Relaunch와 복합 실패 조건을 강화한다.
 
 Repository에 지나치게 큰 Test Video File을 포함하지 않는다.
 
@@ -1450,6 +1614,10 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - MVP Export는 `AVAssetExportSession`을 우선 사용한다.
 - Media File Operation은 Actor 기반으로 관리한다.
 - Core Media Processing은 Local-first로 구현한다.
+- Recording과 Import는 Durable Operation Identity를 사용하는 공통 Media Commit Lifecycle을 따른다.
+- Clip Commit 완료는 Valid Project-owned Final Media와 성공한 Clip Metadata Persistence 및 유효한 Project를 모두 요구한다.
+- Recording / Import Media Cleanup은 Recovery Classification 이후 수행하며 Metadata 부재만으로 Confirmed Orphan을 판정하지 않는다.
+- Recovery와 Reconciliation은 Idempotent하며 Operation / Clip Identity로 Duplicate Commit을 방지한다.
 - Third-party Dependency를 최소화한다.
 
 ---
@@ -1465,6 +1633,16 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 ### Original Preservation
 
 Photos Library의 원본 Video를 수정하거나 삭제하지 않는다.
+
+### Media Commit Completion
+
+25절의 Committed Clip 조건을 모두 만족하기 전에는 정상 Project Clip으로 노출하지 않는다.
+
+### Recovery Before Cleanup
+
+Metadata가 없는 Media도 Recovery Candidate 여부를 먼저 확인하며 59절의 분류와 Orphan 조건을 충족하기 전에 파괴적으로 정리하지 않는다.
+
+Recovery와 Cleanup을 반복해도 정상 Media 유실이나 Duplicate Clip 등록이 발생해서는 안 된다.
 
 ### Clip Duration
 

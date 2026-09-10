@@ -682,6 +682,105 @@ MVP가 안정적으로 완성되기 전에는 기능 수를 늘리는 것보다 
 
 ---
 
+# ADR-020 — Transactional Media Commit and Recovery
+
+**Date:** 2026-09-11
+
+**Status:** Accepted
+
+## Context
+
+Media File과 SwiftData Metadata는 하나의 Atomic Transaction으로 저장되지 않는다.
+
+File 작성, Materialization과 Metadata Persistence 사이에서 Process Death가 발생할 수 있다.
+
+Metadata가 없다는 사실만으로 Orphan을 판정하여 삭제하면 정상 사용자 Media가 유실될 수 있다.
+
+Phase 4부터 실제 사용자 Recording Media가 생성되므로 저장 완료와 기본 Recovery 계약을 Phase 10까지 미룰 수 없다.
+
+## Decision
+
+Recording과 Import는 다음 공통 Media Commit Lifecycle을 따른다.
+
+1. Media Operation 시작
+2. Process Death 이후에도 Operation과 Media의 관계를 식별할 수 있는 Durable Operation Identity 확보
+3. Staging에 Media 작성
+4. Staged Media 작성 완료
+5. Staged Media Validation
+6. 필요한 경우 Normalization
+7. Final Working Media Validation
+8. Project-owned Media 위치로 Materialization
+9. Clip Metadata Persistence
+10. Commit Complete
+11. Temporary / Intermediate Cleanup
+
+Committed Clip은 Project-owned Final Media가 존재하고 Final Validation과 해당 Media를 참조하는 Clip Metadata Persistence가 성공했으며 Project가 여전히 유효한 경우에만 성립한다.
+
+Commit 완료 전 Media는 정상 Project Clip으로 사용자 UI에 노출하지 않으며 Recording / Import Progress는 Committed Clip을 의미하지 않는다.
+
+Validation은 File 존재, 읽기 가능한 Media Resource, 유효한 Video Track과 Duration, 현재 Phase의 확정된 Clip Duration Policy, 필요한 Track Metadata 접근 가능 여부 및 Write 완결성을 확인한다.
+
+Normalization Output은 Final Media로 등록하기 전에 다시 Validation한다.
+
+Active / In-progress Operation, Recoverable Media, Committed Media, Discardable Temporary Media와 Confirmed Orphan을 구별한다.
+
+Metadata가 없는 File도 Recovery Candidate 여부를 먼저 확인하며 Project-owned Directory에 있다는 이유로 이 확인을 생략하지 않는다.
+
+Confirmed Orphan은 Committed Metadata 참조, Active Operation 소유, Recoverable Operation 연결과 현재 작업의 필요가 모두 없고 Reconciliation 결과 정상 사용자 Media로 복구할 근거가 없을 때만 성립한다.
+
+Known Disposable Temporary Artifact와 Project-owned Unknown Media를 동일하게 취급하지 않는다.
+
+Normalization 실패 시 Valid Source / Staging Media를 보존하며 Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation의 Metadata Commit을 재시도할 수 있어야 한다.
+
+Deleted / Nonexistent Project의 Late Result는 Project를 재생성하거나 Clip Metadata를 Commit해서는 안 된다.
+
+Recovery와 Reconciliation은 Idempotent해야 하며 Media Operation Identity와 Clip Identity로 Duplicate Commit과 동일 Media의 중복 등록을 방지한다.
+
+Metadata Persistence 성공 후 UI Update 전에 Crash가 발생해도 Relaunch 시 Persisted Metadata를 기준으로 이미 완료된 Commit을 유지한다.
+
+가능한 File Finalization은 동일 Container / Filesystem 내 Atomic Move 또는 Rename을 우선하며 Partial Output과 Final Media를 명확히 구분한다.
+
+Valid Final Media 확보 전 Clip Metadata Commit, Metadata Persistence 완료 전 Committed Clip 표시 및 Commit 완료 전 Recovery Information 파괴를 금지한다.
+
+Temporary / Intermediate Cleanup은 Commit 또는 Recovery Classification 이후 수행하며 Cleanup 실패는 이미 Committed Clip의 유효성을 훼손하지 않아야 한다.
+
+반복 Recovery와 Cleanup은 정상 Committed Media를 삭제하지 않고 이미 정리한 Artifact의 오류를 반복하지 않으며 완료된 Operation을 신규 Operation처럼 재처리하지 않아야 한다.
+
+구체적인 Durable Representation, Type / Class 이름과 Database Uniqueness 구현 방법은 고정하지 않으며 구현 시 이 계약을 만족하는 가장 단순한 방법을 선택할 수 있다.
+
+상세 Failure Boundary A–H와 Reconciliation 기준은 `ARCHITECTURE.md`의 25절과 59절을 따른다.
+
+계약 자체는 Phase 4 이전에 확정하며 Phase 4에서 Recording의 최소 Production Lifecycle과 기본 실패 경계 검증을 구현하고 Phase 6에서 Import에 동일 계약을 적용한다.
+
+Phase 10은 기존 Lifecycle의 Forced Termination, Repeated Relaunch, Orphan Reconciliation, Missing / Corrupt Media, Duplicate Recovery Prevention, Cleanup Idempotency와 Multiple Draft Isolation을 강화한다.
+
+## Consequences
+
+### Benefits
+
+- Process Death 이후에도 Operation과 Media를 연결하여 가능한 저장 및 Metadata Commit을 복구할 수 있다.
+- 정상 사용자 Media의 잘못된 Orphan Deletion을 방지한다.
+- Recording과 Import가 일관된 저장 완료와 Recovery Lifecycle을 사용한다.
+- 명시적인 Failure Boundary와 Reconciliation 결과를 기준으로 Recovery를 검증할 수 있다.
+
+### Costs
+
+- Durable Operation State 추적이 필요하다.
+- File과 Metadata의 Reconciliation Complexity가 증가한다.
+- Media Cleanup은 단순 Directory Scan보다 복잡해진다.
+
+## Non-goals
+
+- 구체적인 Manifest Format 또는 Persistence Representation 확정
+- 최종 Codec / Container 결정
+- HDR / SDR 정책 결정
+- Storage Threshold 결정
+- Delete / Undo와 Preview / Export의 Active-consumer Lifecycle 해결
+
+Delete / Undo의 Active-consumer Lifecycle을 포함한 B03은 Step 3에서 별도로 다룬다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 항목은 아직 확정된 ADR이 아니며 임의로 구현 기준을 결정하지 않는다.

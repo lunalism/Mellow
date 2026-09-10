@@ -808,6 +808,10 @@ Recording 없이 Camera Infrastructure가 안정적으로 검증되어야 한다
 
 Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 완성한다.
 
+최초 Production Media를 생성하는 Phase이므로 공통 Media Commit Lifecycle의 최소 구현과 기본 Crash / Relaunch Recovery를 이 Phase에 포함한다.
+
+이 안전성 구현을 Phase 10까지 미루지 않는다.
+
 ## Included
 
 - 1080p 30 fps Recording
@@ -817,6 +821,8 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 - Recording Progress
 - Clip File Staging
 - Safe Media Write
+- Durable Operation Identity
+- 기본 Media Commit Recovery와 Recovery Classification
 - Project Clip 추가
 - Front Camera Recording
 - Rear Camera Recording
@@ -834,6 +840,12 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 - 4K Recording
 - 60 fps Recording
 
+## Architecture Contract Before Implementation
+
+`ARCHITECTURE.md` 25절과 59절 및 Accepted ADR-020의 저장 완료, Validation, Failure Boundary, Recovery와 Cleanup 계약은 Phase 4 진입 전에 확정되어 있어야 한다.
+
+구현 시점에는 Process Death 이후 Operation / Project / Clip / Media의 연결을 복구할 수 있는 가장 단순한 Durable Representation을 사용하며 특정 Manifest Format이나 Database Uniqueness 구현을 미리 고정하지 않는다.
+
 ## Implementation Tasks
 
 1. `AVCaptureMovieFileOutput` 기반 Recording을 구현한다.
@@ -845,15 +857,20 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 7. Progress 계산은 Monotonic Time을 사용한다.
 8. 10초 Auto Stop 이후 정상 Completion Flow로 들어간다.
 9. Audio Track이 포함되도록 구성한다.
-10. Recording 결과를 Temporary 또는 Staging Location에 생성한다.
-11. Recording 결과 File을 검증한다.
-12. Project Media Directory로 안전하게 이동한다.
-13. Metadata를 Project에 추가한다.
-14. 정상 저장된 Clip만 UI에 표시한다.
+10. Media 작성 전에 Durable Operation Identity와 Project / Clip / Media 연결을 확보하고 Recording 결과를 Staging에 생성하며 Incomplete Write와 Completed Staging을 구별한다.
+11. Staged Media를 검증하고 필요한 Normalization이 있다면 그 Output도 Final Working Media로 등록하기 전에 다시 검증한다.
+12. 검증된 Final Working Media를 Project Media Directory로 안전하게 Materialize하며 가능한 경우 동일 Filesystem 내 Atomic Move / Rename을 사용한다.
+13. Project가 여전히 유효한지 확인하며 해당 Media를 참조하는 Clip Metadata를 Persist하고 실패 시 Recoverable Media와 Operation 정보를 보존한다.
+14. Final Media 존재, Final Validation 성공, Metadata Persistence 성공과 유효한 Project를 모두 만족한 Committed Clip만 UI에 표시한다.
 15. Recording Start / Stop Haptic을 최소 범위에서 구현한다.
 16. 10초 종료 직전 Haptic은 디자인 결정 범위에서 최소한으로 적용한다.
 17. Recording 중 App Background 또는 Session Interruption을 처리한다.
 18. 가능한 경우 유효한 Partial Recording을 보호한다.
+19. Completed Staging과 Materialized Media에서 중단된 Operation을 재실행 후 연결하여 가능한 후속 처리와 Metadata Commit을 재개한다.
+20. 이미 Persist된 Clip은 기존 Metadata를 사용하고 Operation / Clip Identity로 Duplicate Commit을 방지한다.
+21. Temporary / Intermediate Artifact는 Commit 또는 Recovery Classification 이후 폐기 가능하다고 확인된 경우에 정리하며 Cleanup 실패가 Committed Clip을 무효화하지 않게 한다.
+
+Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy와 Validation을 따르며 불완전한 Write를 정상 Final Media로 승격하지 않는다.
 
 ## Unit Tests
 
@@ -862,12 +879,29 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 - Auto Stop State
 - Recording Progress Calculation
 - Invalid Recording Completion 처리
+- Committed Clip 조건과 Progress State의 구분
+- Operation / Clip Identity 기반 Duplicate Commit 방지
 
 ## Integration Tests
 
 - 생성된 Movie File이 AVAsset으로 열리는지 확인
 - Audio Track 존재 확인
 - Duration <= 10 seconds 확인
+
+Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration Test를 적용한다.
+
+| Boundary | 검증 결과 |
+| --- | --- |
+| A. File 생성 전 실패 | Committed Clip 없이 Operation을 안전하게 정리한다. |
+| B. Write 도중 실패 | Incomplete Output과 Completed Staging을 구별하고 Partial Output을 등록하지 않는다. |
+| C. Staging 작성 완료 후 중단 | 새 실행에서 Durable Identity로 Valid Staging을 연결하여 복구하며 일반 Temporary Cleanup으로 삭제하지 않는다. |
+| D. Validation 실패 | 정상 Clip Metadata를 생성하지 않고 Ownership과 Operation State를 확인하여 Cleanup을 분류한다. |
+| E. Normalization 도중 실패 | 정규화가 필요한 경로에서 Incomplete Output을 Final Media로 등록하지 않고 Valid Source / Staging을 보존한다. |
+| F. Materialization 후 Metadata Save 직전 또는 Save 실패 | 정상 Clip을 표시하지 않고 Media를 Recovery Candidate로 보존하며 재실행 후 동일 Identity로 Metadata Commit을 재개한다. |
+| G. Metadata Save 성공 직후 UI Update 전 중단 | Persisted Metadata로 Clip을 한 번만 복구한다. |
+| H. Cleanup 실패 | Committed Clip을 유지하고 반복 Cleanup에서 이미 정리된 Artifact로 인한 오류를 반복하지 않는다. |
+
+Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의 Codec / HDR 정책을 추가하지 않고 공통 실패 처리 계약을 검증하며 실제 Import Normalization Pipeline은 Phase 6에서 검증한다.
 
 ## Physical Device Test
 
@@ -884,6 +918,7 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Landscape 16:9 Project
 - Background Interruption
 - Storage 부족 Simulation 가능한 범위
+- 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
 
 ## Acceptance Criteria
 
@@ -894,10 +929,16 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Recording 중 Camera Switch는 불가능하다.
 - 연속 Recording으로 App이 불안정해지지 않는다.
 - iPhone 12에서 실제 촬영이 정상 동작한다.
+- Committed Clip 조건을 모두 충족하기 전에는 Progress만 표시할 수 있으며 정상 Clip으로 노출하지 않는다.
+- Durable Operation Identity로 재실행 후 Media와 Commit 상태를 연결할 수 있다.
+- Metadata Save 직전 / 직후 실패 후에도 Valid Media가 잘못 정리되거나 Clip이 중복 등록되지 않는다.
+- 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
 
 ## Exit Criteria
 
 직접 촬영만으로 여러 Clip을 Project에 안전하게 추가할 수 있어야 한다.
+
+공통 Media Commit Lifecycle과 기본 Relaunch Recovery가 Production Recording 경로에 적용되고 위 Failure Boundary Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ---
 
@@ -988,6 +1029,8 @@ iPhone 12에서 다음을 반드시 검증한다.
 
 Photos Library의 기존 Video를 Mellow Project에 안전하게 추가할 수 있게 한다.
 
+Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하며 별도의 저장 완료 또는 Orphan 판정 기준을 만들지 않는다.
+
 ## Included
 
 - System Photos Picker
@@ -999,6 +1042,7 @@ Photos Library의 기존 Video를 Mellow Project에 안전하게 추가할 수 �
 - Project-owned Media Materialization
 - 1080p Working Media
 - Imported Clip 생성
+- 공통 Media Commit Recovery 적용
 
 ## Explicitly Excluded
 
@@ -1026,13 +1070,18 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 3. Source Video Duration과 Display Transform을 읽는다.
 4. 4K Source를 정상적으로 다룰 수 있게 한다.
 5. 사용자가 최대 10초 Segment를 선택할 수 있는 Import Editing State를 준비한다.
-6. Add Clip 확정 시 Project-owned Media를 생성한다.
-7. Working Media는 1080p 기준으로 정규화한다.
+6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Media 작성 전에 Durable Operation Identity를 확보하고 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
+7. 검증된 Source / Staged Media에서 Working Media를 1080p 기준으로 정규화한다.
 8. Source Frame Rate가 달라도 Project Output 30 fps 정책과 충돌하지 않게 한다.
 9. Photos 원본을 변경하지 않는다.
-10. 정상 Materialization 완료 후 Metadata를 Project에 추가한다.
-11. Import 취소 시 Temporary File을 정리한다.
+10. Normalized Output의 Final Validation을 수행하고 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
+11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
+13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다.
+14. Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다.
+15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
+
+복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 Source Reference와 Re-trim 범위는 이 Phase의 별도 Decision Gate를 따른다.
 
 ## Unit Tests
 
@@ -1052,10 +1101,18 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 - 10초 미만 Source
 - 10초 초과 Source
 - 4K → 1080p Working Media
+- Source / Staged Media와 Normalized Output의 각각의 Validation
+- Normalization 도중 실패 후 Valid Source 보존과 Incomplete Derived Output 분류
+- Materialization 후 Metadata Failure 및 Relaunch에서 동일 Clip의 Commit 재개
+- Metadata Save 성공 후 UI Update 전 중단과 중복 없는 Recovery
+- Cancel / Failure 후 Discardable Temporary Artifact Cleanup과 Recoverable Media 보존
+- 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
 
 ## Physical Device Test
 
 iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
+
+Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
 
 ## Acceptance Criteria
 
@@ -1064,10 +1121,15 @@ iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 - 4K Source에서 1080p Working Media가 정상 생성된다.
 - Photos 원본 삭제가 Project-owned Media에 영향을 주지 않는다.
 - Import 취소 또는 실패 시 Project가 손상되지 않는다.
+- Normalization 실패가 Valid Source / Staging Media를 파괴하지 않는다.
+- Materialization 이후 Metadata Persistence 실패를 복구할 수 있으며 Commit 완료 전 Clip을 정상 UI에 표시하지 않는다.
+- Cancel / Failure Cleanup은 확인된 Discardable Artifact에만 적용되며 반복 수행해도 정상 Media와 Recovery Candidate를 훼손하지 않는다.
 
 ## Exit Criteria
 
 촬영 Clip과 Imported Clip이 동일한 Project에서 함께 관리되어야 한다.
+
+Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ---
 
@@ -1348,16 +1410,22 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 
 여러 Draft와 Media File이 장기간 사용되어도 손상이나 유실 가능성을 최소화한다.
 
+이 Phase는 Media Commit Lifecycle을 처음 만드는 단계가 아니며 Phase 4의 Recording과 Phase 6의 Import에 이미 적용된 계약을 강화한다.
+
 ## Included
 
 - Project Storage Layout 검증
-- Orphaned File 처리
-- Missing File 처리
+- Recovery Classification과 Confirmed Orphan Reconciliation 강화
+- Missing / Corrupt File 처리
 - App Relaunch Recovery
 - Pending Deletion Recovery
 - Temporary File Cleanup
 - Storage Usage 기본 계산
 - Large Draft 안정성
+- Forced Termination과 Repeated Relaunch
+- Duplicate Recovery Prevention
+- Cleanup Idempotency
+- Multiple Draft Isolation
 
 ## Explicitly Excluded
 
@@ -1368,23 +1436,35 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 
 ## Implementation Tasks
 
-1. App Launch 시 Project Metadata와 Media File consistency를 검사한다.
+1. Phase 4 / 6의 Reconciliation을 기반으로 App Launch 시 Project Metadata, Media File과 Durable Operation State의 Consistency 검증을 강화한다.
 2. Missing Media를 안전하게 표시한다.
 3. 하나의 손상된 Clip이 Project 전체 Crash로 이어지지 않게 한다.
-4. Orphaned Temporary Media Cleanup을 구현한다.
+4. Metadata가 없는 Media의 Recovery Candidate 여부를 먼저 확인하고 Confirmed Orphan과 Discardable Temporary Artifact만 정리하는 기존 계약을 검증한다.
 5. Pending Deletion 복구를 구현한다.
 6. App 강제 종료 후 Draft를 재검증한다.
 7. Export Temporary File Cleanup을 확인한다.
 8. 여러 Draft의 Storage Usage를 계산할 수 있는 기반을 만든다.
 9. Project Delete가 모든 Project-owned Media를 정리하는지 검증한다.
+10. 주요 Media Commit 실패 경계에서 Forced Termination과 Repeated Relaunch를 수행하여 Staging / Materialized Media Recovery를 반복 검증한다.
+11. 동일 Operation / Clip Identity의 반복 Recovery가 Duplicate Clip 또는 동일 Media의 중복 등록을 만들지 않는지 확인한다.
+12. Cleanup 실패와 재시도 및 이미 정리된 Artifact를 검증하여 정상 Committed Media와 Recovery Candidate가 삭제되지 않게 한다.
+13. 한 Draft의 Missing / Corrupt Media 또는 실패한 Operation이 다른 Draft의 정상 Media와 Metadata를 손상시키지 않는지 검증한다.
 
 ## Tests
 
 - Missing Media
-- Orphaned Media
+- Corrupt Media
+- Metadata 없는 Valid Staging / Materialized Media의 Recovery Classification
+- Confirmed Orphan과 Known Disposable Artifact의 안전한 Cleanup
 - Interrupted Save
+- 각 Commit Boundary에서 Forced Termination 후 Repeated Relaunch
+- Metadata Save 직전 / 직후 Recovery와 Duplicate Commit 방지
+- Normalization 실패 후 Valid Source 보존
+- Cleanup Failure / Retry와 Cleanup Idempotency
 - Pending Deletion Relaunch
 - Multiple Draft Recovery
+- Multiple Draft Isolation
+- Deleted / Nonexistent Project Late Result의 Project 재생성 및 Commit 차단
 - Project Delete Cleanup
 
 ## Physical Device Test
@@ -1394,6 +1474,7 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 - 여러 Draft 생성
 - 대용량 Draft
 - Photos 원본 삭제 이후 Imported Clip 확인
+- Recording / Import 저장 경계별 강제 종료와 반복 Relaunch 후 Clip 중복 및 정상 Media 유실 여부
 
 ## Acceptance Criteria
 
@@ -1401,10 +1482,16 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 - 하나의 손상 File로 전체 앱이 실패하지 않는다.
 - Project Delete 후 Project-owned Media가 남지 않는다.
 - Temporary File이 무한히 누적되지 않는다.
+- 반복 Recovery가 동일 Clip 또는 동일 Media를 중복 등록하지 않는다.
+- Metadata가 없는 Valid Media는 Recovery 판정 전에 Orphan으로 삭제되지 않는다.
+- Confirmed Disposable Artifact의 반복 Cleanup과 실패 후 재시도가 정상 Committed Media의 유효성을 변경하지 않는다.
+- 한 Draft의 실패 또는 손상이 다른 Draft의 정상 상태에 영향을 주지 않는다.
 
 ## Exit Criteria
 
 Draft Persistence가 실제 장기 사용을 견딜 수 있는 수준이어야 한다.
+
+Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeated Relaunch, Recovery Classification, Duplicate Prevention, Cleanup Idempotency와 Multiple Draft Isolation 검증이 통과해야 한다.
 
 ---
 
@@ -1853,6 +1940,13 @@ MVP 완료 후 다음 Release Planning에서 우선순위를 다시 평가한다
 # Decision Gates Before Development Completion
 
 다음 Decision은 관련 Phase 진입 전에 반드시 해결한다.
+
+## Before Phase 4
+
+- Transactional Media Commit and Recovery 계약: ADR-020 Accepted 및 `ARCHITECTURE.md` 25절 / 59절을 기준으로 한다.
+- Durable Operation Identity, Committed Clip 정의, Failure Boundary와 Recovery Classification의 기본 검증 범위를 Phase 4에서 확인한다.
+
+이 Gate의 계약은 확정되어 있으며 구체적인 Durable Representation은 계약을 만족하는 가장 단순한 구현으로 선택할 수 있다.
 
 ## Before Phase 6
 
