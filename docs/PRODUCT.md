@@ -436,9 +436,19 @@ Export 후에도 Draft를 유지하여 다시 열고 수정하거나 재Export�
 
 촬영하거나 가져온 클립을 확인할 수 있다.
 
-필요하지 않은 개별 Clip을 삭제하면 즉시 UI에 반영하고 Undo를 제공한다.
+필요하지 않은 개별 Clip을 삭제하면 즉시 UI에서 제거하고 짧은 Undo Opportunity를 제공한다.
 
-Undo Window와 연속 삭제, 재정렬, 앱 종료 시의 세부 동작은 아직 확정하지 않는다.
+MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이며 새로운 Clip을 삭제하면 이전 삭제의 Undo Opportunity는 종료된다.
+
+Undo는 삭제했던 동일한 Clip과 기존 영상을 복원하며 같은 Clip을 중복 생성하지 않는다.
+
+Undo Window 중 App Process가 종료되면 Undo Opportunity를 다음 실행까지 유지하지 않으며 재실행 시 해당 삭제는 확정된 것으로 취급하여 Clip을 다시 표시하지 않는다.
+
+Undo 전에 다른 Clip의 순서를 변경했더라도 그 순서 변경을 되돌리지 않는다.
+
+삭제한 Clip은 현재 Project 상태와 다른 Clip의 상대 순서를 존중하면서 삭제 당시 위치에 최대한 가깝게 일관된 기준으로 복원한다.
+
+정확한 Undo Window 시간과 Delete / Undo의 구체적인 UI 표현은 아직 확정하지 않는다.
 
 클립의 순서를 변경할 수 있다.
 
@@ -967,7 +977,11 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있어야 한다.
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
 - MVP의 핵심 편집 기능은 Clip 관리, 순서 변경, Trim이다.
-- 개별 Clip 삭제는 즉시 UI에 반영하고 Undo를 제공하며 프로젝트 전체 삭제에는 Confirmation이 필요하다.
+- 개별 Clip 삭제는 즉시 UI에 반영하고 짧은 Undo Opportunity를 제공하며 프로젝트 전체 삭제에는 Confirmation이 필요하다.
+- 사용자에게 노출되는 Undo는 가장 최근 Clip Delete 한 건이며 새로운 Clip Delete는 이전 Undo Opportunity를 종료한다.
+- Undo는 삭제했던 동일한 Clip과 기존 영상을 복원하며 Clip을 중복 생성하지 않는다.
+- Undo Window 중 App Process가 종료되면 다음 실행에서 Undo를 제공하지 않고 해당 Clip 삭제를 확정된 상태로 유지한다.
+- 재정렬 후 Undo는 다른 Clip의 순서 변경을 보존하며 현재 Project 상태를 존중하여 삭제 당시 위치에 최대한 가깝게 결정적으로 복원한다.
 - 전체 Vlog Duration과 Clip Count에는 임의의 고정 Maximum을 두지 않는다.
 - Multiple Drafts와 자동 저장을 지원하며 Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
 - 로컬 Draft는 앱 재실행과 기기 재부팅 이후에도 유지한다.
@@ -996,7 +1010,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 세로/가로 프로젝트 선택 UI
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
-- Clip 삭제 Undo lifecycle의 세부 동작
+- 정확한 Undo Window 시간
+- Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
+- Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식
 - Camera Lens 선택 및 Front Camera 영상 Mirror 세부 정책
 - Post-MVP Zoom 도입 시점 및 지원 범위
 - Post-MVP Flash / Torch 도입 시점 및 세부 동작

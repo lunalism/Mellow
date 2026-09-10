@@ -846,6 +846,8 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 
 구현 시점에는 Process Death 이후 Operation / Project / Clip / Media의 연결을 복구할 수 있는 가장 단순한 Durable Representation을 사용하며 특정 Manifest Format이나 Database Uniqueness 구현을 미리 고정하지 않는다.
 
+ADR-021의 Project Invalid Target과 Late Commit 차단 계약도 Recording Finalization부터 적용하며 기존 Project Delete 경로와 연결한다.
+
 ## Implementation Tasks
 
 1. `AVCaptureMovieFileOutput` 기반 Recording을 구현한다.
@@ -869,6 +871,8 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 19. Completed Staging과 Materialized Media에서 중단된 Operation을 재실행 후 연결하여 가능한 후속 처리와 Metadata Commit을 재개한다.
 20. 이미 Persist된 Clip은 기존 Metadata를 사용하고 Operation / Clip Identity로 Duplicate Commit을 방지한다.
 21. Temporary / Intermediate Artifact는 Commit 또는 Recovery Classification 이후 폐기 가능하다고 확인된 경우에 정리하며 Cleanup 실패가 Committed Clip을 무효화하지 않게 한다.
+22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
+23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
 
 Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy와 Validation을 따르며 불완전한 Write를 정상 Final Media로 승격하지 않는다.
 
@@ -903,6 +907,10 @@ Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration 
 
 Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의 Codec / HDR 정책을 추가하지 않고 공통 실패 처리 계약을 검증하며 실제 Import Normalization Pipeline은 Phase 6에서 검증한다.
 
+Project Delete와 Recording Finalization을 Staging 완료, Materialization 이후 및 Metadata Commit 직전 경계에서 경합시키는 Integration Test를 수행한다.
+
+Project가 Invalid Target으로 전환된 이후에는 Late Commit과 Project Resurrection이 없고 Active Operation과 Recovery에 필요한 Media가 조기 삭제되지 않는지 확인한다.
+
 ## Physical Device Test
 
 iPhone 12에서 다음을 반드시 검증한다.
@@ -919,6 +927,7 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Background Interruption
 - Storage 부족 Simulation 가능한 범위
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
+- Recording Finalization 중 Project Delete 이후 Late Result와 Relaunch가 Project를 되살리지 않는지 확인
 
 ## Acceptance Criteria
 
@@ -933,6 +942,7 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Durable Operation Identity로 재실행 후 Media와 Commit 상태를 연결할 수 있다.
 - Metadata Save 직전 / 직후 실패 후에도 Valid Media가 잘못 정리되거나 Clip이 중복 등록되지 않는다.
 - 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
+- Project Delete 이후 Recording Finalization이 Metadata를 Commit하거나 삭제된 Project를 재생성하지 않는다.
 
 ## Exit Criteria
 
@@ -960,6 +970,9 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Project Total Duration
 - Add More Clip
 - Project Autosave
+- Logical Deletion과 Deferred Physical Cleanup
+- Most-recent Undo와 Process Termination Reconciliation
+- Thumbnail Late Result Validity
 
 ## Explicitly Excluded
 
@@ -979,13 +992,21 @@ iPhone 12에서 다음을 반드시 검증한다.
 4. Clip Duration을 표시한다.
 5. Clip Reorder Interaction을 구현한다.
 6. Reorder 결과를 Persistence에 저장한다.
-7. Clip Delete를 즉시 적용한다.
-8. Pending Deletion 상태를 구현한다.
-9. Undo를 제공한다.
-10. Undo 기간 종료 후 Metadata와 Media를 최종 삭제한다.
-11. App 종료 중 Pending Deletion 상태도 일관되게 정리한다.
+7. Clip Delete를 Logical Deletion으로 적용하여 UI에서 즉시 제거한다.
+8. Pending Deletion을 영속적으로 추적하고 Undo에 필요한 기존 Clip Identity, Media, Metadata, Original Index와 Stable Neighbor Anchor를 보존한다.
+9. 가장 최근 Clip Delete 한 건의 사용자-visible Undo를 제공하며 새로운 Delete가 이전 Undo Opportunity를 종료하도록 한다.
+10. Undo Opportunity가 종료되면 Logical Deletion을 확정하되 Physical Media Cleanup은 Undo / Recovery / Active Usage / Late Commit 차단과 Safe Classification 조건을 모두 충족할 때까지 지연한다.
+11. App Process 종료 후에는 Undo Opportunity를 복원하지 않고 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation한다.
 12. Project Total Duration을 계산하여 표시한다.
 13. Add Clip Action으로 Camera에 다시 진입할 수 있게 한다.
+14. Undo는 기존 Clip Identity와 Media를 재사용하고 이전 Stable Anchor 뒤, 이전 Anchor가 없으면 다음 Anchor 앞, 둘 다 없으면 Clamp된 Original Index로 복원한다.
+15. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
+16. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
+17. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
+
+정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
+
+아직 구현하지 않은 Preview / Export Consumer는 Test Double로 기본 Usage / Release 계약을 검증하고 실제 Production Service 검증은 Phase 8 / 9에서 수행한다.
 
 ## Unit Tests
 
@@ -993,14 +1014,31 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Delete
 - Undo
 - Pending Deletion Cleanup
+- 연속 Delete에서 가장 최근 Undo만 유효한지 확인
+- Undo의 Clip Identity / Media 재사용과 Duplicate Clip 방지
+- Reorder 이후 이전 Anchor 우선, 다음 Anchor 대체 및 Original Index Clamp
+- 양쪽 Anchor가 재정렬되거나 사라진 경우의 결정적 복원과 다른 Clip 상대 순서 보존
+- Undo Eligibility / Recovery / Active Usage별 Physical Delete 차단
 - Project Total Duration
 - Autosave
+
+## Integration Tests
+
+- Undo Window 종료 후에도 Active Consumer가 참조하는 Media는 보존되고 Release 이후 안전하게 Cleanup되는지 확인
+- Pending Deletion 중 Process Termination 후 Relaunch에서 Undo와 Clip이 자동 복원되지 않는지 확인
+- 동일 Deletion / Cleanup의 반복 Reconciliation과 이미 정리된 Artifact 처리
+- Undo와 Cleanup 경합에서 Physical Delete 이후 Undo 성공이 발생하지 않는지 확인
+- Thumbnail 작업 중 Clip / Project 삭제 또는 Media Identity 변경 후 Late Result 폐기
+- Project Delete의 영속적인 Invalid Target과 Metadata 정리 / Deferred Cleanup 순서
 
 ## UI Tests
 
 - Multiple Mock Clips
 - Reorder
 - Delete + Undo
+- 연속 Delete 이후 마지막 Clip에만 사용자-visible Undo 제공
+- Delete 후 다른 Clip Reorder와 Undo를 함께 수행해 복원 위치 확인
+- Pending Deletion 중 종료 후 Relaunch에서 삭제된 Clip이 다시 표시되지 않는지 확인
 - Add Clip 진입
 
 ## Physical Device Test
@@ -1008,18 +1046,25 @@ iPhone 12에서 다음을 반드시 검증한다.
 - 실제 촬영 Clip 10개 이상에서 스크롤 및 Reorder
 - Thumbnail 생성 성능
 - Delete + Undo 안정성
+- 연속 Delete, Reorder 후 Undo 및 Pending Deletion 중 강제 종료 / Relaunch
 
 ## Acceptance Criteria
 
 - 여러 Clip의 순서를 변경할 수 있다.
 - 삭제 후 Undo가 정상 동작한다.
-- Undo 기간 종료 후 실제 Local Media가 정리된다.
+- Undo는 같은 Clip Identity와 Media를 복원하며 현재 다른 Clip의 Reorder를 보존한다.
+- 새로운 Delete는 이전 사용자-visible Undo를 종료하고 가장 최근 Delete만 Undo할 수 있다.
+- Process Termination 이후 Undo Opportunity를 복원하거나 삭제된 Clip을 다시 표시하지 않는다.
+- Undo Opportunity 종료만으로 Local Media를 삭제하지 않으며 Physical Delete 안전 조건이 모두 충족된 이후 정리한다.
+- Active Usage가 있는 Media는 Release 전까지 유지되고 Stale Thumbnail Result는 삭제된 Clip이나 Project를 되살리지 않는다.
 - Project Duration이 정확하다.
 - UI가 전문 Video Timeline처럼 복잡하지 않다.
 
 ## Exit Criteria
 
 촬영한 Clip만으로 Project 구조를 안정적으로 관리할 수 있어야 한다.
+
+Logical Deletion, Most-recent Undo, 결정적 복원과 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ---
 
@@ -1080,6 +1125,8 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다.
 14. Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다.
 15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
+16. Import / Normalization / Materialization 중 Project Delete가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
+17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 Source Reference와 Re-trim 범위는 이 Phase의 별도 Decision Gate를 따른다.
 
@@ -1107,12 +1154,16 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 - Metadata Save 성공 후 UI Update 전 중단과 중복 없는 Recovery
 - Cancel / Failure 후 Discardable Temporary Artifact Cleanup과 Recoverable Media 보존
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
+- Import / Normalization / Materialization 각각에서 Project Delete를 경합시켜 Metadata Commit과 Resurrection 차단
+- Cancellation 요청 직후 아직 Media를 사용하는 Operation의 Cleanup 지연과 Release 이후 안전한 정리
 
 ## Physical Device Test
 
 iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
 Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
+
+Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
 ## Acceptance Criteria
 
@@ -1124,6 +1175,8 @@ Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 �
 - Normalization 실패가 Valid Source / Staging Media를 파괴하지 않는다.
 - Materialization 이후 Metadata Persistence 실패를 복구할 수 있으며 Commit 완료 전 Clip을 정상 UI에 표시하지 않는다.
 - Cancel / Failure Cleanup은 확인된 Discardable Artifact에만 적용되며 반복 수행해도 정상 Media와 Recovery Candidate를 훼손하지 않는다.
+- Project Delete 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
+- Import Operation이 사용하는 Media는 Cancellation 요청만으로 삭제되지 않으며 Release와 Safe Classification 이후 정리된다.
 
 ## Exit Criteria
 
@@ -1242,6 +1295,8 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 - 30 fps Timing
 - AVPlayer Preview
 - Play / Pause / Seek 기본 UX
+- Preview Active Media Usage
+- Mutation 이후 Stale Composition Invalidation
 
 ## Explicitly Excluded
 
@@ -1262,8 +1317,12 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 7. Fill + Crop과 Framing을 적용한다.
 8. Audio Track을 유지한다.
 9. AVPlayer로 Composition Preview를 구현한다.
-10. Project 변경 시 Composition을 안전하게 Rebuild한다.
+10. Project 변경 시 Stale Composition을 Invalidate하고 다음 유효 Preview가 최신 Project State를 반영하도록 안전하게 Rebuild한다.
 11. Composition Build는 Main Actor를 장시간 Block하지 않는다.
+12. Preview Preparation / Playback의 Active Media Usage를 등록하고 실제 Reference Release 전까지 Physical Delete를 지연한다.
+13. 필요한 경우 Playback을 중단하며 오래된 State의 Async Composition 결과나 삭제된 Project의 Late Result를 적용하지 않는다.
+
+Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 이 계약으로 새로운 Preview Editing UI나 특정 Player Rebuilding Strategy를 확정하지 않는다.
 
 ## Unit Tests
 
@@ -1283,6 +1342,14 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 - Trim 반영
 - Framing 반영
 
+### Preview Lifecycle Integration Tests
+
+- Preview가 Media를 참조하는 동안 Clip Delete와 Undo 종료가 발생해도 Source File 보존
+- Clip Delete / Reorder / Trim / Framing 변경 후 Stale Composition Invalidation과 다음 Preview의 새 State 반영
+- Stale Preview Preparation Result의 적용 차단
+- Project Delete 시 Cancellation 요청과 Preview Reference Release 전 Cleanup 차단
+- Reference Release 이후 안전한 Deferred Cleanup과 조기 File 삭제로 인한 Player Failure 방지
+
 ## Physical Device Test
 
 iPhone 12에서 다음을 검증한다.
@@ -1294,6 +1361,7 @@ iPhone 12에서 다음을 검증한다.
 - Audio Sync
 - UI Freeze 여부
 - Memory Pressure 여부
+- Preview 중 Project Mutation과 Project Delete 이후 Media 보존 / Release 및 다음 유효 Preview 상태
 
 ## Acceptance Criteria
 
@@ -1302,6 +1370,9 @@ iPhone 12에서 다음을 검증한다.
 - Audio Sync가 유지된다.
 - Preview를 위해 매번 하나의 완성 Video를 미리 Render하지 않는다.
 - iPhone 12에서 실사용 가능한 성능을 보인다.
+- Preview가 사용 중인 File은 실제 Reference Release 전까지 삭제되지 않는다.
+- Clip Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
+- 삭제된 Project 또는 이전 State의 Late Preview Result를 적용하지 않는다.
 
 ## Exit Criteria
 
@@ -1329,6 +1400,9 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 - Share Sheet
 - Export Completion
 - Draft 유지
+- Immutable Export Snapshot
+- Export Source Media Usage와 Deferred Cleanup
+- Project Delete 시 Export Cancellation / Invalid Target 적용
 
 ## Decision Gate Before Implementation
 
@@ -1342,7 +1416,7 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 
 ## Implementation Tasks
 
-1. Preview와 동일한 Composition Definition을 Export에 사용한다.
+1. Export 시작 시 현재 유효한 Project의 Immutable Logical Snapshot을 확보하고 Preview와 공통 Composition Definition을 사용하여 Snapshot을 Export한다.
 2. `AVAssetExportSession` 기반 MVP Export를 구현한다.
 3. Portrait는 1080 × 1920으로 Export한다.
 4. Landscape는 1920 × 1080으로 Export한다.
@@ -1355,6 +1429,13 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 11. iOS Share Sheet를 제공한다.
 12. Export 성공 후 Draft를 삭제하지 않는다.
 13. Temporary File Cleanup 정책을 적용한다.
+14. Snapshot에 Clip Identity / Order, Trim, Framing / Transform, Project Orientation, Media Reference와 Audio / Video Composition State를 포함한다.
+15. Snapshot 획득과 Source Media Usage 등록을 Cleanup과 조정하고 Export 종료 또는 취소 후 실제 Reference Release까지 Source Media를 보존한다.
+16. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
+17. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
+18. Project Delete 이후의 Uncommitted Operation-owned Artifact는 Safe Classification과 Usage 해제 후 정리하고 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
+
+이 Lifecycle 계약은 B03의 Source-media Lifetime과 Project Validity 범위이며 Background / Retry와 Photos Save / Share Result File의 상세 정책은 M05 / Export Lifecycle Repair에서 별도로 다룬다.
 
 ## Unit Tests
 
@@ -1362,6 +1443,7 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 - Output Canvas
 - Export State Machine
 - Retry State
+- Export Snapshot의 최소 Composition State와 불변성
 
 ## Integration Tests
 
@@ -1374,6 +1456,15 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 - Framing 반영
 - Output Resolution 확인
 - Output Frame Rate 확인
+
+### Export Lifecycle Integration Tests
+
+- Export 시작 후 Clip Edit / Reorder / Clip Delete가 진행 중인 Snapshot과 Output을 변경하지 않는지 확인
+- Export 시작 → Clip Delete → Undo 종료 이후에도 Source Media가 유지되고 실제 Export Release 후 안전 조건에 따라 정리되는지 확인
+- Project Delete 시 Cooperative Cancellation 요청과 Invalid Target의 Late Commit 차단
+- Cancellation 요청 이후 아직 사용 중인 Source Media의 조기 삭제 방지
+- 늦게 생성된 Uncommitted Artifact의 안전한 Cleanup과 삭제된 Project Resurrection 방지
+- Project Delete가 이미 Photos에 저장 완료된 외부 Export 결과에 영향을 주지 않는지 확인
 
 ## Physical Device Test
 
@@ -1388,19 +1479,25 @@ iPhone 12에서 다음을 검증한다.
 - Export Retry
 - Storage 부족 상황 가능한 범위
 - Background 이동 시 현재 정책
+- Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
 
 ## Acceptance Criteria
 
-- Export 결과가 Preview와 시각적으로 일치한다.
+- Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Preview와 시각적으로 일치한다.
 - Output Resolution이 정확하다.
 - Photos Save가 정상 동작한다.
 - Share Sheet가 정상 동작한다.
 - Draft는 Export 이후에도 유지된다.
 - 실패 시 이해 가능한 상태를 제공한다.
+- 일반 Clip Mutation이 진행 중인 Export 결과를 소급 변경하지 않는다.
+- Export Snapshot Media는 Operation 종료 또는 취소 후 실제 Reference Release까지 Physical Delete되지 않는다.
+- Project Delete는 Export Cancellation을 요청하고 Late Commit을 차단하며 삭제된 Project를 되살리지 않는다.
 
 ## Exit Criteria
 
 Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
+
+Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ---
 
@@ -1426,6 +1523,9 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 - Duplicate Recovery Prevention
 - Cleanup Idempotency
 - Multiple Draft Isolation
+- Deferred Physical Deletion Reconciliation
+- Project Logical Deletion과 Cleanup Retry
+- Stale Async Result Discard
 
 ## Explicitly Excluded
 
@@ -1440,15 +1540,18 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 2. Missing Media를 안전하게 표시한다.
 3. 하나의 손상된 Clip이 Project 전체 Crash로 이어지지 않게 한다.
 4. Metadata가 없는 Media의 Recovery Candidate 여부를 먼저 확인하고 Confirmed Orphan과 Discardable Temporary Artifact만 정리하는 기존 계약을 검증한다.
-5. Pending Deletion 복구를 구현한다.
+5. Phase 5의 Pending Deletion Reconciliation을 강화하여 Process Termination 후 Undo Opportunity를 복원하지 않고 Logical Deletion을 확정한다.
 6. App 강제 종료 후 Draft를 재검증한다.
 7. Export Temporary File Cleanup을 확인한다.
 8. 여러 Draft의 Storage Usage를 계산할 수 있는 기반을 만든다.
-9. Project Delete가 모든 Project-owned Media를 정리하는지 검증한다.
+9. Project Delete 이후 Active Usage와 Recovery 필요가 해제되면 남은 Project-owned Media를 안전하게 정리하며 실패한 Cleanup을 재시도할 수 있는지 검증한다.
 10. 주요 Media Commit 실패 경계에서 Forced Termination과 Repeated Relaunch를 수행하여 Staging / Materialized Media Recovery를 반복 검증한다.
 11. 동일 Operation / Clip Identity의 반복 Recovery가 Duplicate Clip 또는 동일 Media의 중복 등록을 만들지 않는지 확인한다.
 12. Cleanup 실패와 재시도 및 이미 정리된 Artifact를 검증하여 정상 Committed Media와 Recovery Candidate가 삭제되지 않게 한다.
 13. 한 Draft의 Missing / Corrupt Media 또는 실패한 Operation이 다른 Draft의 정상 Media와 Metadata를 손상시키지 않는지 검증한다.
+14. Project Logical Deletion의 영속화, Metadata 정리와 Physical Cleanup 사이에서 강제 종료하고 반복 Relaunch하여 Project Resurrection과 중복 Deletion State가 없는지 확인한다.
+15. Deferred Physical Deletion을 Reconciliation하며 Active Usage / Recovery / Undo 조건을 다시 확인하고 이미 정리된 Artifact를 안전하게 처리한다.
+16. Recording / Import / Preview / Export / Thumbnail의 Stale Async Result를 적용하지 않고 삭제된 Project나 Clip을 되살리지 않는지 검증한다.
 
 ## Tests
 
@@ -1466,6 +1569,11 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 - Multiple Draft Isolation
 - Deleted / Nonexistent Project Late Result의 Project 재생성 및 Commit 차단
 - Project Delete Cleanup
+- Pending Deletion 중 Process Termination 후 Undo / Clip 비복원
+- Logical Project Deletion 이후 Metadata / Media 정리 경계별 Forced Termination
+- Deferred Physical Delete의 Repeated Relaunch Reconciliation
+- Project Cleanup Failure / Retry와 이미 삭제된 Target의 반복 처리
+- Stale Async Result Discard와 다른 Draft Isolation
 
 ## Physical Device Test
 
@@ -1475,23 +1583,29 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 - 대용량 Draft
 - Photos 원본 삭제 이후 Imported Clip 확인
 - Recording / Import 저장 경계별 강제 종료와 반복 Relaunch 후 Clip 중복 및 정상 Media 유실 여부
+- Undo Window 중 강제 종료와 Project Delete Cleanup 실패 후 반복 Relaunch
 
 ## Acceptance Criteria
 
 - 정상 저장된 Draft가 App Relaunch로 유실되지 않는다.
 - 하나의 손상 File로 전체 앱이 실패하지 않는다.
-- Project Delete 후 Project-owned Media가 남지 않는다.
+- Project Delete 후 Active Usage와 Recovery 필요가 남아 있는 Media를 보존하고 모든 Physical Delete 안전 조건을 충족하면 Cleanup / Retry로 삭제 대상 Project-owned Media를 정리할 수 있다.
 - Temporary File이 무한히 누적되지 않는다.
 - 반복 Recovery가 동일 Clip 또는 동일 Media를 중복 등록하지 않는다.
 - Metadata가 없는 Valid Media는 Recovery 판정 전에 Orphan으로 삭제되지 않는다.
 - Confirmed Disposable Artifact의 반복 Cleanup과 실패 후 재시도가 정상 Committed Media의 유효성을 변경하지 않는다.
 - 한 Draft의 실패 또는 손상이 다른 Draft의 정상 상태에 영향을 주지 않는다.
+- Process Termination 후 Pending Deletion을 처리해도 Undo Opportunity와 삭제된 Clip이 다시 표시되지 않는다.
+- Cleanup 실패 또는 Late Result가 Logical Deleted Project를 다시 생성하지 않는다.
+- Deletion / Cleanup을 반복해도 중복 상태나 이미 삭제된 Artifact의 오류가 반복되지 않는다.
 
 ## Exit Criteria
 
 Draft Persistence가 실제 장기 사용을 견딜 수 있는 수준이어야 한다.
 
 Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeated Relaunch, Recovery Classification, Duplicate Prevention, Cleanup Idempotency와 Multiple Draft Isolation 검증이 통과해야 한다.
+
+Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 Deletion / Relaunch / Cleanup Retry 조건에서 검증해야 한다.
 
 ---
 

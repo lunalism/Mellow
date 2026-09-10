@@ -781,6 +781,113 @@ Delete / Undo의 Active-consumer Lifecycle을 포함한 B03은 Step 3에서 별�
 
 ---
 
+# ADR-021 — Logical Deletion and Active Media Lifecycle
+
+**Date:** 2026-09-11
+
+**Status:** Accepted
+
+## Context
+
+사용자 UI의 Delete와 실제 Media File의 Physical Delete는 동일한 작업이 아니다.
+
+삭제 대상 Media를 Preview, Export, Thumbnail 또는 다른 작업이 여전히 사용 중일 수 있다.
+
+Recording / Import Completion이 Project Delete보다 늦게 도착하면 삭제된 Project에 Metadata를 다시 등록하는 Race가 발생할 수 있다.
+
+File Delete와 Metadata Delete는 하나의 Atomic Transaction이 아니며 MediaStore Actor만으로 Cross-service Race를 해결할 수 없다.
+
+Undo Opportunity, Recovery 필요, Project Validity와 Active Media Usage를 함께 고려하는 계약이 필요하다.
+
+## Decision
+
+Logical Delete와 Physical Delete를 분리하며 Logical Deletion이 즉각적인 Physical Deletion을 의미하지 않도록 한다.
+
+Physical Delete는 Logical Ownership / Reference 해제, Undo Eligibility 종료, Recovery 필요 없음, Active Media Usage 없음, Late Commit 차단과 Safe Cleanup Classification을 모두 요구한다.
+
+Preview / Export / Thumbnail 등 Active Consumer와 Recording / Import / Finalization 등 Producer가 필요로 하는 Media의 삭제를 Defer한다.
+
+Usage 확인과 실제 삭제 사이에 새로운 사용이 끼어들지 않도록 Repository / Operation Lifecycle / Media Storage 사이에서 조정하며 구체적인 Reference Counter, Lease Class, Coordinator 또는 Schema는 고정하지 않는다.
+
+Project Delete는 사용자 Confirmation 이후 영속적인 Logical Deleted / Invalid Commit Target을 먼저 확립하고 신규 Commit을 차단한 뒤 가능한 Active Producer / Consumer에 Cancellation을 요청한다.
+
+이후 Clip / Project Metadata를 정리하고 Active Usage와 Recovery 필요가 해제된 Media부터 안전하게 Physical Cleanup하며 실패한 Cleanup은 재시도 가능하게 유지한다.
+
+Logical Deletion과 Cleanup은 Idempotent해야 하며 Metadata 정리 이후에도 재실행 시 삭제 상태와 남은 Cleanup을 판정할 수 있어야 한다.
+
+Recording, Import, Thumbnail, Preview Preparation, Export 등 Project-scoped Async Operation은 Commit 또는 결과 적용 직전에 Target Validity를 확인하며 삭제와 Commit 사이의 Race를 차단한다.
+
+Late Result는 삭제된 Project에 Metadata를 등록하거나 Project를 Resurrect하지 않으며 Clip 대상 Derived Result는 유효한 Project / Clip과 동일 Media Identity를 확인하여 삭제된 Clip을 되살리지 않는다.
+
+Clip Delete는 즉시 UI Removal과 짧은 Pending Deletion / Undo Opportunity를 제공한다.
+
+MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete 한 건이며 새로운 Delete가 이전 사용자-visible Undo Opportunity를 종료해도 이전 Media의 Cleanup은 별도의 안전 조건을 따른다.
+
+Undo 성공 시 기존 Clip Identity, Media와 해당 Clip Metadata를 재사용하며 Physical Media 삭제 이후 Undo 성공이나 Duplicate Clip 생성을 허용하지 않는다.
+
+Undo 복원 위치는 삭제 당시 이전 인접 Stable Clip이 남아 있으면 그 뒤, 그렇지 않고 다음 인접 Clip이 남아 있으면 그 앞을 사용하며 둘 다 없으면 Original Index를 현재 유효 삽입 범위로 Clamp한다.
+
+두 Anchor가 모두 남아 있어도 이전 Anchor를 우선하며 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 보존한다.
+
+Process Termination 이후 Undo Opportunity는 유지하지 않으며 남은 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation하고 Physical Cleanup에는 동일한 안전 조건을 적용한다.
+
+Project가 Logical Deleted 상태이면 Clip Undo의 유효한 Target도 아니며 Undo로 Project를 재생성하지 않는다.
+
+Export는 시작 시 Clip Identity / Order, Trim, Framing / Transform, Project Orientation, Media Reference와 Audio / Video Composition State를 포함한 Immutable Logical Snapshot을 사용한다.
+
+이후 일반 Clip Edit / Reorder / Clip Delete는 진행 중인 Export 결과를 소급 변경하지 않으며 Snapshot이 참조하는 Source Media는 Operation 종료 또는 취소 이후 실제 Reference Release까지 유지한다.
+
+Project 전체 Delete는 해당 Project의 Export에 Cancellation을 요청하지만 Cooperative Cancellation 요청만으로 Source Media를 Release했다고 간주하지 않는다.
+
+삭제된 Project에 Export 결과를 Commit하지 않으며 취소 이후의 Uncommitted Operation-owned Artifact는 Recovery Classification과 Active Usage 확인 후 안전하게 정리한다.
+
+이미 Photos에 저장 완료된 외부 Export 결과는 Project Delete로 삭제하지 않는다.
+
+Preview는 현재 Project State로 Composition을 구성하고 Clip Mutation 후 Stale Composition을 Invalidate / Rebuild하며 다음 유효 Preview는 변경된 State를 반영한다.
+
+Preview Preparation / Playback이 참조하는 Media는 실제 Reference가 Release될 때까지 Physical Delete하지 않으며 Stale Async Composition 결과를 현재 State에 적용하지 않는다.
+
+Recording / Import Finalization 도중 Project가 삭제되면 Commit 직전에 Invalid Target을 확인하여 Metadata Commit을 금지하고 Project를 자동 재생성하지 않는다.
+
+ADR-020의 Valid Media 보호와 Recovery Classification은 계속 적용하며 Deletion이나 Cancellation을 이유로 이를 생략하지 않는다.
+
+Deletion Reconciliation과 Deferred Cleanup은 반복 Relaunch에도 안전해야 하며 다른 Committed Draft와 Photos 원본에 영향을 주지 않는다.
+
+상세 계약은 `ARCHITECTURE.md`의 46절, 48절, 56절, 60절과 61절을 따르며 ADR-017과 ADR-020을 대체하지 않고 함께 적용한다.
+
+## Consequences
+
+### Benefits
+
+- Preview / Export 중 Source Media가 사라지는 문제를 방지한다.
+- 삭제된 Project의 Resurrection을 방지한다.
+- Async Completion과 Deletion 사이의 Race를 줄인다.
+- Undo Opportunity와 Physical Cleanup을 분리한다.
+- 진행 중인 Export 결과를 일관되게 재현할 수 있다.
+- Deletion / Recovery의 기대 결과를 테스트할 수 있다.
+
+### Costs
+
+- Active Media Usage 추적이 필요하다.
+- Deferred Cleanup과 Retry가 필요하다.
+- Project Operation Validity를 조정할 책임이 필요하다.
+- Deletion State와 Reconciliation의 복잡성이 증가한다.
+
+## Non-goals
+
+- Undo Window의 정확한 시간과 UI 표시 Tuning
+- Export Background / Retry 상세 정책
+- Photos Save / Share Result File Lifecycle
+- HDR / Codec / Container
+- Storage Threshold
+- Camera Lens / Mirror
+- Import Re-trim
+- 구체적인 Snapshot / Coordinator / Lease Type 또는 Database Schema
+
+Photos Save / Share 완료 파일의 상세 Lifecycle은 M05 / Export Lifecycle Repair 대상으로 남긴다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 항목은 아직 확정된 ADR이 아니며 임의로 구현 기준을 결정하지 않는다.

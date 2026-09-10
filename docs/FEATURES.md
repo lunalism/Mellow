@@ -454,11 +454,42 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 사용자는 필요하지 않은 Clip을 현재 Vlog 프로젝트에서 제거할 수 있어야 한다.
 
-개별 Clip 삭제는 즉시 UI에 반영하고 Undo를 제공한다.
+Clip Delete Action 직후 해당 Clip을 UI에서 제거하고 짧은 Undo Opportunity를 제공한다.
 
-Undo Window와 연속 삭제, 재정렬, 앱 종료 시의 세부 동작은 아직 확정하지 않는다.
+MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이다.
+
+새로운 Clip Delete가 발생하면 이전 Delete의 사용자-visible Undo Opportunity는 종료된다.
+
+Undo는 삭제했던 동일 Clip Identity와 기존 Media 및 해당 Clip의 Metadata를 복원하며 새로운 Duplicate Clip을 생성하지 않는다.
+
+Undo Window 중 App Process가 종료되면 Undo Opportunity를 다음 실행까지 유지하지 않는다.
+
+재실행 시 해당 Delete는 확정된 Logical Deletion으로 취급하며 삭제된 Clip을 임의로 다시 표시하지 않는다.
+
+Undo 전에 다른 Clip이 Reorder되어도 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 되돌리지 않는다.
+
+복원 위치는 현재 Project 상태를 존중하면서 삭제 당시 위치에 최대한 가깝게 결정적으로 정한다.
+
+ADR-021의 Accepted 복원 기준에 따라 삭제 당시 이전 인접 Clip이 현재 유효하게 남아 있으면 그 바로 뒤, 이전 인접 Clip을 사용할 수 없고 다음 인접 Clip이 유효하게 남아 있으면 그 바로 앞에 복원한다.
+
+두 인접 Clip 모두 사용할 수 없으면 삭제 당시 Original Index를 현재 Clip 배열의 유효한 삽입 범위로 Clamp하며 두 Clip이 모두 남아 있어도 이전 인접 Clip을 우선한다.
 
 Clip 삭제는 Photos Library의 원본 영상에 영향을 주지 않는다.
+
+### Acceptance Criteria
+
+| 시나리오 | 기대 결과 |
+| --- | --- |
+| Clip 삭제 | 해당 Clip이 즉시 UI에서 사라지고 짧은 Undo Opportunity가 제공된다. |
+| 이전 Undo Opportunity 중 다른 Clip 삭제 | 새로 삭제한 Clip 한 건에만 사용자-visible Undo가 제공되며 이전 Delete의 Undo Opportunity는 종료된다. |
+| 유효한 Undo 수행 | 삭제했던 동일 Clip Identity와 기존 Media 및 해당 Clip의 Metadata를 복원하고 Duplicate Clip을 만들지 않는다. |
+| Undo Window 중 Process 종료 후 재실행 | Undo Opportunity가 복원되지 않으며 해당 Delete는 확정된 Logical Deletion으로 유지되고 Clip이 다시 표시되지 않는다. |
+| Clip 삭제 후 다른 Clip Reorder 및 Undo | 확정된 인접 Clip / Original Index 기준으로 복원하며 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 보존한다. |
+| 양쪽 인접 Clip이 모두 남아 있거나 사용할 수 없는 상태에서 Undo | 둘 다 남아 있으면 이전 인접 Clip을 우선하고 둘 다 사용할 수 없으면 현재 삽입 범위로 Clamp한 Original Index를 사용한다. |
+
+정확한 Undo Window 시간, Snackbar / Toast 등의 UI 표현, Animation, Haptic과 Delete UI의 시각적 처리는 아직 확정하지 않는다.
+
+Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식 및 Coordinator / Lease / Reference Counter 구조는 이 기능 정의에서 확정하지 않는다.
 
 ---
 
@@ -943,7 +974,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 7. Photos Library에서 기존 영상을 가져올 수 있다.
 8. 긴 Imported Video에서 최대 10초의 원하는 구간을 선택할 수 있다.
 9. 촬영 또는 Import한 Clip을 확인할 수 있다.
-10. 불필요한 Clip 삭제가 즉시 UI에 반영되고 Undo를 사용할 수 있다.
+10. 불필요한 Clip 삭제가 즉시 UI에 반영되고 F-MVP-025의 확정된 연속 삭제·재정렬·Process 종료 기준에 따라 가장 최근 삭제 한 건의 Undo를 사용할 수 있다.
 11. Clip의 순서를 변경할 수 있다.
 12. 각 Clip의 시작점과 종료점을 Trim할 수 있다.
 13. 전체 Vlog를 Preview할 수 있다.
@@ -987,7 +1018,11 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 하나의 프로젝트에서는 하나의 Orientation을 유지한다.
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다.
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
-- 개별 Clip 삭제는 즉시 UI에 반영하고 Undo를 제공한다.
+- 개별 Clip 삭제는 즉시 UI에 반영하고 짧은 Undo Opportunity를 제공한다.
+- 사용자-visible Undo는 가장 최근 Clip Delete 한 건이며 새로운 Delete가 이전 Undo Opportunity를 종료한다.
+- Undo는 동일 Clip Identity와 기존 Media 및 해당 Clip의 Metadata를 복원하며 Duplicate Clip을 생성하지 않는다.
+- Undo Window 중 Process가 종료되면 다음 실행에 Undo Opportunity를 유지하지 않고 해당 Delete를 확정된 Logical Deletion으로 취급한다.
+- 재정렬 후 Undo는 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 보존하며 F-MVP-025의 확정된 복원 위치 기준을 따른다.
 - 프로젝트 전체 삭제는 Confirmation 이후 실행한다.
 - 전체 Vlog의 총 재생 시간에는 고정 최대 제한을 두지 않는다.
 - 하나의 Vlog에 포함할 수 있는 Clip 개수에도 고정 최대 제한을 두지 않는다.
@@ -1062,7 +1097,14 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Clip Management
 
-- Clip 삭제 Undo lifecycle의 세부 동작
+- 정확한 Undo Window 시간
+- Snackbar / Toast 등 Delete / Undo의 구체적인 UI 표현
+- Delete / Undo Animation
+- Delete / Undo Haptic
+- Delete UI의 시각적 처리
+- Physical Deletion의 구체적인 구현 방식
+- Active Usage Tracking의 구체적인 구현 방식
+- Coordinator / Lease / Reference Counter 구조
 - Post-MVP Clip Duplicate 도입 여부
 - Post-MVP Clip Split 도입 여부
 - 개별 Clip Mute 기능 필요 여부
