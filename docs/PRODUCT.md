@@ -8,9 +8,7 @@
 
 ### Product Definition
 
-Mellow는 일상의 짧은 순간들을 여러 개의 영상 클립으로 촬영하고,
-간단하게 다듬어 하나의 미니 브이로그로 완성할 수 있는
-iPhone-first 미니 브이로그 앱이다.
+Mellow는 일상의 짧은 순간들을 여러 개의 영상 클립으로 촬영하거나 Photos Library에서 가져와 간단하게 다듬고 하나의 미니 브이로그로 완성할 수 있는 iPhone-first 미니 브이로그 앱이다.
 
 Mellow의 핵심은 복잡한 영상 편집이 아니다.
 
@@ -94,7 +92,7 @@ UI가 사용자의 콘텐츠보다 더 강하게 드러나지 않아야 한다.
 
 ### Non-destructive
 
-원본 영상은 가능한 한 보존한다.
+Photos Library의 원본 영상은 수정하거나 삭제하지 않는다.
 
 편집 과정에서 원본 미디어를 직접 변경하거나 손상시키지 않으며,
 완성된 결과물은 별도의 영상으로 생성하는 것을 기본 원칙으로 한다.
@@ -222,15 +220,15 @@ Mellow의 대표적인 사용자 흐름은 다음과 같다.
 
 ↓
 
-**첫 번째 짧은 Clip 촬영**
+**첫 번째 짧은 Clip 촬영 또는 Photos Video Import**
 
 ↓
 
-**추가 Clip 촬영**
+**추가 Clip 촬영 또는 Import**
 
 ↓
 
-**촬영된 Clip 확인**
+**촬영하거나 가져온 Clip 확인**
 
 ↓
 
@@ -281,10 +279,15 @@ Mellow에서 직접 짧은 영상 클립을 촬영한다.
 
 등의 정보가 포함될 수 있다.
 
+### Photos Video Import
+
+Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있다.
+
+원본 영상의 전체 길이는 제한하지 않으며 프로젝트에서 사용할 최대 10초 Segment를 선택한다.
+
 ### Clip Organizer
 
-촬영한 영상들을 확인하고
-브이로그에 사용할 클립과 순서를 관리한다.
+촬영하거나 가져온 영상들을 확인하고 브이로그에 사용할 클립과 순서를 관리한다.
 
 ### Simple Editor
 
@@ -328,7 +331,7 @@ Mellow의 첫 번째 목표는
 
 →
 
-**여러 Clip 촬영**
+**여러 Clip 촬영 또는 Photos Video Import**
 
 →
 
@@ -356,6 +359,12 @@ Mellow의 첫 번째 목표는
 
 새로운 브이로그 프로젝트를 생성할 수 있다.
 
+프로젝트 이름 입력 Prompt는 제공하지 않는다.
+
+생성 날짜와 시간을 기반으로 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
+
+구체적인 날짜 및 시간 표시 Format은 아직 확정하지 않는다.
+
 #### Orientation Selection
 
 프로젝트 생성 시 다음 중 하나를 선택할 수 있다.
@@ -367,17 +376,75 @@ Mellow의 첫 번째 목표는
 
 #### Video Recording
 
-Mellow 안에서 짧은 영상 클립을 촬영할 수 있다.
+Mellow 안에서 하나의 Clip을 자유롭게 촬영하며 최대 촬영 시간은 10초다.
+
+사용자는 10초 전에 언제든 수동으로 Stop할 수 있고 10초에 도달하면 자동으로 Stop한다.
+
+고정 Duration Preset과 Recording Pause / Resume는 MVP에서 제공하지 않는다.
+
+기본 Capture Profile은 1080p / 30 fps다.
+
+Front Camera와 Rear Camera를 모두 지원하며 Camera Switching은 녹화하지 않는 idle 상태에서만 가능하다.
+
+Recording 중 Camera Switching은 허용하지 않는다.
 
 한 프로젝트에서 여러 클립을 연속해서 추가할 수 있다.
 
+#### Photos Video Import
+
+Photos Library의 기존 Video를 프로젝트에 추가할 수 있다.
+
+Source Video의 전체 길이는 제한하지 않으며 긴 Source에서도 원하는 시작점과 종료점을 선택하여 최대 10초 Segment를 추가할 수 있어야 한다.
+
+10초보다 짧은 Source Video는 전체 구간을 사용할 수 있다.
+
+4K를 포함한 고해상도 Source Import를 허용하며 선택된 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
+
+정상적으로 추가된 Clip은 Mellow가 소유한 로컬 미디어를 사용하며 이후 사용자가 Photos 원본을 삭제해도 Draft에 유지되어야 한다.
+
+Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 수정하거나 삭제하지 않는다.
+
+Imported Clip의 Re-trim 범위와 Source Reference 유지 여부, HDR/SDR 및 정규화 세부 정책은 아직 확정하지 않는다.
+
+#### Imported Orientation and Framing
+
+가져온 Video와 프로젝트의 화면 비율이 다르면 기본적으로 Fill + Crop을 적용한다.
+
+사용자는 Framing 위치를 조정할 수 있어야 한다.
+
+Fit과 Background Blur는 MVP에서 제공하지 않는다.
+
+세부 Crop UI와 Pinch to Zoom 지원 여부는 아직 확정하지 않는다.
+
+#### Recent and Local Drafts
+
+Home에서 기존 프로젝트를 다시 찾는 영역의 사용자-facing 명칭은 `Recent`다.
+
+내부 Domain에서는 `Draft`라는 기술 용어를 사용할 수 있다.
+
+여러 개의 Draft를 동시에 지원하며 별도의 Save Action 없이 프로젝트 상태를 자동 저장한다.
+
+Draft는 사용자가 삭제하기 전까지 자동 만료하지 않으며 앱 재실행과 기기 재부팅 후에도 로컬에 유지한다.
+
+Export 후에도 Draft를 유지하여 다시 열고 수정하거나 재Export할 수 있다.
+
+프로젝트 전체 삭제에는 Confirmation이 필요하다.
+
+앱 삭제 또는 기기 교체 이후의 복구는 MVP에서 보장하지 않으며 iCloud 동기화와 복구는 향후 검토 대상으로 유지한다.
+
 #### Clip Management
 
-촬영한 클립을 확인할 수 있다.
+촬영하거나 가져온 클립을 확인할 수 있다.
 
-필요하지 않은 클립은 삭제할 수 있다.
+필요하지 않은 개별 Clip을 삭제하면 즉시 UI에 반영하고 Undo를 제공한다.
+
+Undo Window와 연속 삭제, 재정렬, 앱 종료 시의 세부 동작은 아직 확정하지 않는다.
 
 클립의 순서를 변경할 수 있다.
+
+전체 Vlog Duration과 Clip Count에는 임의의 고정 Maximum을 두지 않는다.
+
+Large Project는 실제 저장 공간, 성능 및 오류 처리로 관리하며 Storage Threshold 숫자는 별도로 결정한다.
 
 #### Trim
 
@@ -388,13 +455,22 @@ Trim은 정밀한 전문 편집보다
 
 #### Project Preview
 
-현재 클립 순서와 Trim 결과를 반영하여
-전체 미니 브이로그를 재생할 수 있다.
+현재 클립 순서, Trim 및 Framing 결과를 반영하여 전체 미니 브이로그를 재생할 수 있다.
 
 #### Export
 
-프로젝트의 모든 클립을 하나의 영상으로 결합하여
-iPhone Photos에 저장할 수 있다.
+프로젝트의 모든 클립을 하나의 영상으로 결합하여 iPhone Photos에 저장할 수 있다.
+
+MVP 표준 Output은 1080p / 30 fps다.
+
+- Portrait 9:16: 1080 × 1920
+- Landscape 16:9: 1920 × 1080
+
+Export 완료 후 iOS Share Sheet를 제공한다.
+
+Export는 Draft를 삭제하거나 작업을 강제로 종료하는 동작이 아니다.
+
+Codec, Container, HDR/SDR, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
 
 원본 영상은 보존한다.
 
@@ -434,7 +510,7 @@ Mellow는 초기 제품에서 사진 앱을 목표로 하지 않는다.
 
 ### Video Filters
 
-초기 MVP에서는 색감 필터 기능을 필수 기능으로 두지 않는다.
+초기 MVP에서는 색감 필터 기능을 제공하지 않는다.
 
 영상 촬영과 간단 편집 경험이 안정적으로 완성된 이후
 제품 방향과 기술 비용을 검토하여 결정한다.
@@ -463,6 +539,23 @@ Mellow는 초기 제품에서 사진 앱을 목표로 하지 않는다.
 - Motion graphics
 - Complex speed curves
 
+### Additional MVP Exclusions
+
+- Project Rename
+- Clip Split
+- Clip Duplicate
+- Fit Layout
+- Background Blur
+- 720p Export
+- 4K Export
+- 60 fps Export
+
+### Advanced Camera Controls
+
+Tap to Focus, Exposure Control, Zoom, Torch는 Post-MVP 검토 대상으로 두며 MVP에 포함하지 않는다.
+
+도입 시점과 세부 동작은 아직 확정하지 않는다.
+
 ### Social Network
 
 초기 Mellow 자체에는
@@ -477,8 +570,7 @@ Mellow는 초기 제품에서 사진 앱을 목표로 하지 않는다.
 
 ### Cloud-first Architecture
 
-초기 버전은 계정이나 서버 없이도
-핵심 사용 경험이 가능하도록 하는 방향을 우선한다.
+MVP의 핵심 미디어 작업은 Local-first로 동작하며 계정이나 서버 연결을 요구하지 않는다.
 
 ---
 
@@ -505,11 +597,6 @@ Mellow 스타일의 단순한 전환 효과를 적용하는 기능.
 
 복잡한 영상 보정보다
 Mellow만의 일관된 영상 분위기를 제공하는 방식의 색감 기능.
-
-### Import
-
-Mellow에서 직접 촬영한 영상뿐 아니라
-기존 Photos Library의 영상을 프로젝트에 추가하는 기능.
 
 ### Mini Vlog Templates
 
@@ -690,6 +777,10 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 
 →
 
+**Import Photos Video / Select up to 10-second Segment**
+
+→
+
 **Reorder**
 
 →
@@ -714,6 +805,12 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 ### Initial Platform
 
 Mellow는 **iPhone-first native application**으로 개발한다.
+
+Swift와 SwiftUI를 사용하며 Minimum iOS는 iOS 18.0이다.
+
+공식 Device Quality Baseline은 iPhone 12 and later이고 Primary Physical Test Device는 iPhone 12다.
+
+`iPhone 12 and later`는 개발 및 QA 기준이며 App Store에서 이전 기기의 설치를 인위적으로 제한하는 조건이 아니다.
 
 첫 제품의 품질과 사용자 경험을
 iPhone에 집중한다.
@@ -850,15 +947,41 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Mellow는 Mini Vlog 앱이다.
 - 초기 플랫폼은 iPhone이다.
 - iPhone-first native application으로 개발한다.
+- Swift와 SwiftUI를 사용하며 Minimum iOS는 iOS 18.0이다.
+- 공식 Device Quality Baseline은 iPhone 12 and later이며 Primary Physical Test Device는 iPhone 12다.
+- iPhone 12 기준은 공식 개발 및 QA 기준이며 App Store 설치 제한 조건이 아니다.
 - 사진 촬영 및 사진 편집 기능은 제품 범위에서 제외한다.
 - 핵심 콘텐츠는 Video다.
 - Mellow 내부에서 짧은 영상 Clip을 여러 개 촬영할 수 있다.
+- 직접 촬영 Clip은 자유롭게 촬영하며 최대 10초다.
+- 사용자는 10초 전에 수동 Stop할 수 있고 10초에 도달하면 자동 Stop한다.
+- Duration Preset과 Recording Pause / Resume는 MVP에서 제공하지 않는다.
+- Front / Rear Camera를 지원하며 Camera Switching은 idle 상태에서만 가능하고 Recording 중에는 금지한다.
+- Photos Video Import는 MVP 필수 기능이다.
+- Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 10초 Segment를 선택한다.
+- 4K를 포함한 고해상도 Source Import를 허용하며 선택된 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
 - 프로젝트는 Portrait 9:16과 Landscape 16:9를 모두 지원한다.
 - 화면 비율은 프로젝트를 생성할 때 선택한다.
 - 하나의 프로젝트에서는 하나의 화면 비율을 유지한다.
 - 촬영 중 기기의 회전만으로 프로젝트 화면 비율을 자동 변경하지 않는다.
+- Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있어야 한다.
+- Fit과 Background Blur는 MVP에서 제공하지 않는다.
 - MVP의 핵심 편집 기능은 Clip 관리, 순서 변경, Trim이다.
+- 개별 Clip 삭제는 즉시 UI에 반영하고 Undo를 제공하며 프로젝트 전체 삭제에는 Confirmation이 필요하다.
+- 전체 Vlog Duration과 Clip Count에는 임의의 고정 Maximum을 두지 않는다.
+- Multiple Drafts와 자동 저장을 지원하며 Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
+- 로컬 Draft는 앱 재실행과 기기 재부팅 이후에도 유지한다.
+- 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
+- Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - 여러 Clip을 하나의 영상으로 Preview하고 Export할 수 있어야 한다.
+- MVP 표준 Video Profile은 1080p / 30 fps이며 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
+- 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
+- Save to Photos와 iOS Share Sheet를 제공한다.
+- Export 후에도 Draft를 유지하여 수정과 재Export를 지원한다.
+- 핵심 미디어 작업은 Local-first로 동작한다.
+- 앱 삭제 및 기기 교체 이후 복구와 iCloud 동기화·복구는 MVP 보장에 포함하지 않는다.
+- Clip Split과 Duplicate는 MVP에서 제공하지 않는다.
+- Focus, Exposure, Zoom, Torch 등 Advanced Camera Controls는 Post-MVP 검토 대상이다.
 - 초기 MVP에서는 사진 필터 및 사진 편집 기능을 구현하지 않는다.
 - 초기 MVP에서는 전문 영상 편집 기능을 목표로 하지 않는다.
 - 사용자의 원본 영상은 보존한다.
@@ -868,43 +991,35 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 
 ## 23. Open Decisions
 
-다음 사항은 아직 제품적으로 확정하지 않는다.
+다음 항목은 확정된 MVP 결정의 세부사항 또는 향후 검토 사항이며 아직 확정하지 않는다.
 
-- Minimum supported iOS version
 - 세로/가로 프로젝트 선택 UI
-- 프로젝트 이름 사용 여부
-- 프로젝트 저장 및 Draft 관리 방식
-- 최대 프로젝트 길이
-- 개별 Clip의 최대 촬영 시간
-- 한 프로젝트의 최대 Clip 개수
-- Front / Rear camera 전환 정책
-- Zoom 지원 범위
-- Flash / Torch 지원 방식
-- Tap to focus 지원 여부
-- Exposure control 지원 여부
-- Recording pause 지원 여부
-- 기존 Photos 영상 Import를 MVP에 포함할지 여부
+- 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
+- Draft 저장 실패 처리 및 자동 복구의 세부 정책
+- Clip 삭제 Undo lifecycle의 세부 동작
+- Camera Lens 선택 및 Front Camera 영상 Mirror 세부 정책
+- Post-MVP Zoom 도입 시점 및 지원 범위
+- Post-MVP Flash / Torch 도입 시점 및 세부 동작
+- Post-MVP Tap to Focus 도입 시점 및 세부 동작
+- Post-MVP Exposure Control 도입 시점 및 세부 동작
+- Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부
+- Crop UI와 Pinch to Zoom 지원 여부
+- HDR/SDR, Dolby Vision 및 Working Media 정규화의 세부 정책
+- Storage Threshold와 Warning 기준
 - Audio on/off 설정 여부
 - Clip별 음소거 기능
-- Text 기능 범위
-- Music 기능 범위
-- Transition 기능 범위
-- Video color / look 기능 도입 여부
-- Export resolution
-- Export frame rate
-- Export quality options
-- Share 기능 범위
-- Project auto-save 정책
-- Draft 자동 복구 정책
-- Account 필요 여부
-- iCloud synchronization 여부
-- Analytics 사용 여부
+- Post-MVP Text 기능 범위
+- Post-MVP Music 기능 범위
+- Post-MVP Transition 기능 범위
+- 향후 Video color / look 기능 도입 여부
+- Export Codec, Container, Bitrate 및 Audio Format
+- 고정된 1080p / 30 fps 범위 내 Export Quality 선택 기능 제공 여부
+- Export 및 Share 화면의 세부 UX
+- Background Export와 Retry 세부 정책
+- 향후 Account 도입 여부
+- 향후 iCloud synchronization 및 기기 교체 후 복구 제공 여부
+- 향후 Analytics 사용 여부
 - Monetization 방식
 - Free / Premium 기능 구분
 
-이 항목들은 이후
-`FEATURES.md`,
-`DESIGN.md`,
-`ARCHITECTURE.md`,
-`ROADMAP.md`
-작성 과정에서 순차적으로 결정한다.
+이 항목들은 이후 사용자 승인과 관련 문서 업데이트를 통해 순차적으로 결정하며 이미 확정된 MVP 결정을 다시 Open으로 취급하지 않는다.
