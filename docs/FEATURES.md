@@ -323,7 +323,23 @@ Mellow에서 직접 촬영하는 하나의 Clip은 최대 10초까지 녹화할 
 
 Recording Progress는 Record Button 주변의 Progress Ring을 중심으로 표현하며 큰 Countdown 숫자는 사용하지 않는다.
 
-구체적인 Progress 표현과 10초 도달 전 피드백의 세부 동작은 `DESIGN.md`에서 결정한다.
+구체적인 Progress 표현과 10초 도달 전 Visual Feedback의 세부 동작은 `DESIGN.md`에서 결정한다.
+
+### Confirmed Recording Haptic Policy
+
+- Recording Start에는 Haptic을 사용하지 않으며 Record Button Tap 또는 Recording Start 성공을 Haptic 발생 조건으로 사용하지 않는다.
+- Successful Manual Stop 완료 시 subtle completion haptic을 제공한다.
+- Successful 10-second Auto-stop 완료 시 subtle completion haptic을 제공한다.
+
+Manual Stop과 Auto-stop의 Haptic은 모두 "이 Clip의 Recording이 종료되었다."라는 동일한 의미를 가지며 종료 직전의 예고 신호가 아니다.
+
+Haptic은 보조 Feedback이며 기존 Visual Recording State, Circular Progress와 Completion State를 대체하지 않는다.
+
+Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 Visual Feedback으로 Recording 상태를 이해할 수 있어야 한다.
+
+Recording Error / Interruption의 Haptic 정책은 별도 Pending으로 유지한다.
+
+정확한 Haptic API, Style, Intensity, Pattern, Duration과 Generator 구현은 Native iOS 구현 및 실제 iPhone 12 Tuning 대상으로 남기며 정상 Start / Manual Stop / Auto-stop의 Haptic 여부는 다시 Open으로 취급하지 않는다.
 
 ---
 
@@ -1039,6 +1055,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 촬영 시간이 10초에 도달하면 자동으로 녹화를 종료한다.
 - 고정 촬영 시간 Preset은 MVP에 포함하지 않는다.
 - Recording Pause / Resume는 MVP에서 제공하지 않는다.
+- Recording Start에는 Haptic을 사용하지 않는다.
+- Successful Manual Stop과 Successful 10-second Auto-stop에는 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
+- Recording Haptic은 보조 Feedback이며 기존 Visual Recording State / Circular Progress / Completion State를 대체하지 않는다.
 - Photos Library의 기존 영상을 프로젝트에 Import할 수 있다.
 - Imported Video 원본의 길이는 제한하지 않는다.
 - Imported Video에서는 프로젝트에 사용할 최대 10초 구간을 선택한다.
@@ -1101,9 +1120,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 ## Recording
 
 - 최소 Clip 길이 제한 여부
-- 촬영 시작 시 Haptic Feedback 사용 여부
-- 촬영 종료 시 Haptic Feedback 사용 여부
-- 10초 자동 종료 직전 Feedback 방식
+- Recording Error / Interruption의 Haptic 정책
+- 승인된 Completion 의미 안의 정확한 Haptic API / Style / Intensity / Pattern / Duration / Generator 구현 및 Tuning
+- 10초 자동 종료 직전 Visual Feedback 방식
 - 앱이 Background로 이동할 때 촬영 중 Clip 처리 정책
 
 ## Orientation

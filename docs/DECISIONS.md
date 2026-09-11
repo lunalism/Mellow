@@ -1044,7 +1044,12 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 - Recent Project의 List 또는 Grid Layout
 - Imported Video Crop에서 Pinch to Zoom 지원 여부
-- Recording Haptic의 정확한 Timing
+- Recording Haptic의 정확한 Timing — 기존 Pending 이력을 유지하며 H04 사용자 승인으로 정상 Recording의 사용 시점과 의미를 다음과 같이 동기화한다.
+  - Recording Start Haptic — Resolved: 사용하지 않으며 Record Button Tap 또는 Recording Start 성공에 Haptic을 제공하지 않는다.
+  - Successful Recording Completion Haptic — Resolved: Manual Stop과 10-second Auto-stop 완료 시 동일한 "이 Clip의 Recording이 종료되었다."라는 의미의 subtle completion haptic을 제공하며 종료 직전 예고 신호가 아니다.
+  - Visual Recording State / Circular Progress / Completion State는 주된 상태 전달 수단이며 Haptic은 이를 대체하지 않는 보조 Feedback이다.
+  - Recording Error / Interruption Haptic — Pending.
+  - 정확한 Haptic API / Style / Intensity / Sharpness / Pattern / Duration / Generator 구현과 Timing — 승인된 Completion 의미 안의 Native iOS Implementation Detail / Tuning으로 유지하며 이번 결정에서 특정 값을 확정하지 않는다.
 - Camera Control의 정확한 Placement
 
 Pending Decision이 확정되면 기존 ADR에 단순히 내용을 끼워 넣기보다 결정의 중요도에 따라 새로운 ADR을 추가한다.

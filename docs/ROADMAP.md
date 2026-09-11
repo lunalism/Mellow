@@ -509,7 +509,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | Export / Save / Share | Phase 9 |
 | Draft Recovery / Storage Safety | Phase 10 |
 | Permissions / Error Handling | Phase 11 |
-| Accessibility / Haptics / Visual Polish | Phase 12 |
+| Accessibility / Haptics / Visual Polish | Phase 12 (Recording Haptics 구현: Phase 4, 승인된 정책의 Polish: Phase 12) |
 | iPhone 12 Performance Validation | Phase 13 |
 | End-to-End MVP Verification | Phase 14 |
 | TestFlight | Phase 15 |
@@ -940,7 +940,9 @@ Recording UI를 구현하기 전에 다음 Structural UX Pending을 사용자 �
 
 Phase 3에서 승인한 Camera Layout을 재사용하며 최대 10초 자유 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
 
-Haptic 사용 여부와 Start / Stop / Auto-stop 세부사항은 H04의 별도 Repair 대상으로 유지하며 이 UX Gate에서 확정하거나 기존 문장을 변경하지 않는다.
+Recording Haptic은 H04 사용자 승인에 따라 Start에는 제공하지 않고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공하며 이 UX Gate에서 사용 여부를 다시 결정하지 않는다.
+
+Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 정상 Recording의 승인 정책을 다시 Open으로 만들지 않는다.
 
 ## Implementation Tasks
 
@@ -958,8 +960,8 @@ Haptic 사용 여부와 Start / Stop / Auto-stop 세부사항은 H04의 별도 R
 12. 검증된 Final Working Media를 Project Media Directory로 안전하게 Materialize하며 가능한 경우 동일 Filesystem 내 Atomic Move / Rename을 사용한다.
 13. Project가 여전히 유효한지 확인하며 해당 Media를 참조하는 Clip Metadata를 Persist하고 실패 시 Recoverable Media와 Operation 정보를 보존한다.
 14. Final Media 존재, Final Validation 성공, Metadata Persistence 성공과 유효한 Project를 모두 만족한 Committed Clip만 UI에 표시한다.
-15. Recording Start / Stop Haptic을 최소 범위에서 구현한다.
-16. 10초 종료 직전 Haptic은 디자인 결정 범위에서 최소한으로 적용한다.
+15. Recording Start에 Haptic이 발생하지 않도록 하며 Record Button Tap 또는 Recording Start 성공을 Haptic 발생 조건으로 사용하지 않는다.
+16. Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 "이 Clip의 Recording이 종료되었다."라는 동일한 의미의 subtle completion haptic을 제공하고 기존 Visual Recording State / Circular Progress / Completion State를 유지한다.
 17. Recording 중 App Background 또는 Session Interruption을 처리한다.
 18. 가능한 경우 유효한 Partial Recording을 보호한다.
 19. Completed Staging과 Materialized Media에서 중단된 Operation을 재실행 후 연결하여 가능한 후속 처리와 Metadata Commit을 재개한다.
@@ -968,6 +970,10 @@ Haptic 사용 여부와 Start / Stop / Auto-stop 세부사항은 H04의 별도 R
 22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
 23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
 24. Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+
+Completion Haptic을 종료 직전 예고 신호로 사용하지 않으며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있게 한다.
+
+정확한 Haptic API / Style / Intensity / Sharpness / Pattern / Duration / Generator 구현은 승인된 의미를 유지하는 적절한 Native iOS 방법으로 Phase 4 구현 중 선택하고 실제 iPhone 12에서 Tuning하며 이 문서에서 특정 API나 값을 확정하지 않는다.
 
 Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy와 Validation을 따르며 불완전한 Write를 정상 Final Media로 승격하지 않는다.
 
@@ -980,6 +986,8 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 - Invalid Recording Completion 처리
 - Committed Clip 조건과 Progress State의 구분
 - Operation / Clip Identity 기반 Duplicate Commit 방지
+- 정상 Recording Start에서 Haptic Event가 발생하지 않음
+- Successful Manual Stop과 Successful 10-second Auto-stop이 동일한 Completion 의미의 Haptic Event로 연결됨
 
 ## Integration Tests
 
@@ -1023,6 +1031,8 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Storage 부족 Simulation 가능한 범위
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
 - Recording Finalization 중 Project Delete 이후 Late Result와 Relaunch가 Project를 되살리지 않는지 확인
+- Record Button Tap / Recording Start 성공에 Haptic이 없고 Successful Manual Stop / 10-second Auto-stop 완료 시 subtle completion haptic이 동일한 종료 의미로 인지되는지 확인
+- 종료 직전 예고 Haptic이 없으며 Haptic을 사용할 수 없거나 인지하지 못하는 경우에도 Visual Recording State / Circular Progress / Completion State로 상태를 이해할 수 있는지 확인
 
 ## UI Accessibility Verification
 
@@ -1035,6 +1045,8 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - 모든 저장된 Clip은 최대 10초다.
 - 10초 도달 시 Recording이 자동 종료된다.
 - Manual Stop이 안정적으로 동작한다.
+- Recording Start에는 Haptic이 없고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공한다.
+- Haptic은 종료 직전 예고나 유일한 상태 전달 수단이 아니며 사용할 수 없거나 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있다.
 - Video와 Audio가 정상 저장된다.
 - Recording 중 Camera Switch는 불가능하다.
 - 연속 Recording으로 App이 불안정해지지 않는다.
@@ -1052,6 +1064,8 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 직접 촬영만으로 여러 Clip을 Project에 안전하게 추가할 수 있어야 한다.
 
 공통 Media Commit Lifecycle과 기본 Relaunch Recovery가 Production Recording 경로에 적용되고 위 Failure Boundary Test 및 iPhone 12 검증이 완료되어야 한다.
+
+승인된 Recording Haptic 정책의 Unit Test와 iPhone 12 검증이 완료되어야 하며 Phase 12를 최초 구현이나 사용 여부 결정 시점으로 삼지 않는다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -2000,7 +2014,7 @@ Phase 12에서 이러한 구조를 처음 선택하거나 대규모 Structural R
 - Recent Visual Polish
 - Camera Overlay Polish
 - Progress Ring Polish
-- Haptic Timing
+- 승인된 Completion Haptic의 Subtlety / Consistency Tuning
 - Subtle Motion / Animation Refinement
 - 기존 Empty / Loading State의 Visual Polish
 - Cross-screen / Component Consistency
@@ -2029,13 +2043,15 @@ Phase 12에서 이러한 구조를 처음 선택하거나 대규모 Structural R
 
 - Home / Recent / Camera / Trim / Preview / Export의 Spacing와 Visual Balance
 - 승인된 Trim Interaction 안에서의 Handle 등 세부 Visual Tuning
-- Haptic Timing
+- 승인된 Completion Haptic의 Subtlety / Consistency Tuning
 - 최종 Color Palette
 - Non-structural Typography Tuning
 - Non-blocking Corner Radius Tuning
 - Subtle Motion / Animation Polish
 
-Haptic Timing은 기존 항목을 보존하며 사용 여부와 Start / Stop / Auto-stop 및 강도 / Pattern은 H04의 별도 Repair에서 다루고 이번 역할 보정으로 확정하지 않는다.
+Recording Haptic 사용 여부와 Completion 의미는 Phase 4 이전에 승인된 정책을 따르며 Phase 12에서는 Subtlety, Consistency, Perceived Quality와 Accessibility Regression만 다듬는다.
+
+Start Haptic 추가 등 승인된 의미 변경은 일반 Polish가 아니라 Exception and Replanning Protocol에 따른 사용자 승인 대상이며 Error / Interruption Haptic은 별도 Pending으로 유지한다.
 
 Recent List / Grid, New Vlog Placement, Camera Control Placement, Trim / Framing 구조, Preview Controls와 Export Completion 구조는 이 Phase의 최초 결정 Gate가 아니다.
 
@@ -2046,7 +2062,7 @@ Recent List / Grid, New Vlog Placement, Camera Control Placement, Trim / Framing
 3. Home과 Recent를 다듬는다.
 4. Orientation Selection을 다듬는다.
 5. Camera Overlay를 최소화한다.
-6. Recording Progress와 Haptic Timing을 실제 Device에서 조정한다.
+6. Recording Progress와 승인된 Completion Haptic의 Subtlety / Consistency / Perceived Quality를 실제 Device에서 다듬고 Haptic에 의존하지 않는 기존 Visual Feedback의 Accessibility Regression을 확인한다.
 7. 이미 정의된 Loading State와 Empty State의 Visual만 다듬으며 M02의 미정 동작을 선택하지 않는다.
 8. Motion을 Reduce Motion 환경에서 검증한다.
 9. 각 UI Phase에서 이미 적용한 VoiceOver Label과 Control 식별을 전체 화면에서 회귀 검증한다.
@@ -2068,6 +2084,7 @@ iPhone 12에서 모든 핵심 화면을 Portrait 및 Landscape Project 기준으
 - 주요 기능을 VoiceOver로 식별할 수 있다.
 - Dynamic Type에서 핵심 Flow를 사용할 수 있다.
 - Haptic이 과도하지 않다.
+- Start Haptic 없음과 Successful Manual Stop / 10-second Auto-stop의 동일한 Completion 의미가 유지되며 Haptic 사용 여부를 처음 결정하지 않는다.
 - 새 기능이 추가되지 않는다.
 - Accessibility가 각 UI Phase부터 적용되었으며 이 Phase의 종합 Regression / Hardening 결과가 확인된다.
 - Core UX Structure를 처음 선택하거나 일반 Polish로 재설계하지 않는다.
@@ -2407,7 +2424,9 @@ Structural UX는 해당 UI를 필요로 하는 가장 이른 Phase 전에 결정
 - 현재 녹화 시간 표시의 구체적인 Presentation 구조
 - Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
 
-Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Haptic의 H04 Pending은 여기서 해결하지 않는다.
+Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Recording Haptic은 H04에서 승인된 Start 없음 / Successful Manual Stop 및 10-second Auto-stop의 subtle completion 정책을 따른다.
+
+Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현과 승인된 의미 안의 Tuning은 Phase 4 구현 세부사항으로 남긴다.
 
 ## Before Phase 5
 
@@ -2479,11 +2498,13 @@ Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 M0
 - Non-structural Typography Tuning
 - Non-blocking Corner Radius Tuning
 - Subtle Motion / Animation Polish
-- Haptic Timing
+- 승인된 Completion Haptic의 Subtlety / Consistency Tuning
 
 Home / Camera / Clip Management / Trim / Framing / Preview / Export의 Structural Decision은 앞선 Owning Phase Gate에서 해결되어 있어야 한다.
 
-Phase 12는 기존 Accessibility의 종합 Regression / Hardening 단계이며 Haptic의 기존 Pending은 H04 별도 Repair 대상으로 보존한다.
+Phase 12는 기존 Accessibility의 종합 Regression / Hardening 단계이며 Haptic은 승인된 Completion 의미의 Polish만 수행하고 Start Haptic을 추가하지 않는다.
+
+Haptic 의미 변경은 Replanning 대상이며 Error / Interruption Haptic은 별도 Pending으로 유지한다.
 
 ## Before Phase 15
 

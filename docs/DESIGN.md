@@ -296,9 +296,13 @@ Progress 표현은 Timer를 읽지 않아도 촬영 종료가 가까워지고 �
 
 화면 중앙에 큰 Countdown 숫자를 표시하지 않는다.
 
-마지막 구간에서는 Progress 변화와 Subtle Haptic을 통해 자동 종료가 가까워졌음을 자연스럽게 알릴 수 있다.
+마지막 구간에서는 기존 Visual Progress 변화로 자동 종료가 가까워졌음을 자연스럽게 알릴 수 있다.
 
-정확한 Haptic Timing은 실제 Device Test 후 결정한다.
+Recording Start에는 Haptic을 사용하지 않고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시에만 동일한 종료 의미의 subtle completion haptic을 제공하며 종료 직전 예고 Haptic으로 사용하지 않는다.
+
+Haptic은 기존 Visual Recording State / Circular Progress / Completion State를 보조하며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 Recording 상태를 이해할 수 있어야 한다.
+
+Error / Interruption Haptic은 Pending이며 정확한 구현과 Tuning의 범위는 29절을 따른다.
 
 ---
 
@@ -538,20 +542,37 @@ Motion은 다음 역할을 위해 사용할 수 있다.
 
 ## 29. Haptics
 
-Haptic Feedback은 중요한 Action에 선택적으로 사용한다.
+MVP Recording Haptic의 사용 여부와 의미는 다음과 같이 확정한다.
 
-후보 사용 지점은 다음과 같다.
+| Recording Event | Haptic Policy |
+| --- | --- |
+| Recording Start | Haptic 없음 |
+| Successful Manual Stop | 완료 시 subtle completion haptic |
+| Successful 10-second Auto-stop | 완료 시 subtle completion haptic |
+| Recording Error / Interruption | 별도 Pending |
 
-- Recording start
-- Recording stop
-- 10초 자동 종료 직전
-- 10초 자동 종료
+Manual Stop과 Auto-stop의 Haptic은 모두 "이 Clip의 Recording이 종료되었다."라는 동일한 의미를 갖는다.
+
+Record Button Tap이나 Recording Start 성공에는 Haptic을 제공하지 않으며 종료 직전 예고를 위해 Completion Haptic을 앞당기지 않는다.
+
+Haptic은 보조 Feedback이며 유일한 Recording State Indicator가 아니다.
+
+기존 Visual Recording State, Circular Progress와 Completion State는 그대로 유지하며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 Recording 상태를 이해할 수 있어야 한다.
+
+Recording Error / Interruption에는 Camera / App Interruption, Permission Issue, Recording Failure와 Media Write Failure가 포함되며 이 경우의 Haptic은 이번 정책에서 확정하지 않는다.
+
+정확한 Haptic API, Style, Intensity, Sharpness, Pattern, Duration과 Generator 구현은 특정 기술로 확정하지 않고 Phase 4의 Native iOS 구현 및 실제 iPhone 12 Tuning 대상으로 남긴다.
+
+Phase 12에서는 승인된 의미를 유지하는 Subtlety, Consistency, Perceived Quality와 Accessibility Regression만 다듬으며 Start Haptic 추가 등 정책 변경은 Exception and Replanning Protocol에 따른 사용자 승인이 필요하다.
+
+다음 Recording 외 사용 지점은 기존 검토 후보로 유지하며 이번 정책으로 사용 여부를 확정하지 않는다.
+
 - Clip reorder placement
 - Export completion
 
 모든 Button Tap에 Haptic을 사용하지 않는다.
 
-Haptic은 실제 iPhone 테스트를 통해 강도와 빈도를 조정한다.
+Haptic은 실제 iPhone 테스트를 통해 승인된 의미 안에서 강도와 체감 품질을 조정한다.
 
 ---
 
@@ -666,7 +687,9 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - 10초에 도달하면 자동으로 녹화를 종료한다.
 - Recording Progress는 Record Button 주변의 Progress Ring 방향을 우선한다.
 - 큰 Countdown 숫자는 사용하지 않는다.
-- 자동 종료가 가까워졌음을 Subtle Haptic으로 알리는 방향을 검토한다.
+- Recording Start에는 Haptic을 사용하지 않는다.
+- Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
+- Haptic은 기존 Visual Recording State / Circular Progress / Completion State를 보조하며 종료 직전 예고 신호로 사용하지 않는다.
 - Front / Rear Camera Switch는 녹화하지 않는 상태에서만 가능하다.
 - 녹화 중 Camera Switch는 허용하지 않는다.
 - Photos에서 가져온 영상 원본 길이는 제한하지 않는다.
@@ -724,7 +747,9 @@ Trim / Framing 구조는 ADR-022의 Working Media Crop bake-in 금지와 Metadat
 
 M01의 Preview 기능 범위와 M05의 Save / Share / Background / Retry Lifecycle은 이 표에서 해결하지 않으며 해당 UI에 필요한 미결정 사항을 구현 전에 해결해야 한다는 시점만 정의한다.
 
-Haptic 사용 여부, Start / Stop / Auto-stop, 강도와 Pattern 및 Timing은 H04의 별도 Repair 대상으로 유지하며 이 분류로 확정하거나 변경하지 않는다.
+Recording Start에는 Haptic 없음, Successful Manual Stop / 10-second Auto-stop에는 subtle completion haptic이라는 승인 정책은 29절을 따르며 이 Structural UX 분류로 다시 Open으로 만들지 않는다.
+
+Error / Interruption Haptic은 별도 Pending이며 정확한 구현과 Completion 의미 안의 Tuning은 미확정 구현 세부사항으로 유지한다.
 
 Empty / Corrupted Project의 미정 UX와 Recent Thumbnail 책임도 이 분류에서 해결하지 않으며 기존에 정의된 화면의 Visual Tuning만 Polish로 다룬다.
 
@@ -752,8 +777,9 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 
 ### Recording
 
-- 10초 마지막 몇 초부터 종료 Feedback을 강화할지
-- Haptic 정확한 Timing
+- 10초 마지막 몇 초부터 Visual 종료 Feedback을 강화할지
+- 승인된 Completion 의미 안의 정확한 Haptic 구현과 Timing Tuning
+- Recording Error / Interruption Haptic 정책
 - 자동 종료 시 Animation
 - Clip 저장 완료 Feedback
 
