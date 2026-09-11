@@ -43,7 +43,26 @@ Codex는 제품, UX, Architecture 또는 Scope에 영향을 주는 결정을 임
 
 명확하지 않은 요구사항을 편의상 가정하지 않는다.
 
-Open Decision을 발견하면 구현 전에 사용자에게 보고한다.
+현재 Phase 또는 Change Set에 Blocking인 Open Decision을 발견하면 해당 구현을 중단하고 사용자에게 보고한다.
+
+Unresolved Blocking Decision은 다음 중 하나라도 현재 Phase 또는 Change Set에 해당하는 미해결 결정을 뜻한다.
+
+- 필요한 Implementation Structure 또는 구현 방법을 결정할 수 없게 한다.
+- Correctness 판단을 불가능하게 한다.
+- Media / Data / User Safety에 영향을 준다.
+- Acceptance Criteria 충족 여부를 판단할 수 없게 한다.
+- Definition of Ready에서 이미 해결되었어야 하는 Decision Gate다.
+- ROADMAP이 현재 Phase 종료 전까지 해결하도록 명시한 Decision이다.
+- 현재 변경이 Source of Truth 간 관련 모순을 새로 만들거나 유지하게 한다.
+- Merge 후 즉시 다음 필수 작업을 안전하게 수행할 수 없게 만드는 현재 범위의 unresolved dependency다.
+
+아직 시작하지 않은 Future Phase에만 필요한 Product / UX / Technical Decision, 현재 구현과 Acceptance Criteria에 영향이 없는 Future Enhancement, 명시적인 Later Gate의 Decision 또는 현재 Source of Truth와 충돌하지 않는 기록된 Pending은 위 Blocking 조건에 해당하지 않을 때 현재 Phase의 작업·완료·Merge를 자동으로 차단하지 않는다.
+
+Future Pending은 적절한 Source of Truth에 계속 기록하고 Owning Phase / Decision Gate와 연결하며 Required Gate에 도달하기 전에 반드시 해결한다.
+
+Merge를 위해 Pending을 임의로 확정하거나 삭제·숨김·무시·Silent Deferral로 처리하지 않으며 Future 또는 Later Gate라는 표시만으로 현재 Blocking 조건을 회피하지 않는다.
+
+Blocking 여부는 Source of Truth와 ROADMAP Gate를 기준으로 판단하고 그래도 불명확하면 추측하지 말고 해당 작업을 중단한 뒤 보고한다.
 
 보고에는 최소한 다음 내용을 포함한다.
 
@@ -56,6 +75,8 @@ Open Decision을 발견하면 구현 전에 사용자에게 보고한다.
 - 추천안
 
 사용자 승인 전에는 해당 Decision에 의존하는 구현을 진행하지 않는다.
+
+Phase 진행 중 새로운 Evidence로 Blocking Decision이 발생하면 해당 구현을 중단하고 기존 Exception and Replanning Protocol을 따른다.
 
 ---
 
@@ -568,13 +589,19 @@ Phase Branch를 `main`에 Merge하기 전 다음을 확인한다.
 - Tests 통과
 - 필요한 iPhone 12 Test 완료
 - 문서 Sync 완료
-- Open Decision 없음
-- Blocker 없음
+- 현재 Phase 진입·종료 및 현재 Change Set에 필요한 Decision Gate 해결
+- 현재 Phase / Change Set의 Correctness, Safety, Acceptance와 필요한 Implementation Structure에 영향을 주는 Unresolved Blocking Decision 없음
+- 현재 변경과 관련된 Source of Truth 간 모순 없음
+- 현재 Phase / Change Set의 미해결 Blocker 없음
 - 예상하지 못한 Dependency 추가 없음
 - Scope Creep 없음
 - 전체 Diff 검토 완료
 
 조건을 충족하지 않으면 Merge하지 않는다.
+
+Blocking 범위는 3절을 따르며 현재 범위에 영향을 주지 않는 Future Phase-only Pending이 적절히 기록되고 Owning Phase / Gate와 연결되어 있다면 그 존재만으로 Merge를 차단하지 않는다.
+
+이 구분은 Required Gate를 늦추거나 완화하지 않으며 해당 Gate에 도달했는데 unresolved이면 그 Phase를 시작하거나 완료할 수 없다.
 
 ---
 

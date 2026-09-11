@@ -58,6 +58,14 @@ Codex는 다음 내용을 보고한다.
 
 사용자 승인 전에는 해당 결정에 의존하는 구현을 진행하지 않는다.
 
+현재 Phase / Change Set에 Blocking인지는 `RULES.md` 3절의 기준으로 판단하며 필요한 구현 구조, Correctness, Media / Data / User Safety, Acceptance Criteria, 이미 도달했어야 하는 Gate, 현재 변경 관련 문서 모순과 현재 범위의 필수 후속 작업 Dependency를 포함한다.
+
+진행 중 새로운 Evidence로 Blocking Decision이 발생하면 해당 구현을 중단하고 4절의 Exception and Replanning Protocol을 따르며 Blocking 여부가 불명확해도 추측으로 진행하지 않고 보고한다.
+
+Future Phase-only Pending은 현재 Blocking 조건에 해당하지 않을 때 현재 작업을 차단하지 않지만 적절한 Source of Truth에 기록하고 Owning Phase / Gate와 연결하여 Required Gate에 도달하기 전에 해결한다.
+
+Merge를 위해 Pending을 임의 확정·삭제·숨김·무시하거나 조용히 연기하지 않으며 Future라는 표시만으로 현재 Blocking Dependency를 회피하지 않는다.
+
 ### 3.4 Architecture Change Gate
 
 `ARCHITECTURE.md`의 Confirmed Technical Decisions 또는 Architecture Invariants를 변경해야 한다면 구현을 중단한다.
@@ -114,6 +122,8 @@ MVP에서는 승인 없이 Third-party Dependency를 추가하지 않는다.
 
 이 조건을 만족하지 못하면 Codex는 Phase 구현을 시작하지 않는다.
 
+Phase 진입에 필요한 Structural / Product / Technical Decision Gate는 모두 해결되어야 하며 이미 Required Gate에 도달한 Pending은 해당 Phase의 구현 시작과 완료를 막는다.
+
 #### Structural UX Readiness
 
 UI를 포함하는 Phase는 해당 구현 구조에 영향을 주는 UX Decision이 unresolved 상태이면 구현을 시작할 수 없다.
@@ -124,7 +134,7 @@ Pending UX Decision 자체는 허용하지만 현재 Phase의 구조적 선행�
 
 Future Phase에만 영향을 주는 Pending UX Decision은 그 미래 Phase의 Gate로 유지하며 현재 Phase의 Definition of Ready를 불필요하게 차단하지 않는다.
 
-이 범위 구분은 UI 구현 진입 조건에만 적용하며 기존 Merge / Open Decision 규칙 또는 H05의 범위를 변경하지 않는다.
+현재 Blocking Decision과 미도래 Future Pending의 범위 구분은 Phase Entry뿐 아니라 Exit / Merge에도 동일하게 적용하며 현재 Phase에 필요한 UX Gate를 구현 뒤나 Phase 12로 미루는 근거가 되지 않는다.
 
 이미 Accepted된 동작은 다시 Open으로 만들지 않고 미정인 표현과 구조만 결정하며 `DESIGN.md` 37절의 Structural / Polish 분류를 따른다.
 
@@ -370,6 +380,14 @@ Emergency Fix는 최소 범위로 수행하고 이후 관련 문서와 Test를 �
 
 각 Phase의 Exit Criteria를 충족한 후 Review를 거쳐 `main`에 Merge한다.
 
+현재 Phase의 Acceptance Criteria와 필수 Test / Device Evidence를 충족하고 진입·종료 및 현재 Change Set에 필요한 Decision Gate를 해결해야 하며 `RULES.md` 3절의 Unresolved Blocking Decision이나 현재 변경 관련 Source of Truth 모순이 남아 있으면 완료·Merge할 수 없다.
+
+현재 범위에 영향을 주지 않는 Future Phase-only Pending은 Source of Truth에 기록하고 Owning Phase / Gate와 연결한 상태로 유지할 수 있으며 그 존재만으로 현재 Merge를 차단하지 않는다.
+
+예를 들어 Phase 2의 구현·안전성·Acceptance에 영향을 주지 않는 Phase 9 Export Codec Pending은 Phase 2 Merge를 막지 않지만 Phase 6 Working Media Codec이나 Phase 7 Trim / Framing Structural UX가 해당 Required Gate에서 미해결이면 각 Phase의 구현을 시작할 수 없다.
+
+이 범위 구분은 기존 Gate 시점, 사용자 승인, Scope 및 `RULES.md` 28절의 나머지 Merge 검증 요건을 변경하지 않는다.
+
 ### Commit Rule
 
 작업 Commit Message는 목적이 명확해야 한다.
@@ -401,6 +419,8 @@ Emergency Fix는 최소 범위로 수행하고 이후 관련 문서와 Test를 �
 Codex는 Exit Criteria가 충족되지 않았는데 `Completed` 상태로 보고하지 않는다.
 
 `Blocked` 또는 `Needs Decision` 상태에서는 다음 Phase로 넘어가지 않는다.
+
+Decision으로 인한 현재 Phase의 `Needs Decision` / `Blocked` 판단은 현재 Blocking 범위를 기준으로 하며 미도래 Future Phase-only Pending의 존재만으로 현재 Phase를 이 상태로 처리하지 않는다.
 
 ---
 
@@ -439,7 +459,12 @@ Codex는 Exit Criteria가 충족되지 않았는데 `Completed` 상태로 보고
 
 - 관련 문서와 코드가 일치하는가?
 - 새로운 Decision이 있다면 ADR이 기록되었는가?
-- 다음 Phase의 Decision Gate가 준비되었는가?
+- 현재 Phase 진입·종료 및 현재 변경에 필요한 Decision Gate가 해결되고 Blocking Decision과 관련 Source of Truth 모순이 없는가?
+- Future Pending이 Source of Truth에 기록되고 Owning Phase / Required Gate와 연결되어 있는가?
+
+다음 Phase의 Gate 확인은 필요한 Decision과 해결 시점을 식별하는 것이며 현재 범위와 무관한 Future Decision을 현재 Merge 전에 모두 확정하라는 의미가 아니다.
+
+다음 Phase 진입 시에는 해당 Required Gate가 실제로 해결되어 있어야 한다.
 
 ---
 
@@ -2534,7 +2559,10 @@ Decision Gate가 해결되지 않은 상태에서는 해당 Phase 구현을 시�
 - Physical Device Test 대상이면 iPhone 12에서 검증했다.
 - `git diff --check`가 통과한다.
 - 관련 문서와 실제 구현이 일치한다.
-- 다음 Phase에 미해결 Blocker를 넘기지 않는다.
+- 현재 Phase / Change Set의 미해결 Blocker를 다음 Phase로 넘기지 않는다.
+- 현재 범위의 필요한 Decision Gate가 해결되었고 Unresolved Blocking Decision 및 관련 Source of Truth 모순이 없다.
+
+아직 Required Gate에 도달하지 않은 Future Phase-only Pending은 위 Merge Rule에 따라 기록된 상태로 남을 수 있으며 현재 완료 조건을 충족하는 것과 미래 Gate를 통과하는 것은 별도로 검증한다.
 
 ---
 

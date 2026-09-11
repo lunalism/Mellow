@@ -136,7 +136,11 @@ The agent is an implementation agent, not the product decision maker.
 
 Do not silently decide unresolved product, UX, architecture, storage, codec, HDR, camera, export, or scope questions.
 
-When a required decision is missing, stop the affected work and report:
+Use the blocking-decision criteria in `RULES.md` section 3 for the current Phase or change set.
+
+A decision blocks the current scope when it affects required implementation structure, correctness, media/data/user safety, acceptance, a required gate already due, source-of-truth consistency, or a current unresolved dependency needed to safely perform the next mandatory work immediately after merge.
+
+When a required decision blocks the current Phase or change set, stop the affected implementation and report:
 
 - the exact decision required
 - why it is required now
@@ -147,7 +151,17 @@ When a required decision is missing, stop the affected work and report:
 - the recommended option
 - the expected implementation impact
 
-Continue only after the user approves the decision.
+Continue the affected implementation only after the user approves the decision.
+
+Future Phase-only pending decisions do not block current work, completion, or merge when none of the blocking criteria apply and their required gates have not been reached.
+
+Keep those decisions visible in the appropriate source-of-truth document and linked to their owning Phase or Decision Gate, and resolve them before the required gate is reached.
+
+Do not decide, delete, hide, ignore, or silently defer a pending decision merely to enable merge, and do not use a future label to bypass a current blocker.
+
+Determine whether a decision blocks current work from the source-of-truth documents and Roadmap gates; if it remains unclear, stop the affected work and report the ambiguity instead of guessing.
+
+If new evidence introduces a blocking decision during a Phase, stop the affected implementation and follow the existing Exception and Replanning Protocol.
 
 ---
 
@@ -561,6 +575,10 @@ State whether the current work is ready for review, device testing, commit, merg
 ## Phase Completion Rule
 
 A Phase is complete only when the Acceptance Criteria and Exit Criteria in `docs/ROADMAP.md` are satisfied.
+
+Completion and merge also require the current Phase/change set's due Decision Gates to be resolved, no unresolved blocking decision under `RULES.md` section 3, and no source-of-truth contradiction related to the current change.
+
+Future Phase-only pending decisions may remain recorded and linked to their owning gates without blocking current completion or merge; this does not waive required evidence or allow entry into a future Phase whose required gate is unresolved.
 
 If a Phase requires iPhone 12 validation, user confirmation of that validation is part of the gate.
 
