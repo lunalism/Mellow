@@ -1083,9 +1083,11 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - 긴 Source 허용
 - Source Metadata Load
 - 최대 10초 Segment Selection 준비
-- 4K Source 허용
+- SDR / HDR / Dolby Vision Source 허용
+- 4K / High-resolution 및 30 fps 초과 Source 허용
 - Project-owned Media Materialization
-- 1080p Working Media
+- 1080p-class / 30 fps / SDR Working Media
+- Source Presentation Aspect Ratio와 Framing 가능 영역 보존
 - Imported Clip 생성
 - 공통 Media Commit Recovery 적용
 
@@ -1098,6 +1100,38 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - Multi-selection Import
 
 ## Decision Gate Before Implementation
+
+### Accepted Direction — ADR-022
+
+다음 방향은 이미 Accepted이며 Phase 6 Definition of Ready에서 확인한다.
+
+- SDR / HDR / Dolby Vision Source Import 허용
+- 4K / High-resolution Source Import 허용
+- HDR / Dolby Vision → SDR Working Media
+- Working Media 30 fps 및 1080p-class Target
+- Photos Source 원본 보존
+- Project Fill + Crop을 Normalization에 bake-in하지 않음
+- Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역 보존
+
+### Pending Technical Gate
+
+실제 Phase 6 Normalization Pipeline 구현 전에 다음 항목을 사용자 승인으로 확정해야 한다.
+
+- Working Media Codec
+- Working Media Container
+- 정확한 SDR Color Profile / Tagging
+- Low-resolution Source Upscaling Policy
+- 1080p-class Working Media의 정확한 Raster Dimension Rule
+
+이 Gate가 해결되지 않으면 실제 Normalization 구현을 시작하지 않는다.
+
+1080p-class를 Project Output Canvas로 미리 Crop하거나 저해상도 Source를 무조건 확대한다는 의미로 해석하지 않으며 정확한 Raster Formula와 Upscaling 여부를 임의로 정하지 않는다.
+
+Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개의 Decision일 수 있다.
+
+Tone-mapping 구현 방법은 여전히 Pending이며 필요한 결정은 관련 Normalization 구현 전에 해결하되 여기서 특정 Algorithm이나 Apple API 조합을 강제하지 않는다.
+
+### Existing Re-trim Decision Gate
 
 Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase 시작 전에 반드시 결정한다.
 
@@ -1113,13 +1147,13 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 1. PhotosPicker 기반 Video Selection을 구현한다.
 2. Broad Photos Read Permission 없이 가능한 Flow를 우선한다.
 3. Source Video Duration과 Display Transform을 읽는다.
-4. 4K Source를 정상적으로 다룰 수 있게 한다.
+4. SDR / HDR / Dolby Vision, 4K / High-resolution, Portrait / Landscape 및 Project Aspect와 다른 Source를 정상적으로 다룰 수 있게 한다.
 5. 사용자가 최대 10초 Segment를 선택할 수 있는 Import Editing State를 준비한다.
 6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Media 작성 전에 Durable Operation Identity를 확보하고 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
-7. 검증된 Source / Staged Media에서 Working Media를 1080p 기준으로 정규화한다.
-8. Source Frame Rate가 달라도 Project Output 30 fps 정책과 충돌하지 않게 한다.
+7. 검증된 Source / Staged Media에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다.
+8. 30 fps 초과 Source를 포함하여 Working Media를 30 fps 기준으로 정규화하고 Source FPS를 Photos 원본에서 변경하지 않으며 VFR 변환 구현은 승인된 기준을 따른다.
 9. Photos 원본을 변경하지 않는다.
-10. Normalized Output의 Final Validation을 수행하고 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
+10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
 11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
 13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다.
@@ -1136,6 +1170,7 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 - 10초 Segment Validation
 - Source Metadata Mapping
 - Imported Clip SourceKind
+- 승인된 Working Media Profile과 Raster / Upscaling Policy의 Source Metadata Mapping
 
 ## Integration Tests
 
@@ -1147,7 +1182,14 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 - 60 fps Source
 - 10초 미만 Source
 - 10초 초과 Source
-- 4K → 1080p Working Media
+- SDR / HDR / Dolby Vision Source 각각의 SDR Working Media 생성
+- 4K / High-resolution → 1080p-class / 30 fps / SDR Working Media
+- 30 fps 초과 Source의 Working Media Frame Rate 확인
+- 승인된 Low-resolution Upscaling Policy와 Raster Dimension Rule 적용
+- Portrait / Landscape 및 Source / Project Aspect Mismatch의 Presentation Transform 보존
+- 16:9 Source → 9:16 Project 등에서 Project Crop bake-in 없이 Phase 7 Framing에 필요한 좌우 / 상하 Source 영역 보존
+- 심각한 Highlight Clipping / 잘못된 색 변환 / Orientation 손상 등 명백한 변환 실패를 Final Validation에서 정상 Media로 등록하지 않음
+- Import / Normalization 성공·실패·취소 후 Photos Source 불변
 - Source / Staged Media와 Normalized Output의 각각의 Validation
 - Normalization 도중 실패 후 Valid Source 보존과 Incomplete Derived Output 분류
 - Materialization 후 Metadata Failure 및 Relaunch에서 동일 Clip의 Commit 재개
@@ -1161,6 +1203,10 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 
 iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
+SDR, HDR, Dolby Vision 및 4K / High-resolution Source를 실제로 Import하여 1080p-class / 30 fps / SDR Working Media 생성과 Source / Project Aspect Mismatch의 Framing 영역 보존을 검증한다.
+
+특히 HDR / Dolby Vision Source의 SDR 변환 결과와 Source Orientation을 확인하며 Test Asset 확보 방식은 별도 준비 과정에서 결정한다.
+
 Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
 
 Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
@@ -1169,7 +1215,11 @@ Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project
 
 - 긴 Video도 선택할 수 있다.
 - Project에 들어가는 Clip은 최대 10초다.
-- 4K Source에서 1080p Working Media가 정상 생성된다.
+- SDR / HDR / Dolby Vision Source와 4K / High-resolution Source를 허용하고 승인된 1080p-class / 30 fps / SDR Working Pipeline을 사용한다.
+- 저해상도 Source는 Phase 6 전에 승인된 Upscaling / Raster 정책을 따르며 임의의 확대 여부를 가정하지 않는다.
+- Project Crop이 Working File에 bake-in되지 않고 Phase 7에서 Framing할 Source의 유효 영역과 Presentation Aspect Ratio / Orientation이 보존된다.
+- Normalization Output Validation을 통과한 Media만 등록하며 명백한 색 변환 실패나 Orientation 손상을 정상 Clip으로 취급하지 않는다.
+- Import / Normalization은 Photos 원본을 수정하거나 삭제하지 않는다.
 - Photos 원본 삭제가 Project-owned Media에 영향을 주지 않는다.
 - Import 취소 또는 실패 시 Project가 손상되지 않는다.
 - Normalization 실패가 Valid Source / Staging Media를 파괴하지 않는다.
@@ -1183,6 +1233,8 @@ Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project
 촬영 Clip과 Imported Clip이 동일한 Project에서 함께 관리되어야 한다.
 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
+
+ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
 
 ---
 
@@ -1229,7 +1281,7 @@ Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Re
 3. Recorded Clip Re-trim을 구현한다.
 4. Imported Clip Re-trim을 확정된 정책에 따라 구현한다.
 5. Framing Metadata를 Normalized Coordinate로 저장한다.
-6. Fill + Crop Transform을 구현한다.
+6. Phase 6 Working Media에 보존된 Source 영역을 사용하여 Fill + Crop Transform을 Metadata 기반으로 구현하고 Crop Region / Position / Scale을 Working File에 bake-in하지 않는다.
 7. Source `preferredTransform`을 고려한다.
 8. Portrait Source와 Landscape Source를 올바르게 처리한다.
 9. Trim과 Framing 변경사항을 Interaction 종료 시 Autosave한다.
@@ -1252,6 +1304,8 @@ Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Re
 - Portrait → 16:9
 - Landscape → 9:16
 - Audio Sync 유지
+- Phase 6 Normalization에서 미리 Crop되지 않은 Source 영역을 사용한 좌우 / 상하 Framing 변경
+- HDR / Dolby Vision에서 생성한 SDR Working Media의 Trim / Framing Metadata 적용과 비파괴성
 
 ## Physical Device Test
 
@@ -1267,6 +1321,7 @@ Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Re
 - Trim 결과는 최대 10초를 초과하지 않는다.
 - 다른 Aspect Ratio Source가 Fill + Crop으로 올바르게 보인다.
 - 사용자가 Framing을 조절할 수 있다.
+- Normalization 시 Project Crop으로 Framing 가능 영역이 손실되지 않았으며 보존된 Source 영역에서 Metadata로 Framing을 변경할 수 있다.
 - Trim과 Framing 변경이 App 재실행 후 유지된다.
 
 ## Exit Criteria
@@ -1294,6 +1349,7 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 - 1080p Canvas
 - 30 fps Timing
 - AVPlayer Preview
+- SDR Preview와 Shared Color Handling
 - Play / Pause / Seek 기본 UX
 - Preview Active Media Usage
 - Mutation 이후 Stale Composition Invalidation
@@ -1316,7 +1372,7 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 6. Project Orientation에 맞는 1080p Canvas를 생성한다.
 7. Fill + Crop과 Framing을 적용한다.
 8. Audio Track을 유지한다.
-9. AVPlayer로 Composition Preview를 구현한다.
+9. HDR / Dolby Vision Source에서 시작한 Clip을 포함하여 AVPlayer로 SDR Composition Preview를 구현하고 Framing / Trim / Transform과 SDR 해석을 Shared Composition 기준으로 적용한다.
 10. Project 변경 시 Stale Composition을 Invalidate하고 다음 유효 Preview가 최신 Project State를 반영하도록 안전하게 Rebuild한다.
 11. Composition Build는 Main Actor를 장시간 Block하지 않는다.
 12. Preview Preparation / Playback의 Active Media Usage를 등록하고 실제 Reference Release 전까지 Physical Delete를 지연한다.
@@ -1342,6 +1398,8 @@ Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 �
 - Trim 반영
 - Framing 반영
 
+SDR Source와 HDR / Dolby Vision Source에서 생성한 Working Media를 함께 Preview하여 SDR 재생과 Shared Composition의 Trim / Framing / Transform 반영을 검증한다.
+
 ### Preview Lifecycle Integration Tests
 
 - Preview가 Media를 참조하는 동안 Clip Delete와 Undo 종료가 발생해도 Source File 보존
@@ -1362,10 +1420,12 @@ iPhone 12에서 다음을 검증한다.
 - UI Freeze 여부
 - Memory Pressure 여부
 - Preview 중 Project Mutation과 Project Delete 이후 Media 보존 / Release 및 다음 유효 Preview 상태
+- HDR / Dolby Vision에서 시작한 Clip의 안정적인 SDR Preview
 
 ## Acceptance Criteria
 
 - Preview 결과가 Project Metadata와 일치한다.
+- Preview는 SDR을 사용하고 HDR Source라는 이유로 HDR Preview / SDR Export의 이중 기본 Pipeline을 만들지 않는다.
 - Clip 사이 재생이 정상적이다.
 - Audio Sync가 유지된다.
 - Preview를 위해 매번 하나의 완성 Video를 미리 Render하지 않는다.
@@ -1384,7 +1444,7 @@ iPhone 12에서 다음을 검증한다.
 
 ## Goal
 
-Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Photos에 저장하거나 공유할 수 있게 한다.
+Preview와 동일한 결과를 하나의 1080p / 30 fps / SDR Video로 Export하고 Photos에 저장하거나 공유할 수 있게 한다.
 
 ## Included
 
@@ -1392,6 +1452,7 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 - Shared Composition
 - 1080p Output
 - 30 fps Output
+- SDR Output와 Preview / Export Color / Framing Parity
 - Temporary Export File
 - Progress
 - Cancel
@@ -1410,9 +1471,15 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 
 - H.264 또는 HEVC
 - File Container
-- HDR / SDR 정책
 - 기본 Video Bitrate 방향
 - Audio Format 방향
+- Audio Bitrate
+- Background Export 정책
+- Export Retry 정책
+
+MVP Export의 HDR vs SDR 방향은 ADR-022에서 SDR로 해결되었으며 이 Phase에서 다시 결정하지 않는다.
+
+정확한 SDR Color Profile / Tagging과 Working Media Codec / Container, Upscaling 및 Raster Dimension Rule은 Phase 6 전에 해결한 기준을 사용하며 Export Codec / Container를 Working Media와 자동으로 동일하게 결정하지 않는다.
 
 ## Implementation Tasks
 
@@ -1420,7 +1487,7 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 2. `AVAssetExportSession` 기반 MVP Export를 구현한다.
 3. Portrait는 1080 × 1920으로 Export한다.
 4. Landscape는 1920 × 1080으로 Export한다.
-5. Output은 30 fps 정책을 따른다.
+5. Output은 30 fps / SDR 정책을 따르고 동일한 Snapshot State의 Preview와 가능한 한 공통 Color Handling / Framing / Transform 정의를 사용한다.
 6. Export Result를 Temporary Location에 생성한다.
 7. Progress State를 UI에 제공한다.
 8. Export Cancel을 처리한다.
@@ -1456,6 +1523,8 @@ Preview와 동일한 결과를 하나의 1080p 30 fps Video로 Export하고 Phot
 - Framing 반영
 - Output Resolution 확인
 - Output Frame Rate 확인
+- SDR Output 확인 및 HDR Export 경로 제외
+- SDR / HDR / Dolby Vision에서 시작한 Clip을 포함한 동일한 Snapshot State의 Preview / Export Color / Framing / Transform Parity
 
 ### Export Lifecycle Integration Tests
 
@@ -1480,11 +1549,14 @@ iPhone 12에서 다음을 검증한다.
 - Storage 부족 상황 가능한 범위
 - Background 이동 시 현재 정책
 - Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
+- SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Preview 색 / Framing 비교
 
 ## Acceptance Criteria
 
 - Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Preview와 시각적으로 일치한다.
 - Output Resolution이 정확하다.
+- Portrait 1080 × 1920 또는 Landscape 1920 × 1080, 30 fps / SDR Output이며 HDR Export를 제공하지 않는다.
+- 동일한 Snapshot State의 Preview와 Export가 가능한 한 동일한 SDR 해석과 Framing / Transform 결과를 사용한다.
 - Photos Save가 정상 동작한다.
 - Share Sheet가 정상 동작한다.
 - Draft는 Export 이후에도 유지된다.
@@ -1809,6 +1881,8 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 - Recorded Clip
 - 1080p Import
 - 4K Import
+- 4K SDR Import
+- 4K HDR / Dolby Vision Import
 - Portrait Source
 - Landscape Source
 
@@ -1822,9 +1896,12 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 6. Large Project에서 모든 Asset을 동시에 Load하지 않는지 확인한다.
 7. 반복 Camera Open / Close를 테스트한다.
 8. 반복 Front / Rear Switching을 테스트한다.
-9. 4K Import 반복 처리 후 Memory Release를 확인한다.
+9. 4K SDR 및 4K HDR / Dolby Vision Import의 1080p-class / 30 fps / SDR Working Media 생성 시간, Memory Pressure와 Release 및 Thermal Behavior를 측정한다.
 10. Export 반복 후 Temporary File Cleanup을 확인한다.
 11. 비정상 발열이 지속되는 Flow를 조사한다.
+12. 정규화된 SDR Working Media의 Preview Stability와 동일한 Project State의 Export Color / Framing Parity를 iPhone 12에서 검증한다.
+
+이 검증은 성능 측정 범위를 연결하는 것이며 새로운 수치 Threshold를 확정하지 않고 M07 Performance Threshold는 별도 Repair 대상으로 유지한다.
 
 ## Acceptance Criteria
 
@@ -2066,6 +2143,15 @@ MVP 완료 후 다음 Release Planning에서 우선순위를 다시 평가한다
 
 - Imported Clip Re-trim 범위
 - Source Reference 유지 여부
+- Working Media Codec
+- Working Media Container
+- 정확한 SDR Color Profile / Tagging
+- Low-resolution Source Upscaling Policy
+- 1080p-class Working Media의 정확한 Raster Dimension Rule
+
+HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 Project Crop bake-in 금지 / Framing 영역 보존은 ADR-022 Accepted 기준이다.
+
+위 Technical Gate가 해결되기 전에는 실제 Normalization 구현을 시작하지 않으며 Tone-mapping의 필요한 미결정 사항도 관련 구현 전에 해결한다.
 
 ## Before Phase 7
 
@@ -2076,9 +2162,15 @@ MVP 완료 후 다음 Release Planning에서 우선순위를 다시 평가한다
 
 - H.264 또는 HEVC
 - File Container
-- HDR / SDR 정책
 - Export Bitrate 방향
 - Audio Format
+- Audio Bitrate
+- Background Export 정책
+- Export Retry 정책
+
+HDR vs SDR은 ADR-022로 SDR 방향이 해결되었으며 Phase 9는 1080p / 30 fps / SDR Export와 Preview Color / Framing Parity를 검증한다.
+
+정확한 SDR Profile / Tagging과 Working Media 세부 Gate는 Phase 6 이전에 해결하며 Working Media와 Export Codec / Container를 자동으로 동일하게 정하지 않는다.
 
 ## Before Phase 12
 

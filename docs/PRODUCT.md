@@ -398,19 +398,29 @@ Source Video의 전체 길이는 제한하지 않으며 긴 Source에서도 원�
 
 10초보다 짧은 Source Video는 전체 구간을 사용할 수 있다.
 
-4K를 포함한 고해상도 Source Import를 허용하며 선택된 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
+
+선택된 최대 10초 Segment로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+
+HDR / Dolby Vision의 Dynamic Range와 HDR Metadata를 Working Media에 완전히 보존하는 것은 MVP 목표가 아니다.
+
+Working Media를 만들 때 프로젝트 비율에 맞춘 Fill + Crop을 미리 적용하여 저장하지 않으며 이후 사용자가 Framing을 조정할 수 있도록 Source의 유효 화면 영역을 보존한다.
 
 정상적으로 추가된 Clip은 Mellow가 소유한 로컬 미디어를 사용하며 이후 사용자가 Photos 원본을 삭제해도 Draft에 유지되어야 한다.
 
 Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 수정하거나 삭제하지 않는다.
 
-Imported Clip의 Re-trim 범위와 Source Reference 유지 여부, HDR/SDR 및 정규화 세부 정책은 아직 확정하지 않는다.
+Imported Clip의 Re-trim 범위와 Source Reference 유지 여부, Working Media Codec / Container, 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 아직 확정하지 않는다.
+
+1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source의 Upscaling 여부는 아직 확정하지 않는다.
 
 #### Imported Orientation and Framing
 
 가져온 Video와 프로젝트의 화면 비율이 다르면 기본적으로 Fill + Crop을 적용한다.
 
 사용자는 Framing 위치를 조정할 수 있어야 한다.
+
+Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지하며 실제 화면 구성을 Preview와 Export에서 적용한다.
 
 Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
@@ -467,11 +477,15 @@ Trim은 정밀한 전문 편집보다
 
 현재 클립 순서, Trim 및 Framing 결과를 반영하여 전체 미니 브이로그를 재생할 수 있다.
 
+MVP Preview는 SDR을 기준으로 하며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
+
+Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 한다.
+
 #### Export
 
 프로젝트의 모든 클립을 하나의 영상으로 결합하여 iPhone Photos에 저장할 수 있다.
 
-MVP 표준 Output은 1080p / 30 fps다.
+MVP 표준 Output은 1080p / 30 fps / SDR이며 HDR Export는 MVP에서 제공하지 않는다.
 
 - Portrait 9:16: 1080 × 1920
 - Landscape 16:9: 1920 × 1080
@@ -480,7 +494,7 @@ Export 완료 후 iOS Share Sheet를 제공한다.
 
 Export는 Draft를 삭제하거나 작업을 강제로 종료하는 동작이 아니다.
 
-Codec, Container, HDR/SDR, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
+Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
 
 원본 영상은 보존한다.
 
@@ -969,7 +983,10 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Front / Rear Camera를 지원하며 Camera Switching은 idle 상태에서만 가능하고 Recording 중에는 금지한다.
 - Photos Video Import는 MVP 필수 기능이다.
 - Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 10초 Segment를 선택한다.
-- 4K를 포함한 고해상도 Source Import를 허용하며 선택된 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
+- SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용하며 Photos 원본은 수정하거나 삭제하지 않는다.
+- 선택된 최대 10초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+- Project Fill + Crop을 Working Media에 미리 적용하여 저장하지 않으며 이후 사용자 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
+- Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 프로젝트는 Portrait 9:16과 Landscape 16:9를 모두 지원한다.
 - 화면 비율은 프로젝트를 생성할 때 선택한다.
 - 하나의 프로젝트에서는 하나의 화면 비율을 유지한다.
@@ -988,7 +1005,8 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
 - Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - 여러 Clip을 하나의 영상으로 Preview하고 Export할 수 있어야 한다.
-- MVP 표준 Video Profile은 1080p / 30 fps이며 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
+- MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
+- Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 하며 HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
 - Save to Photos와 iOS Share Sheet를 제공한다.
 - Export 후에도 Draft를 유지하여 수정과 재Export를 지원한다.
@@ -1020,7 +1038,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Post-MVP Exposure Control 도입 시점 및 세부 동작
 - Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부
 - Crop UI와 Pinch to Zoom 지원 여부
-- HDR/SDR, Dolby Vision 및 Working Media 정규화의 세부 정책
+- Working Media Codec / Container 및 정확한 SDR Color Profile / Tagging
+- HDR / Dolby Vision Source의 SDR 변환을 위한 Tone-mapping 구현 방법
+- 저해상도 Source의 Upscaling 정책 및 1080p-class Working Media의 구체적인 크기 기준
 - Storage Threshold와 Warning 기준
 - Audio on/off 설정 여부
 - Clip별 음소거 기능

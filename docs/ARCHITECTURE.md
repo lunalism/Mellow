@@ -92,14 +92,16 @@ Third-party Library가 없어도 합리적인 수준으로 구현할 수 있다�
 
 ## 5. Video Resolution Policy
 
-Mellow MVP의 표준 Working Resolution과 Export Resolution은 1080p다.
+Mellow MVP의 Project Output / Export Resolution은 1080p이며 Imported Working Media는 1080p-class를 기준으로 한다.
 
-### Portrait Project
+아래 Pixel Size는 Project Output Canvas이며 Imported Working Media를 이 Canvas로 미리 Crop한다는 의미가 아니다.
+
+### Portrait Project Output
 
 - Resolution: 1080 × 1920
 - Aspect Ratio: 9:16
 
-### Landscape Project
+### Landscape Project Output
 
 - Resolution: 1920 × 1080
 - Aspect Ratio: 16:9
@@ -114,7 +116,11 @@ Mellow MVP에서는 4K Export를 제공하지 않는다.
 
 Photos에서 4K를 포함한 고해상도 Video를 Import할 수 있다.
 
-Imported Video는 사용자가 선택한 최대 10초 구간을 기준으로 Mellow의 1080p Working Media로 정규화하는 것을 기본 방향으로 한다.
+Imported Video는 사용자가 선택한 최대 10초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
+
+1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source를 무조건 Upscale하라는 요구사항은 아니다.
+
+Source Presentation Aspect Ratio와 이후 Framing 가능한 영역을 보존하며 정확한 Raster Dimension Rule과 Low-resolution Upscaling Policy는 Phase 6 구현 전 Technical Gate로 남긴다.
 
 사용자의 Photos Library에 존재하는 원본 Video는 Resolution 변환 과정에서도 수정하지 않는다.
 
@@ -129,13 +135,16 @@ Mellow는 다음과 같은 Source Media를 받아들일 수 있는 구조를 가
 - 720p
 - 1080p
 - 4K
+- High-resolution Video
+- SDR Video
+- HDR / Dolby Vision Video
 - Portrait Video
 - Landscape Video
 - 서로 다른 Frame Rate의 Video
 
 입력 포맷이 다양하더라도 Mellow Project 내부에서는 가능한 한 일관된 Working Media를 사용한다.
 
-MVP에서는 다양한 Source Format을 Project 내부에 그대로 혼합하여 처리하는 것보다 1080p 중심으로 정규화하여 Preview와 Export Pipeline의 복잡성을 낮추는 방향을 우선한다.
+MVP에서는 다양한 Source Format을 Project 내부에 그대로 혼합하여 처리하는 것보다 1080p-class / 30 fps / SDR Working Media로 정규화하여 Preview와 Export Pipeline의 복잡성을 낮춘다.
 
 ---
 
@@ -147,7 +156,11 @@ Mellow Camera에서 새로 촬영하는 Clip은 1080p 30 fps를 기본 Capture P
 
 Photos에서 가져오는 Source Video의 Frame Rate는 30 fps와 다를 수 있다.
 
-Imported Video의 Frame Rate 정규화 방식은 AVFoundation Composition 및 Export 과정에서 일관된 30 fps Output을 생성할 수 있도록 구성한다.
+30 fps보다 높은 Source도 Import할 수 있지만 Imported Working Media는 30 fps 기준으로 정규화하며 Final Validation과 Preview / Export도 이 기준을 따라야 한다.
+
+Photos Source 자체의 Frame Rate는 변경하지 않는다.
+
+Variable Frame Rate 또는 비정상 Source의 구체적인 변환 구현 방식은 여기서 고정하지 않으며 Working Media Validation과 최종 30 fps Output 기준에 모순되지 않아야 한다.
 
 60 fps Export는 MVP에서 제공하지 않는다.
 
@@ -157,20 +170,19 @@ Slow Motion 또는 Variable Speed Editing은 MVP 범위에 포함하지 않는�
 
 ## 8. HDR Policy
 
-HDR 및 Dolby Vision 입력 영상의 최종 처리 정책은 아직 확정하지 않는다.
+ADR-022에 따라 SDR, HDR 및 Dolby Vision Source Import를 허용하며 HDR / Dolby Vision Source는 Project-owned SDR Working Media로 정규화한다.
 
-다음 항목은 별도 검토 후 결정한다.
+Photos Source 자체는 수정하거나 삭제하지 않으며 HDR Metadata와 Dolby Vision을 Working Pipeline에서 보존하는 것을 MVP requirement로 하지 않는다.
 
-- HDR Source Import 지원 범위
-- HDR Metadata 유지 여부
-- SDR 변환 여부
-- HDR Preview 정책
-- HDR Export 지원 여부
-- Color Space 변환 정책
+MVP Preview와 Export는 SDR을 기준으로 하고 HDR Export는 MVP 범위에서 제외한다.
 
-HDR 처리를 임의로 확정하지 않는다.
+HDR → SDR 변환 결과는 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Source Orientation 손상 등 명백한 변환 실패를 정상 Media로 취급하지 않는다.
 
-HDR 정책이 결정되기 전까지 Architecture가 특정 HDR 또는 SDR 결과를 제품 요구사항으로 가정하지 않도록 한다.
+Preview와 Export가 동일한 SDR 해석을 사용하도록 45절의 Shared Composition / Color Handling 원칙을 적용한다.
+
+정확한 Tone-mapping Algorithm과 Apple API 조합은 고정하지 않으며 Apple Native Framework 우선 원칙을 유지한다.
+
+정확한 SDR Color Profile / Tagging과 Tone-mapping 구현 방법은 여전히 Pending이며 SDR 정규화 방향 자체를 다시 Open으로 취급하지 않는다.
 
 ---
 
@@ -579,7 +591,9 @@ Import Source 전체에 Project Clip의 최대 10초 제한을 적용하지 않�
 
 Normalization을 수행했다면 그 Output을 Final Media로 등록하기 전에 다시 Validation한다.
 
-HDR / SDR, Codec / Container, 최소 Clip 길이 등 Pending 값을 Validation 구현 편의를 위해 임의로 확정하지 않는다.
+Imported Working Media에는 ADR-022 및 38절의 SDR / Frame Rate / Spatial Normalization Validation을 함께 적용한다.
+
+정확한 SDR Color Profile / Tagging, Codec / Container, 최소 Clip 길이 등 Pending 값을 Validation 구현 편의를 위해 임의로 확정하지 않는다.
 
 ### Failure Boundary Contract
 
@@ -784,7 +798,7 @@ Imported Video는 사용자가 Clip 추가를 확정한 후 Project-owned Media�
 
 사용자가 선택한 최대 10초 Segment를 기준으로 Mellow Working Media를 생성한다.
 
-Mellow Working Media는 1080p 기준으로 정규화한다.
+Imported Working Media는 ADR-022의 1080p-class / 30 fps / SDR 기준으로 정규화한다.
 
 이 과정에서 Photos의 원본 Video는 변경하지 않는다.
 
@@ -793,6 +807,59 @@ Import는 25절의 공통 Media Commit Lifecycle을 사용하며 Source Validati
 Normalization 실패 시 Valid Source / Staging Media를 보존하고 Materialization 이후 Metadata Persistence 실패 시 Recovery Candidate로 유지한다.
 
 이 보존 계약은 진행 중이거나 복구 가능한 Import를 위한 것이며 Commit 이후 원본 Source Reference 유지와 Re-trim 범위는 40절의 미결정 사항으로 유지한다.
+
+### Source, Working Media and Project Output
+
+| Layer | Ownership and Contract |
+| --- | --- |
+| Source Media | Photos가 소유한 원본이며 SDR / HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source를 포함할 수 있고 Mellow가 수정하거나 삭제하지 않는다. |
+| Project-owned Working Media | 선택된 최대 10초 Segment를 기반으로 Mellow Project가 소유하며 1080p-class / 30 fps / SDR을 기준으로 하고 이후 Framing 가능한 Source Content를 보존하며 Project Crop을 bake-in하지 않는다. |
+| Project Output / Export | 고정된 Project Orientation에 따라 Portrait 9:16은 1080 × 1920, Landscape 16:9는 1920 × 1080이며 30 fps / SDR로 출력하고 Trim / Framing / Transform / Order를 Composition에서 적용한다. |
+
+### Spatial Normalization Contract
+
+Normalization standardizes media characteristics, but does not commit the user's project framing.
+
+- Source의 Presentation Aspect Ratio를 불필요하게 파괴하지 않는다.
+- Project 9:16 또는 16:9 Fill + Crop을 Normalization Output에 bake-in하지 않는다.
+- 이후 사용자가 Framing에 사용할 수 있는 Source의 유효 화면 영역을 보존한다.
+- Codec Alignment 등을 위한 기술적 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다.
+- Source Rotation / Presentation Transform을 올바르게 해석한다.
+- Working Representation은 이후 Framing Metadata를 적용할 수 있어야 한다.
+
+16:9 Source를 9:16 Project에 가져온다는 이유로 Import 때 중앙 9:16 영역만 잘라 저장하지 않으며 이후 좌우 Framing에 필요한 Source 영역을 유지한다.
+
+실제 Crop Region, Position과 Scale은 Editing Metadata로 유지하고 Preview / Export Composition에서 적용한다.
+
+Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 Editing으로 유지하며 일반 편집 때마다 Working Media를 다시 인코딩하지 않는다.
+
+### Color and Frame Rate Validation
+
+SDR, HDR 및 Dolby Vision Source 모두 승인된 SDR Working Pipeline으로 진입하며 HDR Metadata 보존을 성공 조건으로 요구하지 않는다.
+
+Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p-class Working Target, Presentation Aspect Ratio / Transform 및 Framing 영역 보존을 검증한다.
+
+심각한 Highlight Clipping, 잘못된 색 변환, Orientation 손상 또는 Incomplete Normalization Output 등 명백한 변환 실패를 정상 Working Media로 등록하지 않는다.
+
+실패 시 ADR-020의 Valid Source / Recovery Candidate 보존 계약을 따르며 Cancellation과 Deleted Target / Active Usage는 ADR-021의 경계를 그대로 적용한다.
+
+### Technical Gate Before Phase 6 Normalization
+
+다음 항목은 아직 Pending이며 Phase 6 Definition of Ready / Decision Gate에서 사용자 승인을 받아야 한다.
+
+- Working Media Codec
+- Working Media Container
+- 정확한 SDR Color Profile / Tagging
+- Low-resolution Source Upscaling Policy
+- 1080p-class Working Media의 정확한 Raster Dimension Rule
+
+이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다.
+
+1080p-class는 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 뜻하지 않으며 임의 Raster Formula를 추가하지 않는다.
+
+Tone-mapping 구현 방법과 Variable Frame Rate 처리의 구체적인 Apple API 조합은 이 문서에서 강제하지 않으며 필요한 미결정 사항을 구현 전에 해결한다.
+
+Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개로 결정할 수 있으며 자동으로 동일하게 설정하지 않는다.
 
 ---
 
@@ -869,11 +936,13 @@ MVP에서 Pinch Zoom을 지원하지 않는 경우 Scale은 Aspect Fill 기준�
 
 Imported Video의 Project Layout 기본값은 Fill + Crop이다.
 
-16:9 Source를 9:16 Project에 추가하면 9:16 Canvas를 가득 채운 후 초과 영역을 Crop한다.
+16:9 Source를 9:16 Project에 추가하면 Preview / Export Composition에서 9:16 Canvas를 가득 채운 후 초과 영역을 Crop한다.
 
 9:16 Source를 16:9 Project에 추가하는 경우에도 동일한 Aspect Fill 원칙을 사용한다.
 
 사용자가 Framing 위치를 조절할 수 있어야 한다.
+
+이 Crop은 Working Media File에 bake-in하지 않으며 38절에서 보존한 Source 영역에 Framing Metadata를 적용한다.
 
 Video의 `naturalSize`만으로 Orientation을 판단하지 않는다.
 
@@ -899,8 +968,13 @@ Preview와 Export가 서로 다른 Video Transform Logic을 구현하지 않는�
 - Timeline 생성
 - 1080p Output Canvas 구성
 - 30 fps Project Timing 반영
+- Shared SDR Interpretation / Color Handling 적용
 
 Preview와 Export는 가능한 한 동일한 Composition Definition을 사용한다.
+
+동일한 Logical Project State에서 Framing / Transform / SDR Interpretation이 가능한 한 일치해야 하며 HDR Source라는 이유로 Preview는 HDR이고 Export는 SDR인 이중 기본 Pipeline을 두지 않는다.
+
+이 원칙은 Export Codec / Container / Bitrate를 확정하지 않으며 진행 중 Export는 48절의 Immutable Snapshot 의미를 유지한다.
 
 ---
 
@@ -911,6 +985,8 @@ Preview와 Export는 가능한 한 동일한 Composition Definition을 사용한
 AVFoundation Composition 기반 Virtual Timeline을 우선 사용한다.
 
 AVPlayer가 필요한 Source Media를 재생하도록 한다.
+
+MVP Preview는 SDR을 기준으로 하며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR Working Media와 공통 Color Handling으로 재생한다.
 
 모든 Clip Video Frame을 Memory에 동시에 Load하지 않는다.
 
@@ -1040,7 +1116,9 @@ Landscape:
 
 사용자에게 Resolution과 Frame Rate를 매 Export마다 선택하도록 하지 않는다.
 
-Mellow MVP는 일관된 1080p 30 fps 결과를 기본으로 제공한다.
+Mellow MVP는 일관된 1080p / 30 fps / SDR 결과를 기본으로 제공한다.
+
+HDR Export는 MVP에서 제공하지 않으며 정확한 SDR Color Profile / Tagging과 Export Codec / Container / Bitrate는 별도 Pending Technical Decision을 따른다.
 
 ---
 
@@ -1637,7 +1715,8 @@ Primary Physical Test Device는 iPhone 12다.
 - Landscape 16:9 Recording
 - Photos Video Import
 - 4K Source Import
-- 4K to 1080p Working Media Processing
+- 4K SDR / HDR / Dolby Vision Source의 1080p-class / 30 fps / SDR Working Media Processing
+- Normalization 이후 Source Orientation과 Framing 가능 영역 보존
 - Trim
 - Framing
 - Multi-clip Preview
@@ -1686,6 +1765,11 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Audio Track 유지
 - Fill + Crop
 - 4K Input to 1080p Output
+- SDR / HDR / Dolby Vision 및 High-resolution Source의 SDR Working Media Normalization
+- 30 fps 초과 Source의 30 fps Working Media Validation
+- Source Presentation Transform 및 Aspect Mismatch에서 Framing 영역 보존과 Project Crop bake-in 방지
+- SDR 변환 실패의 Final Validation 거부와 Valid Source / Recovery Candidate 보존
+- 동일한 Project State의 Preview / Export SDR Color 및 Framing Parity
 - 30 fps Output
 - Export File 생성
 - Recording / Import Media Commit의 Failure Boundary A–H
@@ -1802,15 +1886,19 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Primary Physical Test Device는 iPhone 12다.
 - Camera와 Media 핵심 기능은 Physical iPhone Test를 필수로 한다.
 - Mellow MVP의 표준 Video Resolution은 1080p다.
-- Portrait Project는 1080 × 1920을 사용한다.
-- Landscape Project는 1920 × 1080을 사용한다.
+- Portrait Project Output은 1080 × 1920을 사용한다.
+- Landscape Project Output은 1920 × 1080을 사용한다.
 - 기본 Frame Rate는 30 fps다.
 - Mellow Camera는 MVP에서 1080p 30 fps를 기본으로 촬영한다.
 - MVP에서 720p Export를 제공하지 않는다.
 - MVP에서 4K Export를 제공하지 않는다.
 - MVP에서 60 fps Export를 제공하지 않는다.
 - 4K를 포함한 고해상도 Photos Video를 Import할 수 있다.
-- Imported Video는 선택한 최대 10초 구간을 기준으로 1080p Working Media로 정규화하는 방향을 사용한다.
+- SDR, HDR / Dolby Vision 및 30 fps 초과 Source Import를 허용한다.
+- Imported Video는 선택한 최대 10초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
+- Working Media는 Source Presentation Aspect Ratio와 Framing 가능 영역을 보존하며 Project Fill + Crop을 bake-in하지 않는다.
+- MVP Preview와 Export는 SDR이며 HDR Export는 MVP에서 제공하지 않는다.
+- Preview / Export는 가능한 한 동일한 Composition / Color Handling으로 SDR Interpretation과 Framing을 일치시킨다.
 - Photos 원본 Media는 변경하지 않는다.
 - Metadata는 SwiftData를 사용한다.
 - 실제 Video File은 File System에서 관리한다.
@@ -1891,11 +1979,17 @@ Project Aspect Ratio는 Device Rotation으로 자동 변경되지 않는다.
 
 ### 1080p Project Standard
 
-Mellow MVP의 Working Media와 Export Pipeline은 1080p를 기준으로 설계한다.
+Imported Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Project Output / Export는 Orientation에 맞는 1080p Canvas / 30 fps / SDR을 사용한다.
+
+### Framing Preservation During Normalization
+
+Normalization standardizes media characteristics, but does not commit the user's project framing.
+
+Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역을 보존하며 Project Fill + Crop은 Working File에 bake-in하지 않고 Metadata를 통해 Preview / Export Composition에서 적용한다.
 
 ### Preview and Export Parity
 
-Preview와 Export는 가능한 한 동일한 Composition Definition을 사용한다.
+Preview와 Export는 SDR을 기준으로 가능한 한 동일한 Composition Definition / Color Handling을 사용하며 동일한 Project State의 Framing, Transform과 SDR Interpretation을 일치시킨다.
 
 ### Local-first
 
@@ -1923,13 +2017,12 @@ SwiftUI View는 Camera Session, File System 또는 SwiftData를 직접 조작하
 - Front Camera 저장 영상의 Mirror Policy
 - Camera Lens 선택 정책
 
-### HDR
+### SDR Color Technical Details
 
-- HDR Source Import 정책
-- Dolby Vision 처리
-- HDR 유지 여부
-- SDR 변환 여부
-- Export Color Space
+HDR / Dolby Vision Source 허용, SDR Working Media / Preview / Export 방향은 ADR-022로 확정되어 있으며 다음 세부사항만 Pending이다.
+
+- 정확한 SDR Color Profile / Tagging
+- HDR / Dolby Vision Source의 Tone-mapping 구현 방법
 
 ### Imported Media
 
@@ -1937,6 +2030,11 @@ SwiftUI View는 Camera Session, File System 또는 SwiftData를 직접 조작하
 - Imported Clip의 Re-trim 범위
 - Source Video Transcoding 세부 정책
 - 매우 낮은 Resolution Source의 Upscaling 정책
+- Working Media Codec
+- Working Media Container
+- 1080p-class Working Media의 정확한 Raster Dimension Rule
+
+Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dimension Rule은 Phase 6 구현 전 Gate이며 Export Codec / Container와 별개로 결정한다.
 
 ### Preview
 

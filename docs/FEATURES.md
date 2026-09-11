@@ -352,7 +352,9 @@ Photos에서 가져오는 원본 영상 자체의 길이에는 제한을 두지 
 
 4K를 포함한 고해상도 Source Video를 Import할 수 있다.
 
-고해상도 Source Import 지원은 HDR/SDR 처리 정책의 확정을 의미하지 않는다.
+SDR 및 HDR / Dolby Vision Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
+
+HDR / Dolby Vision Source도 선택된 Segment를 SDR Working Media로 정규화하며 Photos 원본은 변경하지 않는다.
 
 ---
 
@@ -389,7 +391,19 @@ Mellow 프로젝트에서 사용하는 하나의 최종 Clip은 촬영 방식과
 
 사용자가 Imported Clip 추가를 확정하면 프로젝트에서 사용할 Project-owned Local Media를 생성한다.
 
-4K를 포함한 고해상도 Source는 선택된 최대 10초 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 선택된 최대 10초 Segment를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다.
+
+1080p-class는 고해상도 Source의 Working Target이며 저해상도 Source의 Upscaling 여부와 정확한 Raster Dimension Rule은 아직 확정하지 않는다.
+
+### Normalization Acceptance Criteria
+
+- HDR / Dolby Vision Source도 Project-owned SDR Working Media로 정규화하며 HDR Metadata 보존을 MVP 완료 조건으로 요구하지 않는다.
+- 30 fps 초과 Source도 Working Media에서는 30 fps 기준을 충족한다.
+- 고해상도 Source는 승인된 1080p-class Working Target을 따르며 Photos 원본의 Resolution / Frame Rate / Color는 변경하지 않는다.
+- Project Fill + Crop을 Working File에 bake-in하지 않으며 Source의 Presentation Aspect Ratio와 이후 Framing에 필요한 유효 화면 영역을 보존한다.
+- Source Rotation / Presentation Transform을 올바르게 반영하여 Framing 가능한 화면 영역이 손상되지 않는다.
+- Normalization Output은 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Orientation 손상 등 명백한 변환 실패를 정상 Media로 등록하지 않는다.
+- 실패와 취소 시 Valid Source / Staging 및 Recovery Candidate는 확정된 Media Safety 계약에 따라 보호한다.
 
 정상적으로 Project-owned Media가 생성되어 추가된 Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지되어야 한다.
 
@@ -397,7 +411,9 @@ Draft를 삭제할 때는 Mellow 내부 복사본만 삭제하며 Photos의 원�
 
 Photos 원본은 Import, 정규화 또는 편집 과정에서도 수정하거나 삭제하지 않는다.
 
-미디어 저장은 `ARCHITECTURE.md`의 확정된 기준을 따르며 정규화·복구의 미결 세부 정책은 임의로 확정하지 않는다.
+미디어 저장은 `ARCHITECTURE.md`와 ADR-020 / ADR-021의 확정된 기준을 따르며 SDR 정규화 방향은 ADR-022를 따른다.
+
+Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Upscaling과 Raster Dimension Rule의 미결 세부값은 임의로 확정하지 않는다.
 
 ---
 
@@ -414,8 +430,10 @@ Photos에서 가져오는 영상의 원본 화면 비율이 현재 프로젝트�
 ### Required Behavior
 
 - 기본 Layout은 Fill + Crop이다.
-- 프로젝트 Canvas를 채우고 초과 영역을 Crop한다.
+- 프로젝트 Canvas를 채우고 초과 영역을 Preview / Export Composition에서 Crop한다.
 - 사용자가 Framing 위치를 조정할 수 있어야 한다.
+- Working Media에는 Project Crop을 미리 bake-in하지 않으며 이후 Framing할 Source 영역을 보존한다.
+- Crop Region, Position 및 Scale은 가능한 한 Editing Metadata로 유지하며 일반 Trim / Framing 변경마다 Media를 다시 인코딩하지 않는다.
 
 Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
@@ -588,6 +606,8 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 
 현재 Trim 범위가 존재한다면 해당 범위를 기준으로 Preview한다.
 
+MVP Clip Preview는 SDR이며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
+
 ---
 
 ## F-MVP-034 — Full Vlog Preview
@@ -602,6 +622,11 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 - Project orientation
 - Video
 - Recorded audio
+- SDR interpretation
+
+전체 Preview는 SDR을 기준으로 하며 Export와 가능한 한 동일한 Composition / Color Handling을 사용한다.
+
+HDR Source라는 이유로 Preview만 HDR로 재생하는 별도 기본 Pipeline을 두지 않는다.
 
 초기 MVP에서는 Clip 사이에 특별한 Transition 효과를 제공하지 않는다.
 
@@ -625,7 +650,9 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 
 ### Confirmed Video Standard
 
-MVP 표준 Working Media와 Output Profile은 1080p / 30 fps다.
+MVP 표준 Output Profile은 1080p / 30 fps / SDR이다.
+
+Imported Working Media의 1080p-class / 30 fps / SDR 기준은 아래 Project Output Canvas로 미리 Crop한다는 의미가 아니며 F-MVP-021 / F-MVP-022의 Framing 보존 계약을 따른다.
 
 - Portrait 9:16 Output: 1080 × 1920
 - Landscape 16:9 Output: 1920 × 1080
@@ -634,7 +661,11 @@ Mellow Camera의 기본 Capture Profile도 1080p / 30 fps다.
 
 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않으며 사용자에게 Export Resolution이나 Frame Rate 선택을 제공하지 않는다.
 
-Codec, Container, HDR/SDR, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
+HDR Export는 MVP에서 제공하지 않으며 SDR Export의 Framing, Transform 및 색 해석은 동일한 Project State의 Preview와 가능한 한 일치해야 한다.
+
+Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
+
+Working Media Codec / Container와 Export Codec / Container는 별도 Decision이며 자동으로 동일하게 정하지 않는다.
 
 Export 후에도 Draft를 유지하며 iOS Share Sheet로 완성된 Video를 공유할 수 있어야 한다.
 
@@ -978,7 +1009,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 11. Clip의 순서를 변경할 수 있다.
 12. 각 Clip의 시작점과 종료점을 Trim할 수 있다.
 13. 전체 Vlog를 Preview할 수 있다.
-14. 프로젝트 비율에 맞는 1080p / 30 fps 영상으로 Export할 수 있다.
+14. 프로젝트 비율에 맞는 1080p / 30 fps / SDR 영상으로 Export할 수 있고 동일한 Project State의 SDR Preview와 색 및 Framing이 가능한 한 일치한다.
 15. Export한 영상을 Photos Library에 저장하고 iOS Share Sheet로 공유할 수 있다.
 16. 앱 재실행과 기기 재부팅 후에도 자동 저장된 로컬 프로젝트를 계속 작업할 수 있다.
 17. 여러 개의 Draft 프로젝트를 동시에 유지할 수 있다.
@@ -1011,7 +1042,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Photos Library의 기존 영상을 프로젝트에 Import할 수 있다.
 - Imported Video 원본의 길이는 제한하지 않는다.
 - Imported Video에서는 프로젝트에 사용할 최대 10초 구간을 선택한다.
-- 4K를 포함한 고해상도 Source Import를 허용하며 선택된 Segment를 기준으로 1080p Working Media를 생성하는 방향을 사용한다.
+- SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용한다.
+- 선택된 최대 10초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Photos 원본은 변경하지 않는다.
+- Project Fill + Crop을 Working File에 bake-in하지 않고 이후 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
+- Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 정상적으로 추가된 Project-owned Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지한다.
 - 프로젝트에서 사용하는 하나의 최종 Clip 길이는 최대 10초다.
 - Project orientation은 9:16 Portrait와 16:9 Landscape를 지원한다.
@@ -1038,7 +1072,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Draft의 대표 Thumbnail은 첫 번째 사용 가능한 Clip을 기준으로 한다.
 - Export 이후에도 Draft를 자동 삭제하지 않는다.
 - Draft를 다시 열어 수정하고 다시 Export할 수 있다.
-- MVP 표준 Video Profile은 1080p / 30 fps이며 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
+- MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
+- Preview와 Export는 가능한 한 동일한 Composition / Color Handling으로 SDR 색 해석과 Framing을 일치시킨다.
+- HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
 - Save to Photos와 iOS Share Sheet를 제공한다.
 - 핵심 미디어 작업은 Local-first로 동작한다.
@@ -1081,7 +1117,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Trim과 Crop의 세부 화면 구성
 - Crop 시 Pinch to Zoom 지원 여부
 - Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부
-- Working Media 정규화의 세부 정책
+- Working Media Codec / Container
+- 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법
+- 저해상도 Source의 Upscaling 정책
+- 1080p-class Working Media의 정확한 Raster Dimension Rule
 - Post-MVP Fit 또는 Background Blur 도입 여부
 
 ## Project
@@ -1114,7 +1153,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Video Codec
 - File Container
 - Video Bitrate, Audio Format 및 Audio Bitrate
-- HDR/SDR, Dolby Vision 및 Color Space 처리 정책
+- 확정된 SDR Export 방향 내 정확한 SDR Color Profile / Tagging 세부값
 - 고정된 1080p / 30 fps 범위 내 Export Quality 선택 기능 제공 여부
 - Export 및 Share 화면의 세부 UX
 - Export 중 앱 Background 이동 처리 방식

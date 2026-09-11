@@ -888,20 +888,130 @@ Photos Save / Share 완료 파일의 상세 Lifecycle은 M05 / Export Lifecycle 
 
 ---
 
+# ADR-022 — SDR Working Media Normalization Policy
+
+**Date:** 2026-09-11
+
+**Status:** Accepted
+
+## Context
+
+Phase 6에서 실제 4K / HDR Import Source로 Project-owned Working Media를 생성해야 하지만 기존 HDR / SDR Decision Gate는 Phase 9에 있어 구현 시점보다 늦었다.
+
+HDR / SDR Source를 별도 Working Pipeline으로 혼합하면 Preview / Export의 Color Handling과 결과 일관성이 복잡해진다.
+
+Project Aspect Ratio의 Crop을 Working Media에 bake-in하면 Phase 7에서 사용자가 Framing을 조정할 수 있는 Source 영역을 잃는다.
+
+iPhone 12가 Primary Physical Test Device이므로 MVP Pipeline의 예측 가능성과 단순성이 중요하다.
+
+## Decision
+
+SDR, HDR 및 Dolby Vision Source Import와 4K / High-resolution Source Import를 허용하며 Photos Source 원본을 수정하거나 삭제하지 않는다.
+
+30 fps를 초과하는 Source도 Import할 수 있지만 Imported Working Media는 30 fps 기준으로 정규화하며 Photos Source의 Frame Rate를 변경하지 않는다.
+
+선택된 최대 10초 Segment를 기반으로 하는 Project-owned Working Media는 MVP에서 1080p-class / 30 fps / SDR을 기준으로 한다.
+
+HDR / Dolby Vision Source는 SDR Working Media로 정규화하며 HDR Metadata와 Source의 Dynamic Range를 Working Pipeline에서 완전히 보존하는 것은 MVP requirement가 아니다.
+
+Source Media, Project-owned Working Media와 Project Output / Export를 구별하며 1080p-class는 고해상도 Source의 Working Target이지 Project Output Canvas로 미리 Crop하라는 의미가 아니다.
+
+Project Fill + Crop을 Working Media에 bake-in하지 않으며 Source의 Presentation Aspect Ratio와 이후 Framing 가능한 유효 화면 영역을 보존한다.
+
+Source Rotation / Presentation Transform을 올바르게 해석하며 Codec Alignment용 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다.
+
+Normalization standardizes media characteristics, but does not commit the user's project framing.
+
+Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 Editing으로 유지하고 실제 Crop Region / Position / Scale 및 Transform / Order는 Preview / Export Composition에서 적용한다.
+
+MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 HDR Export는 MVP에서 제공하지 않는다.
+
+Project Output은 고정된 Orientation에 따라 Portrait 9:16은 1080 × 1920, Landscape 16:9는 1920 × 1080을 사용한다.
+
+Preview / Export Color Handling은 가능한 한 동일한 Composition 정의를 사용하며 동일한 Project State의 Framing / Transform / SDR Interpretation을 일치시킨다.
+
+HDR Source라는 이유로 Preview는 HDR이고 Export는 SDR인 이중 기본 Pipeline을 두지 않는다.
+
+HDR → SDR 변환 결과는 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Source Orientation 손상 등 명백한 변환 실패를 정상 Media로 간주하지 않는다.
+
+Normalization 구현은 Apple Native Framework를 우선하며 정확한 Tone-mapping Algorithm, Apple API 조합과 Variable Frame Rate 변환 구현은 이 ADR에서 강제하지 않는다.
+
+Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Low-resolution Upscaling Policy와 정확한 Raster Dimension Rule은 Pending이며 Phase 6 구현 전 Technical Gate에서 해결해야 한다.
+
+이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않으며 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 임의로 선택하지 않는다.
+
+Working Media Codec / Container와 Export Codec / Container는 별도 Decision이며 자동으로 동일하게 결정하지 않는다.
+
+ADR-003 / ADR-007의 1080p Working 방향을 Source 영역을 보존하는 1080p-class Target으로 구체화하며 기존 Project Output Dimension과 최대 10초 Segment 정책은 유지한다.
+
+ADR-020의 Transactional Commit / Validation / Recovery 계약과 ADR-021의 Logical Deletion / Active Usage / Late Commit 차단 / Immutable Export Snapshot 계약을 그대로 적용한다.
+
+Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7에서는 보존된 영역의 Metadata Framing, Phase 8에서는 SDR Preview, Phase 9에서는 SDR Export와 Color / Framing Parity를 검증한다.
+
+## Consequences
+
+### Benefits
+
+- Mixed HDR / SDR Project의 Pipeline 복잡도를 줄인다.
+- iPhone 12 Preview / Export의 예측 가능성을 높인다.
+- Preview / Export Parity를 개선한다.
+- HDR Metadata 및 Dolby Vision Export 복잡도를 줄인다.
+- Phase 7에서 사용자가 Framing을 조정할 Source 영역을 보존한다.
+- 향후 HDR Pipeline은 별도 Decision으로 확장할 수 있다.
+
+### Costs
+
+- HDR Source의 Dynamic Range를 MVP Working Media / Export에서 완전히 보존하지 않는다.
+- HDR → SDR 변환 비용이 발생한다.
+- Normalization이 필요한 Source에는 추가 Processing 비용이 발생한다.
+- Project-owned Working Media가 저장 공간을 사용한다.
+
+## Non-goals
+
+- Exact Tone-mapping Algorithm 및 Apple API 조합
+- Exact SDR Color Profile / Tagging
+- Working Media Codec
+- Working Media Container
+- Low-resolution Upscaling Policy
+- Exact Raster Dimension Formula
+- Export H.264 vs HEVC
+- Export Container / Bitrate
+- Audio Codec / Bitrate
+- Background Export
+- Export Retry
+- Import Re-trim / Source Reference
+- Performance Threshold
+
+---
+
 ## 3. Pending Decisions
 
-다음 항목은 아직 확정된 ADR이 아니며 임의로 구현 기준을 결정하지 않는다.
+다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
+
+`Resolved by ADR-022`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
-- HDR Source Import 정책
-- Dolby Vision 처리
-- HDR 유지 또는 SDR 변환
-- Export Color Space
+- HDR Source Import 정책 — Resolved by ADR-022: HDR Source Import 허용.
+- Dolby Vision 처리 — High-level Policy Resolved by ADR-022: Source Import를 허용하고 SDR Working Media로 정규화하며 구체적인 Tone-mapping 구현은 Pending.
+- HDR 유지 또는 SDR 변환 — Resolved by ADR-022: SDR Working Media로 변환하며 HDR Metadata 보존을 MVP requirement로 하지 않음.
+- Export Color Space — MVP Export HDR vs SDR 방향은 Resolved by ADR-022: SDR이며 정확한 SDR Color Profile / Tagging은 Pending.
+
+### SDR and Working Media Technical Details
+
+- Working Media Codec — Pending, Before Phase 6.
+- Working Media Container — Pending, Before Phase 6.
+- 정확한 SDR Color Profile / Tagging — Pending, Before Phase 6.
+- Low-resolution Source Upscaling Policy — Pending, Before Phase 6.
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Pending, Before Phase 6.
+- HDR / Dolby Vision Source의 Tone-mapping 구현 방법 — Pending, 관련 Normalization 구현 전 결정.
+
+Working Media Codec / Container를 Export Codec / Container와 자동으로 동일하게 결정하지 않는다.
 
 ### Export
 
 - H.264 또는 HEVC
+- File Container
 - Video Bitrate
 - Audio Format
 - Audio Bitrate
