@@ -114,6 +114,38 @@ MVP에서는 승인 없이 Third-party Dependency를 추가하지 않는다.
 
 이 조건을 만족하지 못하면 Codex는 Phase 구현을 시작하지 않는다.
 
+#### Structural UX Readiness
+
+UI를 포함하는 Phase는 해당 구현 구조에 영향을 주는 UX Decision이 unresolved 상태이면 구현을 시작할 수 없다.
+
+화면의 핵심 Layout, 주요 Control Placement / Hierarchy, List / Grid, 주요 Interaction / Gesture, Navigation과 Progress / Completion 구조는 해당 UI를 필요로 하는 가장 이른 Phase 이전에 사용자 승인으로 결정한다.
+
+Pending UX Decision 자체는 허용하지만 현재 Phase의 구조적 선행조건을 UI 구현 뒤나 Phase 12로 미루지 않는다.
+
+Future Phase에만 영향을 주는 Pending UX Decision은 그 미래 Phase의 Gate로 유지하며 현재 Phase의 Definition of Ready를 불필요하게 차단하지 않는다.
+
+이 범위 구분은 UI 구현 진입 조건에만 적용하며 기존 Merge / Open Decision 규칙 또는 H05의 범위를 변경하지 않는다.
+
+이미 Accepted된 동작은 다시 Open으로 만들지 않고 미정인 표현과 구조만 결정하며 `DESIGN.md` 37절의 Structural / Polish 분류를 따른다.
+
+Spacing, Visual Balance, 비구조적인 Typography / Corner Radius / Motion 조정은 Phase 12까지 가능하지만 구현 구조나 기존 Accessibility 기준에 영향을 주면 해당 UI Phase 이전 Gate에서 해결한다.
+
+#### Accessibility in Every UI Phase
+
+Accessibility는 Phase 12에서 처음 도입하지 않으며 `DESIGN.md` 33절의 기존 요구사항을 각 관련 UI Phase에서 구현하고 검증한다.
+
+- 충분한 Touch Target을 확인한다.
+- 주요 Control의 VoiceOver Label과 식별 가능 여부를 확인한다.
+- Dynamic Type을 고려하고 해당 화면의 핵심 Flow와 Layout을 검증한다.
+- Color만으로 상태를 전달하지 않는지와 충분한 Contrast를 확인한다.
+- 해당 Motion이 있으면 Reduce Motion 대응을 검토·검증한다.
+
+각 UI Phase의 Implementation Tasks, Acceptance Criteria와 Exit Criteria에 이 검증을 연결하고 적용 범위, 실행한 결과 및 미해결 사항을 보고한다.
+
+UI 자동 검증과 수동 확인을 해당 화면에 맞게 사용하며 기존 Physical Device Gate가 필요한 영역은 실제 iPhone 12 결과 없이 완료로 처리하지 않는다.
+
+이 규칙은 새로운 수치 Threshold나 접근성 기능을 추가하지 않으며 Phase 12는 이미 적용된 접근성의 종합 Regression / Hardening과 화면 간 일관성 검증을 담당한다.
+
 ### 3.12 Traceability Rule
 
 각 구현 작업은 가능한 한 `FEATURES.md`의 Feature ID와 연결한다.
@@ -662,6 +694,19 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 - Preview
 - Export
 
+## Decision Gate Before Implementation
+
+Home / Recent를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+
+- Recent의 List / Grid 또는 이에 준하는 Primary Layout 구조
+- 구현 구조에 영향을 주는 Recent Item의 핵심 정보 Hierarchy
+- New Vlog Entry의 Primary Placement
+- Orientation Selection의 Control 배치와 기존 Project Delete Confirmation의 Presentation 구조
+
+New Vlog의 Primary Action 역할, 이름 입력 없음, 9:16 / 16:9 선택과 자동 이름은 확정된 기준을 유지하며 여기서 List / Grid나 구체적인 배치를 선택하지 않는다.
+
+M02의 Empty / Corrupted Project 동작과 M06의 Thumbnail 책임은 이 Gate에서 해결하지 않는다.
+
 ## Implementation Tasks
 
 1. Home 화면을 구현한다.
@@ -677,6 +722,7 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 11. 기존 Recent Project를 다시 열 수 있게 한다.
 12. Project 삭제 시 Confirmation을 표시한다.
 13. Project 삭제 후 Home 상태를 갱신한다.
+14. Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Unit Tests
 
@@ -699,6 +745,12 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 - Orientation Selection UI 확인
 - Dynamic Type 기본 범위 확인
 
+## UI Accessibility Verification
+
+Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirmation에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - 사용자가 새 Vlog를 이름 입력 없이 만들 수 있다.
@@ -707,9 +759,13 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 - App 재실행 후 Recent가 유지된다.
 - Project 삭제가 정상 동작한다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -744,6 +800,21 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 - Torch
 - Dual Camera
 
+## Decision Gate Before Implementation
+
+Camera 화면의 구현 구조에 필요한 다음 UX Pending을 Phase 3 시작 전에 사용자 승인으로 해결한다.
+
+- Camera Control Placement / Hierarchy와 Overlay의 구조
+- Front / Rear Switch와 기존 Record / Import / Clips 진입 Control의 배치
+- Portrait / Landscape에서의 의도적인 Camera Layout
+- Orientation mismatch 안내의 Presentation 구조와 위치
+
+Primary Record Action, Front / Rear 지원, Project Orientation 고정과 조용한 mismatch 안내는 재결정하지 않으며 Camera / Audio / Orientation Behavior 자체의 M03 Pending은 유지한다.
+
+이 Gate는 Camera Shell과 현재 Phase의 Control 구조만 정하며 이후 Recording / Import 기능을 미리 구현하지 않는다.
+
+Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Phase 3 전에 결정하고 Phase 4 전용 표현만 다음 Phase의 Gate로 남긴다.
+
 ## Implementation Tasks
 
 1. `CameraCaptureService` Protocol과 Production Implementation을 작성한다.
@@ -760,6 +831,7 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 12. Project Orientation과 Device Orientation mismatch 상태를 Feature Layer에 제공한다.
 13. App Background 진입 시 Session을 안전하게 정지한다.
 14. Foreground 복귀 시 필요한 조건에서 Session을 재개한다.
+15. 현재 Phase의 Camera Controls, Front / Rear Switch와 Orientation 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Unit Tests
 
@@ -788,6 +860,12 @@ iPhone 12에서 다음을 검증한다.
 - Landscape Project에서 Orientation 안내
 - Background / Foreground Session 복구
 
+## UI Accessibility Verification
+
+현재 Phase의 Camera Controls, Front / Rear Switch와 Orientation 안내에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - Camera Preview가 안정적으로 표시된다.
@@ -796,9 +874,13 @@ iPhone 12에서 다음을 검증한다.
 - Project Orientation이 Device Rotation으로 변경되지 않는다.
 - iPhone 12에서 Preview가 안정적이다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 Recording 없이 Camera Infrastructure가 안정적으로 검증되어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -848,6 +930,18 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 
 ADR-021의 Project Invalid Target과 Late Commit 차단 계약도 Recording Finalization부터 적용하며 기존 Project Delete 경로와 연결한다.
 
+## Decision Gate Before Implementation
+
+Recording UI를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+
+- 확정된 Circular Progress Ring의 Layout-level 표현과 Record Control 주변 배치
+- 현재 녹화 시간 표시의 구체적인 Presentation 구조
+- Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
+
+Phase 3에서 승인한 Camera Layout을 재사용하며 최대 10초 자유 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
+
+Haptic 사용 여부와 Start / Stop / Auto-stop 세부사항은 H04의 별도 Repair 대상으로 유지하며 이 UX Gate에서 확정하거나 기존 문장을 변경하지 않는다.
+
 ## Implementation Tasks
 
 1. `AVCaptureMovieFileOutput` 기반 Recording을 구현한다.
@@ -873,6 +967,7 @@ ADR-021의 Project Invalid Target과 Late Commit 차단 계약도 Recording Fina
 21. Temporary / Intermediate Artifact는 Commit 또는 Recovery Classification 이후 폐기 가능하다고 확인된 경우에 정리하며 Cleanup 실패가 Committed Clip을 무효화하지 않게 한다.
 22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
 23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
+24. Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy와 Validation을 따르며 불완전한 Write를 정상 Final Media로 승격하지 않는다.
 
@@ -929,6 +1024,12 @@ iPhone 12에서 다음을 반드시 검증한다.
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
 - Recording Finalization 중 Project Delete 이후 Late Result와 Relaunch가 Project를 되살리지 않는지 확인
 
+## UI Accessibility Verification
+
+Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - 모든 저장된 Clip은 최대 10초다.
@@ -944,11 +1045,15 @@ iPhone 12에서 다음을 반드시 검증한다.
 - 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
 - Project Delete 이후 Recording Finalization이 Metadata를 Commit하거나 삭제된 Project를 재생성하지 않는다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 직접 촬영만으로 여러 Clip을 Project에 안전하게 추가할 수 있어야 한다.
 
 공통 Media Commit Lifecycle과 기본 Relaunch Recovery가 Production Recording 경로에 적용되고 위 Failure Boundary Test 및 iPhone 12 검증이 완료되어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -984,6 +1089,20 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Duplicate
 - Multi-track Timeline
 
+## Decision Gate Before Implementation
+
+Clip Management 구현 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+
+- Clip Organizer의 Horizontal Strip / Grid 등 Primary Layout
+- 이미 요구된 Drag Reorder의 상세 Interaction 구조
+- Clip Delete Action의 Control Placement
+- Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조
+- Project Duration과 Add Clip Action의 배치
+
+Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경하지 않으며 Delete 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원을 유지한다.
+
+정확한 Undo Presentation 선택은 Pending이며 이 Gate가 해결되기 전에는 해당 UI 구현을 시작하지 않는다.
+
 ## Implementation Tasks
 
 1. `ThumbnailService`를 구현한다.
@@ -1003,6 +1122,7 @@ iPhone 12에서 다음을 반드시 검증한다.
 15. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
 16. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
 17. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
+18. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 
@@ -1048,6 +1168,12 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Delete + Undo 안정성
 - 연속 Delete, Reorder 후 Undo 및 Pending Deletion 중 강제 종료 / Relaunch
 
+## UI Accessibility Verification
+
+Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - 여러 Clip의 순서를 변경할 수 있다.
@@ -1060,11 +1186,15 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Project Duration이 정확하다.
 - UI가 전문 Video Timeline처럼 복잡하지 않다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 촬영한 Clip만으로 Project 구조를 안정적으로 관리할 수 있어야 한다.
 
 Logical Deletion, Most-recent Undo, 결정적 복원과 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1142,6 +1272,14 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 
 사용자 승인 전에는 임의로 선택하지 않는다.
 
+### Structural UX Gate for Import Selection
+
+이 Phase가 이미 포함하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조는 Phase 6 구현 전에 사용자 승인으로 결정한다.
+
+Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을 준다면 그 필요한 부분도 Phase 6 전에 결정하고 나머지 Full Trim / Framing 구조는 Phase 7 Gate에서 해결한다.
+
+이 Gate는 Full Trim UX를 Phase 6으로 옮기거나 Re-trim / Source Reference 및 Working Media Technical Pending을 확정하지 않는다.
+
 ## Implementation Tasks
 
 1. PhotosPicker 기반 Video Selection을 구현한다.
@@ -1161,6 +1299,7 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
 16. Import / Normalization / Materialization 중 Project Delete가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
+18. Photos Import와 최대 10초 Segment Selection Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 Source Reference와 Re-trim 범위는 이 Phase의 별도 Decision Gate를 따른다.
 
@@ -1211,6 +1350,12 @@ Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 �
 
 Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
+## UI Accessibility Verification
+
+Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - 긴 Video도 선택할 수 있다.
@@ -1228,6 +1373,8 @@ Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project
 - Project Delete 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
 - Import Operation이 사용하는 Media는 Cancellation 요청만으로 삭제되지 않으며 Release와 Safe Classification 이후 정리된다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 촬영 Clip과 Imported Clip이 동일한 Project에서 함께 관리되어야 한다.
@@ -1235,6 +1382,8 @@ Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1274,6 +1423,17 @@ ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Techn
 - 두 단계로 분리할지
 - Pinch to Zoom을 MVP에 포함할지
 
+### Remaining Structural UX Before Phase 7
+
+- Primary Trim Interaction과 Thumbnail Filmstrip / Scrubbing 구조 및 Time Precision 표현
+- 이미 확정된 Drag / Position Framing의 상세 Interaction 구조
+- Crop Reset 필요 여부와 Crop UI 구조
+- Portrait / Landscape Project에서의 Editing Control 배치
+
+Phase 6에서 구현한 Import Segment Selection의 승인된 구조를 재사용하고 이 Phase에 남은 구조적 선택지는 사용자 승인 전까지 Pending으로 유지한다.
+
+Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop bake-in 금지와 Metadata 기반 비파괴 Framing 계약을 유지한다.
+
 ## Implementation Tasks
 
 1. `trimStart`와 `trimDuration` Editing State를 구현한다.
@@ -1286,6 +1446,7 @@ ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Techn
 8. Portrait Source와 Landscape Source를 올바르게 처리한다.
 9. Trim과 Framing 변경사항을 Interaction 종료 시 Autosave한다.
 10. Preview 중 원본 Media를 수정하지 않는다.
+11. Trim / Framing Controls와 선택 구간 표시에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Unit Tests
 
@@ -1315,6 +1476,12 @@ ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Techn
 - 16:9 Project
 - iPhone 12 UI Responsiveness
 
+## UI Accessibility Verification
+
+Trim / Framing Controls와 선택 구간 표시에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - 모든 Clip을 비파괴적으로 Trim할 수 있다.
@@ -1324,9 +1491,13 @@ ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Techn
 - Normalization 시 Project Crop으로 Framing 가능 영역이 손실되지 않았으며 보존된 Source 영역에서 Metadata로 Framing을 변경할 수 있다.
 - Trim과 Framing 변경이 App 재실행 후 유지된다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Framing을 가져야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1362,6 +1533,18 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 - Filter
 - Rendered Preview Cache unless performance issue proves need
 
+## Decision Gate Before Implementation
+
+Full Vlog Preview UI를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+
+- Full Preview Playback Control Structure / Hierarchy
+- Preview 진입·종료와 Project Editing 화면 복귀 Navigation 구조
+- Scrubber 등 M01의 미정 범위가 Control 구조에 영향을 주는 부분
+
+이 Gate는 Preview 기능 범위를 새로 확정하지 않으며 M01은 별도 Repair 대상으로 유지한다.
+
+Phase 12에는 승인된 Preview 구조의 시각적 Refinement만 남기며 UI 구현을 막는 미결정 사항은 Phase 8 전에 해결한다.
+
 ## Implementation Tasks
 
 1. `VideoCompositionBuilder`를 구현한다.
@@ -1377,6 +1560,7 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 11. Composition Build는 Main Actor를 장시간 Block하지 않는다.
 12. Preview Preparation / Playback의 Active Media Usage를 등록하고 실제 Reference Release 전까지 Physical Delete를 지연한다.
 13. 필요한 경우 Playback을 중단하며 오래된 State의 Async Composition 결과나 삭제된 Project의 Late Result를 적용하지 않는다.
+14. 승인된 Preview Controls와 진입·종료 Navigation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 이 계약으로 새로운 Preview Editing UI나 특정 Player Rebuilding Strategy를 확정하지 않는다.
 
@@ -1422,6 +1606,12 @@ iPhone 12에서 다음을 검증한다.
 - Preview 중 Project Mutation과 Project Delete 이후 Media 보존 / Release 및 다음 유효 Preview 상태
 - HDR / Dolby Vision에서 시작한 Clip의 안정적인 SDR Preview
 
+## UI Accessibility Verification
+
+승인된 Preview Controls와 진입·종료 Navigation에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - Preview 결과가 Project Metadata와 일치한다.
@@ -1434,9 +1624,13 @@ iPhone 12에서 다음을 검증한다.
 - Clip Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
 - 삭제된 Project 또는 이전 State의 Late Preview Result를 적용하지 않는다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 사용자가 Export 전에 현재 Vlog 결과를 신뢰할 수 있어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1481,6 +1675,18 @@ MVP Export의 HDR vs SDR 방향은 ADR-022에서 SDR로 해결되었으며 이 P
 
 정확한 SDR Color Profile / Tagging과 Working Media Codec / Container, Upscaling 및 Raster Dimension Rule은 Phase 6 전에 해결한 기준을 사용하며 Export Codec / Container를 Working Media와 자동으로 동일하게 결정하지 않는다.
 
+### Structural UX Gate Before Phase 9
+
+Export UI 구현 전에 다음 Presentation 구조를 사용자 승인으로 결정한다.
+
+- Export Action Placement와 Progress Presentation
+- Completion State의 UI 구조와 Share / Done Action 배치
+- 기존 실패 / Retry 상태의 Presentation이 구현 구조에 영향을 주는 부분
+
+Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정된 요구사항이며 재결정하지 않는다.
+
+이 Gate는 UI Decision Timing만 정의하며 M05의 Photos Save / Share File Lifecycle, Background Export, Retry Lifecycle과 Temporary File Policy는 별도 Pending으로 유지한다.
+
 ## Implementation Tasks
 
 1. Export 시작 시 현재 유효한 Project의 Immutable Logical Snapshot을 확보하고 Preview와 공통 Composition Definition을 사용하여 Snapshot을 Export한다.
@@ -1501,6 +1707,7 @@ MVP Export의 HDR vs SDR 방향은 ADR-022에서 SDR로 해결되었으며 이 P
 16. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
 17. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
 18. Project Delete 이후의 Uncommitted Operation-owned Artifact는 Safe Classification과 Usage 해제 후 정리하고 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
+19. Export Progress / Completion, Share / Done과 기존 실패 상태 표현에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 이 Lifecycle 계약은 B03의 Source-media Lifetime과 Project Validity 범위이며 Background / Retry와 Photos Save / Share Result File의 상세 정책은 M05 / Export Lifecycle Repair에서 별도로 다룬다.
 
@@ -1551,6 +1758,12 @@ iPhone 12에서 다음을 검증한다.
 - Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
 - SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Preview 색 / Framing 비교
 
+## UI Accessibility Verification
+
+Export Progress / Completion, Share / Done과 기존 실패 상태 표현에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Preview와 시각적으로 일치한다.
@@ -1565,11 +1778,15 @@ iPhone 12에서 다음을 검증한다.
 - Export Snapshot Media는 Operation 종료 또는 취소 후 실제 Reference Release까지 Physical Delete되지 않는다.
 - Project Delete는 Export Cancellation을 요청하고 Late Commit을 차단하며 삭제된 Project를 되살리지 않는다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 
 Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
+
+해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1720,6 +1937,7 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 8. Export 실패 후 Retry 가능 상태를 제공한다.
 9. Storage 부족 시 명확한 메시지를 제공한다.
 10. Technical Error String을 사용자에게 직접 노출하지 않는다.
+11. 기존 Permission / Error 안내와 Settings / Retry Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Tests
 
@@ -1737,6 +1955,12 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - 전화 또는 유사 System Interruption 가능한 범위
 - App Background Recording Interruption
 
+## UI Accessibility Verification
+
+기존 Permission / Error 안내와 Settings / Retry Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+
+현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
+
 ## Acceptance Criteria
 
 - Permission Denied가 Crash 또는 빈 화면으로 이어지지 않는다.
@@ -1744,9 +1968,13 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - Recording Failure가 기존 정상 Clip을 손상시키지 않는다.
 - Error 메시지에 내부 Framework 용어가 노출되지 않는다.
 
+- 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
+
 ## Exit Criteria
 
 주요 Failure Path가 정의되고 테스트되어야 한다.
+
+해당 화면의 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -1756,24 +1984,32 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 
 기능적으로 완성된 MVP를 Mellow의 브랜드와 디자인 원칙에 맞는 제품 수준의 사용자 경험으로 정리한다.
 
+이 Phase의 역할은 이미 승인·구현된 구조의 Visual Polish, 화면 간 일관성, Interaction Quality와 Accessibility Regression / Hardening이다.
+
+Home Primary Layout, Camera Control Structure, Recording Core Interaction, Clip Management, Trim / Framing Interaction, Preview Core Controls와 Export Completion Structure는 각각의 Owning Phase 구현 전에 결정되어 있어야 한다.
+
+Phase 12에서 이러한 구조를 처음 선택하거나 대규모 Structural Redesign을 수행하지 않으며 필요성이 확인되면 일반 Polish로 처리하지 않고 기존 Exception and Replanning Protocol에 따라 보고하고 사용자 승인을 받는다.
+
 ## Included
 
-- Brand Color Tokens
-- Typography Tokens
-- Corner Radius
-- Spacing
+- Brand Color Token Refinement
+- Non-structural Typography Refinement
+- Non-blocking Corner Radius Tuning
+- Spacing Refinement
 - Home Polish
-- Recent Card Polish
+- Recent Visual Polish
 - Camera Overlay Polish
 - Progress Ring Polish
 - Haptic Timing
-- Motion
-- Empty State
-- Loading State
-- VoiceOver
-- Dynamic Type
-- Contrast
-- Reduce Motion
+- Subtle Motion / Animation Refinement
+- 기존 Empty / Loading State의 Visual Polish
+- Cross-screen / Component Consistency
+- Orientation-specific Visual Polish
+- Final Interaction Quality Pass
+- VoiceOver Regression / Hardening
+- Dynamic Type Regression / Hardening
+- Contrast Consistency Verification
+- Reduce Motion Regression / Hardening
 
 ## Explicitly Excluded
 
@@ -1783,39 +2019,47 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - 음악
 - 자막
 - Transition
+- Core UX Structure의 최초 결정 또는 승인 없는 Structural Redesign
 
 ## Decision Gate Before Implementation
 
-다음 Design Open Decisions를 확정한다.
+이전 UI Phase의 Structural UX Gate와 해당 화면의 기존 Accessibility 적용·검증이 완료되었는지 확인한다.
 
-- Recent List 또는 Grid
-- New Vlog Placement
-- Camera Control Placement
-- Trim UI Visual
+다음 항목은 승인된 구조를 유지하는 비구조적 Refinement 범위에서 조정하며 Layout / Interaction 구조나 Accessibility 기준에 영향을 주면 일반 Polish로 확정하지 않는다.
+
+- Home / Recent / Camera / Trim / Preview / Export의 Spacing와 Visual Balance
+- 승인된 Trim Interaction 안에서의 Handle 등 세부 Visual Tuning
 - Haptic Timing
-- Export Completion Layout
 - 최종 Color Palette
-- Typography
-- Corner Radius System
+- Non-structural Typography Tuning
+- Non-blocking Corner Radius Tuning
+- Subtle Motion / Animation Polish
+
+Haptic Timing은 기존 항목을 보존하며 사용 여부와 Start / Stop / Auto-stop 및 강도 / Pattern은 H04의 별도 Repair에서 다루고 이번 역할 보정으로 확정하지 않는다.
+
+Recent List / Grid, New Vlog Placement, Camera Control Placement, Trim / Framing 구조, Preview Controls와 Export Completion 구조는 이 Phase의 최초 결정 Gate가 아니다.
 
 ## Implementation Tasks
 
-1. Design Tokens를 확정한다.
+1. 승인된 구조를 유지하는 범위에서 Design Tokens를 다듬는다.
 2. Brand Screen과 Content Screen의 색상 사용을 구분한다.
 3. Home과 Recent를 다듬는다.
 4. Orientation Selection을 다듬는다.
 5. Camera Overlay를 최소화한다.
 6. Recording Progress와 Haptic Timing을 실제 Device에서 조정한다.
-7. Loading State와 Empty State를 정리한다.
+7. 이미 정의된 Loading State와 Empty State의 Visual만 다듬으며 M02의 미정 동작을 선택하지 않는다.
 8. Motion을 Reduce Motion 환경에서 검증한다.
-9. 주요 Control에 VoiceOver Label을 추가한다.
-10. Touch Target을 점검한다.
-11. Dynamic Type에서 Layout이 깨지지 않는 범위를 확인한다.
-12. Landscape Safe Area를 검증한다.
+9. 각 UI Phase에서 이미 적용한 VoiceOver Label과 Control 식별을 전체 화면에서 회귀 검증한다.
+10. 이미 적용한 Touch Target과 Contrast 및 Color 이외 상태 표현의 화면 간 일관성을 점검한다.
+11. 각 UI Phase에서 적용한 Dynamic Type을 핵심 Flow와 Edge Case에서 종합 검증한다.
+12. Portrait / Landscape Safe Area와 Orientation별 Visual 일관성을 회귀 검증한다.
+13. Component Consistency와 최종 Interaction Quality를 확인하고 구조 변경이 필요하면 Replanning 대상으로 보고한다.
 
 ## Physical Device Test
 
 iPhone 12에서 모든 핵심 화면을 Portrait 및 Landscape Project 기준으로 확인한다.
+
+이미 적용된 VoiceOver / Dynamic Type / Touch Target / Contrast와 Reduce Motion 대응을 종합 검증하고 화면 간 Regression과 Edge Case 결과를 기록한다.
 
 ## Acceptance Criteria
 
@@ -1825,10 +2069,14 @@ iPhone 12에서 모든 핵심 화면을 Portrait 및 Landscape Project 기준으
 - Dynamic Type에서 핵심 Flow를 사용할 수 있다.
 - Haptic이 과도하지 않다.
 - 새 기능이 추가되지 않는다.
+- Accessibility가 각 UI Phase부터 적용되었으며 이 Phase의 종합 Regression / Hardening 결과가 확인된다.
+- Core UX Structure를 처음 선택하거나 일반 Polish로 재설계하지 않는다.
 
 ## Exit Criteria
 
 기능 완성도를 해치지 않으면서 UI 품질이 제품 수준에 도달해야 한다.
+
+기존 화면 구조를 유지하면서 Cross-screen Consistency와 Accessibility Regression / Hardening 검증이 완료되어야 하며 구조 변경이 필요한 경우 Replanning 승인 전에는 진행하지 않는다.
 
 ---
 
@@ -2132,12 +2380,42 @@ MVP 완료 후 다음 Release Planning에서 우선순위를 다시 평가한다
 
 다음 Decision은 관련 Phase 진입 전에 반드시 해결한다.
 
+Structural UX는 해당 UI를 필요로 하는 가장 이른 Phase 전에 결정하며 아래 항목은 선택 결과가 아닌 Decision Timing을 나타낸다.
+
+## Before Phase 2
+
+- Recent List / Grid 및 구현 구조에 영향을 주는 Item 정보 Hierarchy
+- New Vlog Primary Placement
+- Orientation Selection과 기존 Project Delete Confirmation의 Presentation 구조
+
+## Before Phase 3
+
+- Camera Control Placement / Hierarchy와 Overlay 구조
+- Front / Rear Switch 및 기존 진입 Control 배치
+- Portrait / Landscape Camera Layout과 Orientation mismatch 안내 Presentation
+
 ## Before Phase 4
 
 - Transactional Media Commit and Recovery 계약: ADR-020 Accepted 및 `ARCHITECTURE.md` 25절 / 59절을 기준으로 한다.
 - Durable Operation Identity, Committed Clip 정의, Failure Boundary와 Recovery Classification의 기본 검증 범위를 Phase 4에서 확인한다.
 
 이 Gate의 계약은 확정되어 있으며 구체적인 Durable Representation은 계약을 만족하는 가장 단순한 구현으로 선택할 수 있다.
+
+### Structural UX Pending Before Recording
+
+- 확정된 Circular Progress Ring의 Layout-level 표현
+- 현재 녹화 시간 표시의 구체적인 Presentation 구조
+- Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
+
+Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Haptic의 H04 Pending은 여기서 해결하지 않는다.
+
+## Before Phase 5
+
+- Clip Organizer Layout과 Drag Reorder의 상세 Interaction 구조
+- Delete Control Placement와 Snackbar / Toast 등 Undo Presentation Surface
+- Project Duration / Add Clip 배치
+
+ADR-021 / F-MVP-025의 Accepted Undo semantics와 정확한 Undo Window Duration의 Pending 상태를 유지한다.
 
 ## Before Phase 6
 
@@ -2153,10 +2431,25 @@ HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 P
 
 위 Technical Gate가 해결되기 전에는 실제 Normalization 구현을 시작하지 않으며 Tone-mapping의 필요한 미결정 사항도 관련 구현 전에 해결한다.
 
+Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
+
 ## Before Phase 7
 
 - Trim과 Crop의 화면 구성
 - Pinch to Zoom MVP 포함 여부
+- Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현
+- Drag / Position Framing 세부 구조와 Crop Reset 필요 여부
+- Portrait / Landscape Editing Control 배치
+
+Phase 6에서 승인된 구간 선택 구조는 재사용하며 ADR-022의 Framing 영역 보존과 Metadata Editing 계약은 변경하지 않는다.
+
+## Before Phase 8
+
+- Full Preview Control Structure / Hierarchy
+- Preview 진입·종료와 Project 화면 복귀 Navigation
+- M01 Pending 중 해당 UI 구조에 영향을 주는 부분
+
+Preview 기능 범위는 이번 Timing 보정으로 확정하지 않는다.
 
 ## Before Phase 9
 
@@ -2172,14 +2465,25 @@ HDR vs SDR은 ADR-022로 SDR 방향이 해결되었으며 Phase 9는 1080p / 30 
 
 정확한 SDR Profile / Tagging과 Working Media 세부 Gate는 Phase 6 이전에 해결하며 Working Media와 Export Codec / Container를 자동으로 동일하게 정하지 않는다.
 
+### Structural Export UI Pending
+
+- Export Action Placement와 Progress / Completion Presentation
+- Share / Done 배치와 기존 실패 / Retry 상태의 UI 구조
+
+Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 M05의 Export / Save / Share / Background Lifecycle은 Pending으로 유지한다.
+
 ## Before Phase 12
 
-- Recent List 또는 Grid
-- Camera Controls Layout
+- 이미 승인된 구조의 Spacing / Visual Balance와 화면 간 일관성 조정
 - Final Color Palette
-- Typography
-- Corner Radius
+- Non-structural Typography Tuning
+- Non-blocking Corner Radius Tuning
+- Subtle Motion / Animation Polish
 - Haptic Timing
+
+Home / Camera / Clip Management / Trim / Framing / Preview / Export의 Structural Decision은 앞선 Owning Phase Gate에서 해결되어 있어야 한다.
+
+Phase 12는 기존 Accessibility의 종합 Regression / Hardening 단계이며 Haptic의 기존 Pending은 H04 별도 Repair 대상으로 보존한다.
 
 ## Before Phase 15
 

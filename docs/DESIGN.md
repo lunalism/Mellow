@@ -612,6 +612,18 @@ Mellow는 초기 구현부터 Accessibility를 고려한다.
 
 Camera와 Video Preview 위의 Control도 접근 가능한 Label을 가져야 한다.
 
+이 기준은 Phase 12에서 처음 적용하지 않으며 각 관련 UI Phase의 Implementation, Acceptance Criteria와 Exit Criteria에 처음부터 연결한다.
+
+최소한 Phase 2의 Home / Recent, Phase 3 / 4의 Camera / Recording, Phase 5의 Clip Management, Phase 6의 Import Selection, Phase 7의 Trim / Framing, Phase 8의 Preview와 Phase 9의 Export에서 해당 화면에 적용 가능한 위 기준을 구현하고 검증한다.
+
+각 Phase는 Touch Target, VoiceOver Label과 Control 식별, Dynamic Type에서의 핵심 Flow, Color만으로 상태를 전달하지 않는지와 Contrast를 확인하고 해당 Motion이 있다면 Reduce Motion 대응을 검토·검증한다.
+
+화면별 검증 결과와 적용 범위 또는 미해결 사항을 남기며 필요한 접근성 검증을 Phase 12로 미룬 채 해당 Phase를 완료 처리하지 않는다.
+
+Phase 12에서는 이미 적용된 Accessibility의 화면 간 일관성, Regression과 Edge Case를 종합 검증하고 Hardening한다.
+
+이 적용 시점 원칙은 새로운 수치 기준이나 별도의 Accessibility 기능을 확정하지 않는다.
+
 ---
 
 ## 34. Safe Areas
@@ -674,6 +686,49 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 ---
 
 ## 37. Open Design Decisions
+
+### Decision Timing and Classification
+
+아래 Pending 선택지는 그대로 유지하며 실제 선택은 사용자 승인으로 확정한다.
+
+**Structural / Implementation-blocking Decision**은 핵심 Layout, Control Placement와 정보 Hierarchy, 주요 Interaction / Gesture, 화면 간 Navigation처럼 구현 구조에 영향을 주는 선택이다.
+
+해당 UI를 구현한 뒤 구조를 선택하지 않으며 이를 필요로 하는 가장 이른 Phase의 구현 시작 전에 결정해야 한다.
+
+**Polish / Non-blocking Decision**은 이미 승인된 구조를 유지하는 Spacing, Visual Balance, Corner Radius, 비구조적인 Typography, Visual Hierarchy 미세 조정과 Subtle Motion / Animation Refinement다.
+
+이러한 Refinement는 Phase 12까지 조정할 수 있지만 기능, Layout 구조 또는 기존 Accessibility 기준 충족에 영향을 주면 Structural Decision으로 분류하여 해당 Phase 이전에 해결한다.
+
+| Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
+| --- | --- | --- |
+| Phase 2 — Home / Recent / New Vlog | Recent List / Grid, 구현 구조에 영향을 주는 Item 정보 Hierarchy와 New Vlog Placement, Orientation Selection의 Control 배치, 기존 Project Delete Confirmation의 Presentation 구조 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
+| Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
+| Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
+| Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
+| Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
+| Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
+| Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber 등 M01의 Pending 범위가 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
+| Phase 9 — Export | Export Action 배치, Progress / Completion Presentation, Share / Done 배치, 기존 실패·Retry 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
+
+Phase 3은 Camera Shell과 현재 Phase의 Control 구조만 구현하며 이후 Phase의 Recording / Import 기능을 미리 구현하지 않는다.
+
+Phase 4 전용 표현이 Phase 3 Layout 구조에 이미 영향을 준다면 필요한 공통 구조 결정만 Phase 3 이전에 해결한다.
+
+Phase 6에서 구간 선택을 실제로 구현하므로 그 최소 구조를 Phase 7이나 Phase 12까지 미루지 않으며 Phase 7은 이미 승인된 부분을 재사용하고 나머지 Trim / Framing 구조를 구현 전에 결정한다.
+
+이미 확정된 New Vlog의 Primary Action 역할, Project Orientation 고정, Front / Rear Camera, 최대 10초 Recording과 Circular Progress Ring, Drag Framing / Reorder, Share / Done 및 Draft 유지 동작은 다시 Open으로 만들지 않는다.
+
+Clip Delete / Undo Presentation 선택은 `FEATURES.md`의 F-MVP-025와 ADR-021의 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원 의미를 변경하지 않는다.
+
+Trim / Framing 구조는 ADR-022의 Working Media Crop bake-in 금지와 Metadata 기반 Framing 계약을 유지한다.
+
+M01의 Preview 기능 범위와 M05의 Save / Share / Background / Retry Lifecycle은 이 표에서 해결하지 않으며 해당 UI에 필요한 미결정 사항을 구현 전에 해결해야 한다는 시점만 정의한다.
+
+Haptic 사용 여부, Start / Stop / Auto-stop, 강도와 Pattern 및 Timing은 H04의 별도 Repair 대상으로 유지하며 이 분류로 확정하거나 변경하지 않는다.
+
+Empty / Corrupted Project의 미정 UX와 Recent Thumbnail 책임도 이 분류에서 해결하지 않으며 기존에 정의된 화면의 Visual Tuning만 Polish로 다룬다.
+
+Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Redesign을 수행하는 Phase가 아니며 구조 변경이 필요하면 `ROADMAP.md`의 Exception and Replanning Protocol을 따른다.
 
 ### Home
 
@@ -745,4 +800,4 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Animation Curve
 - Logo 사용 위치
 
-이 Open Decision은 실제 화면 Prototype과 iPhone 사용성을 확인한 후 순차적으로 확정한다.
+이 Open Decision은 실제 화면 Prototype과 iPhone 사용성을 확인하되 Structural 항목은 해당 Owning Phase 구현 전에 사용자 승인을 받고 Polish 항목은 기존 구조와 Accessibility 기준을 유지하는 범위에서 Phase 12까지 조정한다.
