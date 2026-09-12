@@ -24,7 +24,8 @@
 4. `ARCHITECTURE.md`
 5. `DECISIONS.md`
 6. `ROADMAP.md`
-7. 실제 코드
+7. `RULES.md`
+8. 실제 코드
 
 코드가 문서와 충돌하는 경우 코드가 기준이 아니라 문서가 기준이다.
 
