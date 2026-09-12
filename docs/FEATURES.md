@@ -204,11 +204,39 @@ MVP에서는 사용자가 Vlog 프로젝트 이름을 직접 지정하지 않는
 
 ## F-MVP-007 — Draft Thumbnail
 
-Draft의 대표 이미지는 첫 번째 사용 가능한 Clip의 Thumbnail을 기본값으로 사용한다.
+Draft의 대표 이미지는 현재 Project의 logical Clip Order에서 첫 번째 Healthy / Usable Clip의 Thumbnail을 기본값으로 사용한다.
 
-프로젝트에 아직 Clip이 없다면 기본 placeholder를 표시한다.
+Representative Source의 `첫 번째`는 Clip 생성 시각이나 Filename이 아니라 current logical Clip Order를 기준으로 판단하며 Unavailable Clip은 Representative Source가 될 수 없다.
 
-모든 Clip이 Unavailable이면 정상 Media를 암시하지 않는 Placeholder를 표시한다.
+0 Clip Project 또는 모든 Clip이 Unavailable인 Project에는 usable Representative Source가 없으므로 다른 Project Thumbnail이나 임의 Media를 재사용하지 않고 정상 Media를 암시하지 않는 Placeholder를 표시한다.
+
+Representative Thumbnail은 Project / Clip State와 Media의 Source of Truth가 아닌 재생성 가능한 Derived / Cache Data다.
+
+Thumbnail Missing, Corruption, Generation Failure 또는 Cache Cleanup은 Project / Clip Corruption, Delete, Recording / Import / Editing 차단이나 Recent 전체 Load Failure를 의미하지 않는다.
+
+Representative Source는 Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Availability Change와 Project Reload 또는 Reconciliation 뒤에 current logical Clip Order를 기준으로 다시 평가한다.
+
+Representative Thumbnail은 가능한 범위에서 current effective edited appearance를 반영하며 Project Orientation, Framing, Transform, Direct-recorded Front Mirror Semantics 또는 SDR Interpretation이 바뀌면 stale Derived Representation을 영구 current Representative로 사용하지 않는다.
+
+Thumbnail Generation은 비동기일 수 있으며 Result 적용 직전에 Project / Clip Liveness, Clip Availability, Media Identity, current Representative Source Identity와 applicable Edit State가 유효한지 확인한다.
+
+위 조건이 바뀐 Stale Thumbnail Result는 폐기하며 deleted Project / Clip을 되살리거나 이전 Representative를 current Representative 위에 다시 적용하지 않는다.
+
+정확한 Thumbnail Frame Selection, Image Format / Dimensions, Placeholder Visual과 Cache / Retry Policy는 아직 확정하지 않는다.
+
+### Acceptance Criteria
+
+| 시나리오 | 기대 결과 |
+| --- | --- |
+| 여러 Healthy Clip이 있는 Project | current logical Clip Order에서 첫 번째 Healthy / Usable Clip을 Representative Source로 사용한다. |
+| 현재 첫 번째 Clip이 Unavailable인 Project | Unavailable Clip을 Representative Source로 사용하지 않고 다음 Healthy / Usable Clip을 사용한다. |
+| 0 Clip 또는 All-unavailable Project | unrelated Thumbnail이나 임의 Media를 재사용하지 않고 Placeholder를 표시한다. |
+| Reorder | 새 current logical Clip Order를 기준으로 Representative Source를 다시 평가한다. |
+| Representative Source의 Delete 또는 Unavailable Transition | 다음 Healthy / Usable Clip을 다시 찾고 없으면 Placeholder를 사용한다. |
+| Undo Restore 또는 successful Replace | current order와 restored / replaced Clip의 Usability를 기준으로 Representative Source를 다시 평가한다. |
+| Replace Failure | 기존 Unavailable Placeholder와 current Representative Source 상태를 유지한다. |
+| Thumbnail Missing, Corruption 또는 Generation Failure | Project / Clip Media와 Recent를 유지하고 Placeholder 또는 Retry를 허용한다. |
+| Edit 또는 Representative Source 변경 후 Late Thumbnail Result | current Representative Source나 valid edit state와 일치하지 않는 Result를 폐기하고 deleted Project / Clip을 되살리지 않는다. |
 
 ---
 
@@ -1282,7 +1310,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 프로젝트 이름은 생성 날짜 및 시간을 기준으로 자동 생성한다.
 - Project Rename은 MVP에서 제공하지 않는다.
 - Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
-- Draft의 대표 Thumbnail은 첫 번째 사용 가능한 Clip을 기준으로 한다.
+- Draft의 Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 기준으로 하며 Unavailable Clip은 건너뛰고 0 Clip 또는 All-unavailable Project에는 Placeholder를 사용한다.
+- Representative Thumbnail은 Derived / Cache Data이므로 Failure가 Project / Clip Corruption이나 Recent Load Failure를 의미하지 않으며 mutation과 stale async result에서 current Representative를 다시 검증한다.
 - Export 이후에도 Draft를 자동 삭제하지 않는다.
 - Draft를 다시 열어 수정하고 다시 Export할 수 있다.
 - MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
@@ -1352,6 +1381,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
 - 0 Clip Project의 Exact Empty-state Visual과 Project-level Corruption의 Exact Failure-state UI / Copy
 - Project Metadata Recovery Algorithm
+- Representative Thumbnail의 정확한 Frame Selection, Placeholder Visual, Image Format / Dimensions, Cache Directory, Eviction과 Retry Policy
 - Operation-aware Storage Preflight와 Fixed Global Threshold 미사용 — Resolved by ADR-024
 - 정확한 Safety Reserve 크기 — Pending, 관련 Media Operation Phase Gate
 - Recording / Import / Export의 정확한 Storage Estimate Formula와 계산 상수 — Pending, 각 Owning Phase Gate

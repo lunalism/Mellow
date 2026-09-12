@@ -708,6 +708,7 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 - 자동 Project 이름
 - Recent 정렬
 - 기본 Placeholder Thumbnail
+- Representative Thumbnail Source Selection과 Derived-data Failure Handling
 - Project 삭제 Confirmation
 
 ## Explicitly Excluded
@@ -733,7 +734,7 @@ New Vlog의 Primary Action 역할, 이름 입력 없음, 9:16 / 16:9 선택과 �
 
 ADR-026의 Empty Project Behavior는 이 Gate에서 구현하며 0 Clip Project를 정상 Draft로 표시하고 다시 열 수 있게 한다.
 
-Exact Empty Project Visual과 Project-level Corruption의 Exact Failure Presentation은 별도 UX Gate로 유지하며 M06의 Thumbnail 책임은 이 Gate에서 해결하지 않는다.
+Exact Empty Project Visual, Placeholder Presentation과 Project-level Corruption의 Exact Failure Presentation은 별도 UX Gate로 유지하며 Accepted Representative Thumbnail Source Selection과 Derived-data Failure 책임은 다시 Open으로 만들지 않는다.
 
 ## Implementation Tasks
 
@@ -753,6 +754,10 @@ Exact Empty Project Visual과 Project-level Corruption의 Exact Failure Presenta
 14. 0 Clip Project를 Recent에서 Valid Draft로 표시하고 다시 열며 자동 삭제하지 않는다.
 15. 0 Clip Project가 Project Orientation을 유지한 채 이후 Recording과 Photos Import 기능의 유효한 Target으로 남도록 Domain과 Persistence 경계를 유지한다.
 16. Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+17. Recent Project Representative Thumbnail Source를 current logical Clip Order와 Clip Usability로부터 평가하여 첫 번째 Healthy / Usable Clip Identity 또는 usable Source 없음을 반환하게 한다.
+18. 0 Clip 또는 All-unavailable Project는 unrelated Project Thumbnail이나 임의 Media를 재사용하지 않고 Placeholder를 사용하며 Thumbnail Missing, Corruption 또는 Generation Failure가 Project / Clip Corruption이나 Recent 전체 Load Failure가 되지 않게 한다.
+19. Representative Source Selection과 Derived Thumbnail Cache를 Project / Clip Metadata 및 Media와 분리하여 Stored Thumbnail Path를 Source of Truth로 사용하지 않게 한다.
+20. Phase 2는 future Reorder, Replace 또는 Clip Acquisition 기능을 선행 구현하지 않으며 source-selection boundary가 이후 current Clip Order와 Availability Mutation을 다시 평가할 수 있게 한다.
 
 ## Unit Tests
 
@@ -762,6 +767,12 @@ Exact Empty Project Visual과 Project-level Corruption의 Exact Failure Presenta
 - 자동 Project Name
 - Project Delete
 - 0 Clip Project Create / Read / Reopen
+- Representative Source Selection: 0 Clip Project
+- Representative Source Selection: one Healthy Clip
+- Representative Source Selection: multiple Healthy Clips
+- Representative Source Selection: first logical Clip Unavailable
+- Representative Source Selection: All-unavailable Project
+- Thumbnail Cache Missing / Corruption과 Generation Failure의 non-fatal Fallback
 
 ## UI Tests
 
@@ -792,6 +803,8 @@ Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirm
 - Project 삭제가 정상 동작한다.
 - 0 Clip Project가 Recent에 표시되고 다시 열리며 자동으로 삭제되지 않는다.
 - 0 Clip Project의 Project Orientation이 유지되고 이후 Recording과 Photos Import 기능의 유효한 Target으로 남는다.
+- Recent Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 Source로 사용하고 Unavailable Clip은 Source Selection에서만 건너뛴다.
+- 0 Clip 또는 All-unavailable Project는 unrelated Thumbnail을 재사용하지 않고 Placeholder를 사용하며 Thumbnail Failure가 Project / Clip 상태나 Recent 전체 Load를 손상시키지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1249,6 +1262,7 @@ ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 �
 - Logical Deletion과 Deferred Physical Cleanup
 - Most-recent Undo와 Process Termination Reconciliation
 - Thumbnail Late Result Validity
+- Representative Thumbnail Source Re-evaluation
 - Unavailable Clip Representation과 User-controlled Replace
 - Individual Clip Preview의 Availability와 Effective Edit State 연결 계약
 
@@ -1307,12 +1321,15 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 15. Undo는 기존 Clip Identity와 Media를 재사용하고 이전 Stable Anchor 뒤, 이전 Anchor가 없으면 다음 Anchor 앞, 둘 다 없으면 Clamp된 Original Index로 복원한다.
 16. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
 17. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
-18. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
+18. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity, Clip Usability, Media Identity, current Representative Source Identity와 applicable Edit State를 확인하여 Stale Result를 폐기한다.
 19. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다.
 20. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다.
 21. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다.
 22. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다.
 23. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+24. Clip Reorder, Delete, Undo Restore, successful Replace, Availability Change와 Representative Media Identity Change 뒤에는 current logical Clip Order에서 Representative Source를 다시 평가하며 current Source가 없으면 Placeholder를 사용한다.
+25. Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 successful Replacement 뒤에만 Representative Source를 다시 평가한다.
+26. Representative Source가 Delete 또는 Unavailable Transition으로 바뀌면 old cached Thumbnail을 current Representative로 계속 신뢰하지 않고 다음 Healthy / Usable Clip 또는 Placeholder를 사용하게 한다.
 
 정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 
@@ -1332,6 +1349,10 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 - Project Total Duration
 - Autosave
 - Healthy Clip Individual Preview 요청의 Availability와 Effective Edit State 전달
+- Representative Source Selection의 current logical Clip Order와 Unavailable Clip Skip
+- Reorder, Delete, Undo Restore, successful Replace와 Availability Change 후 Representative Source Re-evaluation
+- Representative Source Delete 또는 All-unavailable Transition의 Placeholder Fallback
+- Replace Failure의 current Representative State Preservation
 - Unavailable Clip이 기존 Position에 남고 Healthy Clip의 Reorder와 Editing을 막지 않는지 확인
 - Replacement Failure가 Placeholder, Project와 다른 Clip을 보존하는지 확인
 - Successful Replacement가 Unrelated Reorder 없이 Original Logical Slot을 복구하는지 확인
@@ -1342,7 +1363,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 - Pending Deletion 중 Process Termination 후 Relaunch에서 Undo와 Clip이 자동 복원되지 않는지 확인
 - 동일 Deletion / Cleanup의 반복 Reconciliation과 이미 정리된 Artifact 처리
 - Undo와 Cleanup 경합에서 Physical Delete 이후 Undo 성공이 발생하지 않는지 확인
-- Thumbnail 작업 중 Clip / Project 삭제 또는 Media Identity 변경 후 Late Result 폐기
+- Thumbnail 작업 중 Clip / Project 삭제, Representative Source 변경, Media Identity 또는 applicable Edit State 변경 후 Late Result 폐기
 - Project Delete의 영속적인 Invalid Target과 Metadata 정리 / Deferred Cleanup 순서
 
 ## UI Tests
@@ -1380,6 +1401,9 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 - Process Termination 이후 Undo Opportunity를 복원하거나 삭제된 Clip을 다시 표시하지 않는다.
 - Undo Opportunity 종료만으로 Local Media를 삭제하지 않으며 Physical Delete 안전 조건이 모두 충족된 이후 정리한다.
 - Active Usage가 있는 Media는 Release 전까지 유지되고 Stale Thumbnail Result는 삭제된 Clip이나 Project를 되살리지 않는다.
+- Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 Source로 사용하고 Reorder, Delete, Undo Restore, successful Replace와 Availability Change 뒤에 다시 평가한다.
+- Unavailable Clip은 Timeline Position을 유지하면서 Representative Source Selection에서만 건너뛰며 usable Source가 없으면 Placeholder를 사용한다.
+- Replace Failure는 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 Stale Thumbnail Result는 새 current Representative를 덮어쓰지 않는다.
 - Project Duration이 정확하다.
 - UI가 전문 Video Timeline처럼 복잡하지 않다.
 - Healthy Clip의 Individual Preview 요청은 대상 Clip의 Availability와 현재 Effective Edit State를 전달하며 다른 Clip의 Unavailable 상태 때문에 차단되지 않는다.
@@ -1634,6 +1658,7 @@ ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Portrait / Landscape Canvas
 - Trim Preview
 - Individual Clip Effective Edited-result Preview
+- Representative Thumbnail Edited-appearance Invalidation
 
 ## Explicitly Excluded
 
@@ -1681,6 +1706,8 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 12. Trim, Framing 또는 Transform 변경 뒤에는 기존 Individual Preview Composition을 Stale로 처리하고 다음 유효 Preview가 최신 Effective Edit State를 사용하게 한다.
 13. Capture-time Rear Zoom을 Editing Framing과 혼동하지 않는다.
 14. Trim / Framing Controls와 선택 구간 표시에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+15. Representative Clip의 Trim, Framing 또는 Transform 변경이 current effective edited appearance를 바꾸면 Derived Thumbnail을 Invalidate하고 regeneration 뒤 Project Orientation, Framing, Transform, Front Mirror Semantics와 SDR Interpretation을 반영할 수 있게 한다.
+16. Exact Thumbnail Frame Selection, Cache Key / Revision과 Invalidation Implementation은 별도 Technical / UX Detail로 유지하고 이 Phase에서 임의로 확정하지 않는다.
 
 ## Unit Tests
 
@@ -1703,6 +1730,8 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 - HDR / Dolby Vision에서 생성한 SDR Working Media의 Trim / Framing Metadata 적용과 비파괴성
 - Trim 또는 Framing 변경 뒤 Individual Clip Preview의 current effective edited result 반영
 - Direct-recorded Front Clip의 Mirrored Appearance, Project Orientation, SDR과 valid Audio를 반영한 Individual Clip Preview
+- Representative Clip의 Framing 또는 Transform 변경 뒤 regenerated Thumbnail의 current effective edited appearance 반영
+- Representative Thumbnail Generation 중 Edit State 변경 후 stale async Result 폐기
 
 ## Physical Device Test
 
@@ -1711,6 +1740,7 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 - 9:16 Project
 - 16:9 Project
 - Trim 또는 Framing 변경 후 Individual Clip Preview
+- Representative Clip의 Framing 또는 Transform 변경 뒤 Recent Thumbnail 재생성
 - iPhone 12 UI Responsiveness
 
 ## UI Accessibility Verification
@@ -1729,6 +1759,7 @@ Trim / Framing Controls와 선택 구간 표시에서 3.11절의 Touch Target, V
 - Trim과 Framing 변경이 App 재실행 후 유지된다.
 - Individual Clip Preview는 Raw Asset을 재생하지 않고 최신 Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR과 Audio를 반영한다.
 - Trim, Framing 또는 Transform 변경 후 다음 Individual Clip Preview는 Stale Composition을 재사용하지 않는다.
+- Representative Clip의 Trim, Framing 또는 Transform 변경 후 regenerated Thumbnail은 가능한 범위에서 current effective edited appearance를 반영하고 stale Result를 current Representative로 적용하지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -2162,6 +2193,7 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Multiple Export Operation Isolation
 - Replacement Crash / Failure Recovery
 - Project-level Metadata Corruption Isolation
+- Representative Thumbnail Cache and Late-result Hardening
 
 ## Explicitly Excluded
 
@@ -2209,6 +2241,10 @@ Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure Sta
 29. All-unavailable Project가 자동 삭제되지 않고 새 Direct Recording, Photos Import, Replace와 Delete를 허용하며 Full Preview와 Export는 Block되는지 검증한다.
 30. Replacement 중 Crash, Storage Failure, Cancellation 또는 Interruption이 기존 Unavailable Placeholder, Healthy Clip과 Project를 손상시키지 않는지 검증한다.
 31. Project Metadata Read, Decode 또는 Persistence Failure가 Home / Recent 전체 Load, 다른 Draft 또는 다른 Project Media Cleanup에 전파되지 않게 한다.
+32. Thumbnail Cache Missing, Corruption, Generation Failure, Cache Cleanup과 Repeated Regeneration이 Project / Clip Media, Recent 전체 Load 또는 다른 Draft에 destructive Failure로 전파되지 않는지 검증한다.
+33. Relaunch 또는 Reconciliation 뒤 current logical Clip Order와 Clip Availability를 기준으로 Representative Source를 다시 평가하고 0 Clip 또는 All-unavailable Project에는 unrelated Media가 아닌 Placeholder를 사용하게 한다.
+34. Thumbnail Generation 중 Project Delete, Clip Delete, Replace, Representative Source Change, Media Identity Change 또는 applicable Edit State Change가 발생하면 late Result를 폐기하고 deleted Project / Clip Resurrection이나 old Representative overwrite를 막는다.
+35. Thumbnail Failure 또는 Cache Cleanup을 Project Media Cleanup의 근거로 사용하지 않고 Thumbnail Cache와 Committed Project Media의 Lifecycle을 분리한다.
 
 ## Tests
 
@@ -2249,6 +2285,15 @@ Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure Sta
 - Replacement Crash, Storage Failure, Cancellation과 Placeholder Preservation
 - True Missing / Corrupt Media와 Metadata 없는 Recovery Candidate의 분리
 - Project-level Metadata Corruption Isolation과 다른 Draft 보호
+- Missing Thumbnail Cache
+- Corrupt Thumbnail Cache
+- Relaunch during Thumbnail Generation
+- Stale Late Thumbnail Result
+- Deleted Project Late Thumbnail Result
+- Replaced Clip Late Thumbnail Result
+- Repeated Thumbnail Regeneration
+- Representative Source Re-evaluation과 Multiple Draft Isolation
+- Thumbnail Failure가 Project Media Cleanup을 유발하지 않는지 확인
 
 ## Physical Device Test
 
@@ -2267,6 +2312,7 @@ Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure Sta
 - Missing / Corrupt Media와 All-unavailable Project의 Relaunch 후 Unavailable 상태, Replace / Delete 및 Healthy Clip 보호
 - Replacement 중 강제 종료, Storage Failure, Cancellation과 Placeholder Preservation
 - Project-level Metadata Corruption이 Home / Recent와 다른 Draft에 미치는 격리 결과
+- Thumbnail Cache Missing / Corruption, Repeated Regeneration과 Project Delete / Replace / Reorder 중 Late Thumbnail Result
 
 ## Acceptance Criteria
 
@@ -2293,6 +2339,9 @@ Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure Sta
 - Replacement Crash 또는 Failure는 기존 Placeholder, Healthy Clip과 Project를 보존한다.
 - Metadata 없는 Media는 ADR-020 Recovery Candidate 판정 전에 User-visible Clip으로 노출하지 않는다.
 - Project-level Metadata Corruption은 Home / Recent 전체 Load, 다른 Draft와 다른 Project Media에 영향을 주지 않는다.
+- Thumbnail Cache Missing, Corruption, Generation Failure 또는 Cache Cleanup은 Project / Clip Media Corruption, Project Delete, Recent 전체 Load Failure나 다른 Draft Cleanup을 의미하지 않는다.
+- Relaunch / Reconciliation과 mutation 뒤 Representative Source는 current logical Clip Order의 첫 번째 Healthy / Usable Clip으로 다시 평가되며 usable Source가 없으면 Placeholder를 사용한다.
+- Stale Thumbnail Result는 deleted Project / Clip을 되살리거나 old Representative를 current Representative 위에 덮어쓰지 않는다.
 
 ## Exit Criteria
 

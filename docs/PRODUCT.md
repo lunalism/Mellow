@@ -479,6 +479,22 @@ Clip이 0개인 Project는 유효한 Draft로 Recent에 표시되고 다시 열 
 
 0 Clip Project에서는 Recording과 Photos Video Import를 계속 사용할 수 있지만 Full Vlog Preview와 Export는 비활성화한다.
 
+Recent의 Project Representative Thumbnail Source는 현재 Project의 logical Clip Order에서 첫 번째 Healthy / Usable Clip이다.
+
+Representative Source의 `첫 번째`는 Clip 생성 시각이나 Filename이 아니라 현재 logical Clip Order를 기준으로 판단하며 Unavailable Clip은 Representative Source가 될 수 없다.
+
+0 Clip Project 또는 All-unavailable Project에는 usable Representative Source가 없으므로 다른 Project나 임의 Media를 재사용하지 않고 neutral 또는 generated Placeholder를 사용할 수 있다.
+
+Representative Thumbnail은 Project나 Clip Media의 Source of Truth가 아닌 재생성 가능한 Derived / Cache Representation이며 Thumbnail Missing, Corruption, Generation Failure 또는 Cache Cleanup은 Project Corruption이나 Project / Clip Delete의 근거가 아니다.
+
+Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Availability Change와 Project Reload 또는 Reconciliation 뒤에는 현재 Representative Source를 다시 평가한다.
+
+Replace가 완료되기 전 또는 실패한 경우에는 기존 Unavailable Placeholder와 현재 Representative Source 상태를 유지하며 성공한 Replace 뒤에만 current logical Clip Order를 기준으로 Representative Source를 다시 평가한다.
+
+Representative Thumbnail은 가능한 범위에서 current effective edited appearance와 일치해야 하므로 Project Orientation, Framing, Transform, Direct-recorded Front Mirror Semantics 또는 SDR Interpretation이 바뀌면 기존 Derived Representation을 최신 결과로 영구 사용하지 않는다.
+
+Thumbnail의 정확한 frame timestamp, Placeholder Visual, Image Format / Dimensions와 Cache Policy는 아직 확정하지 않는다.
+
 프로젝트 전체 삭제에는 Confirmation이 필요하다.
 
 앱 삭제 또는 기기 교체 이후의 복구는 MVP에서 보장하지 않으며 iCloud 동기화와 복구는 향후 검토 대상으로 유지한다.
@@ -1145,6 +1161,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
 - Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
+- Recent Project Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 Source로 사용하고 Unavailable Clip을 건너뛰며 0 Clip 또는 All-unavailable Project에는 unrelated Media가 아닌 Placeholder를 사용한다.
+- Representative Thumbnail은 Derived / Cache Data이므로 Thumbnail Missing, Corruption, Generation Failure 또는 Cache Cleanup이 Project / Clip Corruption, Delete 또는 사용 차단을 의미하지 않는다.
+- Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Availability Change, Project Reload 또는 Reconciliation 뒤에는 Representative Source를 다시 평가하고 Editing Appearance가 바뀌면 이전 Thumbnail을 영구 current Representative로 사용하지 않는다.
 - Individual Clip Preview는 Raw Source가 아닌 현재 effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 및 Audio를 반영한 effective edited result를 제공한다.
 - Full Vlog Preview는 현재 Clip Order와 같은 effective Editing Semantics를 사용하며 MVP에서 자동 Video / Audio Transition을 삽입하지 않는다.
 - Preview와 Export는 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirrored Appearance, SDR 해석 및 Audio Inclusion을 같은 의미로 적용한다.
@@ -1181,6 +1200,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Unavailable Clip의 정확한 Visual Design과 Replace UI Flow
 - Replacement가 동일 Clip Identity를 유지할지 여부와 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset 및 사용자 Reset 안내 정책
 - Project Metadata Corruption의 정확한 Recovery Algorithm과 안전한 Failure State의 UI Copy
+- Representative Thumbnail의 정확한 frame timestamp, Placeholder Visual, Image Format / Dimensions, Cache Directory와 Eviction / Retry Policy
 - 정확한 Undo Window 시간
 - Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식

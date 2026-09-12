@@ -498,7 +498,9 @@ Application Support/
                 └── ...
 ```
 
-Thumbnail은 다시 생성할 수 있는 Cache Data로 취급한다.
+Thumbnail은 Project / Clip Media와 별도 Lifecycle을 갖는 다시 생성 가능한 Cache Data로 취급한다.
+
+Thumbnail Cache의 정확한 Directory, Filename, Resolution, Image Format과 Eviction Policy는 이 Storage Layout에서 고정하지 않는다.
 
 Temporary Import와 Export File은 Temporary Directory 또는 별도의 Temporary Workspace에서 관리한다.
 
@@ -1431,17 +1433,53 @@ Thumbnail은 Project의 authoritative data가 아니다.
 
 Video File에서 다시 생성할 수 있는 Cache로 취급한다.
 
+Project / Clip Metadata와 Project-owned Media가 authoritative하며 Stored Thumbnail Path 자체를 Representative Source 또는 Project State의 Source of Truth로 사용하지 않는다.
+
+### Representative Source Selection
+
+Project Representative Thumbnail Source Selection은 Derived Rule이며 current Project logical Clip Order, Clip Availability, Clip Media Identity와 필요한 current effective Edit State를 Input으로 사용한다.
+
+이 Rule의 Output은 current logical Clip Order에서 첫 번째 Healthy / Usable Clip Identity 또는 usable Representative Source 없음이다.
+
+Unavailable Clip은 Representative Source가 될 수 없으며 0 Clip 또는 All-unavailable Project에서는 unrelated Project Thumbnail이나 임의 Media를 Source로 재사용하지 않고 Placeholder를 사용할 수 있다.
+
+Representative Source의 `첫 번째`는 Clip Creation Time이나 Filename이 아니라 current logical Clip Order를 기준으로 판단한다.
+
+Representative Source Selection은 SwiftUI View나 Stored Thumbnail Path에 숨기지 않고 Domain / Repository 또는 동등한 boundary에서 재평가할 수 있어야 한다.
+
+Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Clip Availability Change, Representative Media Identity Change와 Project Reload 또는 Reconciliation 뒤에는 Representative Source를 Invalidate 또는 Re-evaluate한다.
+
+Trim은 selected Thumbnail Frame Semantics에 영향을 줄 수 있으므로 Trim, Framing 또는 Transform 변경도 Thumbnail Derived Data의 Invalidation 대상이 될 수 있어야 한다.
+
+Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 Unavailable Placeholder와 current Representative Source 상태를 유지하며 successful Replacement 뒤에만 current logical Clip Order를 기준으로 다시 평가한다.
+
+Representative Thumbnail은 가능한 범위에서 current effective edited appearance와 일치하도록 Project Orientation, Framing, Transform, Direct-recorded Front Mirror Semantics와 Shared SDR Interpretation을 반영한다.
+
+Effective edited appearance의 의미는 45절의 Canonical Composition Semantics를 기준으로 하며 Thumbnail Generation이 별도 Editing Rule을 재구현하지 않는다.
+
+정확한 Thumbnail Frame Timestamp, Generation Algorithm, Image Crop Implementation, Cache Key / Revision과 Invalidation Implementation은 이 계약에서 고정하지 않는다.
+
+### Derived-data Failure and Cache Lifecycle
+
+Thumbnail Absence, Corruption, Generation Failure 또는 Cache Cleanup은 Clip Media Corruption이나 Project Corruption을 의미하지 않는다.
+
+Thumbnail Failure는 Project / Clip Metadata Delete, Recording / Import / Editing 차단, Recent 전체 Load Failure 또는 다른 Project Cleanup의 근거가 아니며 Placeholder Fallback과 Retry를 허용할 수 있다.
+
+Thumbnail Cache 삭제는 Project-owned Media 삭제를 의미하지 않으며 Thumbnail 재생성을 위해 Source Media를 변형하지 않는다.
+
 `ThumbnailService`가 AVAsset 기반 Thumbnail 생성을 담당한다.
 
 Thumbnail 생성은 Main Actor에서 수행하지 않는다.
 
 Thumbnail Cache가 삭제되어도 Project와 Clip은 정상적으로 유지되어야 한다.
 
-Thumbnail Generation과 기타 비동기 Derived Result는 Source Media의 Active Usage를 추적하고 결과 적용 시 Project와 Clip이 모두 유효하며 대상 Clip이 여전히 같은 Media Identity를 참조하는지 확인한다.
+Thumbnail Generation과 기타 비동기 Derived Result는 Source Media의 Active Usage를 추적하고 결과 적용 시 Project가 존재하며 Logical Deleted State가 아니고 대상 Clip이 존재하며 Usable하고 같은 Media Identity를 참조하는지 확인한다.
 
-Logical Deleted Project 또는 Clip은 유효한 결과 적용 Target이 아니며 Stale Result는 폐기할 수 있어야 한다.
+Thumbnail Result 적용 전에는 대상 Clip이 여전히 current Representative Source이고 generation 시작 시점에 사용한 applicable Edit Revision / State가 유효한지도 확인한다.
 
-Late Thumbnail Result로 삭제된 Clip이나 Project를 다시 생성하지 않는다.
+Logical Deleted Project 또는 Clip은 유효한 결과 적용 Target이 아니며 Stale Result는 폐기해야 한다.
+
+Late Thumbnail Result는 deleted Project / Clip을 다시 생성하거나 이전 Representative Thumbnail을 current Representative 위에 덮어쓰지 않는다.
 
 Thumbnail 생성이 Source Media를 Release하기 전에는 해당 File을 Physical Delete하지 않는다.
 

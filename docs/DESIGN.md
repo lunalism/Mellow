@@ -182,11 +182,19 @@ Clip이 0개인 유효한 Project도 Recent에서 다시 열 수 있으며 Error
 
 한 카드에 너무 많은 Metadata를 표시하지 않는다.
 
-Thumbnail은 첫 번째 사용 가능한 Clip을 기본 대표 이미지로 사용한다.
+Thumbnail은 현재 Project의 logical Clip Order에서 첫 번째 Healthy / Usable Clip을 기본 대표 이미지로 사용한다.
 
-Clip이 없는 프로젝트는 Mellow 스타일의 Placeholder를 표시한다.
+Unavailable Clip은 Recent의 Representative Thumbnail Source가 될 수 없으며 Representative Source의 `첫 번째`는 Clip 생성 시각이나 Filename이 아니라 current logical Clip Order를 기준으로 판단한다.
 
-정확한 Empty Project Visual은 Phase 2 Structural UX Gate에서 결정하되 0 Clip 상태를 Corruption처럼 표현하지 않는다.
+Clip이 없거나 모든 Clip이 Unavailable인 Project는 unrelated Media를 재사용하지 않는 neutral Placeholder를 표시할 수 있다.
+
+Representative Thumbnail은 현재 Project를 대표하는 Derived Representation이므로 Thumbnail Failure를 destructive Project Error처럼 표현하지 않으며 Project / Clip Media, Recent 진입과 다른 Project를 유지한다.
+
+Representative Source는 Reorder, Delete, Undo Restore, Replace 성공, Availability Change와 Project Reload 또는 Reconciliation 뒤에 다시 평가하며 Replace Failure는 기존 Unavailable Placeholder와 current Representative 상태를 유지한다.
+
+Representative Thumbnail은 가능한 범위에서 Project Orientation, Framing, Transform, Direct-recorded Front Mirror Semantics와 SDR Interpretation을 반영한 current effective edited appearance와 일치해야 한다.
+
+정확한 Placeholder Illustration, Thumbnail Crop, Corner Radius, Overlay, Badge, Unavailable Visual과 Thumbnail Frame Selection은 Phase 2 또는 해당 Owning UX Gate에서 결정하되 0 Clip 또는 All-unavailable 상태를 Corruption처럼 표현하지 않는다.
 
 ---
 
@@ -855,7 +863,7 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 구현과 Completi
 
 ADR-026의 Empty Project, Unavailable Clip, Preview / Export Eligibility와 Project-level Corruption 격리 동작은 확정되어 있으며 이 표에서 다시 Open으로 만들지 않는다.
 
-Empty / Corrupted Project의 Exact Visual, Replace UI와 Recent Thumbnail 책임은 각 Owning Phase Gate에서 결정하며 Phase 12는 기존에 정의된 화면의 Visual Tuning만 다룬다.
+Empty / Corrupted Project의 Exact Visual, Replace UI와 Recent Thumbnail의 Exact Placeholder / Crop / Frame Presentation은 각 Owning Phase Gate에서 결정하며 Accepted Representative Source와 Derived-data 책임은 다시 Open으로 만들지 않는다.
 
 Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Redesign을 수행하는 Phase가 아니며 구조 변경이 필요하면 `ROADMAP.md`의 Exception and Replanning Protocol을 따른다.
 
