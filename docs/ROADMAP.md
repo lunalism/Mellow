@@ -1000,13 +1000,30 @@ ADR-021의 Project Invalid Target과 Late Commit 차단 계약도 Recording Fina
 
 ADR-023의 Rear 1× Wide / Continuous Zoom, Front Mirroring, Camera / Microphone Permission, Orientation Match와 Mid-record Rotation 계약도 Phase 4 Recording Flow에 적용한다.
 
+ADR-024의 Operation-aware Storage Preflight, Operation-scoped Shortage, No Silent Quality Downgrade와 Runtime Disk Full Safety 계약도 최초 Media Writing 전에 적용한다.
+
 ## Decision Gate Before Implementation
+
+### Recording Storage Technical Gate
+
+실제 Recording Media Writing을 구현하기 전에 다음 항목을 사용자 승인으로 확정한다.
+
+- 최대 10초 Recording의 Estimated Peak Additional Storage 계산 방법
+- Recording에 필요한 Safety Reserve 정책
+- 승인된 1080p / 30 fps Capture Profile과 Storage Estimate의 관계
+
+정확한 Capture Codec / Bitrate, Estimate Formula의 상수와 Safety Reserve bytes는 이 Gate에서 실제 Pipeline Profile을 기준으로 결정하며 이번 Baseline에서 값을 임의로 고정하지 않는다.
+
+이 Gate는 ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Reserve` 계약을 구체화해야 하며 해결되기 전에는 실제 Recording Media Writing 구현을 시작하지 않는다.
+
+### Structural UX Gate
 
 Recording UI를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
 
 - 확정된 Circular Progress Ring의 Layout-level 표현과 Record Control 주변 배치
 - 현재 녹화 시간 표시의 구체적인 Presentation 구조
 - Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
+- Recording Storage 부족으로 해당 작업을 시작할 수 없고 기존 Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조
 
 Phase 3에서 승인한 Camera Layout을 재사용하며 최대 10초 자유 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
 
@@ -1049,6 +1066,12 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 31. Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 검증한다.
 32. Direct-recorded Front Clip이 Preview에서 본 Mirrored Appearance를 이후 Preview / Editing / Export에서도 유지하도록 승인된 Transform Ownership을 적용한다.
 33. Interruption은 Successful Manual Stop이나 Successful 10-second Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021에 따라 검증·복구·Late Commit 차단한다.
+34. Recording Operation과 실제 Media Writing을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 승인된 최대 10초 Capture Profile의 예상 Media, Staging / Finalization Overhead, Transactional Commit과 Recovery-safe Overlap 및 Safety Reserve를 반영한 Required Free Space를 계산한다.
+35. Recording Storage Preflight가 실패하면 Operation-owned Artifact나 부분 Operation State를 만들지 않고 Recording / Progress / 10초 Timer를 시작하지 않으며 기존 Clip과 Draft를 변경하지 않는다.
+36. Recording 공간 부족은 해당 Recording만 차단하고 앱 전체를 Fatal State로 전환하거나 1080p / 30 fps, Audio 또는 최대 Recording Duration을 조용히 낮추지 않는다.
+37. Preflight 통과 후 Write / Finalization 도중 Disk Full이 발생하면 Partial Output을 Committed Clip으로 표시하지 않고 기존 Committed Media와 다른 Draft를 보존하며 ADR-020 / ADR-021에 따라 Recovery Candidate와 Disposable Artifact를 분류한다.
+38. Storage 부족으로 Final Media 생성 후 Metadata Persistence가 실패하면 해당 Media와 Durable Operation을 Recovery Candidate로 보존하고 Cleanup 실패를 재시도 가능하게 한다.
+39. 사용자가 공간을 확보한 뒤 새로운 Recording을 재시도할 수 있게 하며 실패한 Operation의 안전한 Reconciliation이 기존 Project 상태를 손상시키지 않게 한다.
 
 Completion Haptic을 종료 직전 예고 신호로 사용하지 않으며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있게 한다.
 
@@ -1071,6 +1094,11 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 - Permission / Capability / Project Validity / Orientation 실패 시 Recording / Progress / Timer 미시작
 - Mid-record Rotation에서 Recording / Project Orientation / Rear Zoom 상태 유지와 다음 Recording 전 Orientation 재검증
 - Interruption과 Successful Completion State / Haptic Event 분리
+- 승인된 Capture Profile 기반 Recording Estimated Peak Additional Storage와 Safety Reserve 입력 적용
+- Storage Preflight 실패 시 Recording Operation / Progress / 10초 Timer 미시작
+- Recording Storage 부족이 다른 사용 가능한 Operation을 전역 차단하지 않는 상태 분리
+- Storage 부족 시 1080p / 30 fps, Audio와 최대 Duration 유지 및 Silent Downgrade 금지
+- Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
 
 ## Integration Tests
 
@@ -1096,6 +1124,12 @@ Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의
 Project Delete와 Recording Finalization을 Staging 완료, Materialization 이후 및 Metadata Commit 직전 경계에서 경합시키는 Integration Test를 수행한다.
 
 Project가 Invalid Target으로 전환된 이후에는 Late Commit과 Project Resurrection이 없고 Active Operation과 Recovery에 필요한 Media가 조기 삭제되지 않는지 확인한다.
+
+Recording Storage Preflight 부족 상태를 주입하여 Operation-owned Artifact, Recording, Progress와 10초 Timer가 시작되지 않고 기존 Committed Clip과 Draft가 유지되는지 확인한다.
+
+Staging Write, Finalization과 Metadata Persistence 경계에서 Runtime Disk Full을 주입하여 Partial Output이 성공으로 Commit되지 않고 Valid Media가 Recovery Candidate로 보존되며 안전하게 분류된 Disposable Artifact만 정리되는지 확인한다.
+
+공간 확보 후 Recording을 재시도하여 이전 실패의 Cleanup / Reconciliation과 새 Commit이 중복 Clip이나 기존 Media 손상을 만들지 않는지 확인한다.
 
 ## Physical Device Test
 
@@ -1125,7 +1159,9 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Camera Permission Denied / Restricted에서 Recording 차단 및 Import 접근 가능
 - Microphone Permission Denied / Restricted에서 Recording 차단, 무음 Recording 미생성 및 Import 접근 가능
 - Background Interruption
-- Storage 부족 Simulation 가능한 범위
+- 승인된 10초 Recording의 실제 Storage Growth와 Preflight Estimate의 합리성 측정
+- Recording Storage Preflight 부족 시 Recording / Progress / 10초 Timer 미시작과 기존 Clip / Draft 보존
+- Runtime Disk Full 주입 가능한 범위에서 Partial Output 미등록, Recovery Classification과 공간 확보 후 재시도
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
 - Recording Finalization 중 Project Delete 이후 Late Result와 Relaunch가 Project를 되살리지 않는지 확인
 - Record Button Tap / Recording Start 성공에 Haptic이 없고 Successful Manual Stop / 10-second Auto-stop 완료 시 subtle completion haptic이 동일한 종료 의미로 인지되는지 확인
@@ -1158,6 +1194,10 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - Metadata Save 직전 / 직후 실패 후에도 Valid Media가 잘못 정리되거나 Clip이 중복 등록되지 않는다.
 - 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
 - Project Delete 이후 Recording Finalization이 Metadata를 Commit하거나 삭제된 Project를 재생성하지 않는다.
+- Recording 시작 전 Operation-aware Storage Preflight가 승인된 Estimate와 Safety Reserve를 적용하고 부족하면 Operation / Recording / Progress / 10초 Timer를 시작하지 않는다.
+- Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 기존 Media를 보호하며 Recovery Candidate를 보존한다.
+- Storage 부족 때문에 Capture Quality, Frame Rate, Audio나 최대 Recording Duration을 자동으로 낮추지 않는다.
+- 공간 확보 후 Recording을 안전하게 재시도할 수 있다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1170,6 +1210,8 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 승인된 Recording Haptic 정책의 Unit Test와 iPhone 12 검증이 완료되어야 하며 Phase 12를 최초 구현이나 사용 여부 결정 시점으로 삼지 않는다.
 
 ADR-023의 Active Rear Zoom, Permission Readiness, Orientation Start Gate / Mid-record Rotation, Front Mirroring과 Interruption Safety 계약의 Test 및 iPhone 12 검증이 완료되어야 한다.
+
+ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Metadata Persistence Failure / Retry Integration Test 및 iPhone 12 실제 10초 Storage Growth 측정이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1370,6 +1412,8 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - 정확한 SDR Color Profile / Tagging
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
+- 선택된 Segment, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
+- Photos Import / Normalization에 필요한 Safety Reserve 정책
 
 이 Gate가 해결되지 않으면 실제 Normalization 구현을 시작하지 않는다.
 
@@ -1378,6 +1422,8 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개의 Decision일 수 있다.
 
 Tone-mapping 구현 방법은 여전히 Pending이며 필요한 결정은 관련 Normalization 구현 전에 해결하되 여기서 특정 Algorithm이나 Apple API 조합을 강제하지 않는다.
+
+Import Storage Estimate는 선택된 최대 10초 Segment와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 하며 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않는다.
 
 ### Existing Re-trim Decision Gate
 
@@ -1393,6 +1439,8 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 ### Structural UX Gate for Import Selection
 
 이 Phase가 이미 포함하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조는 Phase 6 구현 전에 사용자 승인으로 결정한다.
+
+Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조도 이 Gate에서 사용자 승인으로 결정한다.
 
 Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을 준다면 그 필요한 부분도 Phase 6 전에 결정하고 나머지 Full Trim / Framing 구조는 Phase 7 Gate에서 해결한다.
 
@@ -1418,6 +1466,10 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 16. Import / Normalization / Materialization 중 Project Delete가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
 18. Photos Import와 최대 10초 Segment Selection Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 선택된 최대 10초 Segment, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
+20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
+21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
+22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 Source Reference와 Re-trim 범위는 이 Phase의 별도 Decision Gate를 따른다.
 
@@ -1428,6 +1480,10 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - Source Metadata Mapping
 - Imported Clip SourceKind
 - 승인된 Working Media Profile과 Raster / Upscaling Policy의 Source Metadata Mapping
+- 선택된 Segment와 승인된 Normalization Pipeline 기반 Import Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
+- Import Storage Preflight 실패 시 Materialization / Normalization Operation 미시작
+- Storage 부족 시 Working Media Quality Silent Downgrade 금지
+- Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
 
 ## Integration Tests
 
@@ -1455,6 +1511,10 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
 - Import / Normalization / Materialization 각각에서 Project Delete를 경합시켜 Metadata Commit과 Resurrection 차단
 - Cancellation 요청 직후 아직 Media를 사용하는 Operation의 Cleanup 지연과 Release 이후 안전한 정리
+- 4K / HDR / Dolby Vision Source의 선택된 최대 10초 Segment에 대한 Staging + Normalization Peak Additional Storage Estimate
+- Import Storage Preflight 실패 시 Source Materialization / Normalization 미시작과 기존 Project Media 보존
+- Materialization / Normalization / Metadata Persistence 중 Runtime Disk Full에서 Partial Output 미등록, Photos 원본 불변과 Recovery Candidate 보호
+- Storage Failure Cleanup이 Safe Classification 이후에만 실행되고 공간 확보 후 Retry가 중복 Clip을 만들지 않음
 
 ## Physical Device Test
 
@@ -1467,6 +1527,10 @@ SDR, HDR, Dolby Vision 및 4K / High-resolution Source를 실제로 Import하여
 Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
 
 Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
+
+4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 10초 Segment로 실제 Import Peak Additional Storage와 Preflight Estimate의 합리성을 측정하며 전체 Photos 원본 복제를 전제로 하지 않는다.
+
+Storage Preflight 부족과 Normalization 중 Runtime Disk Full을 검증하여 Photos 원본과 기존 Project Media가 유지되고 Partial Output이 등록되지 않으며 공간 확보 후 안전하게 재시도되는지 확인한다.
 
 ## UI Accessibility Verification
 
@@ -1490,6 +1554,10 @@ Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch 
 - Cancel / Failure Cleanup은 확인된 Discardable Artifact에만 적용되며 반복 수행해도 정상 Media와 Recovery Candidate를 훼손하지 않는다.
 - Project Delete 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
 - Import Operation이 사용하는 Media는 Cancellation 요청만으로 삭제되지 않으며 Release와 Safe Classification 이후 정리된다.
+- Import 시작 전 Operation-aware Storage Preflight가 선택된 Segment와 승인된 Pipeline의 Estimate 및 Safety Reserve를 적용하고 부족하면 Materialization / Normalization을 시작하지 않는다.
+- Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호한다.
+- Storage 부족 때문에 승인된 1080p-class / 30 fps / SDR Working Media 방향을 자동으로 낮추지 않는다.
+- 공간 확보 후 Import를 안전하게 재시도할 수 있다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1500,6 +1568,8 @@ Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
+
+ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1788,6 +1858,8 @@ Preview와 동일한 결과를 하나의 1080p / 30 fps / SDR Video로 Export하
 - Audio Bitrate
 - Background Export 정책
 - Export Retry 정책
+- 현재 Immutable Export Snapshot의 Project Duration / State와 승인된 Export Profile을 반영한 Export Storage Estimate Formula
+- Export Temporary / Final Local Artifact와 Photos Save / Share Handoff까지의 Local Retention을 포함한 Safety Reserve 정책
 
 MVP Export의 HDR vs SDR 방향은 ADR-022에서 SDR로 해결되었으며 이 Phase에서 다시 결정하지 않는다.
 
@@ -1799,7 +1871,7 @@ Export UI 구현 전에 다음 Presentation 구조를 사용자 승인으로 결
 
 - Export Action Placement와 Progress Presentation
 - Completion State의 UI 구조와 Share / Done Action 배치
-- 기존 실패 / Retry 상태의 Presentation이 구현 구조에 영향을 주는 부분
+- 기존 실패 / Retry 상태와 Storage Preflight 실패의 Presentation이 구현 구조에 영향을 주는 부분
 
 Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정된 요구사항이며 재결정하지 않는다.
 
@@ -1826,6 +1898,11 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 17. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
 18. Project Delete 이후의 Uncommitted Operation-owned Artifact는 Safe Classification과 Usage 해제 후 정리하고 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
 19. Export Progress / Completion, Share / Done과 기존 실패 상태 표현에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+20. Export Operation을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 Immutable Export Snapshot의 Duration / State, 승인된 Export Profile, Temporary Output, Final Local Artifact, Photos Save / Share Handoff까지 Mellow가 보존하는 Local Artifact와 Safety Reserve를 반영한 Required Free Space를 계산한다.
+21. Export Storage Preflight가 실패하면 Export Operation이나 Partial Output을 시작하지 않고 해당 Export만 차단하며 기존 Draft와 Recording / Import 등 다른 사용 가능한 기능을 자동 차단하지 않는다.
+22. Storage 부족 때문에 승인된 1080p / 30 fps / SDR Export Quality, Audio, Project Duration이나 Clip 수를 조용히 낮추거나 제한하지 않는다.
+23. Preflight 통과 후 Temporary Export 또는 Finalization 중 Disk Full이 발생하면 Partial Output을 성공한 Export로 노출하지 않고 기존 Draft와 Source Media를 보존하며 ADR-020 / ADR-021에 따라 Artifact를 분류하고 Cleanup을 재시도 가능하게 한다.
+24. 사용자가 공간을 확보한 뒤 동일하거나 새로 획득한 승인된 Snapshot 정책에 따라 Export를 안전하게 재시도할 수 있게 하며 Local Storage Preflight가 Photos Library 저장 성공을 보장한다고 가정하지 않는다.
 
 이 Lifecycle 계약은 B03의 Source-media Lifetime과 Project Validity 범위이며 Background / Retry와 Photos Save / Share Result File의 상세 정책은 M05 / Export Lifecycle Repair에서 별도로 다룬다.
 
@@ -1836,6 +1913,10 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 - Export State Machine
 - Retry State
 - Export Snapshot의 최소 Composition State와 불변성
+- Export Snapshot Duration / State와 승인된 Profile 기반 Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
+- Export Storage Preflight 실패 시 Export Operation 미시작과 Operation-scoped Failure State
+- Storage 부족 시 Output Quality / Audio / Project Scope Silent Downgrade 금지
+- Runtime Disk Full의 Partial Output 비성공 처리와 기존 Draft 보존
 
 ## Integration Tests
 
@@ -1859,6 +1940,10 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 - Cancellation 요청 이후 아직 사용 중인 Source Media의 조기 삭제 방지
 - 늦게 생성된 Uncommitted Artifact의 안전한 Cleanup과 삭제된 Project Resurrection 방지
 - Project Delete가 이미 Photos에 저장 완료된 외부 Export 결과에 영향을 주지 않는지 확인
+- 짧은 Project와 더 큰 Project에서 Immutable Export Snapshot Duration / State 기반 Peak Additional Storage Estimate 검증
+- Export Storage Preflight 실패 시 Export Operation / Partial Output 미시작과 기존 Draft 보존
+- Temporary Export와 Finalization 중 Runtime Disk Full에서 Partial Output 비노출, Source Media 보호와 Retry 가능한 Cleanup
+- 공간 확보 후 Export Retry와 Local Preflight 통과 이후 별도로 실패할 수 있는 Photos Save 상태 분리
 
 ## Physical Device Test
 
@@ -1871,7 +1956,9 @@ iPhone 12에서 다음을 검증한다.
 - Share Sheet
 - Export Cancel
 - Export Retry
-- Storage 부족 상황 가능한 범위
+- 짧은 Project와 더 큰 Project의 실제 Export Peak Additional Storage 및 Snapshot 기반 Estimate 합리성
+- Export Storage Preflight 부족 시 Export 미시작, 기존 Draft 보존과 다른 기능의 불필요한 전역 차단 없음
+- Runtime Disk Full 주입 가능한 범위에서 Partial Output 미노출, Cleanup / Recovery와 공간 확보 후 Retry
 - Background 이동 시 현재 정책
 - Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
 - SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Preview 색 / Framing 비교
@@ -1895,6 +1982,10 @@ Export Progress / Completion, Share / Done과 기존 실패 상태 표현에서 
 - 일반 Clip Mutation이 진행 중인 Export 결과를 소급 변경하지 않는다.
 - Export Snapshot Media는 Operation 종료 또는 취소 후 실제 Reference Release까지 Physical Delete되지 않는다.
 - Project Delete는 Export Cancellation을 요청하고 Late Commit을 차단하며 삭제된 Project를 되살리지 않는다.
+- Export 시작 전 Operation-aware Storage Preflight가 Immutable Snapshot Duration / State와 승인된 Profile의 Estimate 및 Safety Reserve를 적용하고 부족하면 Export를 시작하지 않는다.
+- Runtime Disk Full을 성공으로 표시하거나 Partial Output을 정상 Export로 노출하지 않고 기존 Draft와 Source Media를 보호한다.
+- Storage 부족 때문에 Export Quality / Audio를 자동으로 낮추거나 Project Duration / Clip Count 제한을 추가하지 않는다.
+- 공간 확보 후 Export를 안전하게 재시도할 수 있으며 Local Storage Preflight는 Photos Save 성공을 보장하지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1903,6 +1994,8 @@ Export Progress / Completion, Share / Done과 기존 실패 상태 표현에서 
 Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 
 Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
+
+ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Partial Output / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1914,7 +2007,7 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 
 여러 Draft와 Media File이 장기간 사용되어도 손상이나 유실 가능성을 최소화한다.
 
-이 Phase는 Media Commit Lifecycle을 처음 만드는 단계가 아니며 Phase 4의 Recording과 Phase 6의 Import에 이미 적용된 계약을 강화한다.
+이 Phase는 Media Commit Lifecycle이나 Storage Policy를 처음 만드는 단계가 아니며 Phase 4의 Recording, Phase 6의 Import와 Phase 9의 Export에 이미 적용된 ADR-020 / ADR-021 / ADR-024 계약을 반복 Low-storage, Disk Full, Cleanup과 Relaunch 조건에서 강화한다.
 
 ## Included
 
@@ -1933,6 +2026,10 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 - Deferred Physical Deletion Reconciliation
 - Project Logical Deletion과 Cleanup Retry
 - Stale Async Result Discard
+- Repeated Low-storage Launch Hardening
+- Runtime Disk Full / Retry Hardening
+- Storage Change Between Preflight and Write
+- Safe Disposable / Confirmed Orphan Cleanup under Storage Pressure
 
 ## Explicitly Excluded
 
@@ -1959,6 +2056,12 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 14. Project Logical Deletion의 영속화, Metadata 정리와 Physical Cleanup 사이에서 강제 종료하고 반복 Relaunch하여 Project Resurrection과 중복 Deletion State가 없는지 확인한다.
 15. Deferred Physical Deletion을 Reconciliation하며 Active Usage / Recovery / Undo 조건을 다시 확인하고 이미 정리된 Artifact를 안전하게 처리한다.
 16. Recording / Import / Preview / Export / Thumbnail의 Stale Async Result를 적용하지 않고 삭제된 Project나 Clip을 되살리지 않는지 검증한다.
+17. 반복 Low-storage 상태로 App을 실행해도 기존 Draft와 Committed Media를 자동 삭제하거나 앱 전체를 Fatal State로 고정하지 않는지 검증한다.
+18. Preflight 이후 실제 Write 전에 다른 Process나 System이 Storage를 소비하는 조건과 반복 Runtime Disk Full / 공간 확보 / Retry를 검증한다.
+19. Failed Cleanup과 Stale Disposable Artifact를 반복 Reconciliation하여 안전하게 분류된 Disposable Artifact와 Confirmed Orphan만 정리하고 Recovery Candidate, Undo Candidate, Active Media와 다른 Reference를 보호한다.
+20. Storage Pressure에서도 Recovery Classification과 Active Usage / Undo / Reference 확인을 생략하지 않고 Multiple Draft Isolation을 유지한다.
+21. 반복 Cleanup이 Idempotent하며 이미 정리된 Artifact나 실패한 이전 Operation 때문에 정상 Draft가 손상되지 않는지 확인한다.
+22. Phase 4 / 6 / 9의 Operation-aware Preflight와 Runtime Disk Full 계약이 Hardening 과정에서 하나의 고정 Global Threshold나 User Media 자동 삭제 정책으로 대체되지 않게 한다.
 
 ## Tests
 
@@ -1981,6 +2084,12 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 - Deferred Physical Delete의 Repeated Relaunch Reconciliation
 - Project Cleanup Failure / Retry와 이미 삭제된 Target의 반복 처리
 - Stale Async Result Discard와 다른 Draft Isolation
+- Repeated Low-storage Launch와 기존 Draft / Committed Media 보존
+- Storage Change Between Preflight and Write 및 반복 Runtime Disk Full / Space Recovery / Retry
+- Failed Cleanup과 Stale Disposable Artifact의 Idempotent Reconciliation
+- Recovery Candidate / Undo Candidate / Active Media / Referenced Media 보호
+- Confirmed Orphan만 안전 조건 충족 후 정리
+- Storage Pressure에서 Multiple Draft Isolation과 User Draft 자동 삭제 금지
 
 ## Physical Device Test
 
@@ -1991,6 +2100,9 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 - Photos 원본 삭제 이후 Imported Clip 확인
 - Recording / Import 저장 경계별 강제 종료와 반복 Relaunch 후 Clip 중복 및 정상 Media 유실 여부
 - Undo Window 중 강제 종료와 Project Delete Cleanup 실패 후 반복 Relaunch
+- 반복 Low-storage Launch와 기존 Draft / Committed Media 보존
+- Preflight 이후 Storage 변화 및 Runtime Disk Full 반복 후 공간 확보와 Retry
+- Failed Cleanup / Stale Disposable / Confirmed Orphan Reconciliation과 Multiple Draft Isolation
 
 ## Acceptance Criteria
 
@@ -2005,6 +2117,10 @@ Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integratio
 - Process Termination 후 Pending Deletion을 처리해도 Undo Opportunity와 삭제된 Clip이 다시 표시되지 않는다.
 - Cleanup 실패 또는 Late Result가 Logical Deleted Project를 다시 생성하지 않는다.
 - Deletion / Cleanup을 반복해도 중복 상태나 이미 삭제된 Artifact의 오류가 반복되지 않는다.
+- 반복 Low-storage Launch와 Runtime Disk Full / Retry에서도 기존 Draft, Committed Media와 Recovery Candidate가 보존된다.
+- Storage Pressure 때문에 User Draft를 자동 삭제하거나 Recovery / Undo / Active Usage / Reference 확인을 생략하지 않는다.
+- Failed Cleanup, Stale Disposable Artifact와 Confirmed Orphan Reconciliation이 Idempotent하고 다른 Draft에 영향을 주지 않는다.
+- Preflight 이후 실제 Write 전 Storage가 변해도 Partial Result를 성공으로 Commit하지 않는다.
 
 ## Exit Criteria
 
@@ -2013,6 +2129,8 @@ Draft Persistence가 실제 장기 사용을 견딜 수 있는 수준이어야 �
 Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeated Relaunch, Recovery Classification, Duplicate Prevention, Cleanup Idempotency와 Multiple Draft Isolation 검증이 통과해야 한다.
 
 Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 Deletion / Relaunch / Cleanup Retry 조건에서 검증해야 한다.
+
+Phase 4 / 6 / 9의 ADR-024 Storage 계약을 반복 Low-storage Launch, Storage Change Between Preflight and Write, Runtime Disk Full / Retry, Failed Cleanup과 Multiple Draft Isolation 조건에서 검증해야 한다.
 
 ---
 
@@ -2305,6 +2423,12 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 10. Export 반복 후 Temporary File Cleanup을 확인한다.
 11. 비정상 발열이 지속되는 Flow를 조사한다.
 12. 정규화된 SDR Working Media의 Preview Stability와 동일한 Project State의 Export Color / Framing Parity를 iPhone 12에서 검증한다.
+13. 승인된 10초 Recording의 실제 Storage Growth를 측정하고 Phase 4 Estimate와 비교한다.
+14. 4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 10초 Segment Import에서 실제 Peak Additional Storage를 측정하고 Phase 6 Estimate와 비교한다.
+15. Short / Medium / Large Project Export의 실제 Peak Additional Storage를 측정하고 Snapshot Duration / State 기반 Phase 9 Estimate와 비교한다.
+16. Recording / Import / Export 각각의 관측값과 승인된 Safety Reserve가 Estimate Error, Filesystem Overhead, Metadata Persistence와 작은 예기치 않은 Temporary Growth에 합리적인 여유를 제공하는지 검토한다.
+17. Recording / Import / Export를 반복하여 Operation-owned Temporary Artifact가 안전한 Cleanup 이후 비정상적으로 누적되지 않는지 측정한다.
+18. 측정 결과가 기존 Estimate Formula나 Safety Reserve 변경을 요구하면 수치를 임의로 조정하지 않고 Exception and Replanning Protocol과 해당 Decision 기록을 따른다.
 
 이 검증은 성능 측정 범위를 연결하는 것이며 새로운 수치 Threshold를 확정하지 않고 M07 Performance Threshold는 별도 Repair 대상으로 유지한다.
 
@@ -2316,10 +2440,15 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 - Large Project가 임의 Crash하지 않는다.
 - Export 중 Memory Pressure로 반복 종료되지 않는다.
 - App 사용 후 Temporary Media가 비정상적으로 누적되지 않는다.
+- Recording 실제 Storage Growth, Import Normalization Peak Additional Storage와 Export Peak Additional Storage가 iPhone 12에서 측정되고 각 승인된 Estimate와 비교된다.
+- Safety Reserve의 합리성이 실제 관측값과 반복 Operation / Cleanup 결과를 근거로 검토된다.
+- Storage 측정 결과를 이유로 M07의 새로운 수치 Pass / Fail Threshold를 임의로 만들지 않는다.
 
 ## Exit Criteria
 
 iPhone 12에서 핵심 Flow의 안정성과 성능이 QA 가능한 수준이어야 한다.
+
+Recording / Import / Export의 실제 Peak Additional Storage, 승인된 Estimate 대비 관측값, Safety Reserve 합리성과 반복 Temporary Cleanup 결과가 기록되어야 하며 수치 변경이 필요하면 승인된 Replanning 절차를 따라야 한다.
 
 ---
 
@@ -2559,14 +2688,16 @@ ADR-023의 Rear 1× Wide / Continuous Zoom, Front Zoom 제외 / Mirroring, Permi
 
 - Transactional Media Commit and Recovery 계약: ADR-020 Accepted 및 `ARCHITECTURE.md` 25절 / 59절을 기준으로 한다.
 - Durable Operation Identity, Committed Clip 정의, Failure Boundary와 Recovery Classification의 기본 검증 범위를 Phase 4에서 확인한다.
+- 최대 10초 Recording의 Estimated Peak Additional Storage 계산 방법, Recording Safety Reserve와 승인된 1080p / 30 fps Capture Profile의 관계를 실제 Media Writing 전에 승인한다.
 
-이 Gate의 계약은 확정되어 있으며 구체적인 Durable Representation은 계약을 만족하는 가장 단순한 구현으로 선택할 수 있다.
+이 Gate의 Transactional 계약과 ADR-024의 Operation-aware Storage 방향은 확정되어 있으며 구체적인 Durable Representation, Capture Codec / Bitrate 상수, Estimate Formula와 Safety Reserve bytes는 필요한 승인 Gate에서 실제 Pipeline Profile을 기준으로 결정한다.
 
 ### Structural UX Pending Before Recording
 
 - 확정된 Circular Progress Ring의 Layout-level 표현
 - 현재 녹화 시간 표시의 구체적인 Presentation 구조
 - Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
+- Recording Storage 부족 상태와 공간 확보 후 Retry의 Presentation 구조
 
 Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Recording Haptic은 H04에서 승인된 Start 없음 / Successful Manual Stop 및 10-second Auto-stop의 subtle completion 정책을 따른다.
 
@@ -2589,12 +2720,16 @@ ADR-021 / F-MVP-025의 Accepted Undo semantics와 정확한 Undo Window Duration
 - 정확한 SDR Color Profile / Tagging
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
+- 선택된 Segment와 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
+- Photos Import / Normalization에 필요한 Safety Reserve 정책
 
 HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 Project Crop bake-in 금지 / Framing 영역 보존은 ADR-022 Accepted 기준이다.
 
 위 Technical Gate가 해결되기 전에는 실제 Normalization 구현을 시작하지 않으며 Tone-mapping의 필요한 미결정 사항도 관련 구현 전에 해결한다.
 
-Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
+Import Estimate는 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않고 선택된 최대 10초 Segment의 실제 Materialization / Normalization Pipeline을 기준으로 한다.
+
+Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
 
 ## Before Phase 7
 
@@ -2625,15 +2760,19 @@ Preview 기능 범위는 이번 Timing 보정으로 확정하지 않는다.
 - Audio Bitrate
 - Background Export 정책
 - Export Retry 정책
+- Immutable Export Snapshot의 Project Duration / State와 승인된 Export Profile 기반 Export Storage Estimate Formula
+- Temporary / Final Local Artifact와 Photos Save / Share Handoff까지의 Local Retention을 반영한 Export Safety Reserve 정책
 
 HDR vs SDR은 ADR-022로 SDR 방향이 해결되었으며 Phase 9는 1080p / 30 fps / SDR Export와 Preview Color / Framing Parity를 검증한다.
 
 정확한 SDR Profile / Tagging과 Working Media 세부 Gate는 Phase 6 이전에 해결하며 Working Media와 Export Codec / Container를 자동으로 동일하게 정하지 않는다.
 
+Export Storage Estimate Formula와 Safety Reserve는 위 Codec / Container / Bitrate / Audio Profile 결정 후 실제 Export 구현 전에 승인하며 Local Storage Preflight가 Photos Save 성공을 보장한다고 해석하지 않는다.
+
 ### Structural Export UI Pending
 
 - Export Action Placement와 Progress / Completion Presentation
-- Share / Done 배치와 기존 실패 / Retry 상태의 UI 구조
+- Share / Done 배치와 기존 실패 / Retry 및 Storage Preflight 실패 상태의 UI 구조
 
 Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 M05의 Export / Save / Share / Background Lifecycle은 Pending으로 유지한다.
 

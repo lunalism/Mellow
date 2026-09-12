@@ -608,6 +608,14 @@ Imported Working Media에는 ADR-022 및 38절의 SDR / Frame Rate / Spatial Nor
 | G. Metadata Persistence 성공 후 UI Update 이전 Crash | Relaunch 시 Persisted Metadata를 Source of Truth로 사용하며 동일 Clip을 중복 생성하지 않는다. |
 | H. Cleanup 실패 | 이미 Committed Clip의 유효성에 영향을 주지 않으며 Cleanup을 재시도할 수 있어야 한다. |
 
+Storage Preflight를 통과한 뒤 Runtime Disk Full 또는 Write Failure가 발생해도 이 Failure Boundary 계약을 그대로 적용한다.
+
+Storage 실패로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하거나 성공으로 표시하지 않고 기존 Committed Media, 다른 Draft와 Photos 원본을 보호한다.
+
+Final Media 생성 후 Metadata Persistence가 Storage 부족으로 실패하면 해당 Media를 즉시 Orphan으로 삭제하지 않고 Boundary F의 Recovery Candidate로 유지한다.
+
+Storage Pressure는 Recovery Classification, Project Validity 또는 Active Usage 확인을 생략할 근거가 아니다.
+
 ### Atomicity and Ordering
 
 File과 SwiftData Metadata를 하나의 Atomic Transaction으로 취급하지 않는다.
@@ -1232,9 +1240,13 @@ Mellow는 전체 Vlog Duration이나 Clip Count에 임의의 Product Limit을 �
 
 Composition은 Timeline Metadata 중심으로 구성한다.
 
-Export 전 사용할 수 있는 Storage를 확인한다.
+Export 전 현재 Immutable Export Snapshot의 Project Duration과 승인된 Output Profile을 기준으로 Operation-specific Storage Requirement를 판단한다.
 
-Storage가 부족하면 Export 시작 전에 가능한 한 사용자에게 안내한다.
+Estimate에는 Temporary Export Output, Final Local Export Artifact, Photos Save / Share Handoff까지 필요한 Local Artifact와 Safety Reserve를 포함한다.
+
+Storage가 부족하면 Export 시작 전에 해당 Export를 차단하고 사용자에게 안내하며 기존 Draft와 다른 Media Operation을 자동으로 차단하지 않는다.
+
+Local Storage Preflight는 Photos Library의 최종 Save 성공을 보장하지 않는다.
 
 ---
 
@@ -1564,17 +1576,83 @@ Deferred Cleanup과 실패한 Project Cleanup을 반복해도 다른 Draft를 �
 
 ## 62. Storage Monitoring
 
-`StorageMonitor`는 Media 생성과 Export 전에 사용 가능한 Storage를 확인한다.
+`StorageMonitor`는 ADR-024에 따라 Recording, Photos Import / Normalization과 Export 각각의 Operation-aware Storage Preflight를 지원한다.
 
-다음 작업 전 Storage 상태를 확인한다.
+### Core Requirement
 
-- Recording 시작
-- Imported Media Materialization
-- Export 시작
+개념적인 Required Free Space는 다음과 같다.
 
-고정된 Vlog Duration Limit을 Storage 관리 수단으로 사용하지 않는다.
+`Required Free Space = Estimated Peak Additional Storage + Safety Reserve`
 
-Storage가 부족한 경우 Typed Error를 Feature Layer로 전달한다.
+Estimated Peak Additional Storage는 Final File Size만이 아니라 Operation Lifetime 동안 동시에 존재할 수 있는 Staging, 선택된 Source Materialization, Normalization Intermediate / Output, Temporary Output, Final Output과 Operation-owned Recovery Material을 고려한다.
+
+기존 Committed Media의 크기를 해당 Operation이 새로 요구하는 Additional Storage로 다시 계산하지 않는다.
+
+Safety Reserve는 Estimate 오차, Filesystem Overhead, Metadata Persistence, 예상 밖의 작은 Temporary Growth와 OS / App Headroom을 위한 필수 여유이며 기본값을 0으로 두지 않는다.
+
+정확한 Safety Reserve Bytes, Estimate Formula, Bitrate Constant, Temporary Multiplier와 Warning Threshold는 이 계약에서 숫자로 고정하지 않고 관련 Pipeline Profile과 iPhone 12 측정을 바탕으로 각 Owning Phase Gate에서 결정한다.
+
+Estimate는 안전을 위해 보수적일 수 있지만 모든 Operation에 실제 필요량과 무관한 하나의 과도한 고정값을 적용하지 않고 각 Pipeline의 Peak Additional Storage 특성을 근거로 산정한다.
+
+Estimate 조정을 이유로 승인된 Media Quality 변경, User Media 자동 Cleanup 또는 새로운 Project Limit이 필요해지면 별도 Product Decision과 Replanning을 거친다.
+
+### Operation-specific Estimates
+
+Recording Estimate는 승인된 최대 10초 Capture Profile이 생성할 Media, Staging / Finalization Overhead, Transactional Commit과 Safety Reserve를 고려한다.
+
+Import Estimate는 선택된 최대 10초 Source Segment의 Operation-owned Storage, Staging, Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 고려한다.
+
+Import Estimate는 전체 Photos Original 4K Source를 Mellow Container에 무조건 복제한다고 가정하지 않으며 ADR-022의 Source / Working Media 계약을 따른다.
+
+Export Estimate는 현재 Immutable Export Snapshot의 Project Duration과 State, 승인된 Export Profile, Temporary Export Output, Final Local Export Artifact, Photos Save / Share Handoff까지 보존할 Local Artifact와 Safety Reserve를 고려한다.
+
+Export Preflight가 성공해도 Photos Library Save가 성공한다고 보장하지 않는다.
+
+### Available Capacity and Recheck
+
+Storage Preflight는 Operation이 실제로 쓰는 Application Container / Filesystem Volume의 Usable Capacity를 기준으로 판단하고 장시간 유지된 Cached Value만 신뢰하지 않는다.
+
+Preflight는 다른 App과 System의 동시 Storage 사용 때문에 Runtime Disk Full이 발생하지 않는다는 보장이 아니다.
+
+Operation 특성상 필요한 경우 시작 직전, 큰 Derived Output 생성 직전 또는 Required Estimate가 크게 바뀌는 경계에서 Storage를 다시 확인할 수 있어야 하지만 모든 Write마다 Storage API를 호출하도록 강제하지 않는다.
+
+### Operation-scoped Failure
+
+Storage가 부족하면 기본적으로 해당 Operation만 시작하지 않고 Typed Error를 Feature Layer로 전달한다.
+
+Recording Storage가 부족하면 Recording, Progress, 10초 Timer와 부분 Media Operation을 시작하지 않는다.
+
+Import Storage가 부족하면 Materialization / Normalization을 시작하지 않는다.
+
+Export Storage가 부족하면 해당 Export를 시작하지 않는다.
+
+다른 Operation은 자체 Requirement로 독립적으로 판단하며 Mellow 전체를 Low-storage Fatal State로 전환하거나 기존 Draft 열기, Clip 확인, Metadata-only Editing과 다른 사용 가능한 기능을 자동 차단하지 않는다.
+
+Feature Layer는 사용자가 현재 시작할 수 없는 Operation, 기존 Media가 유지된다는 점과 공간 확보 후 재시도할 수 있음을 이해할 수 있게 전달한다.
+
+정확한 Copy, Alert / Banner / Sheet, Icon과 Button Placement는 이 Architecture에서 확정하지 않고 각 Owning Phase의 Structural UX Gate에 남긴다.
+
+Storage 부족을 이유로 1080p를 720p로 낮추거나 Frame Rate, Audio, Recording Duration, Import Working Media 또는 Export Quality를 자동으로 변경하지 않는다.
+
+Storage-based Quality Mode나 새로운 Project Size Cap은 별도 Product Decision 없이는 도입하지 않는다.
+
+전체 Vlog Duration이나 Clip Count의 임의 Product Limit을 Storage 관리 수단으로 사용하지 않는다.
+
+### Runtime Disk Full and Cleanup Safety
+
+Preflight 이후 Runtime Disk Full 또는 Write Failure가 발생하면 실패 Operation을 성공으로 표시하지 않고 Partial / Incomplete Output을 정상 Clip 또는 Export로 Commit하지 않는다.
+
+기존 Committed Media, 다른 Draft와 Photos 원본은 변경하거나 삭제하지 않는다.
+
+Recording / Import Media는 ADR-020의 Recovery Classification을 적용하고 Project Delete 또는 Late Result Race에는 ADR-021의 Project Validity와 Deletion Safety를 적용한다.
+
+Final Media가 존재하지만 Metadata Persistence가 Storage 부족으로 실패한 경우 Recovery Candidate로 보존한다.
+
+Cleanup 실패는 재시도 가능해야 하며 Storage Pressure 때문에 Committed Clip, Draft, Project-owned Valid Media, Recovery Candidate, Undo Candidate, Active Usage Media 또는 다른 Project Media를 자동 삭제하지 않는다.
+
+자동 Cleanup은 ADR-020 / ADR-021에 따라 Recovery가 필요하지 않고 Undo / Active Usage / 다른 Reference가 없다고 안전하게 확인된 Disposable Temporary Artifact 또는 Confirmed Orphan에만 적용한다.
+
+Recovery Classification을 생략하거나 불명확한 Media를 공간 확보 목적으로 삭제하지 않는다.
 
 ---
 
@@ -1814,6 +1892,9 @@ Primary Physical Test Device는 iPhone 12다.
 - Share Sheet
 - Draft Recovery
 - Large Project Behavior
+- Recording / Import / Export Operation-aware Storage Preflight와 Estimate 대비 실제 Peak Additional Storage
+- Runtime Disk Full, Retry와 Recovery Candidate / Existing Media 보호
+- Storage Pressure에서 안전하게 분류된 Disposable Artifact만 Cleanup되는지 확인
 - Storage Error Handling
 - Haptic Feedback
 
@@ -1836,6 +1917,9 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Normalized Framing
 - Export Canvas Size
 - Export Profile
+- Recording / Import / Export Storage Requirement Policy
+- Estimated Peak Additional Storage와 Safety Reserve 계산 경계
+- Operation-scoped Insufficient Storage State
 - Error Mapping
 
 ---
@@ -1873,6 +1957,10 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Export Snapshot 불변성과 Source Media Release 전 Cleanup 차단
 - Preview Mutation Invalidation 및 Stale Derived Result 폐기
 - Project Delete Cleanup 실패와 Idempotent Retry
+- Recording / Import / Export Storage Preflight 실패와 Operation 미시작
+- Preflight 이후 Runtime Disk Full에서 Partial Output 비Commit과 Existing Media 보호
+- Metadata Persistence Storage Failure에서 Final Media의 Recovery Candidate 보존
+- Storage Pressure Cleanup의 Safe Classification, Multiple Draft Isolation과 Idempotent Retry
 
 Media Commit의 기본 Failure Boundary 검증은 Recording을 구현하는 Phase 4부터 수행하고 Phase 6에서 Import에 적용하며 Phase 10에서 반복 Relaunch와 복합 실패 조건을 강화한다.
 
@@ -2118,6 +2206,14 @@ MVP의 핵심 Media Workflow는 Server Connection 없이 동작해야 한다.
 
 전체 Vlog Duration이나 Clip Count에 기술적 편의를 위한 임의의 제품 제한을 추가하지 않는다.
 
+### Operation-aware Storage Safety
+
+Recording, Import와 Export는 각각 Estimated Peak Additional Storage와 Safety Reserve를 사용하는 독립적인 Preflight를 적용하고 하나의 고정 Global Threshold를 기본 전략으로 사용하지 않는다.
+
+Storage 부족은 해당 Operation을 차단하며 승인된 Media Quality를 자동 하향하거나 User Media와 Recovery Candidate를 자동 삭제하지 않는다.
+
+Runtime Disk Full의 Partial Output을 성공으로 Commit하지 않고 ADR-020 / ADR-021의 Recovery와 Cleanup Safety를 유지한다.
+
 ### UI and Infrastructure Separation
 
 SwiftUI View는 Camera Session, File System 또는 SwiftData를 직접 조작하지 않는다.
@@ -2181,10 +2277,13 @@ Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dime
 
 ### Storage
 
-- Recording 시작 전 최소 Free Storage Threshold
-- Import 전 최소 Free Storage Threshold
-- Export 예상 용량 계산
-- Storage Warning Threshold
+- Operation-aware Storage Preflight와 Fixed Global Threshold 미사용 — Resolved by ADR-024.
+- Recording / Import / Export별 Estimated Peak Additional Storage + Safety Reserve — High-level Policy Resolved by ADR-024.
+- 정확한 Safety Reserve Bytes — Pending, 관련 Owning Phase Gate.
+- Recording Estimate Formula, Capture Codec / Bitrate 상수와 Finalization Overhead — Pending, Before Phase 4.
+- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6.
+- Export Snapshot 기반 Estimate Formula와 Temporary Multiplier — Pending, Before Phase 9.
+- Storage Warning Threshold와 Low-storage UI Presentation — Pending, Owning UX Gate.
 
 ### Testing
 

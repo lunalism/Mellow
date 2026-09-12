@@ -494,7 +494,25 @@ Undo 전에 다른 Clip의 순서를 변경했더라도 그 순서 변경을 되
 
 전체 Vlog Duration과 Clip Count에는 임의의 고정 Maximum을 두지 않는다.
 
-Large Project는 실제 저장 공간, 성능 및 오류 처리로 관리하며 Storage Threshold 숫자는 별도로 결정한다.
+Large Project는 실제 저장 공간, 성능 및 오류 처리로 관리하며 Storage 부족을 해결하기 위해 새로운 Duration 또는 Clip Count 제한을 추가하지 않는다.
+
+Export의 Storage Requirement는 현재 Export Snapshot과 Project Duration을 기준으로 판단하며 공간이 충분하면 진행하고 부족하면 해당 Export만 차단한다.
+
+Mellow는 Recording, Photos Import / Normalization과 Export 각각에 Operation-aware Storage Preflight를 적용한다.
+
+각 Operation의 Required Free Space는 Operation Lifetime 동안 추가로 동시에 필요할 수 있는 Staging, Intermediate, Final 및 Recovery Media를 고려한 Estimated Peak Additional Storage와 Safety Reserve의 합으로 판단한다.
+
+하나의 고정 Global Free-space Threshold를 모든 Media Operation의 기본 판단 기준으로 사용하지 않으며 Storage가 부족하면 기본적으로 해당 Operation만 시작하지 않는다.
+
+Storage 부족을 앱 전체의 Fatal State로 취급하거나 다른 사용 가능한 기능을 자동으로 차단하지 않는다.
+
+Storage 부족을 이유로 1080p / 30 fps, Audio, 최대 10초 Recording 또는 승인된 Import / Export 품질을 자동으로 낮추지 않는다.
+
+Committed Clip, Draft, Project-owned Valid Media, Recovery Candidate, Undo Candidate, Active Usage Media 또는 다른 Project Media를 공간 확보 목적으로 자동 삭제하지 않는다.
+
+Preflight를 통과해도 Runtime Disk Full 또는 Write Failure가 발생할 수 있으며 실패하거나 불완전한 결과를 성공으로 표시하거나 정상 Clip / Export로 Commit하지 않는다.
+
+정확한 Safety Reserve, Operation별 Estimate Formula와 Warning 기준은 관련 Pipeline Profile과 iPhone 12 측정을 바탕으로 각 구현 Phase 전에 결정한다.
 
 #### Trim
 
@@ -1040,6 +1058,11 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Undo Window 중 App Process가 종료되면 다음 실행에서 Undo를 제공하지 않고 해당 Clip 삭제를 확정된 상태로 유지한다.
 - 재정렬 후 Undo는 다른 Clip의 순서 변경을 보존하며 현재 Project 상태를 존중하여 삭제 당시 위치에 최대한 가깝게 결정적으로 복원한다.
 - 전체 Vlog Duration과 Clip Count에는 임의의 고정 Maximum을 두지 않는다.
+- Recording, Photos Import / Normalization과 Export는 각각 Estimated Peak Additional Storage와 Safety Reserve를 사용하는 Operation-aware Storage Preflight를 수행한다.
+- Storage 부족은 기본적으로 해당 Operation만 차단하며 앱 전체를 Low-storage Fatal State로 만들거나 다른 사용 가능한 기능을 자동 차단하지 않는다.
+- Storage 부족을 이유로 승인된 1080p / 30 fps, Audio, Recording Duration, Import Working Media 또는 Export 품질을 자동 하향하지 않는다.
+- Storage Pressure로 Draft, Committed Media, Recovery / Undo Candidate, Active Usage Media 또는 다른 Project Media를 자동 삭제하지 않는다.
+- Runtime Disk Full 또는 Write Failure의 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 기존 Committed Media와 Photos 원본을 보호한다.
 - Multiple Drafts와 자동 저장을 지원하며 Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
 - 로컬 Draft는 앱 재실행과 기기 재부팅 이후에도 유지한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
@@ -1087,7 +1110,10 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Working Media Codec / Container 및 정확한 SDR Color Profile / Tagging
 - HDR / Dolby Vision Source의 SDR 변환을 위한 Tone-mapping 구현 방법
 - 저해상도 Source의 Upscaling 정책 및 1080p-class Working Media의 구체적인 크기 기준
-- Storage Threshold와 Warning 기준
+- 정확한 Safety Reserve 크기와 Operation별 Storage Estimate Formula
+- Recording Estimate의 Capture Codec / Bitrate 상수와 Finalization Overhead
+- Import / Export의 Temporary 또는 Recovery-safe Overlap Multiplier
+- Storage Warning 기준과 Low-storage 화면의 정확한 Layout / Copy / Presentation
 - Audio on/off 설정 여부
 - Clip별 음소거 기능
 - Post-MVP Text 기능 범위

@@ -1105,11 +1105,111 @@ ADR-020의 Transactional Commit / Recovery, ADR-021의 Project Validity / Late R
 
 ---
 
+# ADR-024 — Operation-Aware Storage Preflight and Low-Storage Safety
+
+**Date:** 2026-09-12
+
+**Status:** Accepted
+
+## Context
+
+Recording, Photos Import / Normalization과 Export는 Operation Lifetime 동안 동시에 필요한 Staging, Intermediate, Final 및 Recovery Media의 특성이 서로 다르다.
+
+하나의 고정 Global Free-space Threshold를 모든 Operation에 적용하면 일부 작업에는 지나치게 보수적이고 다른 작업에는 안전하지 않을 수 있다.
+
+Storage Preflight를 통과해도 다른 App이나 System의 동시 Storage 사용과 실제 Write 특성 때문에 Runtime Disk Full이 발생할 수 있다.
+
+Storage Pressure를 이유로 User Media나 Recovery Candidate를 자동 삭제하면 Data Loss와 Draft 손상 위험이 생긴다.
+
+Large Project의 Storage 문제를 임의의 Total Duration 또는 Clip Count 제한으로 해결하면 기존 제품 방향과 충돌한다.
+
+Storage Failure는 ADR-020의 Transactional Media Commit / Recovery와 ADR-021의 Logical Deletion / Active Media / Cleanup Safety 계약에 연결되어야 한다.
+
+## Decision
+
+Mellow MVP는 Direct Recording, Photos Video Import / Normalization과 Export 각각에 Operation-aware Storage Preflight를 적용한다.
+
+개념적인 Required Free Space는 Estimated Peak Additional Storage와 Safety Reserve의 합이다.
+
+Estimated Peak Additional Storage는 Final File Size만이 아니라 Operation Lifetime 동안 동시에 존재할 수 있는 Staging, Source Materialization, Normalization Intermediate / Output, Temporary Output, Final Output과 Operation-owned Recovery Material을 고려한다.
+
+기존 Committed Media의 크기를 해당 Operation의 Additional Storage로 다시 계산하지 않는다.
+
+Safety Reserve는 필수 개념이며 기본값을 0으로 두지 않는다.
+
+Recording, Import와 Export는 각 Pipeline 특성에 맞는 별도 Estimate를 사용한다.
+
+Recording Estimate는 최대 10초 Capture Profile, Staging / Finalization Overhead와 Transactional Commit을 고려한다.
+
+Import Estimate는 선택된 최대 10초 Source Segment, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 고려하고 전체 Photos Original 4K Source를 무조건 복제한다고 가정하지 않는다.
+
+Export Estimate는 현재 Immutable Export Snapshot의 Project Duration과 State, 승인된 Export Profile, Temporary / Final Local Output과 Photos Save / Share Handoff까지 필요한 Local Artifact를 고려한다.
+
+정확한 Safety Reserve Bytes, Operation별 Estimate Formula, Bitrate Constant, Temporary Multiplier와 Warning Threshold는 관련 Phase Technical Gate에서 Pipeline Profile과 iPhone 12 측정을 바탕으로 결정한다.
+
+Storage가 부족하면 기본적으로 해당 Operation만 시작하지 않으며 다른 Operation은 자신의 Requirement로 독립적으로 판단한다.
+
+Mellow 전체를 Low-storage Fatal State로 전환하거나 기존 Draft 열기, Clip 확인, Metadata-only Editing과 다른 사용 가능한 기능을 자동 차단하지 않는다.
+
+Storage 부족을 이유로 1080p를 720p로 낮추거나 Frame Rate, Audio, 최대 Recording Duration, Import Working Media 또는 Export Quality를 자동으로 낮추지 않는다.
+
+Committed Clip, Draft, Project-owned Valid Media, Recovery Candidate, Undo Candidate, Active Usage Media 또는 다른 Project Media를 Storage 확보 목적으로 자동 삭제하지 않는다.
+
+자동 Cleanup은 ADR-020 / ADR-021에 따라 Recovery가 필요하지 않고 Undo / Active Usage / 다른 Reference가 없다고 안전하게 확인된 Disposable Temporary Artifact 또는 Confirmed Orphan에만 적용한다.
+
+Preflight 이후 Runtime Disk Full 또는 Write Failure가 발생하면 Partial / Incomplete Output을 정상 Clip이나 Export로 Commit하거나 성공으로 표시하지 않는다.
+
+기존 Committed Media, 다른 Draft와 Photos 원본을 보호하고 Media의 Recovery Candidate 또는 Disposable 여부를 ADR-020으로 판정하며 Project Delete / Late Result에는 ADR-021을 적용한다.
+
+Final Media가 존재하지만 Metadata Persistence가 Storage 부족으로 실패한 경우 Recovery Candidate로 보존하고 Cleanup 실패는 재시도 가능하게 유지한다.
+
+Storage Preflight는 실제 작업 대상 Application Container / Filesystem Volume의 Usable Capacity를 기준으로 판단하고 필요하면 Operation 시작 직전 또는 큰 Derived Output 경계에서 다시 확인할 수 있어야 한다.
+
+Preflight 성공은 Runtime Disk Full이 불가능하거나 Photos Library의 최종 Save가 성공한다는 보장이 아니다.
+
+Storage 문제를 해결하기 위해 새로운 Total Vlog Duration 또는 Clip Count Cap을 추가하지 않는다.
+
+## Consequences
+
+### Benefits
+
+- 각 Operation의 실제 Peak Storage 특성에 맞는 판단이 가능하다.
+- 사용자 Media와 Recovery Candidate를 Storage Pressure에서 보호한다.
+- Large Project를 임의의 Product Limit으로 축소하지 않는다.
+- Runtime Disk Full을 ADR-020 Recovery와 일관되게 처리할 수 있다.
+- 향후 Codec / Bitrate와 Pipeline Tuning 변화에 대응할 수 있다.
+
+### Costs
+
+- Recording, Import와 Export마다 Estimate Logic이 필요하다.
+- Safety Reserve의 적절성을 검증해야 한다.
+- Estimate와 실제 사용량 사이에 오차가 생길 수 있다.
+- Device와 Filesystem 상태에 따른 Runtime Failure를 완전히 제거할 수 없다.
+- iPhone 12에서 실제 Peak Additional Storage 측정이 필요하다.
+
+## Non-goals
+
+- Exact Safety Reserve Bytes
+- Exact Recording / Import / Export Estimate Formula
+- Exact Bitrate 또는 Codec / Container
+- Exact Temporary Multiplier
+- Exact Warning Threshold
+- Exact Low-storage UI Copy / Layout / Presentation
+- Automatic Draft Cleanup
+- Storage-based Quality Downgrade
+- New Project Duration / Clip-count Cap
+- Photos Save / Share Result File Lifecycle
+- Performance Pass / Fail Threshold
+
+ADR-020의 Transactional Media Commit / Recovery, ADR-021의 Logical Deletion / Active Media / Cleanup Safety, ADR-022의 1080p-class / 30 fps / SDR Working Media와 ADR-023의 Camera / Recording / Zoom / Permission / Orientation 계약을 변경하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022` 또는 `Resolved by ADR-023`으로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023` 또는 `Resolved by ADR-024`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -1167,10 +1267,14 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 ### Storage
 
-- Recording 시작 전 최소 Free Storage Threshold
-- Import 전 최소 Free Storage Threshold
-- Export 시작 전 최소 Free Storage Threshold
-- Storage Warning 기준
+- Storage Strategy — High-level Policy Resolved by ADR-024: Operation-aware Storage Preflight를 사용한다.
+- Fixed Global Free-space Threshold — ADR-024에 따라 Primary MVP Gating Strategy로 사용하지 않는다.
+- Estimated Peak Additional Storage + Safety Reserve — High-level Policy Resolved by ADR-024.
+- 정확한 Safety Reserve Bytes — Pending, 관련 Owning Phase Technical Gate.
+- Recording Estimate Formula, Capture Codec / Bitrate 상수와 Finalization Overhead — Pending, Before Phase 4.
+- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6.
+- Export Snapshot 기반 Estimate Formula와 Temporary Multiplier — Pending, Before Phase 9.
+- Storage Warning 기준과 Low-storage UI Presentation — Pending, Owning UX Gate.
 
 ### Design Details
 

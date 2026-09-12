@@ -329,6 +329,8 @@ Mellow에서 직접 촬영하는 하나의 Clip은 최대 10초까지 녹화할 
 - 촬영 중 현재 녹화 시간 확인
 - 자동 종료된 Clip의 정상 저장
 - 자동 종료 이후 정상적인 다음 촬영 가능
+- 승인된 Recording Estimate와 Safety Reserve를 충족하지 못하면 Recording, Progress와 10초 Timer를 시작하지 않음
+- Storage 부족을 이유로 Capture Quality, Frame Rate, Audio 또는 최대 Recording Duration을 자동으로 낮추지 않음
 
 ### Excluded from MVP
 
@@ -448,6 +450,9 @@ SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 선택된 최
 - Source Rotation / Presentation Transform을 올바르게 반영하여 Framing 가능한 화면 영역이 손상되지 않는다.
 - Normalization Output은 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Orientation 손상 등 명백한 변환 실패를 정상 Media로 등록하지 않는다.
 - 실패와 취소 시 Valid Source / Staging 및 Recovery Candidate는 확정된 Media Safety 계약에 따라 보호한다.
+- Import / Normalization의 Estimated Peak Additional Storage와 Safety Reserve를 충족하지 못하면 Materialization과 Normalization을 시작하지 않는다.
+- Storage 부족이나 Runtime Disk Full로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본과 기존 Project Media를 보호한다.
+- Storage 부족을 이유로 승인된 1080p-class / 30 fps / SDR Working Media 정책을 자동 하향하지 않는다.
 
 정상적으로 Project-owned Media가 생성되어 추가된 Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지되어야 한다.
 
@@ -637,6 +642,9 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 - 큰 프로젝트의 Export 진행 상태 표시
 - 실패 발생 시 이해 가능한 오류 제공
 - 불필요하게 전체 영상을 Memory에 동시에 로드하지 않는 구조
+- Export Snapshot과 Project Duration에 따른 Operation-specific Storage Requirement 판단
+- Storage 부족 시 해당 Operation만 차단하고 다른 사용 가능한 기능을 전역 차단하지 않음
+- Storage 문제를 새로운 Total Duration 또는 Clip Count 제한으로 해결하지 않음
 
 구체적인 구현 방식은 `ARCHITECTURE.md`에서 정의한다.
 
@@ -710,6 +718,12 @@ HDR Export는 MVP에서 제공하지 않으며 SDR Export의 Framing, Transform 
 Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
 
 Working Media Codec / Container와 Export Codec / Container는 별도 Decision이며 자동으로 동일하게 정하지 않는다.
+
+Export는 현재 Immutable Export Snapshot의 Duration과 승인된 Output Profile을 기준으로 Estimated Peak Additional Storage와 Safety Reserve를 판단하고 부족하면 Export를 시작하지 않는다.
+
+Storage 부족을 이유로 Export Quality를 자동 하향하지 않으며 Runtime Disk Full로 생성된 Partial Output을 성공한 Export로 노출하지 않는다.
+
+Local Storage Preflight는 Photos Library의 최종 Save 성공을 보장하지 않으며 Photos Save 실패는 별도 Lifecycle로 처리한다.
 
 Export 후에도 Draft를 유지하며 iOS Share Sheet로 완성된 Video를 공유할 수 있어야 한다.
 
@@ -810,6 +824,12 @@ Recording이 끝난 뒤 다음 Record 요청 전에 Orientation Eligibility를 �
 촬영이 정상적으로 완료된 Clip은 즉시 안전한 로컬 저장소에 보존한다.
 
 사용자가 아직 Vlog를 Export하지 않았다는 이유로 촬영한 Clip이 쉽게 유실되어서는 안 된다.
+
+Storage Pressure 또는 Runtime Disk Full은 Committed Clip, Draft, Project-owned Valid Media, Recovery Candidate, Undo Candidate, Active Usage Media나 다른 Project Media를 자동 삭제할 근거가 아니다.
+
+자동 Cleanup은 ADR-020 / ADR-021에 따라 Recovery가 필요하지 않고 Undo / Active Usage / 다른 Reference가 없다고 안전하게 분류된 Disposable Temporary Artifact 또는 Confirmed Orphan에만 적용한다.
+
+Preflight 이후 Write 또는 Metadata Persistence가 Storage 부족으로 실패하면 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 Final Media가 존재하는 Recoverable Operation은 Recovery Candidate로 보존한다.
 
 ---
 
@@ -1141,6 +1161,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 프로젝트 전체 삭제는 Confirmation 이후 실행한다.
 - 전체 Vlog의 총 재생 시간에는 고정 최대 제한을 두지 않는다.
 - 하나의 Vlog에 포함할 수 있는 Clip 개수에도 고정 최대 제한을 두지 않는다.
+- Recording, Photos Import / Normalization과 Export는 각각 Estimated Peak Additional Storage와 Safety Reserve를 사용하는 Operation-aware Storage Preflight를 적용한다.
+- Storage 부족은 기본적으로 해당 Operation만 차단하며 승인된 Media 품질을 자동 하향하거나 Draft / Committed / Recoverable Media를 자동 삭제하지 않는다.
+- Runtime Disk Full 또는 Write Failure의 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 기존 Committed Media와 Photos 원본을 보호한다.
 - 여러 개의 미완성 Vlog 프로젝트를 동시에 저장할 수 있다.
 - Draft에는 자동 만료 기간을 두지 않는다.
 - Draft는 사용자가 직접 삭제하기 전까지 유지한다.
@@ -1213,7 +1236,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
 - Draft 삭제 전 Confirmation의 세부 UI
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
-- Storage Threshold와 Warning 기준
+- Operation-aware Storage Preflight와 Fixed Global Threshold 미사용 — Resolved by ADR-024
+- 정확한 Safety Reserve 크기 — Pending, 관련 Media Operation Phase Gate
+- Recording / Import / Export의 정확한 Storage Estimate Formula와 계산 상수 — Pending, 각 Owning Phase Gate
+- Storage Warning 기준과 Low-storage UI의 정확한 Presentation — Pending, Owning UX Gate
 - Draft Storage 사용량 표시 여부
 - 프로젝트 Rename 기능의 Post-MVP 추가 여부
 - Export 완료 프로젝트와 미완성 프로젝트의 UI 구분 여부
