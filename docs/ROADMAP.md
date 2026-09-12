@@ -1836,12 +1836,15 @@ Preview와 동일한 결과를 하나의 1080p / 30 fps / SDR Video로 Export하
 - 30 fps Output
 - SDR Output와 Preview / Export Color / Framing Parity
 - Temporary Export File
+- Successful Local Export Artifact
+- Export Rendering / Photos Save Result State 분리
 - Progress
 - Cancel
 - Photos Save
 - Retry Photos Save
 - Share Sheet
-- Export Completion
+- Done / Discard Result Flow
+- Active Consumer-aware Safe Cleanup
 - Draft 유지
 - Immutable Export Snapshot
 - Export Source Media Usage와 Deferred Cleanup
@@ -1857,7 +1860,7 @@ Preview와 동일한 결과를 하나의 1080p / 30 fps / SDR Video로 Export하
 - Audio Format 방향
 - Audio Bitrate
 - Background Export 정책
-- Export Retry 정책
+- 재Export가 필요한 경우의 Export Retry 세부 정책
 - 현재 Immutable Export Snapshot의 Project Duration / State와 승인된 Export Profile을 반영한 Export Storage Estimate Formula
 - Export Temporary / Final Local Artifact와 Photos Save / Share Handoff까지의 Local Retention을 포함한 Safety Reserve 정책
 
@@ -1870,12 +1873,15 @@ MVP Export의 HDR vs SDR 방향은 ADR-022에서 SDR로 해결되었으며 이 P
 Export UI 구현 전에 다음 Presentation 구조를 사용자 승인으로 결정한다.
 
 - Export Action Placement와 Progress Presentation
-- Completion State의 UI 구조와 Share / Done Action 배치
-- 기존 실패 / Retry 상태와 Storage Preflight 실패의 Presentation이 구현 구조에 영향을 주는 부분
+- Exporting, local result ready, Saved to Photos, Photos save failed, Sharing과 Share cancelled / returned Result State Presentation
+- Save Retry Placement, Share / Done Action 배치와 unsaved Result Discard Confirmation
+- Render Failure, Photos Save Failure와 Storage Preflight Failure의 Presentation이 구현 구조에 영향을 주는 부분
 
 Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정된 요구사항이며 재결정하지 않는다.
 
-이 Gate는 UI Decision Timing만 정의하며 M05의 Photos Save / Share File Lifecycle, Background Export, Retry Lifecycle과 Temporary File Policy는 별도 Pending으로 유지한다.
+이 Gate는 UI Decision Timing만 정의하며 ADR-025의 Photos Save / Share File Lifecycle과 Temporary File Policy를 다시 결정하지 않는다.
+
+Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Copy는 별도 Pending으로 유지한다.
 
 ## Implementation Tasks
 
@@ -1887,24 +1893,27 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 6. Export Result를 Temporary Location에 생성한다.
 7. Progress State를 UI에 제공한다.
 8. Export Cancel을 처리한다.
-9. Export 성공 후 Photos에 저장한다.
-10. Photos Save만 실패한 경우 Export File을 재사용하여 Retry한다.
-11. iOS Share Sheet를 제공한다.
-12. Export 성공 후 Draft를 삭제하지 않는다.
-13. Temporary File Cleanup 정책을 적용한다.
-14. Snapshot에 Clip Identity / Order, Trim, Framing / Transform, Project Orientation, Media Reference와 Audio / Video Composition State를 포함한다.
-15. Snapshot 획득과 Source Media Usage 등록을 Cleanup과 조정하고 Export 종료 또는 취소 후 실제 Reference Release까지 Source Media를 보존한다.
-16. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
-17. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
-18. Project Delete 이후의 Uncommitted Operation-owned Artifact는 Safe Classification과 Usage 해제 후 정리하고 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
-19. Export Progress / Completion, Share / Done과 기존 실패 상태 표현에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-20. Export Operation을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 Immutable Export Snapshot의 Duration / State, 승인된 Export Profile, Temporary Output, Final Local Artifact, Photos Save / Share Handoff까지 Mellow가 보존하는 Local Artifact와 Safety Reserve를 반영한 Required Free Space를 계산한다.
-21. Export Storage Preflight가 실패하면 Export Operation이나 Partial Output을 시작하지 않고 해당 Export만 차단하며 기존 Draft와 Recording / Import 등 다른 사용 가능한 기능을 자동 차단하지 않는다.
-22. Storage 부족 때문에 승인된 1080p / 30 fps / SDR Export Quality, Audio, Project Duration이나 Clip 수를 조용히 낮추거나 제한하지 않는다.
-23. Preflight 통과 후 Temporary Export 또는 Finalization 중 Disk Full이 발생하면 Partial Output을 성공한 Export로 노출하지 않고 기존 Draft와 Source Media를 보존하며 ADR-020 / ADR-021에 따라 Artifact를 분류하고 Cleanup을 재시도 가능하게 한다.
-24. 사용자가 공간을 확보한 뒤 동일하거나 새로 획득한 승인된 Snapshot 정책에 따라 Export를 안전하게 재시도할 수 있게 하며 Local Storage Preflight가 Photos Library 저장 성공을 보장한다고 가정하지 않는다.
+9. Export Process 성공, Output File 존재, Output Validation 성공과 Durable Export Operation Identity 연결을 모두 확인한 뒤에만 Successful Local Export Artifact를 만들고 Export Rendering Success로 전환한다.
+10. Successful Local Export Artifact를 Photos Save Consumer에 전달하고 Photos Save Success와 Photos Save Failure를 Export Rendering Success와 별개로 처리한다.
+11. Photos Save Failure에서는 같은 Valid Local Export Artifact를 사용한 Save Retry와 Share를 제공하며 단순 Photos Save Failure 때문에 동일 Project를 다시 Render하지 않는다.
+12. iOS Share Sheet에 같은 Successful Local Export Artifact를 전달하고 Share Sheet 또는 Share Handoff가 Active인 동안 Artifact Physical Cleanup을 Defer하며 Share Cancel을 Export Failure로 처리하지 않는다.
+13. Photos Save Success 후에는 Share와 Done을 제공하고 Photos Save에 성공하지 않은 Done 또는 close 요청에는 explicit Discard Confirmation을 적용하며 Cancel은 Result Flow와 Artifact를 유지한다.
+14. Result Flow가 Resolved되고 Active Consumer, Retry와 Recovery Requirement가 없을 때만 Local Export Artifact를 Idempotent하게 Cleanup한다.
+15. Export 성공 후 Draft를 삭제하지 않는다.
+16. Temporary File Cleanup 정책을 적용한다.
+17. Snapshot에 Clip Identity / Order, Trim, Framing / Transform, Project Orientation, Media Reference와 Audio / Video Composition State를 포함한다.
+18. Snapshot 획득과 Source Media Usage 등록을 Cleanup과 조정하고 Export 종료 또는 취소 후 실제 Reference Release까지 Source Media를 보존한다.
+19. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
+20. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
+21. Project Delete 이후에도 Active Photos Save 또는 Share Consumer가 사용하는 Successful Local Export Artifact를 보존하고 Consumer 종료와 Retry 또는 Recovery Requirement 해제 뒤에만 Cleanup하며 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
+22. Export Progress / Completion, Photos Save Failure, Share / Done과 Discard Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+23. Export Operation을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 Immutable Export Snapshot의 Duration / State, 승인된 Export Profile, Temporary Output, Final Local Artifact, Photos Save / Share Handoff까지 Mellow가 보존하는 Local Artifact와 Safety Reserve를 반영한 Required Free Space를 계산한다.
+24. Export Storage Preflight가 실패하면 Export Operation이나 Partial Output을 시작하지 않고 해당 Export만 차단하며 기존 Draft와 Recording / Import 등 다른 사용 가능한 기능을 자동 차단하지 않는다.
+25. Storage 부족 때문에 승인된 1080p / 30 fps / SDR Export Quality, Audio, Project Duration이나 Clip 수를 조용히 낮추거나 제한하지 않는다.
+26. Preflight 통과 후 Temporary Export 또는 Finalization 중 Disk Full이 발생하면 Partial Output을 성공한 Export로 노출하지 않고 기존 Draft와 Source Media를 보존하며 ADR-020 / ADR-021 / ADR-025에 따라 Artifact를 분류하고 Cleanup을 재시도 가능하게 한다.
+27. 사용자가 공간을 확보한 뒤 동일하거나 새로 획득한 승인된 Snapshot 정책에 따라 Export를 안전하게 재시도할 수 있게 하며 Local Storage Preflight가 Photos Library 저장 성공을 보장한다고 가정하지 않는다.
 
-이 Lifecycle 계약은 B03의 Source-media Lifetime과 Project Validity 범위이며 Background / Retry와 Photos Save / Share Result File의 상세 정책은 M05 / Export Lifecycle Repair에서 별도로 다룬다.
+이 Lifecycle 계약은 ADR-025의 Result Artifact Lifecycle과 B03의 Source-media Lifetime 및 Project Validity를 함께 적용한다.
 
 ## Unit Tests
 
@@ -1912,6 +1921,12 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 - Output Canvas
 - Export State Machine
 - Retry State
+- Render Success와 Photos Save Success의 분리
+- Successful Local Export Artifact Validation과 Durable Result Identity
+- Photos Save Failure에서 같은 Artifact를 사용하는 Save Retry와 Share
+- Share Cancel의 Artifact 보존
+- Saved Done과 unsaved Done / Discard의 Cleanup Eligibility
+- Active Consumer가 존재하는 Artifact의 Physical Cleanup Defer
 - Export Snapshot의 최소 Composition State와 불변성
 - Export Snapshot Duration / State와 승인된 Profile 기반 Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
 - Export Storage Preflight 실패 시 Export Operation 미시작과 Operation-scoped Failure State
@@ -1944,6 +1959,21 @@ Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정
 - Export Storage Preflight 실패 시 Export Operation / Partial Output 미시작과 기존 Draft 보존
 - Temporary Export와 Finalization 중 Runtime Disk Full에서 Partial Output 비노출, Source Media 보호와 Retry 가능한 Cleanup
 - 공간 확보 후 Export Retry와 Local Preflight 통과 이후 별도로 실패할 수 있는 Photos Save 상태 분리
+- Render Success와 Photos Save Success
+- Render Success와 Photos Save Failure
+- Photos Save Failure 후 Save Retry Success
+- Photos Save Failure 후 Share
+- Share Cancel
+- Share Handoff Return
+- Photos Save Success 후 Done
+- unsaved Result Done에서 Discard Cancel
+- unsaved Result Done에서 Discard Confirm
+- Rendering 중 Export Cancel
+- Photos Save Failure가 Re-render를 유발하지 않는지 확인
+- Active Share가 Artifact Cleanup을 막는지 확인
+- Export Rendering 중 Project Delete
+- Active Photos Save 또는 Share 중 Project Delete
+- Photos Save 완료 후 Project Delete가 External Photos Result에 영향을 주지 않는지 확인
 
 ## Physical Device Test
 
@@ -1956,6 +1986,9 @@ iPhone 12에서 다음을 검증한다.
 - Share Sheet
 - Export Cancel
 - Export Retry
+- Photos Save Failure 후 Save Retry와 Share
+- Share Cancel / Return
+- unsaved Result Discard Confirmation
 - 짧은 Project와 더 큰 Project의 실제 Export Peak Additional Storage 및 Snapshot 기반 Estimate 합리성
 - Export Storage Preflight 부족 시 Export 미시작, 기존 Draft 보존과 다른 기능의 불필요한 전역 차단 없음
 - Runtime Disk Full 주입 가능한 범위에서 Partial Output 미노출, Cleanup / Recovery와 공간 확보 후 Retry
@@ -1965,23 +1998,28 @@ iPhone 12에서 다음을 검증한다.
 
 ## UI Accessibility Verification
 
-Export Progress / Completion, Share / Done과 기존 실패 상태 표현에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+Export Progress / Completion, Photos Save Failure, Save Retry, Share / Done, unsaved Discard Confirmation과 Storage Preflight Failure 상태 표현에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
 
 현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
 
 ## Acceptance Criteria
 
 - Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Preview와 시각적으로 일치한다.
+- Successful Render는 Validation을 통과하고 Durable Export Operation / Result Identity와 연결된 Local Export Artifact를 만든다.
 - Output Resolution이 정확하다.
 - Portrait 1080 × 1920 또는 Landscape 1920 × 1080, 30 fps / SDR Output이며 HDR Export를 제공하지 않는다.
 - 동일한 Snapshot State의 Preview와 Export가 가능한 한 동일한 SDR 해석과 Framing / Transform 결과를 사용한다.
 - Photos Save가 정상 동작한다.
+- Photos Save Failure는 Successful Render를 실패로 바꾸지 않고 동일 Artifact의 Save Retry와 Share를 제공한다.
 - Share Sheet가 정상 동작한다.
+- Share Cancel은 Artifact와 Draft를 유지하고 Export Failure가 아니다.
+- Photos Save에 성공하지 않은 Result는 explicit Discard 없이 Cleanup하지 않으며 Active Consumer가 있는 Artifact는 Physical Cleanup하지 않는다.
 - Draft는 Export 이후에도 유지된다.
 - 실패 시 이해 가능한 상태를 제공한다.
 - 일반 Clip Mutation이 진행 중인 Export 결과를 소급 변경하지 않는다.
 - Export Snapshot Media는 Operation 종료 또는 취소 후 실제 Reference Release까지 Physical Delete되지 않는다.
 - Project Delete는 Export Cancellation을 요청하고 Late Commit을 차단하며 삭제된 Project를 되살리지 않는다.
+- Project Delete는 Active Photos Save 또는 Share Consumer의 Artifact를 조기 삭제하지 않고 이미 Photos에 저장 완료된 External Photos Result를 삭제하지 않는다.
 - Export 시작 전 Operation-aware Storage Preflight가 Immutable Snapshot Duration / State와 승인된 Profile의 Estimate 및 Safety Reserve를 적용하고 부족하면 Export를 시작하지 않는다.
 - Runtime Disk Full을 성공으로 표시하거나 Partial Output을 정상 Export로 노출하지 않고 기존 Draft와 Source Media를 보호한다.
 - Storage 부족 때문에 Export Quality / Audio를 자동으로 낮추거나 Project Duration / Clip Count 제한을 추가하지 않는다.
@@ -1993,7 +2031,7 @@ Export Progress / Completion, Share / Done과 기존 실패 상태 표현에서 
 
 Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 
-Snapshot 불변성, Source Media Lifetime과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
+Snapshot 불변성, Source Media Lifetime, ADR-025 Result Artifact Lifecycle과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Partial Output / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
@@ -2007,7 +2045,7 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 
 여러 Draft와 Media File이 장기간 사용되어도 손상이나 유실 가능성을 최소화한다.
 
-이 Phase는 Media Commit Lifecycle이나 Storage Policy를 처음 만드는 단계가 아니며 Phase 4의 Recording, Phase 6의 Import와 Phase 9의 Export에 이미 적용된 ADR-020 / ADR-021 / ADR-024 계약을 반복 Low-storage, Disk Full, Cleanup과 Relaunch 조건에서 강화한다.
+이 Phase는 Media Commit Lifecycle이나 Storage Policy를 처음 만드는 단계가 아니며 Phase 4의 Recording, Phase 6의 Import와 Phase 9의 Export에 이미 적용된 ADR-020 / ADR-021 / ADR-024 / ADR-025 계약을 반복 Low-storage, Disk Full, Cleanup과 Relaunch 조건에서 강화한다.
 
 ## Included
 
@@ -2030,6 +2068,9 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Runtime Disk Full / Retry Hardening
 - Storage Change Between Preflight and Write
 - Safe Disposable / Confirmed Orphan Cleanup under Storage Pressure
+- Export Result Artifact Recovery Hardening
+- Unresolved Export Result Preservation
+- Multiple Export Operation Isolation
 
 ## Explicitly Excluded
 
@@ -2062,6 +2103,10 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 20. Storage Pressure에서도 Recovery Classification과 Active Usage / Undo / Reference 확인을 생략하지 않고 Multiple Draft Isolation을 유지한다.
 21. 반복 Cleanup이 Idempotent하며 이미 정리된 Artifact나 실패한 이전 Operation 때문에 정상 Draft가 손상되지 않는지 확인한다.
 22. Phase 4 / 6 / 9의 Operation-aware Preflight와 Runtime Disk Full 계약이 Hardening 과정에서 하나의 고정 Global Threshold나 User Media 자동 삭제 정책으로 대체되지 않게 한다.
+23. Export Rendering 중 Crash, Rendering 완료 후 Result State Persistence 전 Crash, Photos Save Failure 후 Crash과 Photos Save Success 후 Cleanup 전 Crash에서 ADR-025 Export Result Artifact를 Reconciliation한다.
+24. Valid Unresolved Local Export Artifact를 metadata 부재만으로 Orphan으로 삭제하지 않고 Durable Export Operation / Result Identity로 분류하며 반복 Relaunch가 Duplicate Export Result 또는 automatic duplicate Photos Save를 만들지 않게 한다.
+25. Successful Local Export Artifact Cleanup이 Active Consumer, Retry와 Recovery Requirement를 확인하고 Idempotent하게 재시도되는지 검증한다.
+26. Multiple Draft와 Multiple Export Operation에서 한 Result Artifact의 Recovery, Cleanup 또는 Project Delete가 다른 Result Artifact나 External Photos Result에 영향을 주지 않게 한다.
 
 ## Tests
 
@@ -2090,6 +2135,13 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Recovery Candidate / Undo Candidate / Active Media / Referenced Media 보호
 - Confirmed Orphan만 안전 조건 충족 후 정리
 - Storage Pressure에서 Multiple Draft Isolation과 User Draft 자동 삭제 금지
+- Export Rendering 중 Crash
+- Render 완료 후 Result State Persistence 전 Crash
+- Photos Save Failure 후 Crash
+- Photos Save Success 후 Local Artifact Cleanup 전 Crash
+- Repeated Relaunch에서 Unresolved Valid Artifact 보존과 Duplicate Export Result / automatic duplicate Photos Save 방지
+- Active Consumer, Retry와 Recovery Requirement를 고려한 Export Artifact Cleanup Idempotency
+- Multiple Draft / Multiple Export Operation Result Artifact Isolation
 
 ## Physical Device Test
 
@@ -2103,6 +2155,8 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - 반복 Low-storage Launch와 기존 Draft / Committed Media 보존
 - Preflight 이후 Storage 변화 및 Runtime Disk Full 반복 후 공간 확보와 Retry
 - Failed Cleanup / Stale Disposable / Confirmed Orphan Reconciliation과 Multiple Draft Isolation
+- Render, Result State Persistence, Photos Save Failure와 Photos Save Success 후 Cleanup 경계에서 Forced Termination과 Repeated Relaunch
+- Multiple Export Operation과 Project Delete가 Active Save / Share Artifact에 미치는 영향
 
 ## Acceptance Criteria
 
@@ -2121,6 +2175,9 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Storage Pressure 때문에 User Draft를 자동 삭제하거나 Recovery / Undo / Active Usage / Reference 확인을 생략하지 않는다.
 - Failed Cleanup, Stale Disposable Artifact와 Confirmed Orphan Reconciliation이 Idempotent하고 다른 Draft에 영향을 주지 않는다.
 - Preflight 이후 실제 Write 전 Storage가 변해도 Partial Result를 성공으로 Commit하지 않는다.
+- Valid Unresolved Local Export Artifact는 Result Metadata 부재만으로 Orphan으로 삭제되지 않으며 Repeated Relaunch가 Duplicate Export Result 또는 automatic duplicate Photos Save를 만들지 않는다.
+- Photos Save Success 이전과 이후의 Result Artifact Cleanup은 Active Consumer, Retry와 Recovery Requirement를 따르고 Idempotent하다.
+- 한 Project의 Export Result Recovery, Cleanup 또는 Project Delete가 다른 Project Result나 External Photos Result에 영향을 주지 않는다.
 
 ## Exit Criteria
 
@@ -2130,7 +2187,7 @@ Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeat
 
 Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 Deletion / Relaunch / Cleanup Retry 조건에서 검증해야 한다.
 
-Phase 4 / 6 / 9의 ADR-024 Storage 계약을 반복 Low-storage Launch, Storage Change Between Preflight and Write, Runtime Disk Full / Retry, Failed Cleanup과 Multiple Draft Isolation 조건에서 검증해야 한다.
+Phase 4 / 6 / 9의 ADR-024 Storage 계약과 ADR-025 Export Result Artifact Lifecycle을 반복 Low-storage Launch, Storage Change Between Preflight and Write, Runtime Disk Full / Retry, Failed Cleanup, Forced Termination, Repeated Relaunch과 Multiple Draft / Export Operation Isolation 조건에서 검증해야 한다.
 
 ---
 
@@ -2140,7 +2197,7 @@ Phase 4 / 6 / 9의 ADR-024 Storage 계약을 반복 Low-storage Launch, Storage 
 
 정상 Flow 밖의 실제 iPhone 상황에서 Mellow가 안전하고 이해 가능하게 동작하도록 한다.
 
-이 Phase는 ADR-023의 Camera / Microphone Permission, Rear Zoom, Front Mirroring, Orientation과 Interruption 기본 정책을 처음 결정하지 않으며 Phase 3 / 4에서 구현된 동작을 실제 실패·복구 조건에서 강화한다.
+이 Phase는 ADR-023의 Camera / Microphone Permission, Rear Zoom, Front Mirroring, Orientation과 Interruption 기본 정책이나 ADR-025의 Photos Save Failure Result Semantics를 처음 결정하지 않으며 기존 동작을 실제 실패·복구 조건에서 강화한다.
 
 ## Included
 
@@ -2160,6 +2217,10 @@ Phase 4 / 6 / 9의 ADR-024 Storage 계약을 반복 Low-storage Launch, Storage 
 - Camera Resource Unavailable
 - Session / App Lifecycle Recovery
 - Relevant Rear Zoom State Recovery
+- Photos Permission / Status Change during Save
+- Photos Save Error
+- Observable Share Handoff Failure
+- App Lifecycle Interruption during Export Result Workflow
 
 ## Explicitly Excluded
 
@@ -2194,6 +2255,9 @@ Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Ma
 15. Interruption 결과를 Successful Manual / Auto-stop으로 표시하거나 Completion Haptic을 자동 발생시키지 않고 승인된 Partial Clip / Minimum Duration Gate 결과를 적용한다.
 16. Capture / Session Recovery 이후 Rear Zoom State를 복구해야 하는 경우 승인 Range를 유지하고 Device의 이론적 Maximum을 Product Maximum으로 사용하지 않는다.
 17. Permission 변경 또는 Session Recovery 후 새 Recording 전에 Camera / Microphone Readiness, Project Validity와 Orientation Eligibility를 다시 검사한다.
+18. Photos Permission 또는 Status Change와 Photos Save Error를 Typed Error로 Mapping하되 ADR-025의 Successful Render, Local Artifact 유지, Save Retry와 Share 가능 상태를 변경하지 않는다.
+19. 관찰 가능한 Share Handoff Failure와 App Lifecycle Interruption 중 Result Workflow를 처리하되 External App Final Delivery를 보장하거나 Share Cancel을 Export Failure로 표시하지 않는다.
+20. Result Workflow의 Permission / Error / Retry Controls가 Local Export Artifact Active Consumer와 Cleanup Safety를 위반하지 않는지 검증한다.
 
 ## Tests
 
@@ -2207,6 +2271,9 @@ Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Ma
 - Interruption과 Successful Completion / Completion Haptic 분리
 - 승인된 Partial Clip / Minimum Duration Policy 적용
 - Session Recovery 이후 Rear Zoom Range / State 및 다음 Recording Readiness 재검증
+- Photos Permission / Status Change와 Photos Save Error가 Successful Render와 Photos Save Failure를 혼동하지 않는지 확인
+- Observable Share Handoff Failure와 Result Workflow App Lifecycle Interruption
+- Result Workflow Error / Retry Control 중 Active Consumer와 Artifact Cleanup Safety
 
 ## Physical Device Test
 
@@ -2220,6 +2287,8 @@ Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Ma
 - Camera / Microphone Permission Denied 상태에서도 Photos Import 접근 가능
 - Permission 재활성화 후 Orientation Gate를 포함한 Recording Readiness 재검증
 - Rear Zoom 사용 중 Capture / Session Interruption과 Recovery 후 승인 Range 유지 여부
+- Photos Save Permission / Status Change, Photos Save Failure 후 Save Retry와 Share
+- Result Workflow 중 App Background / Foreground 전환과 가능한 Share Handoff Failure
 
 ## UI Accessibility Verification
 
@@ -2237,6 +2306,8 @@ Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Ma
 - Permission Change, Resource Unavailable, Session / App Lifecycle Interruption 이후 현재 Operation과 기존 Draft가 손상되지 않으며 다음 Recording 전에 Readiness를 다시 검사한다.
 - Interruption은 Successful Manual / Auto-stop이나 Completion Haptic으로 표시되지 않고 결과 Media가 ADR-020 / ADR-021 및 승인된 Partial Clip Gate를 따른다.
 - Capture / Session Recovery에서 Rear Zoom은 승인된 Product Range를 벗어나지 않는다.
+- Photos Save Error와 Permission / Status Change는 ADR-025의 Render Success를 실패로 바꾸지 않고 Valid Local Export Artifact, Save Retry와 Share 가능 상태를 유지한다.
+- 관찰 가능한 Share Handoff Failure 또는 Result Workflow App Lifecycle Interruption이 Active Artifact를 조기 Cleanup하거나 External Result를 삭제하지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -2244,7 +2315,7 @@ Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Ma
 
 주요 Failure Path가 정의되고 테스트되어야 한다.
 
-ADR-023의 Permission / Interruption / Session Recovery 계약과 승인된 Partial Clip / Minimum Duration Gate 결과가 실제 iPhone 12에서 검증되어야 한다.
+ADR-023의 Permission / Interruption / Session Recovery 계약, ADR-025의 Photos Save / Share Error Semantics와 승인된 Partial Clip / Minimum Duration Gate 결과가 실제 iPhone 12에서 검증되어야 한다.
 
 해당 화면의 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -2759,7 +2830,7 @@ Preview 기능 범위는 이번 Timing 보정으로 확정하지 않는다.
 - Audio Format
 - Audio Bitrate
 - Background Export 정책
-- Export Retry 정책
+- 재Export가 필요한 경우의 Export Retry 세부 정책
 - Immutable Export Snapshot의 Project Duration / State와 승인된 Export Profile 기반 Export Storage Estimate Formula
 - Temporary / Final Local Artifact와 Photos Save / Share Handoff까지의 Local Retention을 반영한 Export Safety Reserve 정책
 
@@ -2772,9 +2843,12 @@ Export Storage Estimate Formula와 Safety Reserve는 위 Codec / Container / Bit
 ### Structural Export UI Pending
 
 - Export Action Placement와 Progress / Completion Presentation
-- Share / Done 배치와 기존 실패 / Retry 및 Storage Preflight 실패 상태의 UI 구조
+- Exporting, local result ready, Saved to Photos, Photos save failed, Sharing과 Share cancelled / returned의 Result State Presentation
+- Save Retry, Share / Done 배치와 unsaved Discard Confirmation 및 Storage Preflight Failure 상태의 UI 구조
 
-Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 M05의 Export / Save / Share / Background Lifecycle은 Pending으로 유지한다.
+Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 ADR-025의 Export Rendering, Photos Save, Share와 Local Artifact Lifecycle을 다시 Open으로 만들지 않는다.
+
+Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Result UI Copy는 Pending으로 유지한다.
 
 ## Before Phase 11
 

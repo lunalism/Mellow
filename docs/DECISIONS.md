@@ -1205,11 +1205,84 @@ ADR-020의 Transactional Media Commit / Recovery, ADR-021의 Logical Deletion / 
 
 ---
 
+# ADR-025 — Export Result, Photos Save, Share, and Artifact Lifecycle
+
+**Date:** 2026-09-12
+
+**Status:** Accepted
+
+## Context
+
+Export Rendering과 Photos Save는 별도 Failure Boundary이며 Successful Render 이후에도 Photos Save가 실패할 수 있다.
+
+Save Retry와 Share를 위해 Valid Local Export Artifact가 필요하다.
+
+Share 중 File Deletion Race를 방지해야 한다.
+
+App Crash는 Render, Save와 Cleanup 경계 사이에서 발생할 수 있다.
+
+Project Delete와 Export Consumer Lifecycle이 충돌할 수 있다.
+
+Storage Pressure 때문에 Unresolved Result를 삭제하면 User Result Loss가 발생할 수 있다.
+
+## Decision
+
+Render Success와 Photos Save Success를 분리한다.
+
+Successful Local Export Artifact를 Photos Save, Save Retry와 Share에서 재사용한다.
+
+Photos Save Failure는 Render Success를 무효화하지 않는다.
+
+Photos Save Failure 후 Save Retry와 Share를 제공한다.
+
+Share Cancel은 Export Failure가 아니다.
+
+Active Consumer가 존재하는 동안 Artifact Physical Delete를 Defer한다.
+
+Photos Save에 성공하지 않은 Successful Artifact를 Done에서 silently discard하지 않으며 explicit user discard를 요구한다.
+
+Project Delete는 External Photos Result를 삭제하지 않는다.
+
+Crash 또는 Relaunch 시 Valid Unresolved Artifact는 Recovery Classification 대상이며 Cleanup은 Idempotent해야 한다.
+
+동일 Artifact를 이유 없이 Re-render하지 않는다.
+
+## Consequences
+
+### Benefits
+
+- Photos Save Failure에서도 User Result를 보호한다.
+- 불필요한 Re-render를 방지한다.
+- Share와 Save Retry를 같은 Artifact로 단순화한다.
+- Artifact Lifecycle과 External Ownership이 명확해진다.
+- Crash Recovery와 Project Delete 경합을 안전하게 처리할 수 있다.
+
+### Costs
+
+- Local Artifact와 Result State를 추적해야 한다.
+- Unresolved Result가 Local Storage를 일시적으로 소비한다.
+- Cleanup과 Recovery Reconciliation이 복잡해진다.
+- UI가 Render와 Save 상태를 구분해야 한다.
+
+## Non-goals
+
+- Exact Export Codec, Container와 Bitrate
+- Background Export
+- Exact Photos Error-specific Copy
+- Exact Result Screen Layout
+- Exact Share Button Placement
+- External App Final Delivery Guarantee
+- Automatic Past-export Recovery UI
+
+ADR-020의 Valid Artifact와 Partial / Incomplete Output 분류 및 Recovery Candidate 원칙, ADR-021의 Active Consumer, Deferred Physical Delete, Project Invalidation과 Late Async Result 원칙, ADR-024의 Storage Preflight와 User Media 자동 삭제 금지 원칙을 확장 적용한다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023` 또는 `Resolved by ADR-024`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024` 또는 `Resolved by ADR-025`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -1231,13 +1304,19 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 ### Export
 
+- Export Rendering Success와 Photos Save Success의 Boundary — Resolved by ADR-025: Render Success는 Valid Local Export Artifact 생성과 Validation으로 판단하며 Photos Save Success와 별개다.
+- Photos Save Failure Handling — High-level Policy Resolved by ADR-025: Render Success와 Local Artifact를 유지하고 Save Retry와 Share를 제공한다.
+- Save Retry Artifact Reuse — Resolved by ADR-025: 동일 Valid Local Export Artifact를 사용하며 단순 Photos Save Failure 때문에 재Render하지 않는다.
+- Share Artifact Reuse와 Share Cancel Handling — Resolved by ADR-025: Share는 동일 Artifact를 사용하고 Share Cancel은 Export Failure가 아니며 Artifact를 유지한다.
+- Unsaved Result Done Behavior — Resolved by ADR-025: explicit discard confirmation이 필요하다.
 - H.264 또는 HEVC
 - File Container
 - Video Bitrate
 - Audio Format
 - Audio Bitrate
 - Background Export 정책
-- Export Retry 정책
+- 재Export가 필요한 경우의 Export Retry 세부 정책
+- Exact Completion UI, Retry Button Placement와 Photos Save Error-specific UX
 
 ### Imported Media
 

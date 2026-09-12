@@ -486,7 +486,19 @@ Export는 현재 Project State를 기준으로 하나의 결과 Video를 생성�
 
 Export에는 시간이 걸릴 수 있으므로 진행 상태를 사용자에게 표시해야 한다.
 
-Export가 성공하면 `Saved to Photos` 상태를 보여주고 `Share`와 `Done` Action을 제공한다.
+Export Result Flow는 최소한 Exporting, Export rendered / local result ready, Saved to Photos, Photos save failed, Sharing, Share cancelled / returned와 unsaved Result의 Discard Confirmation을 의미상 구분할 수 있어야 한다.
+
+Export Rendering이 성공한 상태는 Validation을 통과한 Local Export Artifact가 준비된 상태이며 `Saved to Photos` 상태와 동일하지 않다.
+
+`Saved to Photos`는 실제 Photos Save가 성공한 뒤에만 표시하며 이 상태에서 Share와 Done을 제공할 수 있다.
+
+Photos Save Failure는 Export Rendering Failure와 구분해 표시하고 Local Result, Save Retry와 Share 가능 상태를 유지해야 한다.
+
+Share Cancel 또는 Share Sheet에서 돌아온 상태는 Export Failure가 아니며 Local Result와 Save / Share 재시도 가능 상태를 유지해야 한다.
+
+Photos Save에 성공하지 않은 Result Flow를 Done 또는 close하려는 경우에는 silent cleanup 대신 unsaved Result임을 알리고 명시적 Discard Confirmation을 제공해야 한다.
+
+정확한 Screen Layout, Button Hierarchy, Copy, Retry Placement와 Discard Confirmation Presentation은 Phase 9 Structural UX Gate에서 결정한다.
 
 `Share`는 iOS Share Sheet를 사용한다.
 
@@ -742,7 +754,9 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Clip Duplicate는 MVP에서 제공하지 않는다.
 - Clip Split은 MVP에서 제공하지 않는다.
 - Export 이후 Draft를 자동 삭제하지 않는다.
-- Export 완료 후 iOS Share Sheet를 제공한다.
+- Export Rendering Success와 Photos Save Success를 구분하여 표시하며 `Saved to Photos`는 실제 Photos Save가 성공한 뒤에만 사용한다.
+- Photos Save Failure는 Render Failure로 표시하지 않고 같은 Local Result의 Save Retry와 Share를 제공하며 Share Cancel은 Result를 유지한다.
+- Photos Save에 성공하지 않은 Result Flow 종료는 명시적 Discard Confirmation을 요구하고 Export 이후 Draft를 자동 삭제하지 않는다.
 - UI는 Content-first 원칙을 따른다.
 - Brand Screen에서는 따뜻한 Mellow 스타일을 사용하고 Camera 및 Video Screen에서는 콘텐츠 가독성을 우선한다.
 
@@ -771,7 +785,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber 등 M01의 Pending 범위가 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
-| Phase 9 — Export | Export Action 배치, Progress / Completion Presentation, Share / Done 배치, 기존 실패·Retry 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
+| Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
 
 Phase 3은 Camera Shell과 현재 Phase의 Control 구조만 구현하며 이후 Phase의 Recording / Import 기능을 미리 구현하지 않는다.
 
@@ -789,7 +803,7 @@ Clip Delete / Undo Presentation 선택은 `FEATURES.md`의 F-MVP-025와 ADR-021�
 
 Trim / Framing 구조는 ADR-022의 Working Media Crop bake-in 금지와 Metadata 기반 Framing 계약을 유지한다.
 
-M01의 Preview 기능 범위와 M05의 Save / Share / Background / Retry Lifecycle은 이 표에서 해결하지 않으며 해당 UI에 필요한 미결정 사항을 구현 전에 해결해야 한다는 시점만 정의한다.
+M01의 Preview 기능 범위와 ADR-025로 확정된 Export Result Lifecycle은 이 표에서 다시 결정하지 않으며 Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Result UI는 해당 UI 구현 전에 해결해야 한다는 시점만 정의한다.
 
 Recording Start에는 Haptic 없음, Successful Manual Stop / 10-second Auto-stop에는 subtle completion haptic이라는 승인 정책은 29절을 따르며 이 Structural UX 분류로 다시 Open으로 만들지 않는다.
 
@@ -864,6 +878,9 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Export Progress UI
 - 완료 화면 구성
 - Share와 Done의 Visual Priority
+- Export Rendering Success와 Photos Save Success의 상태 표현
+- Photos Save Failure, Save Retry와 Share의 배치
+- unsaved Result의 Discard Confirmation Presentation
 
 ### Brand
 

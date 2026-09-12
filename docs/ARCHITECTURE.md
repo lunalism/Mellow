@@ -1149,7 +1149,9 @@ Export의 Late Result는 삭제된 Project State에 신규 결과를 Commit하�
 
 이미 Photos에 저장 완료된 외부 Export 결과는 Project Delete로 삭제하지 않는다.
 
-이 계약은 Export의 Source-media Lifetime과 Project Validity를 정의하며 Photos Save / Share 완료 파일, Background Export와 Retry의 상세 Lifecycle은 M05 / Export Lifecycle Repair 대상으로 유지한다.
+이 계약은 Export의 Source-media Lifetime과 Project Validity를 정의하며 ADR-025와 53절은 Photos Save / Share Result Artifact Lifecycle을 확장 적용한다.
+
+Background Export와 재Export가 필요한 경우의 Retry 세부 정책은 계속 Pending이다.
 
 ---
 
@@ -1250,37 +1252,100 @@ Local Storage Preflight는 Photos Library의 최종 Save 성공을 보장하지 
 
 ---
 
-## 53. Export Temporary File
+## 53. Export Result Artifact Lifecycle
 
-Export Result는 먼저 Mellow의 Temporary Export Location에 생성한다.
+Export Result Lifecycle은 다음 순서를 따른다.
 
-Export가 정상 완료된 이후 Photos Save 또는 Share 대상으로 사용한다.
+`Export Operation → Temporary Rendering Output → Validation → Successful Local Export Artifact → Photos Save / Share Consumers → Resolved Result State → Safe Cleanup`
 
-불완전한 Export File을 Photos Library에 저장하지 않는다.
+Export Result는 먼저 Mellow가 소유하는 Temporary Export Location에 생성한다.
 
-Export 완료, 실패, 취소 이후 불필요한 Temporary File을 안전하게 정리한다.
+### Render Success Boundary
+
+Export Rendering은 다음 조건을 모두 만족할 때만 성공으로 판단한다.
+
+- Export Process가 성공한다.
+- Output File이 존재한다.
+- Output Validation이 성공한다.
+- Output이 현재 Export Operation Identity와 연결 가능하다.
+
+Photos Save Success는 Export Rendering Success의 조건이 아니며 두 결과를 하나의 Atomic Transaction으로 가정하지 않는다.
+
+Partial 또는 Incomplete Output, Cancel 직전에 존재한 File 또는 Validation을 통과하지 못한 File은 Successful Local Export Artifact가 아니다.
+
+### Durable Export Operation and Result Identity
+
+Export Operation과 Result에는 Crash 이후 Artifact와 Result State를 연결하고 Duplicate Recovery, Save Retry의 동일 Artifact 재사용, Stale Artifact Classification과 Project Delete Race를 판정할 수 있는 Durable Identity가 필요하다.
+
+구체적인 Swift Type, SwiftData Schema, Manifest 또는 Sidecar Format은 이 Architecture에서 강제하지 않는다.
+
+이 Identity는 ADR-020의 Durable Operation Identity와 일관되게 사용하며 동일 Operation의 반복 Recovery가 Duplicate Export Result를 만들지 않게 한다.
+
+### Successful Local Export Artifact
+
+Validation을 통과하고 현재 Export Operation과 연결된 Output은 Mellow가 Lifecycle을 관리하는 Successful Local Export Artifact가 된다.
+
+Successful Local Export Artifact는 Photos Save, Photos Save Retry와 Share에 같은 File을 재사용한다.
+
+단순 Photos Save Failure 또는 Share 재시도 때문에 동일 Project를 다시 Render하지 않는다.
+
+Artifact가 Invalid 또는 Corrupt로 판정된 경우에는 재Export가 필요할 수 있지만 단순 Photos Save Failure만으로 재Render하지 않는다.
+
+### Active Consumers and Cleanup
+
+Photos Save, Photos Save Retry, Share Sheet 또는 Share Handoff와 Result Preview가 Artifact를 직접 사용하는 경우는 Successful Local Export Artifact의 Active Consumer가 될 수 있다.
+
+Active Consumer가 존재하는 동안 Artifact를 Physical Delete하지 않으며 Cancellation 요청이나 UI가 닫힌 사실만으로 Consumer Release가 완료되었다고 간주하지 않는다.
+
+Photos Save가 성공한 Result Flow는 no Active Consumer와 no Retry 또는 Recovery Requirement를 확인한 뒤 Local Artifact를 Cleanup할 수 있다.
+
+Photos Save가 실패했거나 아직 Photos에 저장되지 않은 Result Flow는 Done 또는 close 시 Local Artifact를 자동 삭제하지 않고 explicit user discard, no Active Consumer와 no Recovery Requirement를 확인한 뒤 Cleanup할 수 있다.
+
+Cleanup은 Idempotent해야 하며 Cleanup Failure는 Result Success를 Failure로 되돌리지 않고 재시도 가능해야 한다.
+
+### Export Cancellation
+
+Rendering 중 Export Cancel은 Successful Result가 아니며 Draft와 Source Clip에 영향을 주지 않는다.
+
+Partial Temporary Output은 ADR-020의 Recovery Classification에 따라 안전하게 분류하고 Active Consumer가 남아 있으면 Cleanup을 Defer하며 Cleanup Failure는 재시도 가능하게 유지한다.
+
+### External Ownership
+
+Mellow는 자신이 소유한 Local Export Artifact만 Lifecycle을 관리한다.
+
+Photos Save가 완료한 결과는 Photos가 소유하는 외부 결과이며 Project Delete, Draft Delete 또는 Mellow Local Cleanup으로 삭제하지 않는다.
+
+Share로 외부 App 또는 System에 전달된 결과도 External Ownership이며 Mellow는 이를 회수하거나 삭제하지 않고 외부 App의 최종 Delivery Success를 보장하지 않는다.
 
 ---
 
 ## 54. Save to Photos
 
-완성된 Export Result를 Photos에 저장하는 역할은 `PhotoLibraryService`가 담당한다.
+`PhotoLibraryService`는 Successful Local Export Artifact를 Photos에 저장하는 Consumer 역할을 담당한다.
 
 Photos Save Failure와 Video Export Failure를 서로 다른 Error로 취급한다.
 
-Export 자체는 성공했지만 Photos Save만 실패한 경우 가능한 한 기존 Export File을 이용하여 Save Retry할 수 있도록 한다.
+Photos Save Success는 External Photos Result를 만들고 Project와 Draft를 유지하며 Local Artifact는 필요하면 Share에 계속 사용할 수 있다.
 
-불필요하게 Video를 다시 Export하지 않는다.
+Photos Save Failure는 Export Rendering Success를 무효화하지 않고 Local Export Artifact, Save Retry와 Share 가능 상태를 유지하며 Typed Error로 Feature Layer에 전달할 수 있다.
+
+Save Retry는 동일한 Valid Local Export Artifact를 사용한다.
+
+단순 Photos Save Failure 때문에 불필요하게 Video를 다시 Export하지 않는다.
 
 ---
 
 ## 55. Share Sheet
 
-iOS Share Sheet에는 정상적으로 Export가 완료된 Local Video URL을 전달한다.
+iOS Share Sheet에는 Successful Local Export Artifact의 Local Video URL을 전달한다.
 
 Share Sheet UI는 Feature Layer에서 관리한다.
 
 Export Service 자체가 Share UI에 의존하지 않는다.
+
+Share Sheet가 열려 있거나 Share Handoff가 Active인 동안 Local Export Artifact를 Physical Delete하지 않는다.
+
+Share Cancel 또는 Share Sheet에서 돌아온 결과는 Export Rendering Failure가 아니며 Local Export Artifact, Save와 Share 재시도 가능 상태를 유지한다.
 
 ---
 
@@ -1350,6 +1415,7 @@ App Launch 또는 필요한 Recovery 시점에 Project Metadata, Media File과 D
 | Active / In-progress Operation | 현재 진행 중인 Operation이 소유하거나 필요로 하는 Media다. |
 | Recoverable Media | Durable Operation과 연결되어 Validation, 후속 처리 또는 Metadata Commit을 재개할 수 있는 Media다. |
 | Committed Media | 25절의 Committed Clip 조건을 충족한 Clip이 참조하는 Media다. |
+| Successful Local Export Artifact | Validation을 통과하고 Durable Export Operation / Result Identity와 연결되어 Photos Save, Share, Retry 또는 Result Recovery에 사용할 수 있는 Mellow-owned Result다. |
 | Discardable Temporary Media | Ownership과 Operation State 확인 결과 복구 또는 현재 작업에 필요하지 않아 폐기 가능하다고 확정된 Temporary / Intermediate Artifact다. |
 | Confirmed Orphan | 아래 Orphan Contract의 모든 조건을 확인하여 정상 사용자 Media로 복구할 근거가 없다고 판정한 Media다. |
 
@@ -1384,6 +1450,10 @@ Known Disposable Temporary Namespace의 명백한 Incomplete Artifact와 Project
 | Valid Materialized Media + Missing Metadata + Recoverable Operation | Project 유효성을 확인한 뒤 동일 Operation / Clip Identity로 Metadata Commit을 재개할 수 있어야 한다. |
 | Valid Staging Media + Recoverable Completed Operation | Staging Write가 완료된 Operation의 가능한 Validation 또는 후속 처리를 재개한다. |
 | Valid Source + Incomplete Normalization Output | 폐기 가능하다고 확인된 Incomplete Derived Output을 정리하고 Valid Source를 보존한다. |
+| Partial Export Output + Incomplete / Cancelled Operation | Successful Local Export Artifact로 노출하지 않고 Ownership, Active Consumer와 Recovery Classification을 확인한 뒤 안전하게 정리한다. |
+| Valid Local Export Artifact + Missing Result State + Recoverable Export Operation | Artifact를 metadata 부재만으로 Orphan으로 삭제하지 않고 Durable Export Operation / Result Identity로 Reconciliation하며 Duplicate Result 또는 자동 Duplicate Photos Save를 만들지 않는다. |
+| Successful Local Export Artifact + Photos Save Failure 또는 Unresolved Save / Share State | Artifact와 Result State를 유지하여 Save Retry, Share 또는 Recovery Classification을 가능하게 하며 Active Consumer와 Recovery Requirement가 해제되기 전에는 Cleanup하지 않는다. |
+| Photos Save Success + Local Artifact Cleanup Incomplete | External Photos Result는 유지하고 Local Artifact Cleanup만 Active Consumer와 Recovery Requirement를 확인하여 Idempotent하게 재시도한다. |
 | Deleted / Nonexistent Project에 속한 Late Result | Project를 재생성하거나 Clip Metadata를 Commit하지 않으며 Artifact는 Ownership과 Recovery Classification에 따라 처리한다. |
 | Confirmed Disposable Artifacts | 정상 Committed Media와 Recovery Candidate에 영향을 주지 않고 안전하게 Cleanup한다. |
 
@@ -1401,7 +1471,9 @@ Recovery와 Reconciliation은 앱 재실행마다 반복되어도 안전하고 I
 
 - 같은 Clip이 중복 등록되지 않는다.
 - 동일 Media가 여러 Clip으로 중복 등록되지 않는다.
+- 동일 Export Operation / Result가 Duplicate Export Result 또는 자동 Duplicate Photos Save를 만들지 않는다.
 - 정상 Committed Media가 삭제되지 않는다.
+- Valid Unresolved Local Export Artifact가 metadata 부재만으로 삭제되지 않는다.
 - 이미 Cleanup된 Temporary Artifact 때문에 오류가 반복되지 않는다.
 - 완료된 Operation을 다시 신규 Operation처럼 처리하지 않는다.
 
@@ -1411,13 +1483,15 @@ Cleanup 실패는 Committed Clip을 실패 상태로 되돌리지 않으며 재�
 
 ### Scope Boundary
 
-이 계약은 Recording / Import의 저장 완료, 복구 후보 분류와 Cleanup 경계를 정의한다.
+이 계약은 Recording / Import의 저장 완료와 Export Result Artifact의 복구 후보 분류 및 Cleanup 경계를 정의한다.
 
 Delete / Undo와 Active-consumer Lifetime은 ADR-021 및 46절, 48절, 56절, 60절과 61절을 함께 적용한다.
 
 Logical Deletion은 ADR-020의 Recovery Classification을 생략할 근거가 아니며 삭제된 Target의 Late Result는 복구 과정에서도 Project나 Clip을 다시 생성하지 않는다.
 
 Process Termination 중 Pending Deletion과 Deferred Physical Cleanup의 Reconciliation은 60절과 61절에 정의한다.
+
+Export Rendering 중 Crash, Rendering 완료 후 Result State Persistence 전 Crash, Photos Save Failure 후 Crash과 Photos Save Success 후 Cleanup 전 Crash은 ADR-025와 53절의 Export Result Recovery Contract를 함께 적용한다.
 
 정상 Commit 복구를 적용하기 전에 영속적인 Logical Deletion 여부를 확인하여 남아 있는 Metadata나 Valid File만으로 Pending Deletion Clip 또는 삭제된 Project를 정상 상태로 다시 노출하지 않는다.
 
@@ -1532,6 +1606,12 @@ Logical Project Deletion과 Cleanup은 Idempotent하며 이미 삭제된 Project
 
 Photos Library의 원본 Video와 이미 Photos에 저장 완료된 외부 Export 결과에는 영향을 주지 않는다.
 
+Export Rendering 중 Project Delete가 발생하면 Project는 즉시 Invalid Commit Target이 되고 Export에 Cancellation을 요청하며 Source Media는 Export Consumer가 실제 Release할 때까지 Physical Delete하지 않는다.
+
+Export Rendering 이후 Successful Local Export Artifact가 존재하는 경우에도 Project Delete만으로 Active Photos Save 또는 Share Consumer의 Artifact를 즉시 삭제하지 않는다.
+
+Active Consumer 종료 후에도 Retry 또는 Recovery Requirement가 남아 있으면 Artifact를 보존하고 안전 조건이 모두 해제된 뒤에만 Cleanup한다.
+
 ### Project-scoped Operation Validity
 
 Recording, Import, Thumbnail Generation, Preview Preparation, Export 등 Project-scoped Async Operation은 결과 Commit 또는 적용 직전에 Project Liveness / Operation Validity를 검증해야 한다.
@@ -1608,6 +1688,8 @@ Export Estimate는 현재 Immutable Export Snapshot의 Project Duration과 State
 
 Export Preflight가 성공해도 Photos Library Save가 성공한다고 보장하지 않는다.
 
+Photos Save Failure 후 유지되는 Successful Local Export Artifact도 실제 Storage를 소비하며 Storage Pressure는 unresolved Valid Artifact, Save Retry 또는 Share Artifact를 자동 삭제할 근거가 아니다.
+
 ### Available Capacity and Recheck
 
 Storage Preflight는 Operation이 실제로 쓰는 Application Container / Filesystem Volume의 Usable Capacity를 기준으로 판단하고 장시간 유지된 Cached Value만 신뢰하지 않는다.
@@ -1645,6 +1727,8 @@ Preflight 이후 Runtime Disk Full 또는 Write Failure가 발생하면 실패 O
 기존 Committed Media, 다른 Draft와 Photos 원본은 변경하거나 삭제하지 않는다.
 
 Recording / Import Media는 ADR-020의 Recovery Classification을 적용하고 Project Delete 또는 Late Result Race에는 ADR-021의 Project Validity와 Deletion Safety를 적용한다.
+
+Export Partial Output과 Successful Local Export Artifact는 ADR-025에 따라 구분하고 Valid Unresolved Artifact는 Result Metadata 부재만으로 Orphan 또는 Disposable로 분류하지 않는다.
 
 Final Media가 존재하지만 Metadata Persistence가 Storage 부족으로 실패한 경우 Recovery Candidate로 보존한다.
 
@@ -1763,9 +1847,7 @@ Interruption 상태는 Feature Layer에 전달한다.
 
 iOS가 Background Processing을 무제한 허용한다고 가정하지 않는다.
 
-MVP에서는 Foreground Export를 기본 방향으로 한다.
-
-Export 중 앱이 Background로 이동했을 때의 정책은 실제 Device Test 결과를 바탕으로 별도로 결정한다.
+MVP의 Background Export 지원과 Export 중 앱이 Background로 이동했을 때의 Result Workflow 정책은 Pending이며 실제 Device Test 결과를 바탕으로 별도로 결정한다.
 
 ---
 
@@ -2267,13 +2349,17 @@ Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dime
 
 ### Export
 
+- Export Rendering Success와 Photos Save Success의 경계 — Resolved by ADR-025.
+- Photos Save Failure에서 Successful Local Export Artifact 유지, Save Retry와 Share 재사용 — Resolved by ADR-025.
+- Share Cancel과 unsaved Result Done / Discard의 High-level Lifecycle — Resolved by ADR-025.
 - H.264 또는 HEVC
 - File Container
 - Audio Format
 - Audio Bitrate
 - Video Bitrate
 - Background Export 정책
-- Export Retry 정책
+- 재Export가 필요한 경우의 Export Retry 세부 정책
+- Exact Result Screen Layout, Retry Button Placement와 Photos Save Error-specific Copy
 
 ### Storage
 

@@ -715,7 +715,7 @@ Mellow Camera의 기본 Capture Profile도 1080p / 30 fps다.
 
 HDR Export는 MVP에서 제공하지 않으며 SDR Export의 Framing, Transform 및 색 해석은 동일한 Project State의 Preview와 가능한 한 일치해야 한다.
 
-Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
+Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 재Export가 필요한 경우의 Retry 세부 정책은 아직 확정하지 않는다.
 
 Working Media Codec / Container와 Export Codec / Container는 별도 Decision이며 자동으로 동일하게 정하지 않는다.
 
@@ -724,6 +724,12 @@ Export는 현재 Immutable Export Snapshot의 Duration과 승인된 Output Profi
 Storage 부족을 이유로 Export Quality를 자동 하향하지 않으며 Runtime Disk Full로 생성된 Partial Output을 성공한 Export로 노출하지 않는다.
 
 Local Storage Preflight는 Photos Library의 최종 Save 성공을 보장하지 않으며 Photos Save 실패는 별도 Lifecycle로 처리한다.
+
+Export Rendering은 Export Process 성공, Output File 존재, Output Validation 성공과 현재 Export Operation Identity 연결을 모두 충족하여 Successful Local Export Artifact를 만든 시점에 성공한다.
+
+Photos Save Success는 Export Rendering Success와 별개이며 Photos Save Failure가 Successful Local Export Artifact 또는 Export Rendering Success를 무효화하지 않는다.
+
+성공한 Local Export Artifact는 Photos Save, Photos Save Retry와 iOS Share Sheet에 재사용하며 단순 Photos Save Failure 또는 Share 재시도 때문에 동일 Project를 다시 Render하지 않는다.
 
 Export 후에도 Draft를 유지하며 iOS Share Sheet로 완성된 Video를 공유할 수 있어야 한다.
 
@@ -737,9 +743,23 @@ Export 후에도 Draft를 유지하며 iOS Share Sheet로 완성된 Video를 공
 
 - 필요한 Photos permission 처리
 - Export 진행 상태 표시
-- Export 성공 피드백
-- Export 실패 피드백
-- 정상적인 영상 파일 저장
+- Export Rendering Success와 Photos Save Success를 구분하는 피드백
+- Export Rendering Failure와 Photos Save Failure를 구분하는 피드백
+- 정상적인 영상 파일을 Photos에 저장
+- Photos Save Failure 후 동일 Valid Local Export Artifact를 사용한 Save Retry와 Share
+- Share Cancel 후 Artifact, Draft와 Save / Share 재시도 가능 상태 유지
+- Photos Save에 성공하지 않은 Result Flow 종료 시 명시적 Discard Confirmation
+
+### Acceptance Criteria
+
+- Successful Render는 Validation을 통과하고 현재 Export Operation과 연결된 Local Export Artifact를 만든다.
+- Photos Save Failure는 Successful Render를 실패로 바꾸지 않고 Valid Local Export Artifact를 유지한다.
+- Photos Save Retry와 Share는 같은 Valid Local Export Artifact를 재사용한다.
+- Share Cancel은 Local Export Artifact를 삭제하거나 Export Failure로 표시하지 않는다.
+- Export 이후에도 Project와 Draft는 수정 및 재Export에 사용할 수 있다.
+- Photos에 저장 완료된 결과는 Project Lifecycle 밖의 외부 결과로 유지한다.
+- Photos Save에 성공하지 않은 Local Export Artifact는 사용자의 명시적 Discard 없이 정리하지 않는다.
+- Photos Save, Save Retry, Share Sheet 또는 Share Handoff처럼 Artifact를 사용하는 Active Consumer가 존재하는 동안 Local Export Artifact를 Physical Cleanup하지 않는다.
 
 ---
 
@@ -830,6 +850,8 @@ Storage Pressure 또는 Runtime Disk Full은 Committed Clip, Draft, Project-owne
 자동 Cleanup은 ADR-020 / ADR-021에 따라 Recovery가 필요하지 않고 Undo / Active Usage / 다른 Reference가 없다고 안전하게 분류된 Disposable Temporary Artifact 또는 Confirmed Orphan에만 적용한다.
 
 Preflight 이후 Write 또는 Metadata Persistence가 Storage 부족으로 실패하면 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 Final Media가 존재하는 Recoverable Operation은 Recovery Candidate로 보존한다.
+
+Successful Local Export Artifact도 Active Consumer, Retry 또는 Recovery Requirement가 남아 있으면 자동 Cleanup하지 않으며 ADR-025의 Result Lifecycle과 Recovery Classification을 따른다.
 
 ---
 
@@ -1180,7 +1202,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Preview와 Export는 가능한 한 동일한 Composition / Color Handling으로 SDR 색 해석과 Framing을 일치시킨다.
 - HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
-- Save to Photos와 iOS Share Sheet를 제공한다.
+- Export Rendering Success와 Photos Save Success를 분리하고 Successful Local Export Artifact를 Save, Save Retry와 Share에 재사용한다.
+- Photos Save Failure는 Rendered Result와 Draft를 유지하고 Save Retry와 Share를 제공하며 Share Cancel은 Artifact를 유지한다.
+- Photos Save에 성공하지 않은 Result Flow 종료는 명시적 Discard Confirmation을 요구하고 Photos에 저장된 결과는 Project Lifecycle 밖의 외부 결과로 유지한다.
 - 핵심 미디어 작업은 Local-first로 동작한다.
 - Clip Split과 Duplicate는 MVP에서 제공하지 않는다.
 - Focus, Exposure, Zoom, Torch 등 Advanced Camera Controls는 Post-MVP 검토 대상이다.
@@ -1265,9 +1289,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Video Bitrate, Audio Format 및 Audio Bitrate
 - 확정된 SDR Export 방향 내 정확한 SDR Color Profile / Tagging 세부값
 - 고정된 1080p / 30 fps 범위 내 Export Quality 선택 기능 제공 여부
-- Export 및 Share 화면의 세부 UX
+- ADR-025로 확정된 Render / Photos Save / Share Lifecycle을 전제로 한 Export 및 Share 화면의 세부 UX, Exact Completion UI와 Retry Button Placement
 - Export 중 앱 Background 이동 처리 방식
-- Export 실패 후 Retry 방식
+- 재Export가 필요한 경우의 Export Failure Retry 방식
 
 ## Audio
 

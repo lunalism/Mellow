@@ -538,11 +538,27 @@ MVP 표준 Output은 1080p / 30 fps / SDR이며 HDR Export는 MVP에서 제공�
 - Portrait 9:16: 1080 × 1920
 - Landscape 16:9: 1920 × 1080
 
-Export 완료 후 iOS Share Sheet를 제공한다.
+Export Rendering은 현재 Project 상태의 Video를 생성하고 Output Validation을 통과한 Local Export Artifact를 만든 시점에 성공한다.
+
+Photos Save는 성공한 Export Rendering 이후의 별도 동작이며 Photos Save의 성공은 Export Rendering Success의 조건이 아니다.
+
+성공한 Local Export Artifact는 Photos Save, Photos Save Retry와 iOS Share Sheet에 같은 결과 파일로 재사용한다.
+
+Photos Save가 실패해도 Export Rendering은 성공 상태로 유지하고 Local Export Artifact, Draft, Save Retry와 Share 가능 상태를 유지하며 사용자가 같은 Project를 다시 Export하도록 강제하지 않는다.
+
+Share Cancel은 Export Failure가 아니며 Local Export Artifact와 Draft를 유지하고 Photos Save 또는 Share 재시도를 가능하게 한다.
+
+Photos Save가 성공하면 `Saved to Photos` 상태를 표시할 수 있고 Share와 Done을 제공할 수 있다.
+
+Photos Save에 성공하지 않은 Local Export Artifact를 Done 또는 결과 Flow 종료 시 자동으로 버리지 않으며 사용자가 명시적으로 Discard를 확인해야 한다.
+
+Done 이후 Local Export Artifact Cleanup은 Active Consumer와 Retry 또는 Recovery Requirement가 없을 때만 가능하다.
+
+Project Delete나 Mellow Local Cleanup은 이미 Photos에 저장된 외부 결과를 삭제하지 않는다.
 
 Export는 Draft를 삭제하거나 작업을 강제로 종료하는 동작이 아니다.
 
-Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 Retry 세부 정책은 아직 확정하지 않는다.
+Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export, Photos Save 시스템 실패 원인별 UX, 재Export가 필요한 경우의 Retry 세부 정책과 Export / Share 화면의 정확한 UI는 아직 확정하지 않는다.
 
 원본 영상은 보존한다.
 
@@ -1071,7 +1087,12 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
 - Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 하며 HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
-- Save to Photos와 iOS Share Sheet를 제공한다.
+- Export Rendering Success와 Photos Save Success를 분리하며 Validation을 통과한 동일 Local Export Artifact를 Save, Save Retry와 Share에 재사용한다.
+- Photos Save Failure는 Export Rendering Failure가 아니며 Local Export Artifact와 Draft를 유지하고 Save Retry와 Share를 제공한다.
+- Share Cancel은 Export Failure가 아니며 Local Export Artifact와 Draft를 유지한다.
+- Photos Save 성공 후 Share와 Done을 제공할 수 있고 Done 이후 Local Export Artifact Cleanup은 Active Consumer와 Retry 또는 Recovery Requirement가 없을 때만 가능하다.
+- Photos Save에 성공하지 않은 Local Export Artifact는 Done 또는 결과 Flow 종료로 자동 삭제하지 않으며 사용자의 명시적 Discard가 필요하다.
+- Project Delete와 Mellow Local Cleanup은 Photos에 저장된 외부 Export 결과를 삭제하지 않는다.
 - Export 후에도 Draft를 유지하여 수정과 재Export를 지원한다.
 - 핵심 미디어 작업은 Local-first로 동작한다.
 - 앱 삭제 및 기기 교체 이후 복구와 iCloud 동기화·복구는 MVP 보장에 포함하지 않는다.
@@ -1122,8 +1143,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 향후 Video color / look 기능 도입 여부
 - Export Codec, Container, Bitrate 및 Audio Format
 - 고정된 1080p / 30 fps 범위 내 Export Quality 선택 기능 제공 여부
-- Export 및 Share 화면의 세부 UX
-- Background Export와 Retry 세부 정책
+- Export Rendering과 Photos Save의 구분을 전제로 한 Export 및 Share 화면의 세부 UX, 정확한 Confirmation Copy와 Retry Button Placement
+- Background Export와 재Export가 필요한 경우의 Retry 세부 정책
+- Photos Save 시스템 실패 원인별 UX와 Share Sheet 이후 외부 App 동작
 - 향후 Account 도입 여부
 - 향후 iCloud synchronization 및 기기 교체 후 복구 제공 여부
 - 향후 Analytics 사용 여부
