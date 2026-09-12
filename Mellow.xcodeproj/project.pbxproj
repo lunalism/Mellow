@@ -17,6 +17,23 @@
 		000000000000000000000208 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* XCTest.framework */; };
 		000000000000000000000209 /* MellowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* MellowUITests.swift */; };
 		00000000000000000000020A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* XCTest.framework */; };
+		00000000000000000000020B /* ProjectOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010D /* ProjectOrientation.swift */; };
+		00000000000000000000020C /* ClipSourceKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* ClipSourceKind.swift */; };
+		00000000000000000000020D /* RelativeMediaPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010F /* RelativeMediaPath.swift */; };
+		00000000000000000000020E /* MediaTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* MediaTime.swift */; };
+		00000000000000000000020F /* ClipFraming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* ClipFraming.swift */; };
+		000000000000000000000210 /* VlogClip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* VlogClip.swift */; };
+		000000000000000000000211 /* VlogProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000113 /* VlogProject.swift */; };
+		000000000000000000000212 /* ClipPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* ClipPolicy.swift */; };
+		000000000000000000000213 /* ProjectDisplayNameFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000115 /* ProjectDisplayNameFormatter.swift */; };
+		000000000000000000000214 /* DomainValidationError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* DomainValidationError.swift */; };
+		000000000000000000000215 /* PersistedVlogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000117 /* PersistedVlogModels.swift */; };
+		000000000000000000000216 /* ProjectRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000118 /* ProjectRepository.swift */; };
+		000000000000000000000217 /* SwiftDataProjectRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000119 /* SwiftDataProjectRepository.swift */; };
+		000000000000000000000218 /* InMemoryProjectRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011A /* InMemoryProjectRepository.swift */; };
+		000000000000000000000219 /* MellowModelContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011B /* MellowModelContainer.swift */; };
+		00000000000000000000021A /* DomainModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011C /* DomainModelsTests.swift */; };
+		00000000000000000000021B /* ProjectRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011D /* ProjectRepositoryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +66,23 @@
 		00000000000000000000010A /* Mellow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mellow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		00000000000000000000010B /* MellowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MellowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		00000000000000000000010C /* MellowUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MellowUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		00000000000000000000010D /* ProjectOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectOrientation.swift; sourceTree = "<group>"; };
+		00000000000000000000010E /* ClipSourceKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipSourceKind.swift; sourceTree = "<group>"; };
+		00000000000000000000010F /* RelativeMediaPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeMediaPath.swift; sourceTree = "<group>"; };
+		000000000000000000000110 /* MediaTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTime.swift; sourceTree = "<group>"; };
+		000000000000000000000111 /* ClipFraming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipFraming.swift; sourceTree = "<group>"; };
+		000000000000000000000112 /* VlogClip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VlogClip.swift; sourceTree = "<group>"; };
+		000000000000000000000113 /* VlogProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VlogProject.swift; sourceTree = "<group>"; };
+		000000000000000000000114 /* ClipPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPolicy.swift; sourceTree = "<group>"; };
+		000000000000000000000115 /* ProjectDisplayNameFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDisplayNameFormatter.swift; sourceTree = "<group>"; };
+		000000000000000000000116 /* DomainValidationError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainValidationError.swift; sourceTree = "<group>"; };
+		000000000000000000000117 /* PersistedVlogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistedVlogModels.swift; sourceTree = "<group>"; };
+		000000000000000000000118 /* ProjectRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepository.swift; sourceTree = "<group>"; };
+		000000000000000000000119 /* SwiftDataProjectRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataProjectRepository.swift; sourceTree = "<group>"; };
+		00000000000000000000011A /* InMemoryProjectRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryProjectRepository.swift; sourceTree = "<group>"; };
+		00000000000000000000011B /* MellowModelContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowModelContainer.swift; sourceTree = "<group>"; };
+		00000000000000000000011C /* DomainModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModelsTests.swift; sourceTree = "<group>"; };
+		00000000000000000000011D /* ProjectRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepositoryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +150,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000107 /* MellowTests.swift */,
+				00000000000000000000011C /* DomainModelsTests.swift */,
+				00000000000000000000011D /* ProjectRepositoryTests.swift */,
 			);
 			path = MellowTests;
 			sourceTree = "<group>";
@@ -151,6 +187,13 @@
 		000000000000000000000308 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				00000000000000000000010D /* ProjectOrientation.swift */,
+				00000000000000000000010E /* ClipSourceKind.swift */,
+				00000000000000000000010F /* RelativeMediaPath.swift */,
+				000000000000000000000110 /* MediaTime.swift */,
+				000000000000000000000111 /* ClipFraming.swift */,
+				000000000000000000000112 /* VlogClip.swift */,
+				000000000000000000000113 /* VlogProject.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -158,6 +201,8 @@
 		000000000000000000000309 /* Policies */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000114 /* ClipPolicy.swift */,
+				000000000000000000000115 /* ProjectDisplayNameFormatter.swift */,
 			);
 			path = Policies;
 			sourceTree = "<group>";
@@ -165,6 +210,7 @@
 		00000000000000000000030A /* Errors */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000116 /* DomainValidationError.swift */,
 			);
 			path = Errors;
 			sourceTree = "<group>";
@@ -272,6 +318,11 @@
 		000000000000000000000317 /* Persistence */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000117 /* PersistedVlogModels.swift */,
+				000000000000000000000118 /* ProjectRepository.swift */,
+				000000000000000000000119 /* SwiftDataProjectRepository.swift */,
+				00000000000000000000011A /* InMemoryProjectRepository.swift */,
+				00000000000000000000011B /* MellowModelContainer.swift */,
 			);
 			path = Persistence;
 			sourceTree = "<group>";
@@ -454,6 +505,21 @@
 				000000000000000000000203 /* AppRouter.swift in Sources */,
 				000000000000000000000204 /* MellowLog.swift in Sources */,
 				000000000000000000000205 /* MellowDesignSystem.swift in Sources */,
+				00000000000000000000020B /* ProjectOrientation.swift in Sources */,
+				00000000000000000000020C /* ClipSourceKind.swift in Sources */,
+				00000000000000000000020D /* RelativeMediaPath.swift in Sources */,
+				00000000000000000000020E /* MediaTime.swift in Sources */,
+				00000000000000000000020F /* ClipFraming.swift in Sources */,
+				000000000000000000000210 /* VlogClip.swift in Sources */,
+				000000000000000000000211 /* VlogProject.swift in Sources */,
+				000000000000000000000212 /* ClipPolicy.swift in Sources */,
+				000000000000000000000213 /* ProjectDisplayNameFormatter.swift in Sources */,
+				000000000000000000000214 /* DomainValidationError.swift in Sources */,
+				000000000000000000000215 /* PersistedVlogModels.swift in Sources */,
+				000000000000000000000216 /* ProjectRepository.swift in Sources */,
+				000000000000000000000217 /* SwiftDataProjectRepository.swift in Sources */,
+				000000000000000000000218 /* InMemoryProjectRepository.swift in Sources */,
+				000000000000000000000219 /* MellowModelContainer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -462,6 +528,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000000000207 /* MellowTests.swift in Sources */,
+				00000000000000000000021A /* DomainModelsTests.swift in Sources */,
+				00000000000000000000021B /* ProjectRepositoryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

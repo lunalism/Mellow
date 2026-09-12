@@ -1,6 +1,8 @@
 import SwiftUI
+import SwiftData
 
 @main
+@MainActor
 struct MellowApp: App {
     @State private var environment = AppEnvironment()
 
@@ -9,6 +11,7 @@ struct MellowApp: App {
             MellowBootstrapView()
                 .environment(environment)
         }
+        .modelContainer(environment.modelContainer)
     }
 }
 
