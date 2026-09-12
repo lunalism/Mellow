@@ -1278,11 +1278,98 @@ ADR-020의 Valid Artifact와 Partial / Incomplete Output 분류 및 Recovery Can
 
 ---
 
+# ADR-026 — Empty Project and Unavailable Media Behavior
+
+**Date:** 2026-09-12
+
+**Status:** Accepted
+
+## Context
+
+0 Clip Draft는 정상 사용자 Workflow 중 발생할 수 있다.
+
+Media File은 Metadata와 독립적으로 Missing 또는 Corrupt될 수 있다.
+
+Damaged Clip 하나 때문에 Project 전체를 잃게 하면 안 된다.
+
+Silent Skip은 사용자가 의도한 Vlog 결과를 변경한다.
+
+Automatic Deletion은 User Media Loss 위험이 있다.
+
+Recovery Candidate와 True Missing 또는 Corrupt Media를 구분해야 한다.
+
+User-controlled Replacement가 필요하다.
+
+## Decision
+
+0 Clip Project는 Valid Draft다.
+
+Empty Project는 정상적으로 열리고 Recording과 Photos Import를 허용한다.
+
+Empty Project는 Full Vlog Preview와 Export를 비활성화한다.
+
+Unavailable Clip은 기존 Timeline Position을 유지한다.
+
+Unavailable Clip은 자동으로 삭제하거나 자동으로 다른 Media로 대체하거나 Full Preview 또는 Export에서 조용히 생략하지 않는다.
+
+사용자는 Unavailable Clip을 Replace 또는 Delete할 수 있다.
+
+Healthy Clip은 계속 사용할 수 있다.
+
+Unresolved Unavailable Clip은 Full Vlog Preview와 Export를 차단한다.
+
+All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Import, Replace와 Delete를 허용한다.
+
+Replacement는 기존 Unavailable Logical Slot을 유지한 채 Media Acquisition, Staging, Validation, 필요한 Normalization, Final Media와 Transactional Commit을 거치는 Operation이다.
+
+Photos Import를 Replacement Source로 사용해도 Photos 원본은 수정하거나 삭제하지 않는다.
+
+Replacement Failure는 기존 Placeholder를 보존한다.
+
+Committed Clip Metadata 없이 존재하는 Media는 자동 User-visible Clip으로 노출하지 않고 ADR-020의 Recovery Candidate Classification을 적용한다.
+
+Project-level Corruption은 다른 Draft에서 격리한다.
+
+Filename Similarity, 다른 Project Media, Nearest Asset 또는 검증되지 않은 File을 이용해 Missing Media를 자동 대체하지 않는다.
+
+## Consequences
+
+### Benefits
+
+- User Timeline을 보존한다.
+- Damaged Media가 다른 Clip을 파괴하지 않는다.
+- Recovery Behavior를 예측 가능하게 한다.
+- Silent Changed Export를 방지한다.
+- User-controlled Repair를 제공한다.
+- Empty Project Workflow를 명확하게 한다.
+
+### Costs
+
+- Unavailable State UI가 필요하다.
+- Replace Workflow가 필요하다.
+- Preview와 Export Eligibility Logic이 증가한다.
+- Replacement Metadata Migration Decision이 필요하다.
+- Corrupted Project Isolation과 Recovery가 복잡해진다.
+
+## Non-goals
+
+- Exact Unavailable UI
+- Exact Replace Screen
+- Replacement Clip Identity Implementation
+- Trim / Framing / Transform / Thumbnail Migration Policy
+- Exact Project Metadata Recovery Algorithm
+- Automatic Cloud Restore
+- Silent Missing-media Substitution
+
+ADR-020의 Recovery Candidate Classification, ADR-021의 Delete / Active Usage / Project Validity / Late Result, ADR-024의 Storage Failure와 User Media 자동 삭제 금지, ADR-025의 Export Artifact Lifecycle을 변경하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024` 또는 `Resolved by ADR-025`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025` 또는 `Resolved by ADR-026`으로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -1366,6 +1453,14 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
   - Recording Error / Interruption Haptic — Pending.
   - 정확한 Haptic API / Style / Intensity / Sharpness / Pattern / Duration / Generator 구현과 Timing — 승인된 Completion 의미 안의 Native iOS Implementation Detail / Tuning으로 유지하며 이번 결정에서 특정 값을 확정하지 않는다.
 - Camera Control의 정확한 Placement
+- 0 Clip Project Behavior — Resolved by ADR-026: Valid Draft로 유지하며 Recording과 Photos Import를 허용하고 Full Preview와 Export는 비활성화한다.
+- Missing / Corrupt Clip Behavior — High-level Policy Resolved by ADR-026: Unavailable 상태로 기존 Position을 유지하고 자동 Delete / Skip 없이 Replace 또는 Delete를 허용한다.
+- Automatic Skip of Unavailable Clip — Rejected by ADR-026.
+- Automatic Delete of Unavailable Clip or All-unavailable Project — Rejected by ADR-026.
+- User-controlled Replace — Accepted by ADR-026.
+- Exact Unavailable Visual과 Replace UI — Pending, Owning UX Gate.
+- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Migration 및 Reset Communication — Pending, Before Replacement Implementation.
+- Project Metadata Recovery Algorithm과 Exact Corrupted-project UI / Copy — Pending.
 
 Pending Decision이 확정되면 기존 ADR에 단순히 내용을 끼워 넣기보다 결정의 중요도에 따라 새로운 ADR을 추가한다.
 

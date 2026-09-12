@@ -314,6 +314,12 @@ Domain Rule은 UI 구현과 독립적으로 검증할 수 있어야 한다.
 
 MVP에서는 사용자 지정 Project Name을 저장하지 않는다.
 
+`VlogProject`는 Clip Count가 0인 상태도 유효한 Persisted Domain State로 허용한다.
+
+0 Clip Project는 Reopenable Draft이며 Project Orientation을 유지하고 Recording과 Photos Import의 유효한 Target으로 남는다.
+
+Project의 존재와 Full Preview 또는 Export Eligibility를 같은 Invariant로 취급하지 않는다.
+
 ---
 
 ## 14. Project Orientation
@@ -356,6 +362,10 @@ Device Orientation과 Project Orientation은 서로 다른 개념으로 취급�
 - Imported
 
 Project에서 실제 사용하는 하나의 Clip Duration은 최대 10초다.
+
+Logical Clip의 존재와 참조 Media의 현재 Usability는 분리한다.
+
+Committed Clip Metadata가 존재해도 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치할 수 있으며 이 상태만으로 Logical Clip Metadata를 자동 삭제하지 않는다.
 
 ---
 
@@ -1406,6 +1416,24 @@ Export를 완료했다고 Draft를 자동 삭제하지 않는다.
 
 App Launch 또는 필요한 Recovery 시점에 Project Metadata, Media File과 Durable Operation 정보의 일관성을 Reconciliation할 수 있어야 한다.
 
+### Project and Clip Availability Contract
+
+0 Clip Project는 정상적인 Persisted Draft이며 자동 삭제, Project-level Corruption 처리 또는 Preview / Export 실패로 취급하지 않는다.
+
+Full Preview와 Export Eligibility는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source를 기준으로 별도로 판단한다.
+
+Committed Clip Metadata와 Durable Media Reference를 검증한 결과 Media가 Missing, Unreadable, Corrupt, Invalid 또는 Expected Reference와 불일치하면 Logical Clip은 유지한 채 Unavailable / Problem State로 표현할 수 있어야 한다.
+
+단일 UI Load Failure만으로 Unavailable 상태에 대한 Destructive Metadata Delete, Physical Cleanup 또는 Project-level Corruption 전환을 수행하지 않는다.
+
+Unavailable Clip은 Timeline Position을 유지하며 다른 Healthy Clip의 개별 Preview, Trim, Reorder, 새 Media Acquisition과 Delete를 차단하지 않는다.
+
+Unresolved Unavailable Clip은 Full Preview와 Export Eligibility를 차단하며 Composition Builder나 Exporter가 해당 Clip을 자동 생략하거나 다른 File로 대체하지 않는다.
+
+Project Metadata Read, Decode 또는 Persistence Failure는 가능한 범위에서 해당 Project에 격리하여 Home / Recent 전체 Load, 다른 Draft Metadata 또는 다른 Project Media Cleanup에 영향을 주지 않게 한다.
+
+Project-level Recovery Algorithm과 Exact User-facing Failure UI는 별도 Pending으로 유지하며 Database 전체 Reset을 기본 Recovery 전략으로 사용하지 않는다.
+
 ### Recovery Classification
 
 다음 상태는 개념적으로 구분하며 정확한 Enum 이름이나 구현 Type을 강제하지 않는다.
@@ -1446,8 +1474,9 @@ Known Disposable Temporary Namespace의 명백한 Incomplete Artifact와 Project
 | 확인된 상태 | 기대 결과 |
 | --- | --- |
 | Committed Metadata + Valid Media | 정상 상태를 유지한다. |
-| Committed Metadata + Missing / Corrupt Media | Damaged / Missing 상태를 감지하고 다른 Clip과 Draft를 보호한다. |
+| Committed Metadata + Missing / Corrupt / Unreadable / Invalid Media | Logical Clip을 기존 Position의 Unavailable 상태로 유지하고 다른 Clip과 Draft를 보호하며 Full Preview와 Export Eligibility에서 제외한다. |
 | Valid Materialized Media + Missing Metadata + Recoverable Operation | Project 유효성을 확인한 뒤 동일 Operation / Clip Identity로 Metadata Commit을 재개할 수 있어야 한다. |
+| Media + Missing Committed Metadata + No Recoverable Operation | 자동으로 User-visible Clip으로 노출하지 않고 Confirmed Orphan Contract와 Durable Identity, Validation 및 Ownership Evidence를 적용한다. |
 | Valid Staging Media + Recoverable Completed Operation | Staging Write가 완료된 Operation의 가능한 Validation 또는 후속 처리를 재개한다. |
 | Valid Source + Incomplete Normalization Output | 폐기 가능하다고 확인된 Incomplete Derived Output을 정리하고 Valid Source를 보존한다. |
 | Partial Export Output + Incomplete / Cancelled Operation | Successful Local Export Artifact로 노출하지 않고 Ownership, Active Consumer와 Recovery Classification을 확인한 뒤 안전하게 정리한다. |
@@ -1462,6 +1491,24 @@ Persisted Metadata가 존재하면 이미 완료된 Commit을 다시 신규 Comm
 파일과 Metadata 사이의 불일치를 발견한 경우 정상 Clip으로 노출하기 전에 위 계약에 따라 상태를 판정한다.
 
 하나의 손상된 Clip 때문에 앱 전체가 Crash하거나 모든 Draft를 열 수 없게 되어서는 안 된다.
+
+### Unavailable Clip Replacement Contract
+
+Replacement는 기존 Unavailable Logical Slot을 파괴적으로 덮어쓰는 대신 기존 Media Acquisition, Staging, Validation, 필요한 Normalization, Final Media Materialization과 Transactional Metadata / Reference Commit을 따르는 Operation이다.
+
+Photos Video Import를 Replacement Source로 사용하는 경우에도 Photos 원본은 수정하거나 삭제하지 않는다.
+
+Replacement Commit이 성공하기 전에는 기존 Unavailable Placeholder와 다른 Project Metadata를 유지한다.
+
+Cancellation, Validation Failure, Storage Failure, Import Failure, Recording Failure 또는 Interruption은 Placeholder, Healthy Clip과 Project를 손상시키지 않으며 Partial Replacement Media는 ADR-020의 Recovery Classification을 따른다.
+
+Successful Replacement는 User-visible Timeline Position을 복구하고 Unrelated Clip Reorder를 되돌리지 않는다.
+
+Replacement 중 Project Delete가 발생하면 ADR-021의 Invalid Commit Target, Late Result 차단, Active Usage Release 전 Physical Cleanup Defer와 Safe Operation-owned Media Cleanup을 적용한다.
+
+Replacement가 Same Clip Identity를 유지할지 또는 새 Clip Identity와 Slot Reference를 사용할지, 기존 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset과 사용자 Reset 안내는 구현 전에 명시적인 Technical / UX Gate에서 결정한다.
+
+이 Gate가 해결되기 전에는 Replacement Metadata Migration을 구현하지 않는다.
 
 ### Idempotency and Uniqueness
 

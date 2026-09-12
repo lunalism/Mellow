@@ -161,6 +161,8 @@ Home의 가장 중요한 두 가지 역할은 새로운 Vlog를 시작하는 것
 
 사용자 UI에서 `Draft`라는 내부 개념을 주요 명칭으로 사용하지 않는다.
 
+Clip이 0개인 유효한 Project도 Recent에서 다시 열 수 있으며 Error처럼 표현하거나 자동으로 제거하지 않는다.
+
 ---
 
 ## 7. Recent
@@ -183,6 +185,8 @@ Home의 가장 중요한 두 가지 역할은 새로운 Vlog를 시작하는 것
 Thumbnail은 첫 번째 사용 가능한 Clip을 기본 대표 이미지로 사용한다.
 
 Clip이 없는 프로젝트는 Mellow 스타일의 Placeholder를 표시한다.
+
+정확한 Empty Project Visual은 Phase 2 Structural UX Gate에서 결정하되 0 Clip 상태를 Corruption처럼 표현하지 않는다.
 
 ---
 
@@ -407,6 +411,10 @@ Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 
 전문적인 Video Timeline Interface를 그대로 복제하지 않는다.
 
+0 Clip Project는 Recording과 Video Import를 시작할 수 있지만 Full Preview와 Export는 사용할 수 없음을 Error Screen이 아닌 정상적인 Project 상태로 전달한다.
+
+일부 또는 모든 Clip이 Unavailable이어도 Project를 열고 Healthy Clip을 계속 관리할 수 있어야 하며 Project 전체를 자동으로 제거하지 않는다.
+
 ---
 
 ## 19. Clip Representation
@@ -418,6 +426,10 @@ Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 직접 촬영한 Clip과 Imported Clip을 시각적으로 지나치게 다르게 표현할 필요는 없다.
 
 사용자에게 중요한 것은 Clip의 출처보다 Vlog에서 어떻게 사용되는지다.
+
+Unavailable Clip은 숨기지 않고 기존 Timeline Position을 차지하며 Healthy Clip과 구분할 수 있고 Replace와 Delete Action에 접근할 수 있어야 한다.
+
+Unavailable 상태의 정확한 Icon, Thumbnail Placeholder, Label, Color, Button Layout, Modal 또는 Sheet와 Copy는 Phase 5 Structural UX Gate에서 결정한다.
 
 ---
 
@@ -444,6 +456,8 @@ Drag 중 현재 Clip의 위치와 삽입될 위치를 명확하게 표시한다.
 `Clip removed · Undo`
 
 Clip 삭제가 Photos Library의 원본 영상 삭제로 오해되지 않도록 한다.
+
+Unavailable Clip의 Delete도 기존 Clip Delete / Undo 의미를 변경하지 않는다.
 
 ---
 
@@ -474,6 +488,10 @@ Preview에서는 다음 요소를 반영한다.
 
 Clip 사이에는 MVP에서 특별한 Transition을 적용하지 않는다.
 
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 제공하지 않으며 문제 Clip을 조용히 생략한 완성본처럼 재생하지 않는다.
+
+다른 Clip이 Unavailable이어도 Healthy Clip의 개별 Preview는 계속 가능하다.
+
 ---
 
 ## 24. Export
@@ -485,6 +503,8 @@ Export는 Project 작업의 명확한 Completion Action으로 제공한다.
 Export는 현재 Project State를 기준으로 하나의 결과 Video를 생성하는 동작이다.
 
 Export에는 시간이 걸릴 수 있으므로 진행 상태를 사용자에게 표시해야 한다.
+
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Export를 시작하지 않으며 사용자가 Replace 또는 Delete로 문제를 해결해야 한다.
 
 Export Result Flow는 최소한 Exporting, Export rendered / local result ready, Saved to Photos, Photos save failed, Sharing, Share cancelled / returned와 unsaved Result의 Discard Confirmation을 의미상 구분할 수 있어야 한다.
 
@@ -754,6 +774,9 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Clip Duplicate는 MVP에서 제공하지 않는다.
 - Clip Split은 MVP에서 제공하지 않는다.
 - Export 이후 Draft를 자동 삭제하지 않는다.
+- 0 Clip Project는 정상적인 Draft이며 Recent에서 다시 열 수 있고 Recording과 Import를 허용하지만 Full Preview와 Export는 비활성화한다.
+- Unavailable Clip은 기존 Timeline Position에 유지하고 Replace 또는 Delete Action에 접근할 수 있어야 하며 자동 삭제, 자동 대체 또는 조용한 Preview / Export 생략을 하지 않는다.
+- Project-level Corruption은 다른 Draft에서 격리된 안전한 Failure Presentation을 제공해야 하며 정확한 UI와 Copy는 별도 UX Gate에서 결정한다.
 - Export Rendering Success와 Photos Save Success를 구분하여 표시하며 `Saved to Photos`는 실제 Photos Save가 성공한 뒤에만 사용한다.
 - Photos Save Failure는 Render Failure로 표시하지 않고 같은 Local Result의 Save Retry와 Share를 제공하며 Share Cancel은 Result를 유지한다.
 - Photos Save에 성공하지 않은 Result Flow 종료는 명시적 Discard Confirmation을 요구하고 Export 이후 Draft를 자동 삭제하지 않는다.
@@ -778,14 +801,14 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 
 | Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
 | --- | --- | --- |
-| Phase 2 — Home / Recent / New Vlog | Recent List / Grid, 구현 구조에 영향을 주는 Item 정보 Hierarchy와 New Vlog Placement, Orientation Selection의 Control 배치, 기존 Project Delete Confirmation의 Presentation 구조 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
+| Phase 2 — Home / Recent / New Vlog | Recent List / Grid, 구현 구조에 영향을 주는 Item 정보 Hierarchy와 New Vlog Placement, Orientation Selection의 Control 배치, 기존 Project Delete Confirmation의 Presentation 구조와 Empty Project의 정상 상태 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
-| Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
+| Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
-| Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber 등 M01의 Pending 범위가 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
-| Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
+| Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber 등 M01의 Pending 범위와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
+| Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
 
 Phase 3은 Camera Shell과 현재 Phase의 Control 구조만 구현하며 이후 Phase의 Recording / Import 기능을 미리 구현하지 않는다.
 
@@ -809,7 +832,9 @@ Recording Start에는 Haptic 없음, Successful Manual Stop / 10-second Auto-sto
 
 Error / Interruption Haptic은 별도 Pending이며 정확한 구현과 Completion 의미 안의 Tuning은 미확정 구현 세부사항으로 유지한다.
 
-Empty / Corrupted Project의 미정 UX와 Recent Thumbnail 책임도 이 분류에서 해결하지 않으며 기존에 정의된 화면의 Visual Tuning만 Polish로 다룬다.
+ADR-026의 Empty Project, Unavailable Clip, Preview / Export Eligibility와 Project-level Corruption 격리 동작은 확정되어 있으며 이 표에서 다시 Open으로 만들지 않는다.
+
+Empty / Corrupted Project의 Exact Visual, Replace UI와 Recent Thumbnail 책임은 각 Owning Phase Gate에서 결정하며 Phase 12는 기존에 정의된 화면의 Visual Tuning만 다룬다.
 
 Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Redesign을 수행하는 Phase가 아니며 구조 변경이 필요하면 `ROADMAP.md`의 Exception and Replanning Protocol을 따른다.
 
@@ -858,6 +883,8 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Reorder Interaction의 정확한 형태
 - Project 전체 Duration 표시 위치
 - Add Clip Action의 위치
+- Unavailable Clip의 Exact Icon, Placeholder, Label, Color와 Replace / Delete Button Hierarchy
+- Replacement의 Trim, Framing, Transform, Thumbnail Reset을 사용자에게 알리는 방식
 
 ### Trim
 
@@ -871,6 +898,7 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Playback Control 형태
 - Scrubber 제공 여부
 - Preview에서 빠르게 Clip으로 돌아가는 Interaction
+- Empty / Unavailable Project에서 Full Preview가 Blocked일 때의 Exact State Presentation
 
 ### Export
 
@@ -881,6 +909,7 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Export Rendering Success와 Photos Save Success의 상태 표현
 - Photos Save Failure, Save Retry와 Share의 배치
 - unsaved Result의 Discard Confirmation Presentation
+- Empty / Unavailable Project에서 Export가 Blocked일 때의 Exact State Presentation
 
 ### Brand
 

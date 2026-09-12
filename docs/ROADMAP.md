@@ -727,10 +727,13 @@ Home / Recent를 구현하기 전에 다음 Structural UX Pending을 사용자 �
 - 구현 구조에 영향을 주는 Recent Item의 핵심 정보 Hierarchy
 - New Vlog Entry의 Primary Placement
 - Orientation Selection의 Control 배치와 기존 Project Delete Confirmation의 Presentation 구조
+- 0 Clip Project를 정상 Draft로 전달하는 Empty Project State의 Presentation 구조
 
 New Vlog의 Primary Action 역할, 이름 입력 없음, 9:16 / 16:9 선택과 자동 이름은 확정된 기준을 유지하며 여기서 List / Grid나 구체적인 배치를 선택하지 않는다.
 
-M02의 Empty / Corrupted Project 동작과 M06의 Thumbnail 책임은 이 Gate에서 해결하지 않는다.
+ADR-026의 Empty Project Behavior는 이 Gate에서 구현하며 0 Clip Project를 정상 Draft로 표시하고 다시 열 수 있게 한다.
+
+Exact Empty Project Visual과 Project-level Corruption의 Exact Failure Presentation은 별도 UX Gate로 유지하며 M06의 Thumbnail 책임은 이 Gate에서 해결하지 않는다.
 
 ## Implementation Tasks
 
@@ -747,7 +750,9 @@ M02의 Empty / Corrupted Project 동작과 M06의 Thumbnail 책임은 이 Gate�
 11. 기존 Recent Project를 다시 열 수 있게 한다.
 12. Project 삭제 시 Confirmation을 표시한다.
 13. Project 삭제 후 Home 상태를 갱신한다.
-14. Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+14. 0 Clip Project를 Recent에서 Valid Draft로 표시하고 다시 열며 자동 삭제하지 않는다.
+15. 0 Clip Project가 Project Orientation을 유지한 채 이후 Recording과 Photos Import 기능의 유효한 Target으로 남도록 Domain과 Persistence 경계를 유지한다.
+16. Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Unit Tests
 
@@ -756,12 +761,14 @@ M02의 Empty / Corrupted Project 동작과 M06의 Thumbnail 책임은 이 Gate�
 - New Landscape Project
 - 자동 Project Name
 - Project Delete
+- 0 Clip Project Create / Read / Reopen
 
 ## UI Tests
 
 - Empty Home → New Vlog → 9:16
 - Empty Home → New Vlog → 16:9
 - Recent Project 재진입
+- 0 Clip Recent Project 재진입
 - Project 삭제 Confirmation
 
 ## Physical Device Test
@@ -783,6 +790,8 @@ Home / Recent, New Vlog / Orientation Selection과 기존 Project Delete Confirm
 - 여러 Draft가 Recent에 표시된다.
 - App 재실행 후 Recent가 유지된다.
 - Project 삭제가 정상 동작한다.
+- 0 Clip Project가 Recent에 표시되고 다시 열리며 자동으로 삭제되지 않는다.
+- 0 Clip Project의 Project Orientation이 유지되고 이후 Recording과 Photos Import 기능의 유효한 Target으로 남는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1238,6 +1247,7 @@ ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 �
 - Logical Deletion과 Deferred Physical Cleanup
 - Most-recent Undo와 Process Termination Reconciliation
 - Thumbnail Late Result Validity
+- Unavailable Clip Representation과 User-controlled Replace
 
 ## Explicitly Excluded
 
@@ -1258,10 +1268,22 @@ Clip Management 구현 전에 다음 Structural UX Pending을 사용자 승인�
 - Clip Delete Action의 Control Placement
 - Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조
 - Project Duration과 Add Clip Action의 배치
+- Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조
 
 Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경하지 않으며 Delete 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원을 유지한다.
 
 정확한 Undo Presentation 선택은 Pending이며 이 Gate가 해결되기 전에는 해당 UI 구현을 시작하지 않는다.
+
+Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다.
+
+- Replacement가 Same Clip Identity를 유지할지 또는 새 Clip Identity와 Slot Reference를 사용할지
+- Trim Preserve 또는 Reset
+- Framing Preserve 또는 Reset
+- Transform Preserve 또는 Reset
+- Thumbnail Regeneration
+- Metadata Reset을 사용자에게 알리는 방식
+
+이 Gate는 ADR-026의 Replace 가능 여부, 기존 Timeline Position 보존, Failure 시 Placeholder 보존과 Unrelated Reorder 비복원을 다시 Open으로 만들지 않는다.
 
 ## Implementation Tasks
 
@@ -1282,7 +1304,11 @@ Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경
 15. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
 16. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
 17. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
-18. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+18. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다.
+19. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다.
+20. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다.
+21. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다.
+22. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 
@@ -1301,6 +1327,9 @@ Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경
 - Undo Eligibility / Recovery / Active Usage별 Physical Delete 차단
 - Project Total Duration
 - Autosave
+- Unavailable Clip이 기존 Position에 남고 Healthy Clip의 Reorder와 Editing을 막지 않는지 확인
+- Replacement Failure가 Placeholder, Project와 다른 Clip을 보존하는지 확인
+- Successful Replacement가 Unrelated Reorder 없이 Original Logical Slot을 복구하는지 확인
 
 ## Integration Tests
 
@@ -1320,6 +1349,8 @@ Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경
 - Delete 후 다른 Clip Reorder와 Undo를 함께 수행해 복원 위치 확인
 - Pending Deletion 중 종료 후 Relaunch에서 삭제된 Clip이 다시 표시되지 않는지 확인
 - Add Clip 진입
+- Unavailable Clip Representation과 Replace / Delete 접근
+- Replacement Failure 후 Placeholder 유지
 
 ## Physical Device Test
 
@@ -1327,6 +1358,7 @@ Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경
 - Thumbnail 생성 성능
 - Delete + Undo 안정성
 - 연속 Delete, Reorder 후 Undo 및 Pending Deletion 중 강제 종료 / Relaunch
+- Unavailable Clip이 있는 Project에서 Healthy Clip Reorder / Editing과 Replace / Delete
 
 ## UI Accessibility Verification
 
@@ -1345,6 +1377,9 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 - Active Usage가 있는 Media는 Release 전까지 유지되고 Stale Thumbnail Result는 삭제된 Clip이나 Project를 되살리지 않는다.
 - Project Duration이 정확하다.
 - UI가 전문 Video Timeline처럼 복잡하지 않다.
+- Unavailable Clip은 기존 Timeline Position에 사용자-visible 상태로 남고 자동 Delete, 자동 대체 또는 Silent Removal이 발생하지 않는다.
+- Healthy Clip은 Unavailable Clip이 있어도 계속 사용할 수 있다.
+- Replace Failure는 기존 Placeholder, Project와 다른 Clip을 유지하고 Successful Replacement는 Unrelated Reorder 없이 Original Logical Slot을 복구한다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1352,7 +1387,7 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 
 촬영한 Clip만으로 Project 구조를 안정적으로 관리할 수 있어야 한다.
 
-Logical Deletion, Most-recent Undo, 결정적 복원과 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
+Logical Deletion, Most-recent Undo, 결정적 복원, Unavailable Clip Replacement와 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1728,6 +1763,7 @@ Full Vlog Preview UI를 구현하기 전에 다음 Structural UX Pending을 사�
 - Full Preview Playback Control Structure / Hierarchy
 - Preview 진입·종료와 Project Editing 화면 복귀 Navigation 구조
 - Scrubber 등 M01의 미정 범위가 Control 구조에 영향을 주는 부분
+- Empty / Unavailable Project에서 Full Preview가 Blocked일 때의 State Presentation
 
 이 Gate는 Preview 기능 범위를 새로 확정하지 않으며 M01은 별도 Repair 대상으로 유지한다.
 
@@ -1748,7 +1784,8 @@ Phase 12에는 승인된 Preview 구조의 시각적 Refinement만 남기며 UI 
 11. Composition Build는 Main Actor를 장시간 Block하지 않는다.
 12. Preview Preparation / Playback의 Active Media Usage를 등록하고 실제 Reference Release 전까지 Physical Delete를 지연한다.
 13. 필요한 경우 Playback을 중단하며 오래된 State의 Async Composition 결과나 삭제된 Project의 Late Result를 적용하지 않는다.
-14. 승인된 Preview Controls와 진입·종료 Navigation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+14. 0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Preview Composition을 생성하거나 손상된 Clip을 생략한 결과를 재생하지 않고 Healthy Clip의 Individual Preview는 계속 허용한다.
+15. 승인된 Preview Controls와 진입·종료 Navigation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 이 계약으로 새로운 Preview Editing UI나 특정 Player Rebuilding Strategy를 확정하지 않는다.
 
@@ -1779,6 +1816,7 @@ SDR Source와 HDR / Dolby Vision Source에서 생성한 Working Media를 함께 
 - Stale Preview Preparation Result의 적용 차단
 - Project Delete 시 Cancellation 요청과 Preview Reference Release 전 Cleanup 차단
 - Reference Release 이후 안전한 Deferred Cleanup과 조기 File 삭제로 인한 Player Failure 방지
+- 0 Clip Project와 Unresolved Unavailable Clip이 Full Preview를 Block하고 Healthy Clip Individual Preview는 유지되는지 확인
 
 ## Physical Device Test
 
@@ -1811,6 +1849,8 @@ iPhone 12에서 다음을 검증한다.
 - Preview가 사용 중인 File은 실제 Reference Release 전까지 삭제되지 않는다.
 - Clip Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
 - 삭제된 Project 또는 이전 State의 Late Preview Result를 적용하지 않는다.
+- 0 Clip Project에서는 Full Preview를 제공하지 않는다.
+- Unresolved Unavailable Clip이 있는 Project에서는 Full Preview를 Block하고 해당 Clip을 Silent Skip하지 않으며 Healthy Clip의 Individual Preview는 계속 가능하다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1876,6 +1916,7 @@ Export UI 구현 전에 다음 Presentation 구조를 사용자 승인으로 결
 - Exporting, local result ready, Saved to Photos, Photos save failed, Sharing과 Share cancelled / returned Result State Presentation
 - Save Retry Placement, Share / Done Action 배치와 unsaved Result Discard Confirmation
 - Render Failure, Photos Save Failure와 Storage Preflight Failure의 Presentation이 구현 구조에 영향을 주는 부분
+- Empty / Unavailable Project에서 Export가 Blocked일 때의 State Presentation
 
 Export 완료 후 Share / Done, iOS Share Sheet와 Draft 유지는 이미 확정된 요구사항이며 재결정하지 않는다.
 
@@ -1905,13 +1946,14 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 18. Snapshot 획득과 Source Media Usage 등록을 Cleanup과 조정하고 Export 종료 또는 취소 후 실제 Reference Release까지 Source Media를 보존한다.
 19. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
 20. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
-21. Project Delete 이후에도 Active Photos Save 또는 Share Consumer가 사용하는 Successful Local Export Artifact를 보존하고 Consumer 종료와 Retry 또는 Recovery Requirement 해제 뒤에만 Cleanup하며 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
-22. Export Progress / Completion, Photos Save Failure, Share / Done과 Discard Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-23. Export Operation을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 Immutable Export Snapshot의 Duration / State, 승인된 Export Profile, Temporary Output, Final Local Artifact, Photos Save / Share Handoff까지 Mellow가 보존하는 Local Artifact와 Safety Reserve를 반영한 Required Free Space를 계산한다.
-24. Export Storage Preflight가 실패하면 Export Operation이나 Partial Output을 시작하지 않고 해당 Export만 차단하며 기존 Draft와 Recording / Import 등 다른 사용 가능한 기능을 자동 차단하지 않는다.
-25. Storage 부족 때문에 승인된 1080p / 30 fps / SDR Export Quality, Audio, Project Duration이나 Clip 수를 조용히 낮추거나 제한하지 않는다.
-26. Preflight 통과 후 Temporary Export 또는 Finalization 중 Disk Full이 발생하면 Partial Output을 성공한 Export로 노출하지 않고 기존 Draft와 Source Media를 보존하며 ADR-020 / ADR-021 / ADR-025에 따라 Artifact를 분류하고 Cleanup을 재시도 가능하게 한다.
-27. 사용자가 공간을 확보한 뒤 동일하거나 새로 획득한 승인된 Snapshot 정책에 따라 Export를 안전하게 재시도할 수 있게 하며 Local Storage Preflight가 Photos Library 저장 성공을 보장한다고 가정하지 않는다.
+21. Export 시작 전에 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source를 확인하고 0 Clip 또는 Unresolved Unavailable Project에서는 Export Operation을 시작하거나 Silent Omission Output을 만들지 않는다.
+22. Project Delete 이후에도 Active Photos Save 또는 Share Consumer가 사용하는 Successful Local Export Artifact를 보존하고 Consumer 종료와 Retry 또는 Recovery Requirement 해제 뒤에만 Cleanup하며 이미 Photos에 저장된 외부 결과에는 영향을 주지 않는다.
+23. Export Progress / Completion, Photos Save Failure, Share / Done과 Discard Confirmation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+24. Export Operation을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 Immutable Export Snapshot의 Duration / State, 승인된 Export Profile, Temporary Output, Final Local Artifact, Photos Save / Share Handoff까지 Mellow가 보존하는 Local Artifact와 Safety Reserve를 반영한 Required Free Space를 계산한다.
+25. Export Storage Preflight가 실패하면 Export Operation이나 Partial Output을 시작하지 않고 해당 Export만 차단하며 기존 Draft와 Recording / Import 등 다른 사용 가능한 기능을 자동 차단하지 않는다.
+26. Storage 부족 때문에 승인된 1080p / 30 fps / SDR Export Quality, Audio, Project Duration이나 Clip 수를 조용히 낮추거나 제한하지 않는다.
+27. Preflight 통과 후 Temporary Export 또는 Finalization 중 Disk Full이 발생하면 Partial Output을 성공한 Export로 노출하지 않고 기존 Draft와 Source Media를 보존하며 ADR-020 / ADR-021 / ADR-025에 따라 Artifact를 분류하고 Cleanup을 재시도 가능하게 한다.
+28. 사용자가 공간을 확보한 뒤 동일하거나 새로 획득한 승인된 Snapshot 정책에 따라 Export를 안전하게 재시도할 수 있게 하며 Local Storage Preflight가 Photos Library 저장 성공을 보장한다고 가정하지 않는다.
 
 이 Lifecycle 계약은 ADR-025의 Result Artifact Lifecycle과 B03의 Source-media Lifetime 및 Project Validity를 함께 적용한다.
 
@@ -1932,6 +1974,7 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 - Export Storage Preflight 실패 시 Export Operation 미시작과 Operation-scoped Failure State
 - Storage 부족 시 Output Quality / Audio / Project Scope Silent Downgrade 금지
 - Runtime Disk Full의 Partial Output 비성공 처리와 기존 Draft 보존
+- 0 Clip 또는 Unresolved Unavailable Project에서 Export Operation이 시작되지 않고 Silent Omission Output이 생성되지 않는지 확인
 
 ## Integration Tests
 
@@ -1974,6 +2017,7 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 - Export Rendering 중 Project Delete
 - Active Photos Save 또는 Share 중 Project Delete
 - Photos Save 완료 후 Project Delete가 External Photos Result에 영향을 주지 않는지 확인
+- 0 Clip Project와 Unresolved Unavailable Clip이 Export를 Block하고 사용자가 Replace 또는 Delete로 문제를 해결한 뒤에만 Export를 시작할 수 있는지 확인
 
 ## Physical Device Test
 
@@ -2024,6 +2068,8 @@ Export Progress / Completion, Photos Save Failure, Save Retry, Share / Done, uns
 - Runtime Disk Full을 성공으로 표시하거나 Partial Output을 정상 Export로 노출하지 않고 기존 Draft와 Source Media를 보호한다.
 - Storage 부족 때문에 Export Quality / Audio를 자동으로 낮추거나 Project Duration / Clip Count 제한을 추가하지 않는다.
 - 공간 확보 후 Export를 안전하게 재시도할 수 있으며 Local Storage Preflight는 Photos Save 성공을 보장하지 않는다.
+- 0 Clip Project에서는 Export를 제공하지 않는다.
+- Unresolved Unavailable Clip이 있는 Project에서는 Export를 Block하고 해당 Clip을 Silent Skip한 Output을 만들지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -2051,7 +2097,7 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 
 - Project Storage Layout 검증
 - Recovery Classification과 Confirmed Orphan Reconciliation 강화
-- Missing / Corrupt File 처리
+- Missing / Corrupt File과 Unavailable Clip 처리
 - App Relaunch Recovery
 - Pending Deletion Recovery
 - Temporary File Cleanup
@@ -2071,6 +2117,8 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Export Result Artifact Recovery Hardening
 - Unresolved Export Result Preservation
 - Multiple Export Operation Isolation
+- Replacement Crash / Failure Recovery
+- Project-level Metadata Corruption Isolation
 
 ## Explicitly Excluded
 
@@ -2078,6 +2126,12 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Backup Server
 - Account
 - Cross-device Sync
+
+## Decision Gate Before Implementation
+
+Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure State Presentation / Copy를 사용자 승인으로 해결한다.
+
+이 Gate는 ADR-026의 Project-level Corruption Isolation, 다른 Draft 보호, 자동 Project Delete 금지와 Database 전체 Reset 비기본 정책을 다시 Open으로 만들지 않는다.
 
 ## Implementation Tasks
 
@@ -2107,6 +2161,11 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 24. Valid Unresolved Local Export Artifact를 metadata 부재만으로 Orphan으로 삭제하지 않고 Durable Export Operation / Result Identity로 분류하며 반복 Relaunch가 Duplicate Export Result 또는 automatic duplicate Photos Save를 만들지 않게 한다.
 25. Successful Local Export Artifact Cleanup이 Active Consumer, Retry와 Recovery Requirement를 확인하고 Idempotent하게 재시도되는지 검증한다.
 26. Multiple Draft와 Multiple Export Operation에서 한 Result Artifact의 Recovery, Cleanup 또는 Project Delete가 다른 Result Artifact나 External Photos Result에 영향을 주지 않게 한다.
+27. Relaunch에서 Missing, Corrupt 또는 Unreadable Committed Media를 기존 Timeline Position의 Unavailable Clip으로 유지하고 Project, Healthy Clip과 다른 Draft를 보호한다.
+28. Metadata 없는 Media를 자동 User-visible Clip으로 노출하지 않고 ADR-020 Recovery Candidate와 True Missing / Corrupt Media를 구분한다.
+29. All-unavailable Project가 자동 삭제되지 않고 새 Direct Recording, Photos Import, Replace와 Delete를 허용하며 Full Preview와 Export는 Block되는지 검증한다.
+30. Replacement 중 Crash, Storage Failure, Cancellation 또는 Interruption이 기존 Unavailable Placeholder, Healthy Clip과 Project를 손상시키지 않는지 검증한다.
+31. Project Metadata Read, Decode 또는 Persistence Failure가 Home / Recent 전체 Load, 다른 Draft 또는 다른 Project Media Cleanup에 전파되지 않게 한다.
 
 ## Tests
 
@@ -2142,6 +2201,11 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Repeated Relaunch에서 Unresolved Valid Artifact 보존과 Duplicate Export Result / automatic duplicate Photos Save 방지
 - Active Consumer, Retry와 Recovery Requirement를 고려한 Export Artifact Cleanup Idempotency
 - Multiple Draft / Multiple Export Operation Result Artifact Isolation
+- Missing / Corrupt / Unreadable Media의 Unavailable Clip 유지와 Original Timeline Position
+- All-unavailable Project의 Draft 보존, Full Preview / Export Block과 새 Direct Recording / Photos Import
+- Replacement Crash, Storage Failure, Cancellation과 Placeholder Preservation
+- True Missing / Corrupt Media와 Metadata 없는 Recovery Candidate의 분리
+- Project-level Metadata Corruption Isolation과 다른 Draft 보호
 
 ## Physical Device Test
 
@@ -2157,6 +2221,9 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Failed Cleanup / Stale Disposable / Confirmed Orphan Reconciliation과 Multiple Draft Isolation
 - Render, Result State Persistence, Photos Save Failure와 Photos Save Success 후 Cleanup 경계에서 Forced Termination과 Repeated Relaunch
 - Multiple Export Operation과 Project Delete가 Active Save / Share Artifact에 미치는 영향
+- Missing / Corrupt Media와 All-unavailable Project의 Relaunch 후 Unavailable 상태, Replace / Delete 및 Healthy Clip 보호
+- Replacement 중 강제 종료, Storage Failure, Cancellation과 Placeholder Preservation
+- Project-level Metadata Corruption이 Home / Recent와 다른 Draft에 미치는 격리 결과
 
 ## Acceptance Criteria
 
@@ -2178,12 +2245,17 @@ ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Valid Unresolved Local Export Artifact는 Result Metadata 부재만으로 Orphan으로 삭제되지 않으며 Repeated Relaunch가 Duplicate Export Result 또는 automatic duplicate Photos Save를 만들지 않는다.
 - Photos Save Success 이전과 이후의 Result Artifact Cleanup은 Active Consumer, Retry와 Recovery Requirement를 따르고 Idempotent하다.
 - 한 Project의 Export Result Recovery, Cleanup 또는 Project Delete가 다른 Project Result나 External Photos Result에 영향을 주지 않는다.
+- Missing, Corrupt 또는 Unreadable Media는 기존 Timeline Position의 Unavailable Clip으로 유지되고 자동 Delete, 자동 대체 또는 Silent Skip이 발생하지 않는다.
+- All-unavailable Project는 Draft로 유지하고 새 Direct Recording, Photos Import, Replace와 Delete를 허용하며 Full Preview와 Export는 Block한다.
+- Replacement Crash 또는 Failure는 기존 Placeholder, Healthy Clip과 Project를 보존한다.
+- Metadata 없는 Media는 ADR-020 Recovery Candidate 판정 전에 User-visible Clip으로 노출하지 않는다.
+- Project-level Metadata Corruption은 Home / Recent 전체 Load, 다른 Draft와 다른 Project Media에 영향을 주지 않는다.
 
 ## Exit Criteria
 
 Draft Persistence가 실제 장기 사용을 견딜 수 있는 수준이어야 한다.
 
-Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeated Relaunch, Recovery Classification, Duplicate Prevention, Cleanup Idempotency와 Multiple Draft Isolation 검증이 통과해야 한다.
+Phase 4 / 6의 Media Commit 계약을 유지하면서 Forced Termination, Repeated Relaunch, Recovery Classification, Unavailable Clip과 Project-level Failure Isolation, Duplicate Prevention, Cleanup Idempotency와 Multiple Draft Isolation 검증이 통과해야 한다.
 
 Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 Deletion / Relaunch / Cleanup Retry 조건에서 검증해야 한다.
 
@@ -2392,7 +2464,7 @@ Recent List / Grid, New Vlog Placement, Camera Control Placement, Trim / Framing
 4. Orientation Selection을 다듬는다.
 5. Camera Overlay를 최소화한다.
 6. Recording Progress와 승인된 Completion Haptic의 Subtlety / Consistency / Perceived Quality를 실제 Device에서 다듬고 Haptic에 의존하지 않는 기존 Visual Feedback의 Accessibility Regression을 확인한다.
-7. 이미 정의된 Loading State와 Empty State의 Visual만 다듬으며 M02의 미정 동작을 선택하지 않는다.
+7. ADR-026으로 확정된 Empty Project와 Unavailable Clip 동작을 유지한 채 이미 정의된 Loading State와 Empty State의 Visual만 다듬으며 Exact Unavailable UI나 Replace UI 구조를 새로 선택하지 않는다.
 8. Motion을 Reduce Motion 환경에서 검증한다.
 9. 각 UI Phase에서 이미 적용한 VoiceOver Label과 Control 식별을 전체 화면에서 회귀 검증한다.
 10. 이미 적용한 Touch Target과 Contrast 및 Color 이외 상태 표현의 화면 간 일관성을 점검한다.
@@ -2779,8 +2851,13 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현�
 - Clip Organizer Layout과 Drag Reorder의 상세 Interaction 구조
 - Delete Control Placement와 Snackbar / Toast 등 Undo Presentation Surface
 - Project Duration / Add Clip 배치
+- Unavailable Clip의 User-visible Representation과 Replace / Delete Action 접근 구조
+- Replacement Clip Identity 또는 Slot Reference Model
+- Replacement의 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset과 Reset Communication
 
 ADR-021 / F-MVP-025의 Accepted Undo semantics와 정확한 Undo Window Duration의 Pending 상태를 유지한다.
+
+ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상태이며 이 Gate에서 Replace 가능 여부, Placeholder 보존, 기존 Timeline Position 또는 Silent Skip 금지를 다시 Open으로 만들지 않는다.
 
 ## Before Phase 6
 

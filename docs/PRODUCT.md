@@ -279,6 +279,12 @@ Mellow에서 직접 짧은 영상 클립을 촬영한다.
 
 등의 정보가 포함될 수 있다.
 
+Clip이 0개인 Project도 정상적인 Draft이며 Recent에 존재하고 다시 열 수 있다.
+
+0 Clip Project는 Project Orientation을 유지한 채 Recording과 Photos Video Import를 시작할 수 있지만 Full Vlog Preview와 Export는 사용할 수 없다.
+
+0 Clip 상태는 Corruption이 아니며 자동으로 삭제하지 않는다.
+
 ### Photos Video Import
 
 Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있다.
@@ -468,6 +474,10 @@ Draft는 사용자가 삭제하기 전까지 자동 만료하지 않으며 앱 �
 
 Export 후에도 Draft를 유지하여 다시 열고 수정하거나 재Export할 수 있다.
 
+Clip이 0개인 Project는 유효한 Draft로 Recent에 표시되고 다시 열 수 있으며 자동으로 삭제하지 않는다.
+
+0 Clip Project에서는 Recording과 Photos Video Import를 계속 사용할 수 있지만 Full Vlog Preview와 Export는 비활성화한다.
+
 프로젝트 전체 삭제에는 Confirmation이 필요하다.
 
 앱 삭제 또는 기기 교체 이후의 복구는 MVP에서 보장하지 않으며 iCloud 동기화와 복구는 향후 검토 대상으로 유지한다.
@@ -475,6 +485,26 @@ Export 후에도 Draft를 유지하여 다시 열고 수정하거나 재Export�
 #### Clip Management
 
 촬영하거나 가져온 클립을 확인할 수 있다.
+
+Committed Clip Metadata가 존재하더라도 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Media Reference와 불일치할 수 있다.
+
+이 경우 Project는 계속 열 수 있고 문제가 있는 Clip은 기존 Timeline 위치를 유지하는 사용자에게 보이는 Unavailable 상태로 남는다.
+
+Mellow는 Unavailable Clip을 자동 삭제하거나 숨기거나 다른 Media로 자동 대체하지 않으며 Full Preview 또는 Export에서 조용히 건너뛰지 않는다.
+
+다른 Healthy Clip은 개별 Preview, Trim, Reorder와 새 Clip 추가를 계속 사용할 수 있다.
+
+사용자는 Unavailable Clip을 Replace 또는 Delete할 수 있다.
+
+Replace는 기존 Logical Timeline Position을 유지하는 사용자 주도 동작이며 성공하기 전까지 Unavailable Placeholder를 유지한다.
+
+Replace가 취소, Validation 실패, Storage 부족, Import 또는 Recording 실패, App Interruption으로 완료되지 않아도 Placeholder, Project와 다른 Clip은 유지한다.
+
+Photos Video Import를 Replacement Source로 선택해도 Photos 원본은 수정하거나 삭제하지 않는다.
+
+성공한 Replace는 해당 Slot을 원래 Timeline 위치에서 복구하고 Unrelated Clip의 순서를 변경하지 않는다.
+
+Replacement Media와 기존 Trim, Framing, Transform 또는 Thumbnail Metadata의 Preserve / Reset 정책은 Replacement 구현 전에 별도 Technical / UX Gate에서 결정한다.
 
 필요하지 않은 개별 Clip을 삭제하면 즉시 UI에서 제거하고 짧은 Undo Opportunity를 제공한다.
 
@@ -525,6 +555,10 @@ Trim은 정밀한 전문 편집보다
 
 현재 클립 순서, Trim 및 Framing 결과를 반영하여 전체 미니 브이로그를 재생할 수 있다.
 
+Full Vlog Preview는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 사용할 수 있다.
+
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 제공하지 않으며 Healthy Clip의 개별 Preview는 계속 가능하다.
+
 MVP Preview는 SDR을 기준으로 하며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
 
 Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 한다.
@@ -532,6 +566,10 @@ Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일�
 #### Export
 
 프로젝트의 모든 클립을 하나의 영상으로 결합하여 iPhone Photos에 저장할 수 있다.
+
+Export는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 시작할 수 있다.
+
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project는 Export할 수 없으며 손상된 Clip을 자동으로 생략한 결과를 생성하지 않는다.
 
 MVP 표준 Output은 1080p / 30 fps / SDR이며 HDR Export는 MVP에서 제공하지 않는다.
 
@@ -1081,6 +1119,11 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Runtime Disk Full 또는 Write Failure의 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 기존 Committed Media와 Photos 원본을 보호한다.
 - Multiple Drafts와 자동 저장을 지원하며 Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
 - 로컬 Draft는 앱 재실행과 기기 재부팅 이후에도 유지한다.
+- Clip이 0개인 Project는 정상적인 Draft이며 Recent에 표시되고 다시 열 수 있고 자동으로 삭제하지 않는다.
+- 0 Clip Project는 Recording과 Photos Video Import를 허용하지만 Full Vlog Preview와 Export는 비활성화한다.
+- 일부 Clip Media가 Unavailable이어도 Project와 Healthy Clip을 보호하며 해당 Clip을 기존 Timeline 위치에 남기고 사용자가 Replace 또는 Delete할 수 있게 한다.
+- Unresolved Unavailable Clip은 Full Vlog Preview와 Export를 차단하며 Mellow는 해당 Clip을 자동 삭제, 자동 대체 또는 조용히 생략하지 않는다.
+- All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
 - Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - 여러 Clip을 하나의 영상으로 Preview하고 Export할 수 있어야 한다.
@@ -1112,6 +1155,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 세로/가로 프로젝트 선택 UI
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
+- Unavailable Clip의 정확한 Visual Design과 Replace UI Flow
+- Replacement가 동일 Clip Identity를 유지할지 여부와 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset 및 사용자 Reset 안내 정책
+- Project Metadata Corruption의 정확한 Recovery Algorithm과 안전한 Failure State의 UI Copy
 - 정확한 Undo Window 시간
 - Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식

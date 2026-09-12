@@ -143,6 +143,10 @@ MVP에서 지원하는 화면 비율은 다음 두 가지다.
 
 하나의 프로젝트를 완료하지 않았다는 이유로 새로운 프로젝트 생성을 제한하지 않는다.
 
+Clip이 0개인 Project도 유효한 Draft이며 Recent에 존재하고 다시 열 수 있다.
+
+0 Clip Project는 자동으로 삭제하지 않는다.
+
 ---
 
 ## F-MVP-004 — Automatic Draft Saving
@@ -150,6 +154,8 @@ MVP에서 지원하는 화면 비율은 다음 두 가지다.
 사용자가 별도의 저장 버튼을 누르지 않아도 현재 프로젝트 상태를 자동으로 보존한다.
 
 앱 재실행 또는 기기 재부팅 후에도 자동 저장된 로컬 Draft를 다시 열 수 있어야 한다.
+
+0 Clip Project도 Project Orientation과 Draft Metadata를 보존한 채 다시 열 수 있어야 한다.
 
 ### Required State
 
@@ -201,6 +207,8 @@ MVP에서는 사용자가 Vlog 프로젝트 이름을 직접 지정하지 않는
 Draft의 대표 이미지는 첫 번째 사용 가능한 Clip의 Thumbnail을 기본값으로 사용한다.
 
 프로젝트에 아직 Clip이 없다면 기본 placeholder를 표시한다.
+
+모든 Clip이 Unavailable이면 정상 Media를 암시하지 않는 Placeholder를 표시한다.
 
 ---
 
@@ -507,6 +515,12 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 정확한 UI는 `DESIGN.md`에서 정의한다.
 
+참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Media Reference와 불일치하는 Clip은 기존 Timeline / Organizer Position을 유지하는 Unavailable 상태로 사용자에게 표시한다.
+
+Unavailable Clip은 자동으로 삭제하거나 숨기거나 Healthy Clip으로 표시하지 않는다.
+
+일부 Clip이 Unavailable이어도 Project는 열리고 Healthy Clip은 개별 Preview, Trim, Reorder와 새 Clip 추가를 계속 사용할 수 있다.
+
 ---
 
 ## F-MVP-024 — Add Additional Clips
@@ -514,6 +528,14 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 사용자는 프로젝트를 생성한 이후에도 새로운 Clip을 계속 추가할 수 있어야 한다.
 
 새로운 Clip은 Mellow Camera로 촬영하거나 Photos Library에서 Import할 수 있다.
+
+Unavailable Clip은 사용자가 기존 Media Acquisition Capability를 통해 Replace할 수 있으며 성공한 Replace는 Unrelated Clip Reorder 없이 기존 Logical Slot을 복구한다.
+
+Replace가 취소, Validation 실패, Storage 부족, Import 또는 Recording 실패, App Interruption으로 완료되지 않으면 기존 Unavailable Placeholder, Project와 다른 Clip을 유지한다.
+
+Photos Video Import를 Replacement Source로 선택하는 경우에도 F-MVP-021의 Photos 원본 보존 계약을 따른다.
+
+Replacement의 Clip Identity와 기존 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 정책은 구현 전에 별도 Gate에서 결정한다.
 
 ---
 
@@ -543,6 +565,8 @@ ADR-021의 Accepted 복원 기준에 따라 삭제 당시 이전 인접 Clip이 
 
 Clip 삭제는 Photos Library의 원본 영상에 영향을 주지 않는다.
 
+Unavailable Clip의 Delete도 이 Feature의 Logical Delete, Undo와 Active Media Usage 계약을 그대로 따른다.
+
 ### Acceptance Criteria
 
 | 시나리오 | 기대 결과 |
@@ -553,6 +577,7 @@ Clip 삭제는 Photos Library의 원본 영상에 영향을 주지 않는다.
 | Undo Window 중 Process 종료 후 재실행 | Undo Opportunity가 복원되지 않으며 해당 Delete는 확정된 Logical Deletion으로 유지되고 Clip이 다시 표시되지 않는다. |
 | Clip 삭제 후 다른 Clip Reorder 및 Undo | 확정된 인접 Clip / Original Index 기준으로 복원하며 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 보존한다. |
 | 양쪽 인접 Clip이 모두 남아 있거나 사용할 수 없는 상태에서 Undo | 둘 다 남아 있으면 이전 인접 Clip을 우선하고 둘 다 사용할 수 없으면 현재 삽입 범위로 Clamp한 Original Index를 사용한다. |
+| Unavailable Clip 삭제 | Unavailable이라는 이유로 Delete Confirmation 또는 Undo Semantics를 변경하지 않고 이 Feature의 Logical Delete와 Undo 계약을 적용한다. |
 
 정확한 Undo Window 시간, Snackbar / Toast 등의 UI 표현, Animation, Haptic과 Delete UI의 시각적 처리는 아직 확정하지 않는다.
 
@@ -660,6 +685,8 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 
 MVP Clip Preview는 SDR이며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
 
+다른 Clip이 Unavailable이어도 Healthy Clip의 개별 Preview는 사용할 수 있다.
+
 ---
 
 ## F-MVP-034 — Full Vlog Preview
@@ -682,6 +709,10 @@ HDR Source라는 이유로 Preview만 HDR로 재생하는 별도 기본 Pipeline
 
 초기 MVP에서는 Clip 사이에 특별한 Transition 효과를 제공하지 않는다.
 
+Full Vlog Preview는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 제공한다.
+
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 비활성화하고 손상된 Clip을 조용히 생략한 결과를 재생하지 않는다.
+
 ---
 
 # 15. MVP — Export
@@ -699,6 +730,10 @@ HDR Source라는 이유로 Preview만 HDR로 재생하는 별도 기본 Pipeline
 - Project orientation 유지
 - Audio 유지
 - 안정적인 영상 파일 생성
+
+Export는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 시작한다.
+
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Export를 비활성화하고 손상된 Clip을 조용히 생략한 결과를 생성하지 않는다.
 
 ### Confirmed Video Standard
 
@@ -867,6 +902,8 @@ Mellow MVP는 최소한 다음 제품 영역을 가진다.
 
 내부 Domain에서는 `Draft`라는 기술 용어를 사용할 수 있다.
 
+0 Clip Project는 유효한 Draft로 Recent에서 다시 열 수 있으며 Error로 표시하거나 자동 삭제하지 않는다.
+
 ### Orientation Selection
 
 새 프로젝트의 9:16 또는 16:9 비율을 선택한다.
@@ -882,6 +919,8 @@ Photos Library의 기존 영상을 프로젝트에 추가한다.
 ### Project / Clips
 
 촬영하거나 가져온 Clip을 확인하고 정리한다.
+
+Unavailable Clip은 기존 위치를 유지하고 Replace 또는 Delete Action에 접근할 수 있어야 한다.
 
 ### Trim
 
@@ -1190,6 +1229,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Draft에는 자동 만료 기간을 두지 않는다.
 - Draft는 사용자가 직접 삭제하기 전까지 유지한다.
 - 프로젝트 상태는 자동 저장하며 앱 재실행과 기기 재부팅 후에도 로컬 Draft를 유지한다.
+- 0 Clip Project는 유효한 Draft로 보존하고 Recent에서 다시 열며 Recording과 Photos Import를 허용하고 Full Preview와 Export는 비활성화한다.
+- Unavailable Clip은 기존 Timeline Position에 남기고 자동 삭제, 자동 대체 또는 조용한 Preview / Export 생략을 하지 않으며 사용자가 Replace 또는 Delete할 수 있게 한다.
+- 일부 또는 모든 Clip이 Unavailable이어도 Project와 Healthy Clip을 보존하고 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용하며 Full Preview와 Export는 Unresolved Unavailable Clip이 없을 때만 제공한다.
+- Replace 실패는 기존 Unavailable Placeholder, Project와 다른 Clip을 유지하고 성공한 Replace는 Unrelated Reorder 없이 기존 Logical Slot을 복구한다.
 - 앱 삭제 및 기기 교체 이후 복구와 iCloud 동기화·복구는 MVP 보장에 포함하지 않는다.
 - 프로젝트 이름 입력 Prompt는 MVP에서 제공하지 않는다.
 - 프로젝트 이름은 생성 날짜 및 시간을 기준으로 자동 생성한다.
@@ -1260,6 +1303,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
 - Draft 삭제 전 Confirmation의 세부 UI
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
+- 0 Clip Project의 Exact Empty-state Visual과 Project-level Corruption의 Exact Failure-state UI / Copy
+- Project Metadata Recovery Algorithm
 - Operation-aware Storage Preflight와 Fixed Global Threshold 미사용 — Resolved by ADR-024
 - 정확한 Safety Reserve 크기 — Pending, 관련 Media Operation Phase Gate
 - Recording / Import / Export의 정확한 Storage Estimate Formula와 계산 상수 — Pending, 각 Owning Phase Gate
@@ -1278,6 +1323,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Physical Deletion의 구체적인 구현 방식
 - Active Usage Tracking의 구체적인 구현 방식
 - Coordinator / Lease / Reference Counter 구조
+- Unavailable Clip의 Exact Visual Design과 Replace UI Flow
+- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 및 사용자 Reset 안내 정책
 - Post-MVP Clip Duplicate 도입 여부
 - Post-MVP Clip Split 도입 여부
 - 개별 Clip Mute 기능 필요 여부
