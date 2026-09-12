@@ -250,6 +250,18 @@ Orientation mismatch 상태를 오류처럼 강하게 표현하지 않는다.
 
 안내는 영상 Preview를 크게 가리지 않아야 한다.
 
+새 Recording은 Device Orientation이 Project Orientation과 일치할 때만 시작한다.
+
+9:16 Project는 Portrait Posture, 16:9 Project는 Landscape Left 또는 Landscape Right에서 Recording을 시작할 수 있다.
+
+Face Up, Face Down, Unknown 또는 아직 안정적으로 판단할 수 없는 Orientation에서는 새 Recording을 시작하지 않는다.
+
+Recording을 시작할 수 없는 상태임은 이해 가능해야 하지만 Project Aspect Ratio를 바꾸거나 Camera를 자동 회전시키지 않고 quiet / subtle / content-first Rotate Device Guidance를 제공한다.
+
+정확한 Icon, Wording, Banner / Toast / Overlay 형태, Animation과 위치는 Phase 3 Structural UX Gate에서 결정한다.
+
+Recording이 시작된 뒤 Device를 회전해도 현재 Recording을 자동 Stop / Restart하지 않고 Project Orientation과 Clip Aspect Ratio를 변경하지 않으며 다음 Record 요청 전에 Orientation을 다시 확인한다.
+
 ---
 
 ## 11. Camera Screen
@@ -271,6 +283,18 @@ Camera Preview가 화면의 대부분을 차지해야 한다.
 Primary Record Button은 촬영 화면에서 가장 명확한 Action이어야 한다.
 
 기타 Control은 Record Button보다 시각적 우선순위가 낮아야 한다.
+
+Rear Camera는 기본 1× Wide Capture와 1× 이상 Continuous Zoom을 Preview 및 Recording 중 지원한다.
+
+Rear Zoom은 Content-first Interaction을 유지하며 0.5× / 1× / Telephoto Lens Selector 또는 물리 Lens 선택 UI를 제공하지 않는다.
+
+Pinch-to-zoom은 Primary Interaction Candidate이며 최종 Gesture, Zoom Factor 표시, Visual Feedback, Sensitivity와 Maximum Quality Limit은 Phase 3 Structural UX Gate에서 사용자 승인을 받는다.
+
+Front Camera에는 Zoom UI / Gesture를 제공하지 않는다.
+
+Front Preview는 Mirrored Appearance를 사용하고 Mellow에서 직접 촬영한 Front Clip의 Preview / Editing / Export도 사용자가 촬영 중 본 Mirrored Framing과 일치해야 한다.
+
+Mirror Toggle은 MVP에서 제공하지 않는다.
 
 ---
 
@@ -315,6 +339,8 @@ Recording 중에는 Camera Switch 기능을 비활성화한다.
 사용자가 촬영 중 Camera Switch Control을 실수로 누르더라도 현재 Recording이 손상되지 않아야 한다.
 
 Front와 Rear Camera 동시 촬영은 MVP에 포함하지 않는다.
+
+Rear Zoom은 Front / Rear Camera Switching과 다른 Interaction이며 Recording 중에도 같은 Rear Camera와 Clip을 유지한 채 사용할 수 있다.
 
 ---
 
@@ -494,6 +520,14 @@ Camera, Microphone, Photos 권한은 실제 기능을 처음 사용하는 시점
 사용자가 권한을 거부한 경우 Mellow가 해당 권한을 왜 필요로 하는지 짧고 명확하게 설명한다.
 
 Settings 이동이 필요한 경우 적절한 Action을 제공한다.
+
+Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작할 수 없으며 무음 Direct-recorded Video로 자동 대체하지 않는다.
+
+Permission 안내는 Recording만 제한된다는 사실과 Photos Video Import는 계속 사용할 수 있다는 사실을 구분하여 전달해야 한다.
+
+Camera / Microphone Permission Denied가 앱 전체를 차단하거나 Import Action을 숨기는 상태가 되어서는 안 된다.
+
+정확한 Permission Screen Layout과 Copy는 Phase 3 Structural UX Gate에서 결정한다.
 
 ---
 
@@ -692,6 +726,12 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Haptic은 기존 Visual Recording State / Circular Progress / Completion State를 보조하며 종료 직전 예고 신호로 사용하지 않는다.
 - Front / Rear Camera Switch는 녹화하지 않는 상태에서만 가능하다.
 - 녹화 중 Camera Switch는 허용하지 않는다.
+- Rear Camera는 기본 1× Wide를 사용하며 Preview와 Recording 중 1× 이상 Continuous Zoom을 지원한다.
+- Rear Zoom은 같은 Recording과 Timer를 유지하며 0.5× Ultra Wide / Telephoto / Lens Selector 및 Front Camera Zoom은 MVP에서 제공하지 않는다.
+- Front Preview와 Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 Mirror Toggle은 제공하지 않는다.
+- Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작하거나 무음 Video로 대체하지 않고 Photos Import는 계속 사용할 수 있다.
+- Project Orientation mismatch, Face Up / Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 quiet Rotate Device Guidance를 제공한다.
+- Mid-record Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation을 변경하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
 - Photos에서 가져온 영상 원본 길이는 제한하지 않는다.
 - Imported Video에서 사용할 구간은 최대 10초다.
 - Project Orientation과 다른 Imported Video는 기본적으로 Fill + Crop 처리한다.
@@ -725,7 +765,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
 | --- | --- | --- |
 | Phase 2 — Home / Recent / New Vlog | Recent List / Grid, 구현 구조에 영향을 주는 Item 정보 Hierarchy와 New Vlog Placement, Orientation Selection의 Control 배치, 기존 Project Delete Confirmation의 Presentation 구조 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
-| Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
+| Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
 | Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
@@ -740,6 +780,10 @@ Phase 4 전용 표현이 Phase 3 Layout 구조에 이미 영향을 준다면 필
 Phase 6에서 구간 선택을 실제로 구현하므로 그 최소 구조를 Phase 7이나 Phase 12까지 미루지 않으며 Phase 7은 이미 승인된 부분을 재사용하고 나머지 Trim / Framing 구조를 구현 전에 결정한다.
 
 이미 확정된 New Vlog의 Primary Action 역할, Project Orientation 고정, Front / Rear Camera, 최대 10초 Recording과 Circular Progress Ring, Drag Framing / Reorder, Share / Done 및 Draft 유지 동작은 다시 Open으로 만들지 않는다.
+
+Rear 1× Wide와 1× 이상 Continuous Zoom, 0.5× / Telephoto / Lens Selector 및 Front Zoom 제외, Front Mirrored Preview / Result Parity와 Permission / Orientation 동작은 ADR-023을 따르며 다시 Open으로 만들지 않는다.
+
+Rear Zoom의 Pinch-to-zoom은 Primary Candidate일 뿐 최종 Structural UX가 아니며 Maximum Product Quality Limit과 함께 Phase 3 Gate에서 승인한다.
 
 Clip Delete / Undo Presentation 선택은 `FEATURES.md`의 F-MVP-025와 ADR-021의 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원 의미를 변경하지 않는다.
 
@@ -764,7 +808,8 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 ### Orientation
 
 - 9:16 / 16:9 선택 화면의 정확한 Visual Style
-- Orientation mismatch 안내의 형태와 위치
+- Orientation mismatch 안내의 정확한 Icon / Wording / Banner / Toast / Overlay 형태, Animation과 위치
+- 정확한 Orientation Detection API / Threshold / Debounce는 구현 세부사항으로 유지
 
 ### Camera
 
@@ -774,6 +819,9 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Import 버튼 위치
 - Clips 진입 방식
 - Camera UI Overlay 배치
+- Rear Zoom의 최종 Gesture / Interaction, Zoom Factor Indicator와 Visual Feedback
+- Rear Zoom의 Maximum Product Quality Limit과 Interaction Sensitivity
+- Camera / Microphone Permission 안내의 정확한 Layout과 Copy
 
 ### Recording
 

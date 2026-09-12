@@ -388,7 +388,37 @@ Front Camera와 Rear Camera를 모두 지원하며 Camera Switching은 녹화하
 
 Recording 중 Camera Switching은 허용하지 않는다.
 
+Rear Camera의 기본 Capture Device는 1× Wide Camera이며 사용자가 0.5× Ultra Wide, Telephoto 또는 물리 Lens를 직접 선택하는 Lens Selector UI는 MVP에서 제공하지 않는다.
+
+Rear Camera는 1× 이상에서 Continuous Zoom을 지원하며 Recording 시작 전 Preview와 Recording 중 모두 사용할 수 있다.
+
+Recording 중 Rear Zoom을 변경해도 현재 Recording을 Stop하거나 Restart하지 않고 새로운 Clip을 만들거나 10초 Timer를 Reset하지 않으며 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
+
+Rear Zoom의 정확한 Maximum은 iPhone 12의 화질과 사용성을 확인하여 Phase 3 Quality Gate에서 승인하며 Device의 이론적 최대 배율을 Product Maximum으로 자동 사용하지 않는다.
+
+Pinch-to-zoom은 Rear Zoom의 Primary Interaction Candidate지만 정확한 Interaction, Indicator와 Visual Presentation은 Phase 3 Structural UX Gate에서 결정한다.
+
+Front Camera Zoom과 Mirror Toggle은 MVP에 포함하지 않는다.
+
+Front Camera Preview는 Mirrored Appearance를 사용하며 Mellow에서 직접 촬영한 Front Clip도 이후 Preview, Editing과 Export에서 사용자가 촬영 중 본 Mirrored Framing을 유지한다.
+
+Direct Recording에는 Camera와 Microphone Permission이 모두 필요하며 둘 중 하나가 허용되지 않으면 Recording을 시작하지 않고 무음 Video로 자동 대체하지 않는다.
+
+Camera 또는 Microphone Permission 문제는 Photos Video Import를 차단하지 않으며 Audio Track이 없는 Photos Source Video도 Import할 수 있다.
+
+새 Recording은 Device Orientation이 Project Orientation과 일치할 때만 시작하며 Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 상태에서도 시작하지 않는다.
+
+Orientation이 맞지 않으면 Project 비율을 변경하지 않고 조용한 Rotate Device 안내를 제공하며 Record Action, Progress와 10초 Timer는 유효한 Orientation이 확인될 때까지 시작하지 않는다.
+
+Recording 시작 후 Device를 회전해도 현재 Recording을 자동 Stop하거나 Restart하지 않고 Project Orientation과 Clip Aspect Ratio를 변경하지 않으며 Rear Zoom을 회전만으로 Reset하지 않는다.
+
+다음 Clip Recording을 시작하기 전에는 Orientation Match를 다시 확인한다.
+
 한 프로젝트에서 여러 클립을 연속해서 추가할 수 있다.
+
+Recording Interruption은 Successful Manual Stop 또는 Successful Auto-stop으로 표시하지 않으며 생성된 Media는 ADR-020 / ADR-021의 Validation, Recovery와 Project Validity 계약을 따른다.
+
+Interruption으로 생성된 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 아직 확정하지 않는다.
 
 #### Photos Video Import
 
@@ -576,7 +606,9 @@ Mellow는 초기 제품에서 사진 앱을 목표로 하지 않는다.
 
 ### Advanced Camera Controls
 
-Tap to Focus, Exposure Control, Zoom, Torch는 Post-MVP 검토 대상으로 두며 MVP에 포함하지 않는다.
+Tap to Focus, Exposure Control, Front Camera Zoom, 0.5× Ultra Wide / Telephoto 선택, Lens Selector와 Torch는 Post-MVP 검토 대상으로 두며 MVP에 포함하지 않는다.
+
+Rear Camera의 1× 이상 Continuous Zoom은 MVP에 포함하며 Phase 7의 Editing Framing과 별개의 Capture-time Camera Behavior로 취급한다.
 
 도입 시점과 세부 동작은 아직 확정하지 않는다.
 
@@ -981,6 +1013,14 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 사용자는 10초 전에 수동 Stop할 수 있고 10초에 도달하면 자동 Stop한다.
 - Duration Preset과 Recording Pause / Resume는 MVP에서 제공하지 않는다.
 - Front / Rear Camera를 지원하며 Camera Switching은 idle 상태에서만 가능하고 Recording 중에는 금지한다.
+- Rear Camera의 기본 Capture Device는 1× Wide이며 1× 이상 Continuous Zoom을 Preview와 Recording 중 지원한다.
+- Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 10초 Timer를 Reset하지 않으며 정확한 Maximum Quality Limit과 Interaction / Presentation은 Phase 3 Gate에서 결정한다.
+- 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않고 Front Camera Zoom도 MVP에서 제공하지 않는다.
+- Front Camera Preview와 Mellow에서 직접 촬영한 Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 Mirror Toggle은 제공하지 않는다.
+- Direct Recording에는 Camera와 Microphone Permission이 모두 필요하고 어느 하나가 허용되지 않으면 Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있고 Audio Track이 없는 Source도 허용한다.
+- Recording Start에는 Project Orientation과 일치하는 Device Posture가 필요하며 Landscape Left / Right는 모두 Landscape Project에 유효하고 Face Up / Down / Unknown / Unstable 상태는 유효하지 않다.
+- Mid-record Device Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Rear Zoom을 회전만으로 Reset하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
+- Recording Interruption은 Successful Manual / Auto-stop으로 표시하지 않고 Media Safety 계약을 따르며 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
 - Photos Video Import는 MVP 필수 기능이다.
 - Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 10초 Segment를 선택한다.
 - SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용하며 Photos 원본은 수정하거나 삭제하지 않는다.
@@ -1013,7 +1053,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 핵심 미디어 작업은 Local-first로 동작한다.
 - 앱 삭제 및 기기 교체 이후 복구와 iCloud 동기화·복구는 MVP 보장에 포함하지 않는다.
 - Clip Split과 Duplicate는 MVP에서 제공하지 않는다.
-- Focus, Exposure, Zoom, Torch 등 Advanced Camera Controls는 Post-MVP 검토 대상이다.
+- Focus, Exposure, Front Zoom, Lens Selector, Ultra Wide / Telephoto 선택과 Torch 등 Advanced Camera Controls는 Post-MVP 검토 대상이며 Rear 1× 이상 Continuous Zoom은 MVP 기능이다.
 - 초기 MVP에서는 사진 필터 및 사진 편집 기능을 구현하지 않는다.
 - 초기 MVP에서는 전문 영상 편집 기능을 목표로 하지 않는다.
 - 사용자의 원본 영상은 보존한다.
@@ -1031,8 +1071,14 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 정확한 Undo Window 시간
 - Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식
-- Camera Lens 선택 및 Front Camera 영상 Mirror 세부 정책
-- Post-MVP Zoom 도입 시점 및 지원 범위
+- Rear Zoom의 정확한 Maximum Product Quality Limit
+- Rear Zoom의 정확한 Interaction / Indicator / Visual Presentation이며 Pinch-to-zoom은 Primary Candidate
+- 정확한 Orientation Detection API / Threshold / Debounce
+- Camera / Microphone Permission 안내의 정확한 화면 구성과 Copy
+- Minimum Valid Clip Duration
+- Recording Interruption에서 Valid Partial Clip의 최종 보존 / Commit / 폐기 정책
+- Recording Error / Interruption Haptic 정책
+- Post-MVP Front Camera Zoom 및 Advanced Lens Control 도입 시점과 지원 범위
 - Post-MVP Flash / Torch 도입 시점 및 세부 동작
 - Post-MVP Tap to Focus 도입 시점 및 세부 동작
 - Post-MVP Exposure Control 도입 시점 및 세부 동작

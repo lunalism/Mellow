@@ -984,11 +984,132 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 
 ---
 
+# ADR-023 — Camera Capture, Zoom, Permission, Mirroring, and Orientation Policy
+
+**Date:** 2026-09-12
+
+**Status:** Accepted
+
+## Context
+
+Phase 3 / 4 Camera 구현 전에 Lens, Zoom, Permission, Mirroring, Orientation과 Interruption 동작이 명확해야 한다.
+
+기본 1× Wide Camera를 사용하면서도 Mini Vlog 촬영에 필요한 Continuous Zoom은 제공할 필요가 있다.
+
+Lens Selector와 Capture Zoom을 같은 기능으로 취급하면 0.5× Ultra Wide, Telephoto와 복잡한 Camera Control까지 MVP Scope가 불필요하게 확장될 수 있다.
+
+Front Camera Preview와 저장된 결과가 서로 다르게 좌우 반전되면 사용자가 촬영한 Framing을 신뢰하기 어렵다.
+
+Project Orientation과 Physical Device Orientation, UI Orientation, Video Connection Orientation 및 Track Transform을 혼동하면 Recording Start 상태와 최종 Clip Orientation이 잘못될 수 있다.
+
+Microphone Permission 거부 시 Video-only Recording으로 자동 Fallback하면 승인되지 않은 Product Behavior가 생긴다.
+
+Recording Interruption은 정상 Completion과 구분하고 ADR-020 / ADR-021의 Media Safety와 연결해야 한다.
+
+## Decision
+
+MVP Rear Camera의 기본 Capture Device는 1× Wide Camera다.
+
+Rear Continuous Zoom은 Recording 시작 전 Preview와 Active Recording에서 지원하며 Product Minimum은 1×다.
+
+Active Recording 중 Rear Zoom 변경은 동일 Clip과 Media Operation Identity 안에서 이어지고 Recording을 Stop / Restart하거나 Clip Boundary를 만들거나 10초 Timer를 Reset하거나 Project Orientation을 변경하지 않는다.
+
+Rear Zoom은 해당 Wide Camera의 지원 범위 안에서 수행하되 정확한 Product Maximum은 Phase 3에서 iPhone 12 화질과 사용성을 검증하여 승인한다.
+
+Device가 보고하는 이론적 Maximum Zoom Factor를 Product Maximum으로 자동 채택하지 않는다.
+
+0.5× Ultra Wide 선택, Telephoto 선택과 사용자 Lens Selector는 MVP에 포함하지 않는다.
+
+Pinch-to-zoom은 Rear Zoom의 Primary Interaction Candidate이며 최종 Interaction, Zoom Indicator, Visual Presentation, Sensitivity와 Maximum Quality Limit은 Phase 3 Structural / Quality Gate에서 결정한다.
+
+Front Camera Zoom은 MVP에 포함하지 않는다.
+
+Front / Rear Camera Switching은 Idle 상태에서만 허용하고 Recording 중에는 허용하지 않는다.
+
+Front Camera Preview는 Mirrored Appearance를 사용하며 Mellow에서 직접 촬영하고 Commit한 Front Clip은 이후 Preview, Editing과 Export에서도 촬영 중 본 Mirrored Framing과 동일한 사용자-visible Appearance를 유지한다.
+
+Mirror Toggle은 MVP에 포함하지 않으며 구현은 특정 Mirroring API로 고정하지 않는다.
+
+Preview, Capture / Working Media와 Composition Transform 사이에 하나의 명확한 Transform Ownership을 두어 Double-mirroring과 Accidental Un-mirroring을 방지하고 Shared Preview / Export Composition 원칙을 유지한다.
+
+Photos Import Source에는 Front Camera Mirroring 정책을 소급 적용하지 않고 Source의 원래 Presentation을 기준으로 처리한다.
+
+Direct Recording은 Camera Permission과 Microphone Permission을 모두 요구하며 Denied / Restricted 상태에서는 Recording이나 Timer를 시작하지 않고 Video-only Direct Recording으로 자동 Fallback하지 않는다.
+
+Camera 또는 Microphone Permission 문제는 Photos Video Import를 차단하지 않으며 Import는 자체 Photos Picker / Permission 계약을 따르고 Audio Track이 없는 Source Video도 허용한다.
+
+Project Orientation은 생성 시 선택한 9:16 Portrait 또는 16:9 Landscape로 Project Lifetime 동안 고정하며 Physical Device Rotation으로 변경하지 않는다.
+
+새 Recording은 Camera / Microphone Authorization, Required Capture Device, Session Configuration, Project Validity와 Orientation Eligibility를 확인한 뒤 시작한다.
+
+Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left 또는 Landscape Right에서 Recording을 시작할 수 있다.
+
+Project Orientation Mismatch, Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientation에서는 새 Recording, Progress와 10초 Timer를 시작하지 않고 quiet Rotate Device Guidance를 제공한다.
+
+Recording 시작 후 Device가 회전해도 현재 Recording을 자동 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Rotation만으로 Rear Zoom을 Reset하지 않는다.
+
+현재 Clip의 Presentation Orientation은 Recording 시작 시의 Project Orientation을 유지하며 다음 Recording 시작 전에는 Orientation Eligibility를 다시 확인한다.
+
+Landscape Left / Right에서 촬영한 Clip은 올바른 Presentation Transform으로 정규화하여 뒤집히거나 180° 잘못 회전되지 않게 한다.
+
+Rear Capture Zoom은 촬영 결과에 반영되는 Camera Behavior이며 Phase 7의 Working Media 범위 안에서 적용하는 Metadata 기반 Editing Framing과 별개의 책임이다.
+
+Phase 7 Framing으로 Capture Zoom 이전의 전체 1× Field of View를 복원할 수 있다고 보장하지 않는다.
+
+Interruption 발생 시 Capture Operation을 안전한 Stop / Cancel / Finalize 경로로 이동하고 Successful Manual Stop 또는 Successful 10-second Auto-stop으로 표시하지 않으며 정상 Completion Haptic을 자동 적용하지 않는다.
+
+Interruption Media는 ADR-020의 Transactional Commit / Validation / Recovery와 ADR-021의 Project Validity / Late Result / Deletion Safety를 따르고 Invalid / Incomplete Media를 정상 Clip으로 Commit하지 않는다.
+
+Valid Partial Clip의 최종 보존 / Commit / 폐기와 Minimum Valid Clip Duration은 Pending으로 유지한다.
+
+## Consequences
+
+### Benefits
+
+- Camera Behavior와 Recording Readiness가 예측 가능해진다.
+- Lens Selector 없이 Mini Vlog 촬영 중 유용한 Rear Zoom을 제공한다.
+- Preview와 Direct-recorded Front Result의 사용자-visible Framing이 일치한다.
+- Permission 거부 상태에서 의도하지 않은 무음 Recording을 방지한다.
+- Orientation 오류와 잘못된 Clip Transform 위험을 줄인다.
+- Phase 3 / 4 구현의 모호함을 줄인다.
+- Interruption 결과를 기존 Media Recovery 계약으로 안전하게 처리한다.
+
+### Costs
+
+- 1× 미만 Ultra Wide 촬영을 제공하지 않는다.
+- Rear Digital Zoom에 따른 화질 저하 가능성이 있어 Product Maximum Quality Limit 검증이 필요하다.
+- Front Camera Zoom을 제공하지 않는다.
+- Microphone Permission을 거부한 사용자는 Direct Recording을 사용할 수 없다.
+- Mirrored Front Output은 일부 Professional Camera Convention과 다를 수 있다.
+- Orientation Gating과 Transform Ownership 구현 및 검증이 필요하다.
+- Interruption Partial Media의 최종 Product Policy는 별도 Pending으로 남는다.
+
+## Non-goals
+
+- Exact AVCapture Zoom API
+- Exact Maximum Zoom Factor
+- Final Zoom Gesture / Indicator Design
+- Ultra Wide Selection
+- Telephoto Selection
+- Advanced Camera Lens Selection
+- Front Camera Zoom
+- Exposure / Focus Manual Control
+- Exact Permission UI Copy / Layout
+- Exact Orientation Detection API / Debounce / Threshold
+- Minimum Valid Clip Duration
+- Interrupted Partial Clip Final Disposition
+- Error / Interruption Haptic
+- Exact Mirroring Implementation Mechanism
+
+ADR-020의 Transactional Commit / Recovery, ADR-021의 Project Validity / Late Result / Deletion Safety와 ADR-022의 SDR Working Media / Non-destructive Project Framing 계약은 변경하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022` 또는 `Resolved by ADR-023`으로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -1026,11 +1147,22 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 ### Camera
 
-- Front Camera 저장 영상의 Mirror Policy
-- Camera Lens 선택 정책
+- Rear Camera Lens 정책 — Resolved by ADR-023: MVP 기본 1× Wide이며 0.5× Ultra Wide / Telephoto / Lens Selector는 제외.
+- Rear Continuous Zoom — Resolved by ADR-023: Preview와 Active Recording에서 1× 이상 지원.
+- Rear Maximum Zoom Product Quality Limit — Pending, Phase 3 Gate.
+- Rear Zoom Interaction / Indicator / Visual Presentation — Pinch-to-zoom은 Primary Candidate이며 Final Structural UX는 Pending, Phase 3 Gate.
+- Front Camera Zoom — Out of MVP by ADR-023.
+- Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result의 Mirrored Appearance 유지.
+- Camera Permission의 Direct Recording 동작 — High-level Policy Resolved by ADR-023: Denied / Restricted이면 Recording 차단, Photos Import는 독립.
+- Microphone Permission의 Direct Recording 동작 — High-level Policy Resolved by ADR-023: Denied / Restricted이면 Recording 차단, Video-only Fallback 없음, Photos Import는 독립.
+- Orientation Mismatch와 Mid-record Rotation — High-level Policy Resolved by ADR-023: Start Gate 적용, Recording / Project Orientation 유지, 다음 Recording 전 재평가.
+- 정확한 Orientation Detection API / Threshold / Debounce — Pending.
+- Minimum Valid Clip Duration — Pending.
+- Recording Interruption에서 Valid Partial Clip의 최종 처리 — Pending.
+- Recording Error / Interruption Haptic — Pending.
 - Tap to Focus 도입 시점
 - Exposure Control 도입 시점
-- Zoom 도입 시점
+- Post-MVP Front Zoom / Advanced Lens Control 도입 시점
 - Torch 도입 시점
 
 ### Storage

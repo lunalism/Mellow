@@ -640,14 +640,23 @@ SwiftUI View에서 `AVCaptureSession`을 직접 관리하지 않는다.
 - Rear Camera 구성
 - Front Camera 구성
 - Microphone Input 구성
+- Camera / Microphone Authorization과 Recording Readiness 확인
 - Camera Switching
+- Rear Continuous Zoom
 - Preview 연결
 - Recording 시작
 - Recording 종료
 - 10초 Maximum Duration 적용
-- Orientation 정보 처리
+- Device / Project / UI / Video Presentation Orientation 정보 분리와 Recording Start Eligibility 처리
+- Front Camera Mirroring Transform Ownership 유지
 - Session Interruption 처리
 - Recording 결과 반환
+
+MVP Camera Capability는 Rear 1× Wide, Front Camera, Rear Continuous Zoom과 Idle 상태의 Front / Rear Switching으로 제한한다.
+
+0.5× Ultra Wide, Telephoto, 사용자 Lens Selector, Front Camera Zoom, Dual Camera와 Recording 중 Front / Rear Switching은 MVP Camera Capability에 포함하지 않는다.
+
+Camera 또는 Microphone Permission이 없거나 Required Capture Device가 unavailable하면 Typed Failure를 반환할 수 있어야 하며 부분적으로 Direct Recording을 시작하지 않는다.
 
 ---
 
@@ -666,6 +675,14 @@ Mellow Camera에서 60 fps 선택 옵션을 MVP에서 제공하지 않는다.
 
 Mellow는 Camera Configuration보다 기록 경험의 단순함을 우선한다.
 
+Rear Camera Capture Device는 기본 1× Wide Camera를 사용한다.
+
+Rear Continuous Zoom은 해당 Wide Camera가 지원하는 Zoom Capability 안에서 1× 이상으로 동작하고 Phase 3에서 승인한 Product Maximum Quality Limit을 넘지 않도록 Clamp한다.
+
+Device가 보고하는 이론적 Maximum Zoom Factor를 Product Maximum으로 자동 채택하지 않는다.
+
+정확한 Capture Device Discovery와 Zoom API는 이 문서에서 고정하지 않으며 기대한 Capability가 없거나 사용할 수 없으면 Typed Failure로 처리한다.
+
 ---
 
 ## 28. Camera Threading
@@ -673,6 +690,10 @@ Mellow는 Camera Configuration보다 기록 경험의 단순함을 우선한다.
 `AVCaptureSession`의 구성, Start, Stop, Input 변경을 SwiftUI Main Thread에서 직접 수행하지 않는다.
 
 Camera Session 관련 작업은 안전한 Serial Execution Context에서 처리한다.
+
+Rear Zoom 변경은 Camera Configuration State Change와 같은 안전한 실행 경계에서 직렬화한다.
+
+구체적인 Actor / Queue / Lock Type은 이 문서에서 강제하지 않는다.
 
 SwiftUI State Update만 Main Actor에서 수행한다.
 
@@ -688,6 +709,10 @@ SwiftUI View의 `body` 재평가가 Capture Session을 새로 생성하지 않�
 
 Camera Session Lifecycle과 SwiftUI Rendering Lifecycle을 분리한다.
 
+Rear Preview는 Recording 전 Continuous Zoom 상태를 반영할 수 있어야 한다.
+
+Front Preview는 Mirrored Appearance를 사용하며 저장된 Direct-recorded Front Clip과 사용자-visible Framing이 일치해야 한다.
+
 ---
 
 ## 30. Video Recording
@@ -699,6 +724,18 @@ MVP Recording은 `AVCaptureMovieFileOutput`을 우선 사용한다.
 따라서 초기부터 `AVCaptureVideoDataOutput`과 `AVAssetWriter`를 이용한 Custom Recording Engine을 만들지 않는다.
 
 향후 실시간 Video Look 또는 Camera Filter가 실제 제품 요구사항이 되면 Recording Pipeline 교체를 별도로 검토한다.
+
+Rear Continuous Zoom은 Capture-time Camera Behavior이며 Preview와 Active Recording에서 같은 Rear Camera의 Field of View를 변경한다.
+
+Active Recording 중 Zoom 변경은 동일 Clip과 Media Operation Identity 안에서 이어지며 Recording을 Stop / Restart하거나 Clip Boundary를 만들거나 10초 Timer를 Reset하거나 Project Orientation을 변경하지 않는다.
+
+Recording 중 Zoom을 이유로 Capture Session 전체를 불필요하게 재구성하는 설계를 기본으로 하지 않는다.
+
+Capture Zoom은 Phase 7 Editing Framing과 별개의 책임이다.
+
+Capture Zoom은 실제 촬영 결과에 반영되며 이후 Metadata Framing으로 Zoom 이전의 전체 1× Field of View를 복원할 수 있다고 보장하지 않는다.
+
+Editing Framing은 기존 Working Media 영역 안에서 Metadata 기반 Fill + Crop / Position / Scale을 적용하며 ADR-022의 Non-destructive Framing 계약을 유지한다.
 
 ---
 
@@ -734,6 +771,8 @@ Recording 중에는 Camera Switch Operation을 허용하지 않는다.
 
 Camera Input 교체가 실패할 경우 가능한 한 기존 유효한 Camera Configuration을 유지한다.
 
+Rear Continuous Zoom은 다른 Camera 또는 물리 Lens로 전환하는 의미가 아니며 Recording 중 Zoom을 Camera Switching으로 처리하지 않는다.
+
 ---
 
 ## 34. Device Orientation
@@ -750,17 +789,43 @@ Capture Metadata와 Video Transform은 올바른 Orientation을 유지할 수 �
 
 Orientation mismatch 상태는 Feature Layer에 전달하여 `DESIGN.md`에서 정의한 안내 UI를 표시할 수 있어야 한다.
 
+Project Orientation은 영속적인 Project State이며 9:16 Portrait 또는 16:9 Landscape로 Project Lifetime 동안 고정한다.
+
+Device Orientation은 Recording Start Eligibility에 사용하는 일시적인 Physical State이며 UI Orientation, Video Connection Orientation과 Track Presentation Transform을 같은 값으로 취급하지 않는다.
+
+Portrait Project는 Portrait Posture에서, Landscape Project는 Landscape Left 또는 Landscape Right에서 새 Recording을 시작할 수 있다.
+
+Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientation은 Recording Start에 충분한 Evidence가 아니다.
+
+Record Request는 Camera / Microphone Authorization과 Capability, Project Validity 및 Orientation Eligibility를 확인한 뒤 Media Writing을 시작해야 한다.
+
+Orientation이 유효하지 않으면 Committed Recording Operation, Recording Progress와 10초 Timer를 시작하지 않는다.
+
+Recording 시작 후 Device Orientation이 변경되어도 현재 Recording을 자동 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않는다.
+
+Mid-record Rotation만으로 Active Rear Zoom Factor를 Reset하지 않고 현재 Clip의 Presentation Orientation은 Recording 시작 시의 Project Orientation 계약을 유지한다.
+
+Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 확인한다.
+
+Landscape Left와 Landscape Right에서 생성된 Clip 모두 뒤집히거나 180° 잘못 회전되지 않도록 Capture Metadata, Connection Orientation과 Presentation Transform을 올바르게 정규화한다.
+
+정확한 Orientation Detection API, Threshold, Debounce와 Sensor-to-video Mapping은 구현 및 iPhone 12 검증 대상으로 남긴다.
+
 ---
 
 ## 35. Front Camera Mirroring
 
-Front Camera의 Preview Mirroring과 실제 저장 Video Mirroring은 서로 분리하여 관리할 수 있어야 한다.
+Front Camera Preview는 Mirrored Appearance를 사용한다.
 
-Preview는 사용자가 자연스럽게 느끼는 Mirror 상태를 사용할 수 있다.
+Mellow에서 직접 촬영하고 Commit한 Front Clip은 이후 Preview, Editing과 Export에서도 촬영 중 사용자가 본 Mirrored Framing과 동일한 사용자-visible Appearance를 유지한다.
 
-최종 Recording의 Mirror 정책은 아직 확정하지 않는다.
+Preview Transform, Capture / Working Media Transform과 Composition Transform 사이에 Double-mirroring 또는 Accidental Un-mirroring이 발생하지 않도록 하나의 명확한 Transform Ownership을 정의해야 한다.
 
-Mirror Policy는 이후 쉽게 변경할 수 있도록 명시적인 설정으로 관리한다.
+구현은 Capture Connection Mirroring, Transform Metadata, Normalization 또는 Composition Transform 중 하나의 특정 방식을 이 문서에서 강제하지 않지만 Shared Preview / Export Composition 계약과 일치해야 한다.
+
+Front Camera Zoom과 Mirror Toggle은 MVP에 포함하지 않는다.
+
+Photos Import Source에는 Front Camera Mirroring 정책을 소급 적용하지 않고 Source의 원래 Presentation을 기준으로 처리한다.
 
 ---
 
@@ -1525,6 +1590,14 @@ Permission Logic을 SwiftUI View마다 반복 구현하지 않는다.
 
 Photos Video Import는 가능한 한 System Photos Picker를 사용하여 광범위한 Photos Read Permission 의존성을 최소화한다.
 
+Direct Recording Ready 상태는 최소한 Camera Authorization 허용, Microphone Authorization 허용, Required Capture Device 사용 가능, Capture Session 구성 성공, 유효한 Project와 Orientation Eligibility 충족을 요구한다.
+
+Camera 또는 Microphone Permission이 Denied / Restricted이면 Capture Pipeline이나 Recording Timer를 부분적으로 시작하지 않고 Typed Permission Failure를 Feature Layer에 전달한다.
+
+Microphone Permission이 없을 때 Video-only Direct Recording으로 자동 Fallback하지 않는다.
+
+Photos Video Import는 Camera / Microphone Authorization과 결합하지 않고 자체 Photos Picker / Permission 계약을 따르며 Camera 또는 Microphone Permission 문제로 차단하지 않고 Audio Track이 없는 Source도 허용한다.
+
 ---
 
 ## 64. Error Architecture
@@ -1592,7 +1665,15 @@ Camera Session은 App Lifecycle에 맞게 시작하고 중지한다.
 
 앱이 Background로 이동한 상태에서 Camera Recording을 계속한다고 가정하지 않는다.
 
-Recording 중 System Interruption이 발생하면 가능한 한 안전하게 Recording을 종료하고 유효한 File을 보존한다.
+Recording 중 App Lifecycle / Capture Session / System Interruption, Camera Resource Unavailable 또는 Unexpected Termination이 발생하면 Capture Operation을 안전하게 Stop / Cancel / Finalize 가능한 경로로 이동한다.
+
+Interruption을 Successful Manual Stop 또는 Successful 10-second Auto-stop으로 표시하지 않고 H04의 Completion Haptic을 자동 적용하지 않는다.
+
+Interruption으로 생성된 Media는 ADR-020의 Transactional Commit / Validation / Recovery를 따르며 Invalid / Incomplete Media는 정상 Clip으로 Commit하지 않는다.
+
+Interrupted Result의 Late Commit은 ADR-021의 Project Validity / Late Result / Deletion Safety 계약을 따라야 하며 현재 Project나 다른 Draft를 되살리거나 변경하지 않는다.
+
+Valid Partial Media의 최종 보존 / Commit / 폐기와 Minimum Valid Clip Duration은 별도 Pending으로 유지한다.
 
 Interruption 상태는 Feature Layer에 전달한다.
 
@@ -1705,14 +1786,22 @@ Primary Physical Test Device는 iPhone 12다.
 - SwiftUI Navigation
 - Rear Camera Preview
 - Front Camera Preview
+- Rear 1× Wide Device Selection
+- Rear Preview / Active Recording Continuous Zoom과 1× Minimum / 승인된 Maximum Clamp
+- Zoom 중 동일 Clip / Timer / Operation 유지와 Mid-record Rotation 시 Zoom 유지
 - Rear Camera Recording
 - Front Camera Recording
+- Front Preview / Direct-recorded Result Mirroring Parity
 - Camera Switching
+- Camera / Microphone Permission Denied 상태에서 Direct Recording 차단과 Photos Import 독립성
 - 1080p 30 fps Recording
 - 10초 자동 종료
 - Microphone Audio
 - Portrait 9:16 Recording
 - Landscape 16:9 Recording
+- Portrait / Landscape Orientation Start Gate, Landscape Left / Right와 Face Up / Down / Unknown 처리
+- Mid-record Rotation 중 Recording / Project Orientation 유지와 다음 Recording Eligibility 재확인
+- Recording Interruption의 Successful Completion 분리와 ADR-020 / ADR-021 Media Safety
 - Photos Video Import
 - 4K Source Import
 - 4K SDR / HDR / Dolby Vision Source의 1080p-class / 30 fps / SDR Working Media Processing
@@ -1909,7 +1998,15 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Clip 최대 10초 Rule은 Domain과 Capture Pipeline 모두에서 강제한다.
 - Front Camera와 Rear Camera를 지원한다.
 - Recording 중 Camera Switching은 허용하지 않는다.
+- Rear Camera는 기본 1× Wide를 사용하고 Preview와 Active Recording에서 1× 이상 Continuous Zoom을 지원한다.
+- Rear Zoom은 Phase 3에서 승인한 Maximum Product Quality Limit으로 Clamp하며 0.5× Ultra Wide / Telephoto / Lens Selector와 Front Camera Zoom은 MVP에서 제공하지 않는다.
+- Rear Zoom은 동일 Recording / Clip / Operation Identity와 10초 Timer를 유지하며 Phase 7 Editing Framing과 별개의 Capture-time Behavior다.
+- Front Camera Preview와 Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하고 Photos Import Source에는 이 정책을 적용하지 않는다.
+- Direct Recording은 Camera와 Microphone Authorization을 모두 요구하며 Video-only 자동 Fallback 없이 Photos Import와 독립적으로 동작한다.
 - Project Orientation과 Device Orientation을 분리한다.
+- 새 Recording은 Project와 Device Orientation이 일치할 때만 시작하고 Landscape Left / Right는 모두 유효하며 Face Up / Down / Unknown / Unstable 상태는 유효하지 않다.
+- Mid-record Rotation은 현재 Recording을 Stop / Restart하거나 Project Orientation / Clip Aspect Ratio / Rear Zoom을 변경하지 않으며 다음 Recording 전에 Eligibility를 다시 확인한다.
+- Recording Interruption은 Successful Completion과 구분하고 ADR-020 / ADR-021을 따르며 Partial Clip 처리와 Minimum Valid Clip Duration은 Pending이다.
 - Trim은 Non-destructive 방식으로 구현한다.
 - Imported Video의 기본 Layout은 Fill + Crop이다.
 - Preview와 Export는 Shared Composition Definition을 사용한다.
@@ -1977,6 +2074,28 @@ Project에서 사용하는 하나의 Clip은 10초를 초과하지 않는다.
 
 Project Aspect Ratio는 Device Rotation으로 자동 변경되지 않는다.
 
+Recording Start Eligibility는 일시적인 Device Orientation과 고정된 Project Orientation을 비교하며 Mid-record Rotation은 현재 Clip의 Project Presentation Orientation을 변경하지 않는다.
+
+### Rear Camera and Continuous Zoom
+
+MVP Rear Capture는 1× Wide를 기본으로 하며 1× 이상 Continuous Zoom은 Preview와 Active Recording에서 같은 Camera, Clip, Operation Identity와 Timer를 유지한다.
+
+Zoom Factor는 승인된 Product Range로 Clamp하고 Rotation만으로 Reset하지 않으며 0.5× / Telephoto / Lens Selector와 Front Zoom은 MVP에 포함하지 않는다.
+
+### Capture Zoom and Editing Framing Separation
+
+Rear Capture Zoom은 촬영 결과에 반영되는 Camera Behavior이고 Editing Framing은 Working Media 범위 안의 비파괴 Metadata Transform이며 두 책임을 하나의 복원 가능한 Zoom 개념으로 합치지 않는다.
+
+### Front Camera Appearance Parity
+
+Front Camera Preview와 Committed Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 명확한 Transform Ownership으로 Double-mirroring과 Accidental Un-mirroring을 방지한다.
+
+### Recording Readiness and Interruption
+
+Camera / Microphone Permission, Required Device, Session Configuration, Project Validity와 Orientation Eligibility를 모두 확인하기 전에는 Direct Recording을 시작하지 않는다.
+
+Interruption은 Successful Completion이 아니며 Media 결과는 ADR-020 / ADR-021의 Validation, Recovery, Project Validity와 Late Result 계약을 따른다.
+
 ### 1080p Project Standard
 
 Imported Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Project Output / Export는 Orientation에 맞는 1080p Canvas / 30 fps / SDR을 사용한다.
@@ -2014,8 +2133,17 @@ SwiftUI View는 Camera Session, File System 또는 SwiftData를 직접 조작하
 ### Capture
 
 - Camera Session Preset의 세부 설정
-- Front Camera 저장 영상의 Mirror Policy
-- Camera Lens 선택 정책
+- Rear Camera Lens 정책 — Resolved by ADR-023: MVP 기본 1× Wide이며 0.5× Ultra Wide / Telephoto / Lens Selector는 제외.
+- Rear Continuous Zoom — Resolved by ADR-023: Preview와 Active Recording에서 1× 이상 지원.
+- Rear Maximum Zoom Product Quality Limit — Pending, Phase 3 Gate.
+- Rear Zoom의 정확한 Interaction / Indicator / Visual Presentation — Pinch-to-zoom은 Primary Candidate이며 Final 선택은 Phase 3 Gate.
+- Front Camera Zoom — Out of MVP by ADR-023.
+- Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result 모두 Mirrored Appearance 유지.
+- Camera / Microphone Permission의 Direct Recording 동작 — Resolved by ADR-023: 둘 다 필요하며 Video-only Fallback 없음.
+- 정확한 Orientation Detection API / Threshold / Debounce — Pending.
+- Minimum Valid Clip Duration — Pending.
+- Recording Interruption에서 Valid Partial Clip의 최종 처리 — Pending.
+- Recording Error / Interruption Haptic — Pending.
 
 ### SDR Color Technical Details
 

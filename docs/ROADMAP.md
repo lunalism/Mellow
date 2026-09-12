@@ -806,10 +806,14 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 - Microphone Permission 상태 기반
 - Rear Camera Preview
 - Front Camera Preview
+- Rear 1× Wide Camera
+- Rear Preview Continuous Zoom
 - Front / Rear Switching
 - Camera Session Lifecycle
+- Camera / Microphone Recording Readiness
 - Device Orientation Detection
 - Orientation Mismatch State
+- Front Preview Mirroring
 - SwiftUI Preview Bridge
 
 ## Explicitly Excluded
@@ -819,7 +823,8 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 - Audio Recording File
 - Clip 저장
 - Import
-- Zoom
+- Front Camera Zoom
+- 0.5× Ultra Wide / Telephoto / Lens Selector
 - Tap to Focus
 - Exposure Control
 - Torch
@@ -827,14 +832,22 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 
 ## Decision Gate Before Implementation
 
+ADR-023의 Camera Capture, Rear Zoom, Permission, Front Mirroring과 Orientation High-level Behavior가 Accepted 상태여야 한다.
+
 Camera 화면의 구현 구조에 필요한 다음 UX Pending을 Phase 3 시작 전에 사용자 승인으로 해결한다.
 
 - Camera Control Placement / Hierarchy와 Overlay의 구조
 - Front / Rear Switch와 기존 Record / Import / Clips 진입 Control의 배치
 - Portrait / Landscape에서의 의도적인 Camera Layout
 - Orientation mismatch 안내의 Presentation 구조와 위치
+- Rear Zoom의 최종 Interaction / Visual Presentation이며 Pinch-to-zoom을 Primary Candidate로 평가하고 필요한 경우 Zoom Factor Indicator 여부를 결정한다.
+- Camera / Microphone Permission 안내의 Presentation 구조와 Import가 계속 가능함을 보여주는 방식
 
-Primary Record Action, Front / Rear 지원, Project Orientation 고정과 조용한 mismatch 안내는 재결정하지 않으며 Camera / Audio / Orientation Behavior 자체의 M03 Pending은 유지한다.
+Rear Zoom의 Maximum Product Quality Limit은 iPhone 12 Preview 화질과 사용성을 검증하여 Phase 3에서 사용자 승인을 받아야 하며 Device의 이론적 Maximum Zoom Factor를 Product Maximum으로 자동 채택하지 않는다.
+
+Primary Record Action, Front / Rear 지원, Rear 1× Wide와 1× 이상 Continuous Zoom, Project Orientation 고정, Permission 동작, Front Mirroring과 조용한 mismatch 안내는 재결정하지 않는다.
+
+이 Gate는 0.5× Ultra Wide / Telephoto / Lens Selector 또는 Front Zoom을 MVP 후보로 다시 열지 않는다.
 
 이 Gate는 Camera Shell과 현재 Phase의 Control 구조만 정하며 이후 Recording / Import 기능을 미리 구현하지 않는다.
 
@@ -857,6 +870,12 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 13. App Background 진입 시 Session을 안전하게 정지한다.
 14. Foreground 복귀 시 필요한 조건에서 Session을 재개한다.
 15. 현재 Phase의 Camera Controls, Front / Rear Switch와 Orientation 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+16. Rear Camera는 기본 1× Wide Device를 선택하고 Preview에서 1× 이상 Continuous Zoom을 제공하며 승인된 Maximum Product Quality Limit으로 Clamp한다.
+17. Front Camera에 Zoom Capability나 UI를 노출하지 않고 Front Preview를 Mirrored Appearance로 표시한다.
+18. Camera / Microphone Authorization과 Required Capture Device / Session Configuration 상태를 Direct Recording Readiness에 반영하며 Denied / Restricted 상태가 Photos Import를 차단하지 않게 한다.
+19. Project Orientation, Device Physical Orientation, UI Orientation과 Video Presentation Orientation Signal을 분리한다.
+20. Portrait Project의 Portrait Posture와 Landscape Project의 Landscape Left / Right를 유효 상태로 판단하고 Mismatch / Face Up / Face Down / Unknown / Unstable 상태를 Recording Start에 유효하지 않은 상태로 제공한다.
+21. Camera Capability가 기대와 다르거나 unavailable이면 Low-level Error를 직접 노출하지 않는 Typed Failure로 전달한다.
 
 ## Unit Tests
 
@@ -864,6 +883,10 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 - Orientation Mismatch Policy
 - Permission State Mapping
 - Camera Switch State Rule
+- Rear Zoom 1× Minimum / 승인된 Maximum Clamp Policy
+- Camera / Microphone Recording Readiness와 Photos Import 독립성
+- Portrait / Landscape Left / Landscape Right Eligibility 및 Face Up / Down / Unknown / Unstable 거부
+- Project / Device / Presentation Orientation State 분리
 
 ## UI Tests
 
@@ -873,6 +896,8 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 - Permission Denied State
 - Rear / Front Switching UI
 - Orientation Mismatch UI
+- Rear Zoom 승인 Interaction과 Zoom 상태 Visual Feedback
+- Camera / Microphone Denied 상태에서 Recording 제한과 Import 접근 가능 상태
 
 ## Physical Device Test
 
@@ -880,9 +905,15 @@ iPhone 12에서 다음을 검증한다.
 
 - Rear Preview
 - Front Preview
+- Rear 1× Wide Device Selection
+- Rear Preview에서 1×부터 승인된 Maximum까지 Continuous Zoom과 Clamp
+- Front Preview Mirrored Appearance와 Front Zoom UI 없음
 - Front / Rear Switching
 - Portrait Project에서 Orientation 안내
 - Landscape Project에서 Orientation 안내
+- Landscape Left / Right Recording Eligibility와 올바른 Preview Orientation
+- Face Up / Face Down / Unknown / Unstable 상태의 Recording Start 차단
+- Camera Permission Denied / Restricted와 Microphone Permission Denied / Restricted에서 Recording 차단 및 Photos Import 접근 가능
 - Background / Foreground Session 복구
 
 ## UI Accessibility Verification
@@ -895,6 +926,11 @@ iPhone 12에서 다음을 검증한다.
 
 - Camera Preview가 안정적으로 표시된다.
 - Front와 Rear Camera를 Recording이 없는 상태에서 전환할 수 있다.
+- Rear Camera는 기본 1× Wide를 사용하고 Preview에서 1× 이상 Continuous Zoom이 승인된 Maximum Quality Limit 안에서 동작한다.
+- 0.5× Ultra Wide / Telephoto / Lens Selector와 Front Camera Zoom이 MVP Camera UI에 노출되지 않는다.
+- Front Preview는 Mirrored Appearance를 사용한다.
+- Camera 또는 Microphone Permission이 없으면 Direct Recording Ready가 되지 않지만 Photos Import는 사용할 수 있다.
+- Orientation Mismatch / Face Up / Down / Unknown / Unstable 상태는 Recording Start 불가 상태로 전달되고 Landscape Left / Right는 모두 Landscape Project에 유효하다.
 - Session Start / Stop으로 UI가 Freeze되지 않는다.
 - Project Orientation이 Device Rotation으로 변경되지 않는다.
 - iPhone 12에서 Preview가 안정적이다.
@@ -904,6 +940,8 @@ iPhone 12에서 다음을 검증한다.
 ## Exit Criteria
 
 Recording 없이 Camera Infrastructure가 안정적으로 검증되어야 한다.
+
+ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permission Readiness와 Orientation Eligibility가 iPhone 12에서 검증되고 Rear Maximum Product Quality Limit 및 Structural UX Gate가 승인되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -933,12 +971,17 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 - Project Clip 추가
 - Front Camera Recording
 - Rear Camera Recording
+- Rear Active Recording Continuous Zoom
+- Recording Start Orientation Match Gate
+- Front Preview / Recorded Result Mirroring Parity
+- Camera / Microphone Recording Readiness
 - Recording Haptic 기본 구현
 - Interruption 기본 대응
 
 ## Explicitly Excluded
 
-- Zoom
+- Front Camera Zoom
+- 0.5× Ultra Wide / Telephoto / Lens Selector
 - Focus Control
 - Exposure Control
 - Torch
@@ -954,6 +997,8 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 구현 시점에는 Process Death 이후 Operation / Project / Clip / Media의 연결을 복구할 수 있는 가장 단순한 Durable Representation을 사용하며 특정 Manifest Format이나 Database Uniqueness 구현을 미리 고정하지 않는다.
 
 ADR-021의 Project Invalid Target과 Late Commit 차단 계약도 Recording Finalization부터 적용하며 기존 Project Delete 경로와 연결한다.
+
+ADR-023의 Rear 1× Wide / Continuous Zoom, Front Mirroring, Camera / Microphone Permission, Orientation Match와 Mid-record Rotation 계약도 Phase 4 Recording Flow에 적용한다.
 
 ## Decision Gate Before Implementation
 
@@ -995,6 +1040,15 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
 23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
 24. Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+25. Rear Camera의 승인된 Zoom Range 안에서 Active Recording 중 Continuous Zoom을 지원하고 Zoom 변경이 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 10초 Timer와 Durable Media Operation Identity를 Reset하지 않게 한다.
+26. Front Recording에는 Zoom UI나 Behavior를 제공하지 않는다.
+27. Record Request에서 Camera / Microphone Authorization, Required Capture Device와 Session Configuration, Project Validity 및 Orientation Eligibility를 Media Writing과 Progress / 10초 Timer 시작 전에 검증한다.
+28. Camera 또는 Microphone Permission이 Denied / Restricted이면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import 경로는 Audio Track이 없는 Source를 포함하여 계속 사용할 수 있게 한다.
+29. Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left / Right에서 Recording을 시작하고 Mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 조용한 Rotate Device Guidance와 함께 시작을 차단한다.
+30. Mid-record Rotation만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하거나 Camera를 전환하거나 Active Rear Zoom을 Reset하지 않게 한다.
+31. Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 검증한다.
+32. Direct-recorded Front Clip이 Preview에서 본 Mirrored Appearance를 이후 Preview / Editing / Export에서도 유지하도록 승인된 Transform Ownership을 적용한다.
+33. Interruption은 Successful Manual Stop이나 Successful 10-second Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021에 따라 검증·복구·Late Commit 차단한다.
 
 Completion Haptic을 종료 직전 예고 신호로 사용하지 않으며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있게 한다.
 
@@ -1013,6 +1067,10 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 - Operation / Clip Identity 기반 Duplicate Commit 방지
 - 정상 Recording Start에서 Haptic Event가 발생하지 않음
 - Successful Manual Stop과 Successful 10-second Auto-stop이 동일한 Completion 의미의 Haptic Event로 연결됨
+- Active Rear Zoom 변경 중 동일 Clip / Timer / Media Operation Identity 유지와 승인 Range Clamp
+- Permission / Capability / Project Validity / Orientation 실패 시 Recording / Progress / Timer 미시작
+- Mid-record Rotation에서 Recording / Project Orientation / Rear Zoom 상태 유지와 다음 Recording 전 Orientation 재검증
+- Interruption과 Successful Completion State / Haptic Event 분리
 
 ## Integration Tests
 
@@ -1047,11 +1105,25 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Rear Camera 9초 Manual Stop
 - Rear Camera 10초 Auto Stop
 - Front Camera Recording
+- Rear Camera 1× Recording
+- Recording 전 Rear Zoom
+- 하나의 Clip Recording 중 Rear Zoom In과 1× 복귀
+- Rear Zoom으로 Clip이 분리되거나 10초 Timer가 Reset되지 않음
+- 승인된 Rear Maximum Zoom Clamp
+- Front Preview와 Direct-recorded Result의 Mirrored Appearance 일치
 - Audio 정상 Recording
 - 연속 여러 Clip 촬영
 - Recording 후 즉시 다음 Recording
 - Portrait 9:16 Project
 - Landscape 16:9 Project
+- Portrait Project Orientation Mismatch에서 Recording Start 차단
+- Landscape Project Orientation Mismatch에서 Recording Start 차단
+- Landscape Left Recording
+- Landscape Right Recording
+- Recording 중 Device Rotation에도 현재 Recording과 Project Orientation 유지
+- 1×이 아닌 Rear Zoom 상태에서 Recording 중 Device Rotation에도 Zoom 유지
+- Camera Permission Denied / Restricted에서 Recording 차단 및 Import 접근 가능
+- Microphone Permission Denied / Restricted에서 Recording 차단, 무음 Recording 미생성 및 Import 접근 가능
 - Background Interruption
 - Storage 부족 Simulation 가능한 범위
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
@@ -1074,6 +1146,11 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - Haptic은 종료 직전 예고나 유일한 상태 전달 수단이 아니며 사용할 수 없거나 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있다.
 - Video와 Audio가 정상 저장된다.
 - Recording 중 Camera Switch는 불가능하다.
+- Rear Zoom은 Recording 중에도 승인된 1× 이상 Range에서 동작하며 Recording / Clip / Timer / Project Orientation을 다시 시작하거나 변경하지 않는다.
+- Front Recording에는 Zoom이 없고 Direct-recorded 결과는 Front Preview의 Mirrored Appearance를 유지한다.
+- Camera 또는 Microphone Permission이 없거나 Orientation Eligibility가 충족되지 않으면 Recording / Progress / 10초 Timer를 시작하지 않고 Photos Import는 계속 사용할 수 있다.
+- Landscape Left / Right는 모두 Landscape Project에 유효하며 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않고 다음 Recording 전에 Orientation을 다시 검사한다.
+- Interruption은 Successful Completion으로 표시하거나 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021을 따른다.
 - 연속 Recording으로 App이 불안정해지지 않는다.
 - iPhone 12에서 실제 촬영이 정상 동작한다.
 - Committed Clip 조건을 모두 충족하기 전에는 Progress만 표시할 수 있으며 정상 Clip으로 노출하지 않는다.
@@ -1091,6 +1168,8 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 공통 Media Commit Lifecycle과 기본 Relaunch Recovery가 Production Recording 경로에 적용되고 위 Failure Boundary Test 및 iPhone 12 검증이 완료되어야 한다.
 
 승인된 Recording Haptic 정책의 Unit Test와 iPhone 12 검증이 완료되어야 하며 Phase 12를 최초 구현이나 사용 여부 결정 시점으로 삼지 않는다.
+
+ADR-023의 Active Rear Zoom, Permission Readiness, Orientation Start Gate / Mid-record Rotation, Front Mirroring과 Interruption Safety 계약의 Test 및 iPhone 12 검증이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1943,6 +2022,8 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 
 정상 Flow 밖의 실제 iPhone 상황에서 Mellow가 안전하고 이해 가능하게 동작하도록 한다.
 
+이 Phase는 ADR-023의 Camera / Microphone Permission, Rear Zoom, Front Mirroring, Orientation과 Interruption 기본 정책을 처음 결정하지 않으며 Phase 3 / 4에서 구현된 동작을 실제 실패·복구 조건에서 강화한다.
+
 ## Included
 
 - Camera Permission
@@ -1957,12 +2038,24 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - Storage Error
 - Typed Error Mapping
 - User-facing Copy
+- Permission Change Recovery
+- Camera Resource Unavailable
+- Session / App Lifecycle Recovery
+- Relevant Rear Zoom State Recovery
 
 ## Explicitly Excluded
 
 - 서버 오류
 - Account 오류
 - Cloud 오류
+
+## Decision Gate Before Implementation
+
+Recording Interruption에서 Validation을 통과한 Partial Clip을 Commit할지 폐기할지와 Minimum Valid Clip Duration은 Phase 11 구현 전에 사용자 승인을 받아야 한다.
+
+두 결정은 Partial Media의 Validation 결과를 사용자 Project에 Committed Clip으로 연결할 수 있는지 함께 규정하므로 하나의 Gate에서 관계를 명확히 하되 이 Roadmap에서 결과나 Duration 값을 미리 확정하지 않는다.
+
+Error / Interruption Haptic은 별도 Pending이며 이 Gate에서 Successful Manual Stop / Auto-stop의 기존 H04 Completion Haptic 정책을 변경하지 않는다.
 
 ## Implementation Tasks
 
@@ -1977,6 +2070,12 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 9. Storage 부족 시 명확한 메시지를 제공한다.
 10. Technical Error String을 사용자에게 직접 노출하지 않는다.
 11. 기존 Permission / Error 안내와 Settings / Retry Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+12. Camera / Microphone의 Denied, Restricted와 실행 중 Authorization Change에서 Direct Recording을 안전하게 차단하고 Capture Pipeline이 부분적으로 시작되거나 무음 Recording으로 전환되지 않게 한다.
+13. Camera / Microphone Permission 문제와 무관하게 Photos Import가 접근 가능한지 검증한다.
+14. Camera Resource Unavailable, Session Interruption, App Background / Foreground 전환에서 Active Capture를 안전하게 종료 또는 복구하고 Late Result에 ADR-020 / ADR-021을 적용한다.
+15. Interruption 결과를 Successful Manual / Auto-stop으로 표시하거나 Completion Haptic을 자동 발생시키지 않고 승인된 Partial Clip / Minimum Duration Gate 결과를 적용한다.
+16. Capture / Session Recovery 이후 Rear Zoom State를 복구해야 하는 경우 승인 Range를 유지하고 Device의 이론적 Maximum을 Product Maximum으로 사용하지 않는다.
+17. Permission 변경 또는 Session Recovery 후 새 Recording 전에 Camera / Microphone Readiness, Project Validity와 Orientation Eligibility를 다시 검사한다.
 
 ## Tests
 
@@ -1984,6 +2083,12 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - Error Mapping
 - Retry Flow
 - Storage Error State
+- Camera / Microphone Denied / Restricted / Authorization Change
+- Permission 실패에서 Direct Recording 미시작, 무음 Fallback 없음과 Photos Import 독립성
+- Resource Unavailable / Session Interruption / App Lifecycle Recovery
+- Interruption과 Successful Completion / Completion Haptic 분리
+- 승인된 Partial Clip / Minimum Duration Policy 적용
+- Session Recovery 이후 Rear Zoom Range / State 및 다음 Recording Readiness 재검증
 
 ## Physical Device Test
 
@@ -1993,6 +2098,10 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - Permission Re-enable
 - 전화 또는 유사 System Interruption 가능한 범위
 - App Background Recording Interruption
+- Camera Resource Unavailable과 Session Recovery 가능한 범위
+- Camera / Microphone Permission Denied 상태에서도 Photos Import 접근 가능
+- Permission 재활성화 후 Orientation Gate를 포함한 Recording Readiness 재검증
+- Rear Zoom 사용 중 Capture / Session Interruption과 Recovery 후 승인 Range 유지 여부
 
 ## UI Accessibility Verification
 
@@ -2006,12 +2115,18 @@ Phase 5 / 8 / 9의 Logical Deletion과 Active Media Lifetime 계약을 반복 De
 - 사용자가 다음 행동을 이해할 수 있다.
 - Recording Failure가 기존 정상 Clip을 손상시키지 않는다.
 - Error 메시지에 내부 Framework 용어가 노출되지 않는다.
+- Camera 또는 Microphone Permission이 없으면 Direct Recording이나 무음 Fallback이 시작되지 않고 Photos Import는 계속 접근할 수 있다.
+- Permission Change, Resource Unavailable, Session / App Lifecycle Interruption 이후 현재 Operation과 기존 Draft가 손상되지 않으며 다음 Recording 전에 Readiness를 다시 검사한다.
+- Interruption은 Successful Manual / Auto-stop이나 Completion Haptic으로 표시되지 않고 결과 Media가 ADR-020 / ADR-021 및 승인된 Partial Clip Gate를 따른다.
+- Capture / Session Recovery에서 Rear Zoom은 승인된 Product Range를 벗어나지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
 ## Exit Criteria
 
 주요 Failure Path가 정의되고 테스트되어야 한다.
+
+ADR-023의 Permission / Interruption / Session Recovery 계약과 승인된 Partial Clip / Minimum Duration Gate 결과가 실제 iPhone 12에서 검증되어야 한다.
 
 해당 화면의 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -2375,7 +2490,7 @@ Mellow MVP를 내부 TestFlight에서 실제 테스트할 수 있어야 한다.
 - Smart Editing
 - Tap to Focus
 - Exposure Control
-- Zoom
+- Front Camera Zoom
 - Torch
 - Advanced Camera Lens Selection
 - Clip Split
@@ -2435,6 +2550,10 @@ Structural UX는 해당 UI를 필요로 하는 가장 이른 Phase 전에 결정
 - Camera Control Placement / Hierarchy와 Overlay 구조
 - Front / Rear Switch 및 기존 진입 Control 배치
 - Portrait / Landscape Camera Layout과 Orientation mismatch 안내 Presentation
+- Rear Maximum Zoom Product Quality Limit을 iPhone 12 Preview 화질과 사용성으로 검증한 뒤 사용자 승인
+- Rear Zoom Final Interaction / Visual Presentation이며 Pinch-to-zoom Candidate와 필요한 경우 Zoom Factor Indicator를 검토
+
+ADR-023의 Rear 1× Wide / Continuous Zoom, Front Zoom 제외 / Mirroring, Permission과 Orientation High-level Behavior는 Accepted 상태이며 이 Gate에서 0.5× Ultra Wide / Telephoto / Lens Selector를 MVP 후보로 다시 열지 않는다.
 
 ## Before Phase 4
 
@@ -2480,12 +2599,14 @@ Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / I
 ## Before Phase 7
 
 - Trim과 Crop의 화면 구성
-- Pinch to Zoom MVP 포함 여부
+- Editing Framing에서 Pinch to Zoom MVP 포함 여부
 - Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현
 - Drag / Position Framing 세부 구조와 Crop Reset 필요 여부
 - Portrait / Landscape Editing Control 배치
 
 Phase 6에서 승인된 구간 선택 구조는 재사용하며 ADR-022의 Framing 영역 보존과 Metadata Editing 계약은 변경하지 않는다.
+
+이 Phase의 Pinch to Zoom Pending은 Phase 7 Editing Framing Interaction에 관한 것으로 ADR-023의 Rear Capture Zoom Candidate와 별개다.
 
 ## Before Phase 8
 
@@ -2515,6 +2636,13 @@ HDR vs SDR은 ADR-022로 SDR 방향이 해결되었으며 Phase 9는 1080p / 30 
 - Share / Done 배치와 기존 실패 / Retry 상태의 UI 구조
 
 Share / Done, Share Sheet와 Draft 유지 동작은 재결정하지 않으며 M05의 Export / Save / Share / Background Lifecycle은 Pending으로 유지한다.
+
+## Before Phase 11
+
+- Recording Interruption에서 Valid Partial Clip의 최종 Product 처리
+- Minimum Valid Clip Duration
+
+두 결정은 Partial Media를 정상 Clip으로 Commit할 수 있는 조건을 함께 규정하며 Phase 11 구현 전에 사용자 승인으로 해결하되 Error / Interruption Haptic은 별도 Pending으로 유지한다.
 
 ## Before Phase 12
 
