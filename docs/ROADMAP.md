@@ -182,6 +182,76 @@ Phase 완료 판단은 설명이 아니라 증거를 기준으로 한다.
 
 Codex가 실행하지 못한 검증을 실행한 것처럼 보고하지 않는다.
 
+### 3.14 Performance Acceptance Protocol
+
+Performance Acceptance는 Functional Correctness와 Media / Data Safety Acceptance 위에 추가되는 Gate이며 Performance Metric을 만족해도 잘못된 Framing, User Media Loss, Photos Original 손상, Invalid Output Success 표시, Project / Draft Corruption 또는 Preview / Export Semantic Corruption이 있으면 PASS가 아니다.
+
+Official Performance Acceptance Evidence는 Physical iPhone 12에서 수집하며 Simulator는 개발 보조와 일부 자동화 검증에 사용할 수 있지만 Official Performance PASS / FAIL을 대체하지 않는다.
+
+#### Two-stage Policy
+
+각 기능 Phase에서 실제 구현 뒤 Reproducible Baseline Measurement를 수행하여 Scenario별 실제 동작, Bottleneck, Memory / Thermal Behavior와 Quality Risk를 기록한다.
+
+Baseline Measurement는 Phase 13에서 필요한 Threshold와 Acceptance Rule을 승인하기 위한 Input이며 이 단계에서 근거 없는 Numeric Threshold를 요구하지 않는다.
+
+Phase 13의 Formal Performance Acceptance 전에 Performance Acceptance Profile을 명시적으로 승인한다.
+
+Threshold가 필요한 Metric의 Performance Acceptance Profile이 승인되지 않았다면 Phase 13의 Formal PASS / FAIL 판정을 시작하지 않는다.
+
+#### Performance Acceptance Profile
+
+Performance Acceptance Profile은 Scenario별로 Metric Name, Owning Scenario, Device, OS Version, App Build / Commit, Test Asset 또는 Project Shape, Measurement Method, 필요한 Cold / Warm Condition, Repetition Policy, 필요한 Aggregation 또는 Observation Method, Approved PASS Threshold 또는 Non-numeric Acceptance Rule, Failure Rule, Evidence Location 또는 Artifact와 Approval Status를 식별해야 한다.
+
+Profile의 정확한 YAML, JSON 또는 Table Format은 강제하지 않으며 Required Information이 Evidence와 함께 추적 가능해야 한다.
+
+Numeric Threshold와 Representative Project Shape는 실제 iPhone 12 Baseline Measurement, 승인된 Media Profile과 Codec / Container, 관측된 Memory / Thermal Behavior와 UX Expectation을 근거로 승인하며 Codex가 근거 없는 Round Number를 만들지 않는다.
+
+#### Measurement Evidence Contract
+
+Official Performance Evidence는 최소한 Git Commit Hash, App Build 또는 Configuration, Physical Device Model, 개인정보가 아닌 필요한 Test Identity 수준의 Device Identifier, iOS Version, Relevant Available Storage Context, Battery 또는 Power Condition이 의미 있는 경우의 상태, Test Start Thermal State, Test Asset Identity, Project Shape, Scenario, Run Date / Time, Measurement Result, Approved Threshold 또는 Rule, PASS / FAIL과 Anomaly 또는 Note를 식별할 수 있어야 한다.
+
+Device Serial이나 불필요한 개인정보를 Evidence에 기록하지 않는다.
+
+Apple Native Tooling을 우선하며 OSLog 또는 Signpost, Instruments, Xcode Device Metrics, Application Instrumentation, AVFoundation Observable Timing과 Filesystem 또는 Storage Observation 중 Scenario에 맞는 재현 가능한 방법을 사용한다.
+
+사람이 Stopwatch로 한 번 재고 빠르다고 판단하거나 한 번 성공한 Run만으로 Official Performance PASS를 선언하지 않는다.
+
+#### Standard Scenario Families
+
+| Scenario Family | 최소 Scenario Meaning | 의미 있는 Measurement Category |
+| --- | --- | --- |
+| Direct Recording | Rear Camera, Front Camera, 최대 10초 Clip, Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence를 포함한다. | Capture Stability, Completion Reliability, Post-record Commit Latency, Memory, Thermal, Repeated Capture Stability와 Unexpected Dropped 또는 Failed Capture를 관찰한다. |
+| Photos Import / Normalization | 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 최대 10초 Selected Segment를 포함한다. | Import / Normalization Duration, Peak Memory, Peak Additional Storage, Thermal, Operation Success와 필요한 Cancellation Responsiveness를 관찰한다. |
+| Individual Clip Preview | Trim, Framing, Front Mirrored Clip과 Imported Silent Clip을 포함한다. | Preparation Latency, First Usable Playback Readiness, Playback Stability, 필요한 Seek Responsiveness와 Memory를 관찰한다. |
+| Full Vlog Preview | Small, Representative, Larger MVP Project, Mixed Recorded / Imported Clip, Edited Clip과 Repeated Preview Open / Close를 포함한다. | Composition Preparation, First Usable Playback, Seek / Playback Responsiveness, Playback Stall 또는 Dropped Presentation, Memory, Thermal과 Repeated-preview Stability를 관찰한다. |
+| Export | Short, Representative, Larger Project와 Mixed Source, Trim / Framing / Mirror를 포함한다. | Elapsed Export, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 관찰한다. |
+
+Medium 또는 Larger Project의 Exact Clip Count와 Duration은 Baseline Measurement 뒤 Approved Performance Acceptance Profile에서 결정하며 현재 Roadmap은 임의의 숫자를 고정하지 않는다.
+
+#### Repeatability and Environment
+
+Scenario는 동일 Input과 Environment를 기록하여 반복 가능해야 하며 Anomalous Run을 무단으로 제외하지 않고 제외가 필요하면 Reason을 Evidence에 남긴다.
+
+Repetition Count, Aggregation 또는 Worst-case Treatment와 Cold / Warm 또는 Both Policy는 Scenario별 Approved Performance Acceptance Profile에서 결정한다.
+
+Thermal Evidence는 Test Start Thermal State, Operation 중 Meaningful Thermal Transition과 Operation Failure의 관계를 기록하며 반복적인 Thermal 또는 Resource Failure는 Investigation 없이 PASS 처리하지 않는다.
+
+Memory Evidence는 특히 4K / HDR Import, Full Preview, Larger Project, Export와 Repeated Operation에서 관찰하며 Memory-pressure Termination, Repeated Runaway Growth 또는 Unreleased Large Temporary State로 인한 Operation Degradation은 Investigation 없이 PASS 처리하지 않는다.
+
+#### Hard Fail and Failure Classification
+
+Official Performance / Quality Scenario에서 App Crash, Scenario에 attributable한 OS Memory-pressure Termination 또는 Jetsam, Watchdog Termination, User Committed Media Corruption 또는 Loss, Wrong Project Media Mutation, Invalid Output의 Successful Result 표시, Project / Draft Corruption, 종료 / Cancel / Recover할 수 없는 Permanent Hang, Unrelated Draft Damage, Photos Original Mutation 또는 Damage, Preview / Export Semantic Corruption 또는 Required Operation이 재현 가능하게 Session Failure로 완료되지 못하는 경우는 Numeric Threshold와 별개로 Hard Fail이다.
+
+External System Event나 일시적인 외부 Interruption은 자동으로 Mellow Failure로 분류하지 않으며 Evidence가 System Event와 Mellow Behavior를 구분할 수 있어야 한다.
+
+#### Formal Acceptance and Threshold Change
+
+Phase 13은 Approved Performance Acceptance Profile의 Scenario, Method, Repetition Policy와 PASS / FAIL Rule로 Official iPhone 12 Evidence를 수집하고 모든 Required Scenario에 Hard Fail이 없으며 승인된 Threshold 또는 Acceptance Rule을 충족할 때만 PASS한다.
+
+Fail한 Metric을 문서에서 삭제하거나 Threshold를 조용히 완화하여 PASS 처리하지 않으며 Defect, Optimization, Architecture Change 또는 Exception and Replanning Protocol 중 적절한 경로를 사용한다.
+
+승인된 Threshold 또는 Acceptance Rule 변경은 Measured Evidence, Reason, Tradeoff, User Impact, Affected Scenario와 사용자 승인을 갖춘 Controlled Change를 요구하며 Performance 개선을 위해 Product Quality나 Media Safety를 Silent Downgrade하지 않는다.
+
 
 ---
 
@@ -1189,6 +1259,14 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Record Button Tap / Recording Start 성공에 Haptic이 없고 Successful Manual Stop / 10-second Auto-stop 완료 시 subtle completion haptic이 동일한 종료 의미로 인지되는지 확인
 - 종료 직전 예고 Haptic이 없으며 Haptic을 사용할 수 없거나 인지하지 못하는 경우에도 Visual Recording State / Circular Progress / Completion State로 상태를 이해할 수 있는지 확인
 
+### Recording Baseline Measurement Evidence
+
+Phase 4는 Physical iPhone 12에서 Rear / Front Camera, 최대 10초 Recording, Active Rear Zoom, Repeated Clip Capture, Commit, Thumbnail과 Draft Persistence를 포함한 재현 가능한 Recording Baseline Measurement Evidence를 남긴다.
+
+Evidence에는 Scenario, Build / Commit, actual Recording Behavior, Relevant Elapsed 또는 Commit-latency Observation, Memory / Thermal Anomaly와 Repeated Capture Observation을 기록하며 Capture Stability, Completion Reliability와 Unexpected Dropped 또는 Failed Capture를 함께 관찰한다.
+
+이 Baseline Measurement는 Phase 13 Performance Acceptance Profile의 Input이며 이 Phase에서 Final Numeric Performance Threshold를 요구하거나 임의로 만들지 않는다.
+
 ## UI Accessibility Verification
 
 Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
@@ -1220,6 +1298,7 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 기존 Media를 보호하며 Recovery Candidate를 보존한다.
 - Storage 부족 때문에 Capture Quality, Frame Rate, Audio나 최대 Recording Duration을 자동으로 낮추지 않는다.
 - 공간 확보 후 Recording을 안전하게 재시도할 수 있다.
+- iPhone 12 Recording Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1234,6 +1313,8 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 ADR-023의 Active Rear Zoom, Permission Readiness, Orientation Start Gate / Mid-record Rotation, Front Mirroring과 Interruption Safety 계약의 Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Metadata Persistence Failure / Retry Integration Test 및 iPhone 12 실제 10초 Storage Growth 측정이 완료되어야 한다.
+
+Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1597,6 +1678,14 @@ Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project
 
 Storage Preflight 부족과 Normalization 중 Runtime Disk Full을 검증하여 Photos 원본과 기존 Project Media가 유지되고 Partial Output이 등록되지 않으며 공간 확보 후 안전하게 재시도되는지 확인한다.
 
+### Import / Normalization Baseline Measurement Evidence
+
+Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 선택된 최대 10초 Segment를 포함한 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
+
+Evidence에는 Scenario, Build / Commit, Test Asset Identity, Selected Segment와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 applicable한 경우 Cancellation Responsiveness를 관찰한다.
+
+이 Baseline Measurement는 ADR-022와 ADR-024의 기존 SDR Normalization / Storage Safety Contract를 변경하지 않으며 Phase 13 Performance Acceptance Profile의 Input으로 사용하고 Final Numeric Performance Threshold를 이 Phase에서 요구하거나 임의로 만들지 않는다.
+
 ## UI Accessibility Verification
 
 Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
@@ -1623,6 +1712,7 @@ Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch 
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호한다.
 - Storage 부족 때문에 승인된 1080p-class / 30 fps / SDR Working Media 방향을 자동으로 낮추지 않는다.
 - 공간 확보 후 Import를 안전하게 재시도할 수 있다.
+- iPhone 12 Import / Normalization Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -1635,6 +1725,8 @@ Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Re
 ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
 
 ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
+
+Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1888,8 +1980,8 @@ SDR Source와 HDR / Dolby Vision Source에서 생성한 Working Media를 함께 
 
 iPhone 12에서 다음을 검증한다.
 
-- Preview 시작 시간
-- 20개 이상 Clip Project
+- Individual Clip, representative multiple Clip과 edited Project의 Composition Preparation과 First Usable Playback Observation
+- Repeated Preview Open / Close
 - Scrubbing 또는 Seek
 - Orientation
 - Audio Sync
@@ -1901,6 +1993,14 @@ iPhone 12에서 다음을 검증한다.
 - HDR / Dolby Vision에서 시작한 Clip의 안정적인 SDR Preview
 - Reordered, Trimmed, Framing-adjusted Clip의 current effective edited result
 - Clip Boundary에 Automatic Video / Audio Transition이 없는지 확인
+
+### Preview Baseline Measurement Evidence
+
+Phase 8은 Physical iPhone 12에서 Individual Clip Preview, Representative Multiple Clip Project, Trim / Framing / Front Mirroring이 적용된 Edited Project와 Repeated Preview Open / Close를 포함한 재현 가능한 Preview Baseline Measurement Evidence를 남긴다.
+
+Evidence에는 Scenario, Build / Commit, Project Shape, Composition Preparation, First Usable Playback Readiness, applicable한 Seek / Playback Responsiveness, Playback Stability, Memory와 Thermal Observation을 기록한다.
+
+Preview Baseline Measurement는 M01 Canonical Composition Semantics를 유지하며 Performance를 이유로 Raw Preview Fallback이나 Editing Semantics 생략을 허용하지 않고 Phase 13 Performance Acceptance Profile의 Input으로 사용한다.
 
 ## UI Accessibility Verification
 
@@ -1916,7 +2016,7 @@ iPhone 12에서 다음을 검증한다.
 - Audio Sync가 유지된다.
 - Preview를 위해 매번 하나의 완성 Video를 미리 Render하지 않는다.
 - Individual Clip Preview와 Full Vlog Preview는 Raw Asset 기본 경로가 아니라 Shared Composition Semantics를 사용하며 Full Vlog Preview와 Export는 Clip Order, Trim, Framing / Scale / Position, Transform, Orientation, Front Mirroring, SDR과 Audio Inclusion을 같은 의미로 적용한다.
-- iPhone 12에서 실사용 가능한 성능을 보인다.
+- iPhone 12 Preview Baseline Measurement Evidence가 `ROADMAP.md` 3.14절의 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 - Preview가 사용 중인 File은 실제 Reference Release 전까지 삭제되지 않는다.
 - Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
 - 삭제된 Project 또는 이전 State의 Late Preview Result를 적용하지 않는다.
@@ -2096,9 +2196,9 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 
 iPhone 12에서 다음을 검증한다.
 
-- 30초 Vlog
-- 2분 이상 Vlog
-- 20개 이상 Clip
+- Short Project
+- Representative Project
+- Larger Project
 - Photos Save
 - Share Sheet
 - Export Cancel
@@ -2112,6 +2212,14 @@ iPhone 12에서 다음을 검증한다.
 - Background 이동 시 현재 정책
 - Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
 - SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Full Preview Clip Order, Trim, Framing / Scale / Position, Transform, Front Mirroring, Audio 및 SDR 비교
+
+### Export Baseline Measurement Evidence
+
+Phase 9는 Physical iPhone 12에서 Short, Representative, Larger Project와 Mixed Clip Source, Trim, Framing, Front Mirror를 포함한 재현 가능한 Export Baseline Measurement Evidence를 남긴다.
+
+Evidence에는 Scenario, Build / Commit, Approved Export Codec / Container / Bitrate Profile, Immutable Export Snapshot Duration / State와 Project Shape, Elapsed Export Observation, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 기록한다.
+
+이 Baseline Measurement는 ADR-024 Storage Contract와 ADR-025 Artifact Lifecycle을 유지하며 Final Numeric Performance Threshold는 해당 Export Profile과 함께 Phase 13 Performance Acceptance Profile에서 승인한다.
 
 ## UI Accessibility Verification
 
@@ -2144,6 +2252,7 @@ Export Progress / Completion, Photos Save Failure, Save Retry, Share / Done, uns
 - 공간 확보 후 Export를 안전하게 재시도할 수 있으며 Local Storage Preflight는 Photos Save 성공을 보장하지 않는다.
 - 0 Clip Project에서는 Export를 제공하지 않는다.
 - Unresolved Unavailable Clip이 있는 Project에서는 Export를 Block하고 해당 Clip을 Silent Skip한 Output을 만들지 않는다.
+- iPhone 12 Export Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
@@ -2154,6 +2263,8 @@ Mellow의 핵심 End-to-End Flow가 처음으로 완성되어야 한다.
 Snapshot 불변성, Source Media Lifetime, ADR-025 Result Artifact Lifecycle과 Project Delete 경합의 Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
 ADR-024의 Export Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Partial Output / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
+
+Export Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -2594,7 +2705,7 @@ iPhone 12에서 모든 핵심 화면을 Portrait 및 Landscape Project 기준으
 
 ## Goal
 
-iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview, Export, Draft가 안정적으로 동작하도록 최적화한다.
+iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview, Export, Draft가 안정적으로 동작하도록 검증하고 Approved Performance Acceptance Profile에 따라 Formal PASS / FAIL을 판정한다.
 
 ## Included
 
@@ -2608,6 +2719,9 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 - Large Project Stress
 - Thermal Observation
 - Main Thread Hitches
+- Performance Acceptance Profile Approval
+- Official Performance Evidence Collection
+- Hard Fail Investigation과 Controlled Replanning
 
 ## Explicitly Excluded
 
@@ -2615,24 +2729,36 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 - Benchmark 목적의 과도한 저수준 최적화
 - 기능 변경
 
-## Test Matrix
+## Decision Gate Before Formal Performance Acceptance
 
-최소한 다음 Project를 만든다.
+### Performance Acceptance Profile Approved
+
+Formal Performance PASS / FAIL을 시작하기 전에 `ROADMAP.md` 3.14절의 Performance Acceptance Profile을 사용자 승인으로 완료한다.
+
+Profile은 Official Scenario Set, Representative Project Shapes, Scenario별 Relevant Metrics, 필요한 Numeric Threshold, Non-numeric Acceptance Rule, Repetition Policy, Cold / Warm Policy, Evidence Method, PASS / FAIL Rule과 Release-blocking Scenario를 포함해야 한다.
+
+Baseline Measurement Evidence가 부족하거나 필요한 Threshold 또는 Rule이 승인되지 않았다면 Evidence Collection과 Bottleneck Investigation은 수행할 수 있지만 Formal PASS / FAIL Comparison과 Phase 13 완료 판정을 시작하지 않는다.
+
+Codex는 Gate를 통과시키기 위해 Threshold, Repetition Count, Project Shape 또는 PASS Rule을 임의로 결정하지 않는다.
+
+## Baseline Scenario Shapes
+
+각 Shape는 Profile Approval 전 Baseline Measurement에서 실제 Clip Count, Duration, Source Mix와 Edit State를 Evidence에 기록하며 Formal Acceptance에서는 Approved Profile을 사용한다.
 
 ### Small Project
 
-- 5 Clips
-- 총 30초 이하
+- One Clip 또는 Small Multi-clip Project
+- Current Media Profile과 Edit State를 Evidence에 기록
 
-### Medium Project
+### Representative Project
 
-- 20 Clips
-- 총 2분 전후
+- 실제 MVP 사용자 Flow를 대표하는 Multi-clip Project
+- Current Clip Count, Duration, Source Mix와 Edit State를 Evidence에 기록
 
 ### Large Project
 
-- 60 Clips 이상
-- 5분 이상
+- Baseline Measurement에서 Resource / Stability Risk를 관찰할 Larger MVP Project
+- Exact Clip Count와 Duration은 Approved Profile에서 결정
 
 ### Mixed Import Project
 
@@ -2646,48 +2772,41 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 
 ## Implementation Tasks
 
-1. Instruments로 Main Thread Hitch를 확인한다.
-2. Memory Graph를 확인한다.
-3. Preview 준비 시간을 측정한다.
-4. Export 시간을 측정한다.
-5. Thumbnail Generation이 UI를 Block하지 않는지 확인한다.
-6. Large Project에서 모든 Asset을 동시에 Load하지 않는지 확인한다.
-7. 반복 Camera Open / Close를 테스트한다.
-8. 반복 Front / Rear Switching을 테스트한다.
-9. 4K SDR 및 4K HDR / Dolby Vision Import의 1080p-class / 30 fps / SDR Working Media 생성 시간, Memory Pressure와 Release 및 Thermal Behavior를 측정한다.
-10. Export 반복 후 Temporary File Cleanup을 확인한다.
-11. 비정상 발열이 지속되는 Flow를 조사한다.
-12. 정규화된 SDR Working Media의 Full Vlog Preview Stability와 동일한 Project State의 Export Clip Order, Trim, Framing / Scale / Position, Transform, Front Mirroring, Audio 및 SDR Parity를 iPhone 12에서 검증한다.
-13. 승인된 10초 Recording의 실제 Storage Growth를 측정하고 Phase 4 Estimate와 비교한다.
-14. 4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 10초 Segment Import에서 실제 Peak Additional Storage를 측정하고 Phase 6 Estimate와 비교한다.
-15. Short / Medium / Large Project Export의 실제 Peak Additional Storage를 측정하고 Snapshot Duration / State 기반 Phase 9 Estimate와 비교한다.
-16. Recording / Import / Export 각각의 관측값과 승인된 Safety Reserve가 Estimate Error, Filesystem Overhead, Metadata Persistence와 작은 예기치 않은 Temporary Growth에 합리적인 여유를 제공하는지 검토한다.
-17. Recording / Import / Export를 반복하여 Operation-owned Temporary Artifact가 안전한 Cleanup 이후 비정상적으로 누적되지 않는지 측정한다.
-18. 측정 결과가 기존 Estimate Formula나 Safety Reserve 변경을 요구하면 수치를 임의로 조정하지 않고 Exception and Replanning Protocol과 해당 Decision 기록을 따른다.
-19. Full Preview Composition Preparation, Repeated Open / Close Preview, Seek / Playback Responsiveness, Memory Behavior와 Large Project Preview를 iPhone 12에서 측정한다.
-20. Preview / Export Semantic Parity가 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability Mutation 뒤에도 회귀하지 않는지 검증한다.
+1. Phase 4 Recording, Phase 6 Import / Normalization, Phase 8 Preview와 Phase 9 Export Baseline Measurement Evidence를 검토하고 Missing Scenario, Environment 또는 Measurement Boundary를 식별한다.
+2. Performance Acceptance Profile의 Scenario, Project Shape, Metric, Measurement Method, Repetition, Cold / Warm Policy, PASS / FAIL Rule과 Release-blocking Scope를 사용자 승인으로 확정한다.
+3. Approved Profile의 Measurement Method가 iPhone 12에서 재현 가능하고 OSLog 또는 Signpost, Instruments, Xcode Device Metrics, Application Instrumentation, AVFoundation Observable Timing 또는 Storage Observation으로 필요한 Evidence를 수집할 수 있는지 검증한다.
+4. Rear / Front Recording, 최대 10초 Completion, Active Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence의 Capture Stability, Completion Reliability, Post-record Commit Observation, Memory와 Thermal Behavior를 Official Scenario로 실행한다.
+5. 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 Selected Segment Import / Normalization의 Elapsed Observation, Memory, Peak Additional Storage, Thermal, Success / Failure와 applicable Cancellation Responsiveness를 Official Scenario로 실행한다.
+6. Individual Clip과 Full Vlog Preview의 Composition Preparation, First Usable Playback, applicable Seek / Playback Responsiveness, Playback Stability, Memory, Thermal과 Repeated Open / Close를 Official Scenario로 실행한다.
+7. Short, Representative, Larger Project의 Export Elapsed Observation, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 Official Scenario로 실행한다.
+8. Instruments로 Main Thread Hitch와 Memory Behavior를 확인하고 Large Project에서 모든 Asset을 동시에 Load하지 않으며 Thumbnail Generation이 UI를 Block하지 않는지 검증한다.
+9. Repeated Camera Open / Close, Front / Rear Switching, Preview, Import, Export와 Operation-owned Temporary Artifact Cleanup을 검증하고 Repeated Run의 Anomaly와 Exclusion Reason을 Evidence에 기록한다.
+10. Test Start Thermal State, Meaningful Thermal Transition, Memory-pressure Event, Storage Context와 Operation Failure의 관계를 Evidence에 기록하고 반복적인 Thermal / Resource Failure 또는 Runaway Growth를 조사한다.
+11. Approved Profile의 Threshold 또는 Non-numeric Acceptance Rule과 Evidence를 비교하여 PASS / FAIL을 판정하고 모든 Hard Fail을 Defect 또는 Investigation 대상으로 처리한다.
+12. Failure 또는 Bottleneck이 확인되면 Correctness / Media Safety를 유지하는 Optimization을 수행하고 같은 Approved Scenario를 다시 실행하여 Evidence를 갱신한다.
+13. Measurement 결과가 Storage Estimate, Safety Reserve, Architecture 또는 Approved Threshold 변경을 요구하면 수치를 임의로 조정하지 않고 Exception and Replanning Protocol과 Required Decision 기록을 따른다.
+14. Preview / Export Semantic Parity가 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability Mutation 뒤에도 회귀하지 않는지 검증한다.
 
-이 검증은 성능 측정 범위를 연결하는 것이며 새로운 수치 Threshold, Preview Cache Strategy 또는 Mandatory Full Pre-render를 확정하지 않고 M07 Performance Threshold는 별도 Repair 대상으로 유지한다.
+이 Phase는 `ROADMAP.md` 3.14절의 Protocol을 적용하며 Numeric Performance Threshold, Exact Repetition Count, Exact Project Shape 또는 Cache Strategy를 임의로 만들지 않는다.
 
 ## Acceptance Criteria
 
-- iPhone 12에서 일반 사용 중 반복적인 UI Freeze가 없다.
-- Camera Preview가 안정적이다.
-- Medium Project Preview가 실사용 가능하다.
-- Large Project가 임의 Crash하지 않는다.
-- Export 중 Memory Pressure로 반복 종료되지 않는다.
-- App 사용 후 Temporary Media가 비정상적으로 누적되지 않는다.
-- Full Preview Composition Preparation, Repeated Preview, Seek / Playback Responsiveness, Memory Behavior와 Large Project Preview가 iPhone 12에서 측정되고 심각한 회귀가 없는지 검토된다.
+- Required Performance Scenario마다 Approved Performance Acceptance Profile, Required iPhone 12 Evidence, Measurement Result, Threshold 또는 Non-numeric Rule, PASS / FAIL과 Anomaly가 기록된다.
+- 모든 Required Scenario가 Approved PASS Threshold 또는 Acceptance Rule을 충족하고 Hard Fail이 없다.
+- Recording, Import, Preview와 Export의 Correctness, Media Safety, Photos Original Preservation, ADR-020~026 Lifecycle과 M01 Canonical Composition Semantics를 Performance Optimization이 약화하지 않는다.
+- Repetition, Cold / Warm Condition, Aggregation 또는 Worst-case Treatment과 Run Exclusion Reason은 Approved Profile을 따른다.
+- Repeated Memory-pressure Termination, Watchdog, Runaway Growth, Thermal / Resource Failure, Crash, Permanent Hang 또는 Semantic Corruption은 Investigation 없이 PASS 처리되지 않는다.
 - Preview / Export Semantic Parity가 Composition에 영향을 주는 Mutation 뒤에도 회귀하지 않는다.
-- Recording 실제 Storage Growth, Import Normalization Peak Additional Storage와 Export Peak Additional Storage가 iPhone 12에서 측정되고 각 승인된 Estimate와 비교된다.
-- Safety Reserve의 합리성이 실제 관측값과 반복 Operation / Cleanup 결과를 근거로 검토된다.
-- Storage 측정 결과를 이유로 M07의 새로운 수치 Pass / Fail Threshold를 임의로 만들지 않는다.
+- Recording Actual Storage Growth, Import Normalization Peak Additional Storage와 Export Peak Additional Storage가 승인된 Estimate와 함께 Evidence에 기록된다.
+- Threshold 또는 Acceptance Rule 변경이 필요하면 Measured Evidence, Rationale, Tradeoff, User Impact, Affected Scenario와 승인된 Controlled Change를 따른다.
 
 ## Exit Criteria
 
-iPhone 12에서 핵심 Flow의 안정성과 성능이 QA 가능한 수준이어야 한다.
+iPhone 12에서 Required Performance Scenario가 Approved Performance Acceptance Profile과 Evidence Contract에 따라 Formal PASS를 받아야 한다.
 
-Recording / Import / Export의 실제 Peak Additional Storage, 승인된 Estimate 대비 관측값, Safety Reserve 합리성과 반복 Temporary Cleanup 결과가 기록되어야 하며 수치 변경이 필요하면 승인된 Replanning 절차를 따라야 한다.
+Required Scenario Evidence가 누락되었거나 Hard Fail, Failed Metric 또는 Unresolved Performance / Quality Issue가 남아 있으면 Phase 13을 완료하지 않으며 Defect, Optimization, Architecture Change 또는 Controlled Replanning으로 처리한다.
+
+Recording / Import / Export의 Actual Peak Additional Storage, 승인된 Estimate 대비 관측값, Safety Reserve 합리성과 Repeated Temporary Cleanup 결과가 기록되어야 하며 수치 변경이 필요하면 승인된 Replanning 절차를 따른다.
 
 ---
 
@@ -2748,6 +2867,14 @@ Recording / Import / Export의 실제 Peak Additional Storage, 승인된 Estimat
 - Performance
 - Regression
 
+## Performance Regression Gate
+
+Phase 14는 Phase 13에서 승인된 Performance Acceptance Profile의 Release-blocking Scenario를 Physical iPhone 12에서 Regression으로 다시 실행한다.
+
+Functional QA만 통과하고 Approved Performance Scenario의 Regression, Hard Fail 또는 Failed Metric이 남아 있으면 MVP QA PASS로 처리하지 않는다.
+
+Phase 14는 Threshold, Project Shape, Repetition Count 또는 PASS / FAIL Rule을 즉흥적으로 변경하지 않으며 변경이 필요하면 `ROADMAP.md` 3.14절의 Controlled Change Policy에 따라 Evidence와 사용자 승인을 갖춘다.
+
 ## Severity
 
 ### Blocker
@@ -2775,12 +2902,16 @@ Cosmetic 또는 작은 UX 문제다.
 - 전체 Integration Tests 통과
 - UI Tests 통과
 - iPhone 12 End-to-End Test 통과
+- Approved Performance Acceptance Profile의 Release-blocking Scenario Regression 통과
+- Required Performance Evidence 존재, Hard Fail 없음, Approved Threshold 또는 Acceptance Rule 충족
 - `git diff --check` 통과
 - 문서와 실제 구현이 일치
 
 ## Exit Criteria
 
 MVP Completion Definition의 모든 항목을 실제 iPhone 12에서 완료할 수 있어야 한다.
+
+Approved Performance Acceptance Profile의 Release-blocking Scenario가 Phase 14 Regression에서 PASS하고 Performance / Quality Hard Fail 또는 Unresolved Failed Metric이 남아 있지 않아야 한다.
 
 ---
 

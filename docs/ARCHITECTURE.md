@@ -2461,6 +2461,22 @@ SwiftUI View는 Camera Session, File System 또는 SwiftData를 직접 조작하
 
 핵심 사용자 Flow는 iPhone 12에서 실사용 가능한 수준으로 동작해야 한다.
 
+Official Performance Acceptance Evidence는 Physical iPhone 12에서 재현 가능한 Scenario로 수집하며 Simulator 결과는 개발 보조나 일부 자동화 검증에 사용할 수 있지만 공식 PASS / FAIL Evidence를 대체하지 않는다.
+
+각 기능 Phase는 구현 후 Baseline Measurement를 수행하여 실제 구현의 병목과 측정 가능한 동작 경계를 확인하며 이 단계는 Numeric Performance Threshold 없이도 재현 가능한 Evidence를 남겨야 한다.
+
+Measurement는 Scenario에 의미 있는 Latency, Throughput 또는 Elapsed Operation Duration, Memory, Storage, Thermal, Playback Stability, Responsiveness, Reliability와 Recovery Behavior를 관찰한다.
+
+Recording, Import, Preview와 Export의 Measurement Boundary는 Media Commit, Normalization, Canonical Composition, Immutable Export Snapshot과 Result Validation의 기존 Correctness / Safety Contract를 변경하지 않는다.
+
+Performance Optimization은 Raw Preview Fallback, Editing Semantics 생략, Media Validation 생략, Storage Preflight 제거, User Media 자동 삭제 또는 Quality Silent Downgrade의 근거가 될 수 없다.
+
+Apple Native Instrumentation, OSLog 또는 Signpost, Instruments, Xcode Device Metric, Application Instrumentation, AVFoundation Observable Timing과 Filesystem 또는 Storage Observation 중 Scenario에 맞는 재현 가능한 방법을 사용할 수 있으며 한 번의 Stopwatch 관찰이나 주관적 인상만으로 Official Performance PASS를 선언하지 않는다.
+
+Formal Performance Acceptance는 `ROADMAP.md` 3.14절의 Approved Performance Acceptance Profile에 따라 수행하며 Profile에 필요한 Numeric Threshold, Non-numeric Acceptance Rule, Repetition과 Cold / Warm Policy가 승인되기 전에는 Formal PASS / FAIL을 판정하지 않는다.
+
+Threshold와 Project Shape는 실제 iPhone 12 Baseline Measurement, 승인된 Media Profile과 Codec / Container, 관측된 Memory / Thermal Behavior 및 UX Expectation을 근거로 승인하며 현재 문서는 근거 없는 Numeric Threshold를 만들지 않는다.
+
 ---
 
 ## 84. Open Architecture Decisions
@@ -2505,7 +2521,7 @@ Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dime
 - 매우 많은 Clip이 존재할 때 Preview Optimization
 - Exact Playback Retry UI와 Player Rebuilding Strategy
 
-Preview Optimization은 Full Vlog의 Mandatory Pre-render를 의미하지 않으며 iPhone 12에서의 정확한 Performance Pass / Fail Threshold는 M07에서 다룬다.
+Preview Optimization은 Full Vlog의 Mandatory Pre-render를 의미하지 않으며 iPhone 12에서의 Formal Performance PASS / FAIL은 `ROADMAP.md` 3.14절의 Approved Performance Acceptance Profile을 따른다.
 
 ### Export
 
