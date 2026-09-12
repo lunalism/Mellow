@@ -679,13 +679,35 @@ Mellow는 전체 Vlog의 총 재생 시간에 제품 차원의 고정 최대 제
 
 ## F-MVP-033 — Clip Preview
 
-사용자는 개별 Clip을 재생하여 촬영 또는 Import 결과를 확인할 수 있어야 한다.
+사용자는 개별 Clip을 재생하여 현재 해당 Clip이 실제 Vlog에서 어떻게 보일지 확인할 수 있어야 한다.
 
-현재 Trim 범위가 존재한다면 해당 범위를 기준으로 Preview한다.
+Individual Clip Preview는 Raw Source 또는 Raw Working Media를 Editing State 없이 직접 재생하는 기능이 아니라 해당 Clip의 effective edited result를 재생한다.
+
+Individual Clip Preview는 현재 effective Trim, Project Orientation, Fill + Crop을 포함한 current Framing / Scale / Position, applicable Transform, Direct-recorded Front Camera의 Mirrored Appearance, SDR interpretation과 존재하는 Clip Audio를 반영한다.
 
 MVP Clip Preview는 SDR이며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
 
-다른 Clip이 Unavailable이어도 Healthy Clip의 개별 Preview는 사용할 수 있다.
+Audio Track이 없는 Imported Clip은 유효한 Silent Clip이며 Individual Clip Preview는 존재하는 Audio만 포함한다.
+
+다른 Clip이 Unavailable이어도 Healthy / Usable Clip의 Individual Clip Preview는 사용할 수 있다.
+
+Unavailable Clip 자체의 Video Preview는 제공하지 않고 Replace 또는 Delete Flow를 사용한다.
+
+0 Clip Project에는 Individual Clip Preview 대상이 없다.
+
+Individual Clip의 Trim, Framing, Transform 또는 Media Availability가 바뀌면 이전 Preview Composition을 Stale로 간주하고 다음 유효 Preview는 최신 effective edited state를 사용한다.
+
+### Acceptance Criteria
+
+| 시나리오 | 기대 결과 |
+| --- | --- |
+| Trim, Framing 또는 Transform이 있는 Healthy Clip의 Individual Preview | 현재 effective Trim, Framing / Scale / Position과 applicable Transform을 반영한 결과를 재생한다. |
+| Direct-recorded Front Clip의 Individual Preview | 촬영 중 사용자가 본 Mirrored Appearance와 동일한 결과를 재생한다. |
+| HDR / Dolby Vision Source 또는 Audio가 없는 Imported Clip | SDR로 재생하며 Audio가 없으면 Silent Clip으로 정상 재생한다. |
+| 0 Clip Project | Individual Clip Preview 대상이 없다. |
+| 다른 Clip이 Unavailable인 Healthy Clip | 다른 Clip의 Unavailable 상태 때문에 Individual Clip Preview가 차단되지 않는다. |
+| 대상 Clip이 Unavailable | Raw Media를 대신 재생하거나 Silent Substitute를 사용하지 않고 Replace 또는 Delete Flow를 제공한다. |
+| Preview 준비 후 대상 Clip의 Edit State 또는 Availability 변경 | 기존 Composition을 Stale로 처리하고 다음 유효 Preview가 최신 State를 반영한다. |
 
 ---
 
@@ -693,25 +715,45 @@ MVP Clip Preview는 SDR이며 HDR / Dolby Vision Source에서 시작한 Clip도 
 
 사용자는 현재 프로젝트 전체를 하나의 Vlog처럼 연속 재생하여 확인할 수 있어야 한다.
 
+Full Vlog Preview는 Raw Clip을 단순 연결하는 기능이 아니라 현재 Project의 effective edited result를 현재 Clip Order대로 재생하는 기능이다.
+
 ### Preview Must Reflect
 
 - Clip order
 - 각 Clip의 Trim
 - Fill + Crop 및 사용자 Framing
 - Project orientation
+- applicable Transform
+- Direct-recorded Front Camera mirrored appearance
 - Video
-- Recorded audio
+- valid Clip Audio와 Audio가 없는 Imported Clip의 Silent 상태
 - SDR interpretation
 
-전체 Preview는 SDR을 기준으로 하며 Export와 가능한 한 동일한 Composition / Color Handling을 사용한다.
+전체 Preview는 SDR을 기준으로 하며 Export와 동일한 canonical Composition Semantics를 사용한다.
 
 HDR Source라는 이유로 Preview만 HDR로 재생하는 별도 기본 Pipeline을 두지 않는다.
 
-초기 MVP에서는 Clip 사이에 특별한 Transition 효과를 제공하지 않는다.
+초기 MVP에서는 Clip Boundary에 Fade, Dissolve, Crossfade, Audio Fade 또는 Audio Crossfade를 자동 삽입하지 않고 현재 Clip Order를 직접 이어서 재생한다.
 
 Full Vlog Preview는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 제공한다.
 
 0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 비활성화하고 손상된 Clip을 조용히 생략한 결과를 재생하지 않는다.
+
+Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경은 이전 Full Vlog Preview Composition을 Stale로 만들며 다음 유효 Preview는 최신 Project State를 사용한다.
+
+Full Vlog Preview는 매번 완성 Video File을 사전 Render하는 것을 기본 구현으로 요구하지 않는다.
+
+### Acceptance Criteria
+
+| 시나리오 | 기대 결과 |
+| --- | --- |
+| 하나 이상의 Healthy Clip이 있는 Project | 현재 Clip Order와 모든 current effective edit state를 반영한 Full Vlog Preview를 제공한다. |
+| Reorder, Trim, Framing 또는 Transform 변경 후 다음 Preview | 기존 Composition을 재사용하지 않고 최신 Project State를 반영한다. |
+| Direct-recorded Front Clip과 Imported Clip이 섞인 Project | Front Clip의 Mirrored Appearance, Project Orientation, SDR interpretation과 존재하는 Audio를 Export와 같은 의미로 적용한다. |
+| Audio가 없는 Imported Clip | 해당 Clip을 valid silent Clip으로 포함하고 자동 Audio Crossfade를 삽입하지 않는다. |
+| 0 Clip Project | Full Vlog Preview를 비활성화한다. |
+| Healthy Clip과 Unresolved Unavailable Clip이 함께 있는 Project | Full Vlog Preview를 차단하고 Unavailable Clip을 자동 생략한 결과를 재생하지 않는다. |
+| Clip Boundary | 자동 Video Transition 또는 자동 Audio Fade / Crossfade 없이 현재 Clip Order를 직접 연결한다. |
 
 ---
 
@@ -727,8 +769,10 @@ Full Vlog Preview는 하나 이상의 Usable Committed Clip, Unresolved Unavaila
 - Clip 순서 반영
 - 각 Clip의 Trim 반영
 - Fill + Crop 및 사용자 Framing 반영
+- applicable Transform과 Direct-recorded Front Camera mirrored appearance 반영
 - Project orientation 유지
-- Audio 유지
+- 존재하는 Clip Audio 유지 및 Audio가 없는 Imported Clip의 Silent 상태 유지
+- Preview와 동일한 canonical Composition Semantics 사용
 - 안정적인 영상 파일 생성
 
 Export는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 시작한다.
@@ -748,7 +792,7 @@ Mellow Camera의 기본 Capture Profile도 1080p / 30 fps다.
 
 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않으며 사용자에게 Export Resolution이나 Frame Rate 선택을 제공하지 않는다.
 
-HDR Export는 MVP에서 제공하지 않으며 SDR Export의 Framing, Transform 및 색 해석은 동일한 Project State의 Preview와 가능한 한 일치해야 한다.
+HDR Export는 MVP에서 제공하지 않으며 SDR Export의 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, Audio Inclusion 및 색 해석은 동일한 Project State의 Preview와 가능한 한 일치해야 한다.
 
 Export Codec, Container, Bitrate, Audio Codec / Bitrate, 정확한 SDR Color Profile / Tagging, Background Export와 재Export가 필요한 경우의 Retry 세부 정책은 아직 확정하지 않는다.
 
@@ -1242,7 +1286,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Export 이후에도 Draft를 자동 삭제하지 않는다.
 - Draft를 다시 열어 수정하고 다시 Export할 수 있다.
 - MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
-- Preview와 Export는 가능한 한 동일한 Composition / Color Handling으로 SDR 색 해석과 Framing을 일치시킨다.
+- Individual Clip Preview는 Raw Source가 아닌 current effective edited result를 제공하고 Full Vlog Preview와 Export는 같은 canonical Composition Semantics로 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 해석 및 Audio Inclusion을 적용한다.
+- MVP Full Vlog Preview와 Export는 현재 Clip Order를 직접 이어서 사용하며 자동 Video / Audio Transition을 삽입하지 않는다.
+- Healthy Clip의 Individual Preview는 다른 Clip의 Unavailable 상태와 무관하게 가능하고 Unavailable Clip 자체의 Video Preview는 제공하지 않는다.
+- Composition에 영향을 주는 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 뒤에는 다음 유효 Preview가 최신 Project State를 사용한다.
 - HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
 - Export Rendering Success와 Photos Save Success를 분리하고 Successful Local Export Artifact를 Save, Save Retry와 Share에 재사용한다.

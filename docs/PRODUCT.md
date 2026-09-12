@@ -305,8 +305,9 @@ Mellow의 편집기는
 
 ### Preview
 
-현재 클립 순서와 편집 내용을 반영한
-전체 결과물을 확인할 수 있어야 한다.
+Individual Clip Preview는 사용자가 현재 해당 Clip이 실제 Vlog에서 어떻게 보일지 확인하는 기능이며 Raw Source를 단순 재생하는 기능이 아니다.
+
+Full Vlog Preview는 현재 Clip 순서와 편집 내용을 반영한 전체 결과물을 확인하는 기능이다.
 
 ### Export
 
@@ -553,15 +554,33 @@ Trim은 정밀한 전문 편집보다
 
 #### Project Preview
 
-현재 클립 순서, Trim 및 Framing 결과를 반영하여 전체 미니 브이로그를 재생할 수 있다.
+Individual Clip Preview는 해당 Clip의 effective Trim, Project Orientation, current Framing / Scale / Position, applicable Transform, Direct-recorded Front Camera의 Mirrored Appearance, SDR 해석 및 존재하는 Audio를 반영한 effective edited result를 재생한다.
+
+Individual Clip Preview는 Raw Source 또는 Raw Working Media를 Editing State 없이 직접 재생하는 기본 기능이 아니며 별도 `View Original` 기능은 MVP에 포함하지 않는다.
+
+Audio Track이 없는 Photos Import Clip은 유효한 Silent Clip으로 취급하며 존재하는 Clip Audio는 Individual Clip Preview에 포함한다.
+
+0 Clip Project에는 Individual Clip Preview 대상이 없으며 Full Vlog Preview와 Export도 제공하지 않는다.
+
+Full Vlog Preview는 현재 Project의 Clip Order, effective Trim, Framing / Scale / Position, applicable Transform, Project Orientation, Mirroring Semantics, SDR 해석 및 Clip Audio Presence를 반영한 effective edited result를 현재 순서대로 재생한다.
+
+Preview와 Export는 동일한 Project Editing Semantics를 사용하여 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Camera Mirrored Appearance, SDR 해석 및 Audio Inclusion의 의미를 일치시킨다.
+
+Preview와 Export가 서로 독립적인 Editing Rule을 다시 구현하지 않으며 Preview에서 본 의도적 Composition 의미는 동일한 Project State의 Export 결과와 가능한 한 일치해야 한다.
+
+MVP의 Full Vlog Preview와 Export는 현재 Clip 순서를 직접 이어서 사용하며 Clip Boundary에 자동 Fade, Dissolve, Crossfade, Audio Fade 또는 Audio Crossfade를 삽입하지 않는다.
 
 Full Vlog Preview는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source가 있을 때만 사용할 수 있다.
 
-0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 제공하지 않으며 Healthy Clip의 개별 Preview는 계속 가능하다.
+0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 제공하지 않으며 Healthy Clip의 Individual Clip Preview는 계속 가능하다.
+
+Unavailable Clip 자체의 Video Preview는 제공하지 않고 기존 Replace 또는 Delete Flow를 사용한다.
 
 MVP Preview는 SDR을 기준으로 하며 HDR / Dolby Vision Source에서 시작한 Clip도 SDR로 재생한다.
 
-Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 한다.
+Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경으로 Composition 결과가 달라지면 이전 Preview Composition은 Stale로 간주하고 다음 유효 Preview는 최신 Project State를 사용한다.
+
+Preview를 위해 매번 Full Vlog를 완성 Video File로 사전 Render하지 않으며 Preview용 Temporary 또는 Cached Derived Data가 필요할 경우에도 Committed Project Media로 취급하지 않는다.
 
 #### Export
 
@@ -1126,7 +1145,11 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
 - Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
-- 여러 Clip을 하나의 영상으로 Preview하고 Export할 수 있어야 한다.
+- Individual Clip Preview는 Raw Source가 아닌 현재 effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 및 Audio를 반영한 effective edited result를 제공한다.
+- Full Vlog Preview는 현재 Clip Order와 같은 effective Editing Semantics를 사용하며 MVP에서 자동 Video / Audio Transition을 삽입하지 않는다.
+- Preview와 Export는 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirrored Appearance, SDR 해석 및 Audio Inclusion을 같은 의미로 적용한다.
+- Healthy Clip의 Individual Preview는 다른 Clip의 Unavailable 상태와 무관하게 가능하지만 Unavailable Clip 자체의 Video Preview는 제공하지 않는다.
+- Composition에 영향을 주는 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 뒤에는 다음 유효 Preview가 최신 Project State를 사용한다.
 - MVP Preview는 SDR이며 Export는 1080p / 30 fps / SDR을 기준으로 하고 Portrait Output은 1080 × 1920, Landscape Output은 1920 × 1080이다.
 - Preview와 Export의 Framing, Transform 및 SDR 색 해석은 가능한 한 일치해야 하며 HDR Export는 MVP에서 제공하지 않는다.
 - 720p Export, 4K Export와 60 fps Export는 MVP에서 제공하지 않는다.
@@ -1161,6 +1184,8 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 정확한 Undo Window 시간
 - Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식
+- Individual Clip Preview와 Full Vlog Preview의 정확한 Playback Controls, Scrubber, Navigation, Entry / Exit Transition 및 Fullscreen Behavior
+- Preview Composition Cache의 정확한 정책과 Optimization Strategy
 - Rear Zoom의 정확한 Maximum Product Quality Limit
 - Rear Zoom의 정확한 Interaction / Indicator / Visual Presentation이며 Pinch-to-zoom은 Primary Candidate
 - 정확한 Orientation Detection API / Threshold / Debounce

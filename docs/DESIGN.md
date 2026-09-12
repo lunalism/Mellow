@@ -413,6 +413,8 @@ Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 
 0 Clip Project는 Recording과 Video Import를 시작할 수 있지만 Full Preview와 Export는 사용할 수 없음을 Error Screen이 아닌 정상적인 Project 상태로 전달한다.
 
+0 Clip Project에는 Individual Clip Preview 대상도 없음을 정상적인 Project 상태로 전달한다.
+
 일부 또는 모든 Clip이 Unavailable이어도 Project를 열고 Healthy Clip을 계속 관리할 수 있어야 하며 Project 전체를 자동으로 제거하지 않는다.
 
 ---
@@ -430,6 +432,12 @@ Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 Unavailable Clip은 숨기지 않고 기존 Timeline Position을 차지하며 Healthy Clip과 구분할 수 있고 Replace와 Delete Action에 접근할 수 있어야 한다.
 
 Unavailable 상태의 정확한 Icon, Thumbnail Placeholder, Label, Color, Button Layout, Modal 또는 Sheet와 Copy는 Phase 5 Structural UX Gate에서 결정한다.
+
+Healthy Clip의 Individual Clip Preview는 사용자가 현재 이 Clip이 실제 Vlog에서 어떻게 보일지 확인하는 경험이어야 하며 Raw Source를 단순 재생하는 별도 원본 확인 경험으로 표현하지 않는다.
+
+Individual Clip Preview는 현재 Trim, Framing / Scale / Position, applicable Transform, Project Orientation, Direct-recorded Front Clip의 Mirrored Appearance, SDR 해석과 존재하는 Audio를 반영하며 정확한 진입 방식과 Playback Control은 Phase 8 Structural UX Gate에서 결정한다.
+
+Unavailable Clip 자체에는 Video Preview를 제공하지 않고 사용자가 Replace 또는 Delete Flow를 통해 해결할 수 있게 한다.
 
 ---
 
@@ -477,20 +485,30 @@ Destructive Action은 시각적으로 명확하게 구분한다.
 
 사용자는 현재 Project 전체를 실제 Export 결과와 유사한 형태로 연속 재생할 수 있어야 한다.
 
+Full Vlog Preview는 Raw Clip을 단순 연결하는 기능이 아니라 현재 Vlog 전체가 Export될 때의 effective edited result를 확인하는 경험이어야 한다.
+
 Preview에서는 다음 요소를 반영한다.
 
 - Clip order
 - Trim
-- Crop
+- Fill + Crop과 current Framing / Scale / Position
+- applicable Transform
 - Project orientation
-- Video
-- Audio
+- Direct-recorded Front Clip의 Mirrored Appearance
+- SDR interpretation
+- 존재하는 Clip Audio와 Audio가 없는 Imported Clip의 Silent 상태
 
-Clip 사이에는 MVP에서 특별한 Transition을 적용하지 않는다.
+Full Vlog Preview와 Export는 동일한 Composition Semantics를 사용하며 Clip order, Trim, Framing, Transform, Orientation, Mirroring, SDR 및 Audio의 의미가 달라지지 않아야 한다.
+
+Clip 사이에는 MVP에서 자동 Video Transition, Audio Fade 또는 Audio Crossfade를 적용하지 않고 현재 Clip Order를 직접 이어서 사용한다.
 
 0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Vlog Preview를 제공하지 않으며 문제 Clip을 조용히 생략한 완성본처럼 재생하지 않는다.
 
 다른 Clip이 Unavailable이어도 Healthy Clip의 개별 Preview는 계속 가능하다.
+
+Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 후에는 기존 Preview가 최신 Vlog 결과처럼 남지 않으며 다음 유효 Preview는 최신 Project State를 반영한다.
+
+정확한 Playback Controls, Scrubber, Navigation, Entry / Exit Transition, Control Placement와 Fullscreen Behavior는 Phase 8 Structural UX Gate에서 결정한다.
 
 ---
 
@@ -776,6 +794,9 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Export 이후 Draft를 자동 삭제하지 않는다.
 - 0 Clip Project는 정상적인 Draft이며 Recent에서 다시 열 수 있고 Recording과 Import를 허용하지만 Full Preview와 Export는 비활성화한다.
 - Unavailable Clip은 기존 Timeline Position에 유지하고 Replace 또는 Delete Action에 접근할 수 있어야 하며 자동 삭제, 자동 대체 또는 조용한 Preview / Export 생략을 하지 않는다.
+- Individual Clip Preview는 Healthy Clip의 current effective edited result를 제공하고 다른 Clip의 Unavailable 상태 때문에 차단하지 않으며 Unavailable Clip 자체에는 Video Preview를 제공하지 않는다.
+- Full Vlog Preview와 Export는 current Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 및 Audio Inclusion의 동일한 Composition Semantics를 사용하고 MVP에서 자동 Video / Audio Transition을 삽입하지 않는다.
+- Composition에 영향을 주는 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 후 다음 유효 Preview는 최신 Project State를 사용한다.
 - Project-level Corruption은 다른 Draft에서 격리된 안전한 Failure Presentation을 제공해야 하며 정확한 UI와 Copy는 별도 UX Gate에서 결정한다.
 - Export Rendering Success와 Photos Save Success를 구분하여 표시하며 `Saved to Photos`는 실제 Photos Save가 성공한 뒤에만 사용한다.
 - Photos Save Failure는 Render Failure로 표시하지 않고 같은 Local Result의 Save Retry와 Share를 제공하며 Share Cancel은 Result를 유지한다.
@@ -807,7 +828,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
-| Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber 등 M01의 Pending 범위와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
+| Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
 | Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
 
 Phase 3은 Camera Shell과 현재 Phase의 Control 구조만 구현하며 이후 Phase의 Recording / Import 기능을 미리 구현하지 않는다.
@@ -826,7 +847,7 @@ Clip Delete / Undo Presentation 선택은 `FEATURES.md`의 F-MVP-025와 ADR-021�
 
 Trim / Framing 구조는 ADR-022의 Working Media Crop bake-in 금지와 Metadata 기반 Framing 계약을 유지한다.
 
-M01의 Preview 기능 범위와 ADR-025로 확정된 Export Result Lifecycle은 이 표에서 다시 결정하지 않으며 Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Result UI는 해당 UI 구현 전에 해결해야 한다는 시점만 정의한다.
+ADR-013의 Shared Preview / Export Composition 실행 계약과 ADR-025로 확정된 Export Result Lifecycle은 이 표에서 다시 결정하지 않으며 Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Result UI는 해당 UI 구현 전에 해결해야 한다는 시점만 정의한다.
 
 Recording Start에는 Haptic 없음, Successful Manual Stop / 10-second Auto-stop에는 subtle completion haptic이라는 승인 정책은 29절을 따르며 이 Structural UX 분류로 다시 Open으로 만들지 않는다.
 
@@ -899,6 +920,7 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 - Scrubber 제공 여부
 - Preview에서 빠르게 Clip으로 돌아가는 Interaction
 - Empty / Unavailable Project에서 Full Preview가 Blocked일 때의 Exact State Presentation
+- Preview Entry / Exit Transition과 Fullscreen Behavior
 
 ### Export
 

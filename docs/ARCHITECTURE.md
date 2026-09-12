@@ -1035,33 +1035,57 @@ Source Asset의 Display Transform을 반영한 실제 Display Orientation을 기
 
 ## 45. Shared Composition Builder
 
-Preview와 Export가 서로 다른 Video Transform Logic을 구현하지 않는다.
+Preview와 Export는 물론 Individual Clip Preview도 서로 다른 Editing Logic을 구현하지 않는다.
 
-공통 `VideoCompositionBuilder`를 사용한다.
+공통 `VideoCompositionBuilder` 또는 동등한 Shared Composition 책임은 ADR-013의 Canonical Composition Semantics를 만든다.
+
+이 책임은 Project / Clip State에서 하나의 Canonical Composition Description을 만들고 Individual Preview Consumer, Full Vlog Preview Consumer와 Export Consumer가 그 Description의 동일한 Editing Meaning을 사용하게 한다.
+
+구체적인 Swift Type, Public API 또는 AVFoundation Object Graph는 이 문서에서 고정하지 않는다.
+
+### Canonical Composition Inputs
+
+Project-level Input은 Project Orientation과 현재 Clip Order를 포함한다.
+
+Clip-level Input은 Media Identity / Reference, Availability, effective Trim, Fill + Crop을 포함한 Framing / Scale / Position, applicable Transform, Direct-recorded Front Camera의 Mirror Semantics, Source Display Transform과 Audio Presence를 포함한다.
+
+Color Input은 ADR-022의 Shared SDR Interpretation을 포함한다.
+
+Individual Clip Preview는 Full Project 전체 Sequence를 만들 필요 없이 해당 Clip과 Project-level Input에 같은 Composition Rule을 적용한다.
 
 ### Responsibilities
 
-- Clip Order 적용
-- Trim 적용
+- Current Clip Order 적용
+- effective Trim 적용
 - Project Orientation 적용
 - Source Rotation 정규화
-- Fill + Crop 적용
-- User Framing 적용
-- Audio Track 구성
-- Timeline 생성
+- Fill + Crop, User Framing / Scale / Position과 applicable Transform 적용
+- Direct-recorded Front Camera의 Mirrored Appearance 적용
+- valid Audio Track 구성과 Audio가 없는 Imported Clip의 Silent 상태 유지
+- Individual Clip Composition과 Full Project Sequence Composition 생성
+- Full Project Timeline 생성
 - 1080p Output Canvas 구성
 - 30 fps Project Timing 반영
 - Shared SDR Interpretation / Color Handling 적용
+- Preview와 Export Consumer가 동일한 Edit Rule을 사용하도록 한다.
 
-Preview와 Export는 가능한 한 동일한 Composition Definition을 사용한다.
+Preview와 Export는 동일한 Canonical Composition Semantics를 사용한다.
 
-동일한 Logical Project State에서 Framing / Transform / SDR Interpretation이 가능한 한 일치해야 하며 HDR Source라는 이유로 Preview는 HDR이고 Export는 SDR인 이중 기본 Pipeline을 두지 않는다.
+동일한 Logical Project State에서 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR Interpretation과 Audio Inclusion이 가능한 한 일치해야 하며 HDR Source라는 이유로 Preview는 HDR이고 Export는 SDR인 이중 기본 Pipeline을 두지 않는다.
+
+MVP Full Project Sequence는 현재 Clip Order를 Direct Concatenation Semantics로 연결하며 Clip Boundary에 Fade, Dissolve, Crossfade, Audio Fade 또는 Audio Crossfade를 자동 삽입하지 않는다.
+
+Individual Clip Preview, Full Vlog Preview와 Export는 Raw AVAsset 또는 Raw Working Media를 Editing State 없이 직접 재생하는 별도 기본 경로를 두지 않는다.
+
+Composition Builder는 Preview 또는 Export 요청만으로 새로운 Committed Project Clip이나 Working Media를 만들지 않는다.
 
 이 원칙은 Export Codec / Container / Bitrate를 확정하지 않으며 진행 중 Export는 48절의 Immutable Snapshot 의미를 유지한다.
 
 ---
 
 ## 46. Preview Architecture
+
+Individual Clip Preview와 Full Vlog Preview는 AVPlayer 기반 Composition Preview를 사용한다.
 
 전체 Vlog Preview를 위해 매번 하나의 완성 Video File을 미리 Render하지 않는다.
 
@@ -1073,13 +1097,45 @@ MVP Preview는 SDR을 기준으로 하며 HDR / Dolby Vision Source에서 시작
 
 모든 Clip Video Frame을 Memory에 동시에 Load하지 않는다.
 
+### Preview Eligibility
+
+Individual Clip Preview Eligibility는 대상 Clip의 Media가 Usable이고 해당 Clip의 Required Composition Input이 Valid한지를 기준으로 판단한다.
+
+0 Clip Project에는 Individual Clip Preview 대상이 없다.
+
+다른 Clip 하나가 Unavailable이라는 이유만으로 Healthy Clip의 Individual Clip Preview를 차단하지 않는다.
+
+Unavailable Clip 자체에는 Video Preview를 제공하지 않으며 ADR-026의 Replace 또는 Delete Flow를 사용한다.
+
+Full Vlog Preview Eligibility는 하나 이상의 Usable Committed Clip, Unresolved Unavailable Clip 부재와 Valid Composition Source를 기준으로 판단한다.
+
+0 Clip Project는 Valid Draft이지만 Full Vlog Preview 대상이 아니며 Unresolved Unavailable Clip이 하나라도 있으면 Full Vlog Preview를 차단하고 해당 Clip을 자동 생략하지 않는다.
+
+Eligibility 판단은 Preview View에만 임의로 구현하지 않고 Domain / Composition Boundary에서 판단 가능해야 한다.
+
+### Individual Clip Preview Pipeline
+
+Individual Clip Preview는 Clip Availability Validation, 현재 effective Edit State, Shared Composition Rule, Player Item 또는 동등한 Preview Representation, AVPlayer 순서로 구성한다.
+
+필요한 경우 Single-clip Composition을 생성하며 Raw AVAsset를 Trim, Framing, Transform, Project Orientation, Front Mirroring 또는 SDR Policy를 무시하고 직접 재생하는 것을 기본 구현으로 두지 않는다.
+
+Clip에 valid Audio Track이 있으면 Individual Preview Composition에 포함하고 Audio가 없는 Imported Clip은 Silent Clip으로 정상 처리한다.
+
+### Full Vlog Preview Pipeline
+
+Full Vlog Preview는 Current Project State, Eligibility Check, Current Clip Order Resolution, Per-clip Effective Composition, Project Sequence Composition, AVPlayer Preview 순서로 구성한다.
+
+Full Vlog Preview는 Raw Clip을 별도 Timeline Logic으로 단순 연결하지 않으며 45절의 Canonical Composition Semantics를 사용한다.
+
+Full Vlog Preview용 완성 Video File을 매번 Export / Render하는 것을 기본 Path로 두지 않는다.
+
 ### Preview State and Media Usage
 
 Preview는 현재 유효한 Project State로 Composition을 구성한다.
 
 Preview 준비와 Playback이 참조하는 Media의 Active Usage를 추적하며 해당 Reference가 Release되기 전에는 Source Media를 Physical Delete하지 않는다.
 
-Clip Delete, Reorder, Trim 또는 Framing 변경으로 Project State가 바뀌면 Stale Composition을 무기한 사용하지 않고 Invalidate하며 다음 유효 Preview는 변경된 State를 반영한다.
+Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경으로 Project State가 바뀌면 Stale Composition을 무기한 사용하지 않고 Invalidate하며 다음 유효 Preview는 변경된 State를 반영한다.
 
 필요한 경우 현재 Playback을 중단하고 Composition을 Rebuild할 수 있다.
 
@@ -1089,7 +1145,17 @@ Project가 Logical Deleted 상태가 되면 신규 Preview 결과를 적용하�
 
 Preview에 사용 중인 File을 강제로 삭제하여 Player Failure를 만드는 구조를 허용하지 않는다.
 
-구체적인 UI Transition이나 Player Rebuilding Strategy는 이 계약에서 고정하지 않는다.
+Preview Invalidation 또는 Stop Request만으로 Preview Consumer의 실제 Media Reference Release가 완료되었다고 가정하지 않는다.
+
+Preview Preparation 또는 Playback Failure는 가능한 범위에서 Clip, Composition 또는 Playback 범위로 식별하며 일시적인 AVPlayer Error 한 번만으로 Clip Metadata를 삭제하거나 Unavailable 상태로 영구 확정하지 않는다.
+
+Media Validation이 실제 Unavailable 상태를 확인한 경우에는 ADR-026을 적용한다.
+
+Preview용 Temporary 또는 Cached Derived Data가 필요하면 Canonical Source Media와 구분하고 Disposable / Cache Lifecycle을 명확히 하며 User Committed Media로 취급하지 않는다.
+
+Preview Cache Key, Revision, Generation, Hash, Player Rebuilding Strategy와 Exact Playback Retry UI는 이 계약에서 고정하지 않는다.
+
+구체적인 UI Transition은 이 계약에서 고정하지 않는다.
 
 ---
 
@@ -2204,7 +2270,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Imported Video는 선택한 최대 10초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
 - Working Media는 Source Presentation Aspect Ratio와 Framing 가능 영역을 보존하며 Project Fill + Crop을 bake-in하지 않는다.
 - MVP Preview와 Export는 SDR이며 HDR Export는 MVP에서 제공하지 않는다.
-- Preview / Export는 가능한 한 동일한 Composition / Color Handling으로 SDR Interpretation과 Framing을 일치시킨다.
+- Individual Clip Preview, Full Vlog Preview와 Export는 Canonical Composition Semantics를 사용하여 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR Interpretation과 Audio Inclusion을 같은 의미로 적용한다.
 - Photos 원본 Media는 변경하지 않는다.
 - Metadata는 SwiftData를 사용한다.
 - 실제 Video File은 File System에서 관리한다.
@@ -2226,7 +2292,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Recording Interruption은 Successful Completion과 구분하고 ADR-020 / ADR-021을 따르며 Partial Clip 처리와 Minimum Valid Clip Duration은 Pending이다.
 - Trim은 Non-destructive 방식으로 구현한다.
 - Imported Video의 기본 Layout은 Fill + Crop이다.
-- Preview와 Export는 Shared Composition Definition을 사용한다.
+- Individual Clip Preview, Full Vlog Preview와 Export는 Shared Composition Definition을 사용한다.
 - Preview는 Composition 기반 Virtual Timeline을 우선 사용한다.
 - MVP Export는 `AVAssetExportSession`을 우선 사용한다.
 - Media File Operation은 Actor 기반으로 관리한다.
@@ -2325,7 +2391,13 @@ Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역을 �
 
 ### Preview and Export Parity
 
-Preview와 Export는 SDR을 기준으로 가능한 한 동일한 Composition Definition / Color Handling을 사용하며 동일한 Project State의 Framing, Transform과 SDR Interpretation을 일치시킨다.
+Individual Clip Preview, Full Vlog Preview와 Export는 SDR을 기준으로 가능한 한 동일한 Canonical Composition Definition / Color Handling을 사용한다.
+
+동일한 Project State의 Full Vlog Preview와 Export는 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Direct-recorded Front Clip의 Mirrored Appearance, SDR Interpretation과 Audio Inclusion을 일치시킨다.
+
+Individual Clip Preview는 같은 Rule을 대상 Clip에 적용하며 Raw Asset Preview를 기본 경로로 사용하지 않는다.
+
+MVP Composition은 자동 Video Transition, Audio Fade 또는 Audio Crossfade를 삽입하지 않고 Full Project Sequence는 현재 Clip Order를 직접 연결한다.
 
 ### Local-first
 
@@ -2391,8 +2463,11 @@ Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dime
 
 ### Preview
 
-- Composition Rebuild Cache 정책
+- Composition Rebuild Cache 정책과 Cache Key / Revision / Generation / Hash 선택
 - 매우 많은 Clip이 존재할 때 Preview Optimization
+- Exact Playback Retry UI와 Player Rebuilding Strategy
+
+Preview Optimization은 Full Vlog의 Mandatory Pre-render를 의미하지 않으며 iPhone 12에서의 정확한 Performance Pass / Fail Threshold는 M07에서 다룬다.
 
 ### Export
 

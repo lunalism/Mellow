@@ -1232,6 +1232,8 @@ ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 �
 
 촬영된 여러 Clip을 하나의 Mini Vlog 구조로 정리할 수 있게 한다.
 
+이 Phase는 Healthy Clip의 Availability와 현재 Effective Edit State를 이후 Shared Individual Clip Preview Flow에 전달할 수 있게 연결하지만 Phase 7의 Trim / Framing UI나 Phase 8의 Full Vlog Preview를 선행 구현하지 않는다.
+
 ## Included
 
 - Clip List
@@ -1248,6 +1250,7 @@ ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 �
 - Most-recent Undo와 Process Termination Reconciliation
 - Thumbnail Late Result Validity
 - Unavailable Clip Representation과 User-controlled Replace
+- Individual Clip Preview의 Availability와 Effective Edit State 연결 계약
 
 ## Explicitly Excluded
 
@@ -1300,15 +1303,16 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 11. App Process 종료 후에는 Undo Opportunity를 복원하지 않고 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation한다.
 12. Project Total Duration을 계산하여 표시한다.
 13. Add Clip Action으로 Camera에 다시 진입할 수 있게 한다.
-14. Undo는 기존 Clip Identity와 Media를 재사용하고 이전 Stable Anchor 뒤, 이전 Anchor가 없으면 다음 Anchor 앞, 둘 다 없으면 Clamp된 Original Index로 복원한다.
-15. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
-16. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
-17. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
-18. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다.
-19. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다.
-20. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다.
-21. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다.
-22. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+14. Healthy Clip의 Individual Preview 요청이 대상 Clip Identity, Availability와 현재 Effective Edit State를 Shared Composition Flow에 전달할 수 있게 하되 Raw Asset Preview를 기본 경로로 만들거나 아직 존재하지 않는 Trim / Framing UI를 선행 구현하지 않는다.
+15. Undo는 기존 Clip Identity와 Media를 재사용하고 이전 Stable Anchor 뒤, 이전 Anchor가 없으면 다음 Anchor 앞, 둘 다 없으면 Clamp된 Original Index로 복원한다.
+16. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
+17. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다.
+18. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity와 Media Identity를 확인하여 Stale Result를 폐기한다.
+19. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다.
+20. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다.
+21. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다.
+22. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다.
+23. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 
@@ -1327,6 +1331,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 - Undo Eligibility / Recovery / Active Usage별 Physical Delete 차단
 - Project Total Duration
 - Autosave
+- Healthy Clip Individual Preview 요청의 Availability와 Effective Edit State 전달
 - Unavailable Clip이 기존 Position에 남고 Healthy Clip의 Reorder와 Editing을 막지 않는지 확인
 - Replacement Failure가 Placeholder, Project와 다른 Clip을 보존하는지 확인
 - Successful Replacement가 Unrelated Reorder 없이 Original Logical Slot을 복구하는지 확인
@@ -1377,6 +1382,7 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 - Active Usage가 있는 Media는 Release 전까지 유지되고 Stale Thumbnail Result는 삭제된 Clip이나 Project를 되살리지 않는다.
 - Project Duration이 정확하다.
 - UI가 전문 Video Timeline처럼 복잡하지 않다.
+- Healthy Clip의 Individual Preview 요청은 대상 Clip의 Availability와 현재 Effective Edit State를 전달하며 다른 Clip의 Unavailable 상태 때문에 차단되지 않는다.
 - Unavailable Clip은 기존 Timeline Position에 사용자-visible 상태로 남고 자동 Delete, 자동 대체 또는 Silent Removal이 발생하지 않는다.
 - Healthy Clip은 Unavailable Clip이 있어도 계속 사용할 수 있다.
 - Replace Failure는 기존 Placeholder, Project와 다른 Clip을 유지하고 Successful Replacement는 Unrelated Reorder 없이 Original Logical Slot을 복구한다.
@@ -1627,6 +1633,7 @@ ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Non-destructive Metadata
 - Portrait / Landscape Canvas
 - Trim Preview
+- Individual Clip Effective Edited-result Preview
 
 ## Explicitly Excluded
 
@@ -1637,6 +1644,7 @@ ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 - Background Blur
 - Professional Timeline
 - Advanced Zoom unless separately approved
+- Full Project Sequence Preview
 
 ## Decision Gate Before Implementation
 
@@ -1669,7 +1677,10 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 8. Portrait Source와 Landscape Source를 올바르게 처리한다.
 9. Trim과 Framing 변경사항을 Interaction 종료 시 Autosave한다.
 10. Preview 중 원본 Media를 수정하지 않는다.
-11. Trim / Framing Controls와 선택 구간 표시에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+11. Individual Clip Preview가 Full Project Sequence를 만들지 않아도 current effective Trim, Framing / Scale / Position, applicable Transform, Project Orientation, Front Mirroring, SDR과 Audio를 Shared Composition Semantics로 반영하게 한다.
+12. Trim, Framing 또는 Transform 변경 뒤에는 기존 Individual Preview Composition을 Stale로 처리하고 다음 유효 Preview가 최신 Effective Edit State를 사용하게 한다.
+13. Capture-time Rear Zoom을 Editing Framing과 혼동하지 않는다.
+14. Trim / Framing Controls와 선택 구간 표시에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 ## Unit Tests
 
@@ -1690,6 +1701,8 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 - Audio Sync 유지
 - Phase 6 Normalization에서 미리 Crop되지 않은 Source 영역을 사용한 좌우 / 상하 Framing 변경
 - HDR / Dolby Vision에서 생성한 SDR Working Media의 Trim / Framing Metadata 적용과 비파괴성
+- Trim 또는 Framing 변경 뒤 Individual Clip Preview의 current effective edited result 반영
+- Direct-recorded Front Clip의 Mirrored Appearance, Project Orientation, SDR과 valid Audio를 반영한 Individual Clip Preview
 
 ## Physical Device Test
 
@@ -1697,6 +1710,7 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 - Framing Drag
 - 9:16 Project
 - 16:9 Project
+- Trim 또는 Framing 변경 후 Individual Clip Preview
 - iPhone 12 UI Responsiveness
 
 ## UI Accessibility Verification
@@ -1713,12 +1727,14 @@ Trim / Framing Controls와 선택 구간 표시에서 3.11절의 Touch Target, V
 - 사용자가 Framing을 조절할 수 있다.
 - Normalization 시 Project Crop으로 Framing 가능 영역이 손실되지 않았으며 보존된 Source 영역에서 Metadata로 Framing을 변경할 수 있다.
 - Trim과 Framing 변경이 App 재실행 후 유지된다.
+- Individual Clip Preview는 Raw Asset을 재생하지 않고 최신 Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR과 Audio를 반영한다.
+- Trim, Framing 또는 Transform 변경 후 다음 Individual Clip Preview는 Stale Composition을 재사용하지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
 ## Exit Criteria
 
-Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Framing을 가져야 한다.
+Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Framing을 가지며 Individual Clip Preview는 같은 Effective Editing Semantics를 사용해야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -1728,17 +1744,21 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 
 ## Goal
 
-현재 Project의 Clip Order, Trim, Framing, Orientation, Audio를 하나의 연속된 Vlog처럼 Preview할 수 있게 한다.
+현재 Project의 Clip Order와 effective Trim, Framing / Scale / Position, Transform, Orientation, Front Mirroring, SDR 및 Audio를 하나의 연속된 Vlog처럼 Preview할 수 있게 한다.
 
 ## Included
 
 - Shared `VideoCompositionBuilder`
+- Canonical Composition Semantics
+- Individual Clip Composition 재사용
 - Multi-clip Timeline
 - Clip Order
 - Trim
 - Source Rotation
 - Fill + Crop
 - Framing
+- Transform
+- Front Mirroring
 - Audio
 - 1080p Canvas
 - 30 fps Timing
@@ -1747,6 +1767,7 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 - Play / Pause / Seek 기본 UX
 - Preview Active Media Usage
 - Mutation 이후 Stale Composition Invalidation
+- Preview Eligibility
 
 ## Explicitly Excluded
 
@@ -1762,30 +1783,32 @@ Full Vlog Preview UI를 구현하기 전에 다음 Structural UX Pending을 사�
 
 - Full Preview Playback Control Structure / Hierarchy
 - Preview 진입·종료와 Project Editing 화면 복귀 Navigation 구조
-- Scrubber 등 M01의 미정 범위가 Control 구조에 영향을 주는 부분
+- Scrubber와 Preview Control Structure에 영향을 주는 부분
 - Empty / Unavailable Project에서 Full Preview가 Blocked일 때의 State Presentation
 
-이 Gate는 Preview 기능 범위를 새로 확정하지 않으며 M01은 별도 Repair 대상으로 유지한다.
+ADR-013의 Shared Preview / Export Composition 실행 계약과 Individual Clip Preview의 effective edited-result 의미는 확정되어 있으며 이 Gate에서 다시 Open으로 만들지 않는다.
 
 Phase 12에는 승인된 Preview 구조의 시각적 Refinement만 남기며 UI 구현을 막는 미결정 사항은 Phase 8 전에 해결한다.
 
 ## Implementation Tasks
 
-1. `VideoCompositionBuilder`를 구현한다.
-2. Project Metadata에서 Virtual Timeline을 구성한다.
-3. 모든 Clip Order를 반영한다.
-4. Trim Range를 적용한다.
-5. Source Display Transform을 정규화한다.
-6. Project Orientation에 맞는 1080p Canvas를 생성한다.
-7. Fill + Crop과 Framing을 적용한다.
-8. Audio Track을 유지한다.
-9. HDR / Dolby Vision Source에서 시작한 Clip을 포함하여 AVPlayer로 SDR Composition Preview를 구현하고 Framing / Trim / Transform과 SDR 해석을 Shared Composition 기준으로 적용한다.
-10. Project 변경 시 Stale Composition을 Invalidate하고 다음 유효 Preview가 최신 Project State를 반영하도록 안전하게 Rebuild한다.
-11. Composition Build는 Main Actor를 장시간 Block하지 않는다.
-12. Preview Preparation / Playback의 Active Media Usage를 등록하고 실제 Reference Release 전까지 Physical Delete를 지연한다.
-13. 필요한 경우 Playback을 중단하며 오래된 State의 Async Composition 결과나 삭제된 Project의 Late Result를 적용하지 않는다.
-14. 0 Clip Project 또는 Unresolved Unavailable Clip이 있는 Project에서는 Full Preview Composition을 생성하거나 손상된 Clip을 생략한 결과를 재생하지 않고 Healthy Clip의 Individual Preview는 계속 허용한다.
-15. 승인된 Preview Controls와 진입·종료 Navigation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+1. Phase 7의 Single-clip Composition Semantics를 포함하는 `VideoCompositionBuilder` 또는 동등한 Shared Composition 책임을 구현하여 Individual Clip Preview, Full Vlog Preview와 Export가 별도의 Edit Rule을 재구현하지 않게 한다.
+2. Current Project State에서 Canonical Composition Description과 Virtual Timeline을 구성한다.
+3. 현재 모든 Clip Order를 반영한다.
+4. 각 Clip의 effective Trim, Fill + Crop을 포함한 Framing / Scale / Position과 applicable Transform을 적용한다.
+5. Source Display Transform을 정규화하고 Project Orientation에 맞는 1080p Canvas를 생성한다.
+6. Direct-recorded Front Clip의 Mirrored Appearance를 Shared Composition Semantics로 적용하고 Double-mirroring 또는 Accidental Un-mirroring을 방지한다.
+7. valid Audio Track을 유지하고 Audio가 없는 Imported Clip을 valid Silent Clip으로 처리한다.
+8. HDR / Dolby Vision Source에서 시작한 Clip을 포함하여 AVPlayer로 SDR Composition Preview를 구현하고 Export와 같은 SDR Interpretation을 적용한다.
+9. 현재 Clip Order를 Direct Concatenation Semantics로 연결하고 Clip Boundary에 자동 Video Transition, Audio Fade 또는 Audio Crossfade를 삽입하지 않는다.
+10. Full Preview Eligibility를 Domain / Composition Boundary에서 판단하여 0 Clip Project에는 Individual Clip Preview 대상이 없고 Full Preview Composition을 생성하지 않으며 Unresolved Unavailable Clip이 있는 Project에서는 Silent Omission 결과를 재생하지 않고 Healthy Clip의 Individual Preview는 계속 허용한다.
+11. Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 시 Stale Composition을 Invalidate하고 다음 유효 Preview가 최신 Project State를 반영하도록 안전하게 Rebuild한다.
+12. Composition Build는 Main Actor를 장시간 Block하지 않고 Full Preview를 위해 매번 완성 Video File을 사전 Render하지 않는다.
+13. Preview Preparation / Playback의 Active Media Usage를 등록하고 Logical Delete 또는 Preview Invalidation / Stop Request 뒤에도 실제 Reference Release 전까지 Physical Delete를 지연한다.
+14. 필요한 경우 Playback을 중단하며 오래된 State의 Async Composition 결과나 삭제된 Project의 Late Result를 적용하지 않는다.
+15. Preview Preparation / Playback Failure를 Clip, Composition 또는 Playback 범위에서 처리하고 일시적 Player Failure만으로 Clip Metadata를 삭제하거나 Unavailable 상태로 영구 확정하지 않는다.
+16. Preview용 Temporary 또는 Cached Derived Data가 필요한 경우 Canonical Source Media와 분리하여 Disposable / Cache Lifecycle로 관리하고 Committed Project Media를 만들지 않는다.
+17. 승인된 Preview Controls와 진입·종료 Navigation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 
 Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 이 계약으로 새로운 Preview Editing UI나 특정 Player Rebuilding Strategy를 확정하지 않는다.
 
@@ -1800,23 +1823,35 @@ Mutation 검증은 Test에서 Project State 변경을 주입할 수 있으며 �
 
 - 2 Clip
 - 10 Clip
+- one Healthy Clip
 - Mixed Recorded / Imported Clip
 - Portrait Project
 - Landscape Project
 - Audio 유지
 - Trim 반영
 - Framing 반영
+- Front Mirrored Clip
+- Audio가 없는 Imported Silent Clip
+- Clip 사이 Automatic Transition 없음
 
-SDR Source와 HDR / Dolby Vision Source에서 생성한 Working Media를 함께 Preview하여 SDR 재생과 Shared Composition의 Trim / Framing / Transform 반영을 검증한다.
+SDR Source와 HDR / Dolby Vision Source에서 생성한 Working Media를 함께 Preview하여 SDR 재생과 Shared Composition의 Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring과 Audio 반영을 검증한다.
 
 ### Preview Lifecycle Integration Tests
 
+- Reordered Clips가 다음 Full Vlog Preview에서 새 Order로 재생되는지 확인
+- Trimmed Clip과 Framing-adjusted Clip이 current effective edited result로 재생되는지 확인
+- one Healthy Clip, multiple Clips, mixed Recorded / Imported Clips와 Silent Imported Clip의 Shared Composition Semantics 확인
 - Preview가 Media를 참조하는 동안 Clip Delete와 Undo 종료가 발생해도 Source File 보존
-- Clip Delete / Reorder / Trim / Framing 변경 후 Stale Composition Invalidation과 다음 Preview의 새 State 반영
+- Clip Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability 변경 후 Stale Composition Invalidation과 다음 Preview의 새 State 반영
 - Stale Preview Preparation Result의 적용 차단
 - Project Delete 시 Cancellation 요청과 Preview Reference Release 전 Cleanup 차단
 - Reference Release 이후 안전한 Deferred Cleanup과 조기 File 삭제로 인한 Player Failure 방지
-- 0 Clip Project와 Unresolved Unavailable Clip이 Full Preview를 Block하고 Healthy Clip Individual Preview는 유지되는지 확인
+- 0 Clip Project가 Full Preview를 Block하는지 확인
+- Healthy Clip 사이의 Unresolved Unavailable Clip이 Full Preview를 Block하고 Healthy Clip Individual Preview는 유지되는지 확인
+- All-unavailable Project가 Full Preview를 Block하고 Replace 또는 Delete Flow를 유지하는지 확인
+- Preview Preparation 뒤 Clip Delete, Replacement 또는 Reorder가 발생한 경우 다음 Preview가 최신 State를 사용하는지 확인
+- Repeated Open / Close Preview가 Stale Composition 또는 Active Media Usage Leak을 남기지 않는지 확인
+- Active Preview 중 Logical Clip Delete가 발생해도 실제 Reference Release 전 Source Media를 Physical Delete하지 않는지 확인
 
 ## Physical Device Test
 
@@ -1827,10 +1862,14 @@ iPhone 12에서 다음을 검증한다.
 - Scrubbing 또는 Seek
 - Orientation
 - Audio Sync
+- Front Mirrored Clip의 Appearance
+- Silent Imported Clip
 - UI Freeze 여부
 - Memory Pressure 여부
 - Preview 중 Project Mutation과 Project Delete 이후 Media 보존 / Release 및 다음 유효 Preview 상태
 - HDR / Dolby Vision에서 시작한 Clip의 안정적인 SDR Preview
+- Reordered, Trimmed, Framing-adjusted Clip의 current effective edited result
+- Clip Boundary에 Automatic Video / Audio Transition이 없는지 확인
 
 ## UI Accessibility Verification
 
@@ -1840,14 +1879,15 @@ iPhone 12에서 다음을 검증한다.
 
 ## Acceptance Criteria
 
-- Preview 결과가 Project Metadata와 일치한다.
+- Preview 결과가 Current Project Metadata의 Clip Order와 effective edited state에 일치한다.
 - Preview는 SDR을 사용하고 HDR Source라는 이유로 HDR Preview / SDR Export의 이중 기본 Pipeline을 만들지 않는다.
-- Clip 사이 재생이 정상적이다.
+- Clip 사이 재생은 현재 Order를 직접 연결하고 자동 Video Transition, Audio Fade 또는 Audio Crossfade를 삽입하지 않는다.
 - Audio Sync가 유지된다.
 - Preview를 위해 매번 하나의 완성 Video를 미리 Render하지 않는다.
+- Individual Clip Preview와 Full Vlog Preview는 Raw Asset 기본 경로가 아니라 Shared Composition Semantics를 사용하며 Full Vlog Preview와 Export는 Clip Order, Trim, Framing / Scale / Position, Transform, Orientation, Front Mirroring, SDR과 Audio Inclusion을 같은 의미로 적용한다.
 - iPhone 12에서 실사용 가능한 성능을 보인다.
 - Preview가 사용 중인 File은 실제 Reference Release 전까지 삭제되지 않는다.
-- Clip Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
+- Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability Mutation 이후 Stale Composition을 무기한 사용하지 않으며 다음 유효 Preview는 새 State를 반영한다.
 - 삭제된 Project 또는 이전 State의 Late Preview Result를 적용하지 않는다.
 - 0 Clip Project에서는 Full Preview를 제공하지 않는다.
 - Unresolved Unavailable Clip이 있는 Project에서는 Full Preview를 Block하고 해당 Clip을 Silent Skip하지 않으며 Healthy Clip의 Individual Preview는 계속 가능하다.
@@ -1866,12 +1906,13 @@ iPhone 12에서 다음을 검증한다.
 
 ## Goal
 
-Preview와 동일한 결과를 하나의 1080p / 30 fps / SDR Video로 Export하고 Photos에 저장하거나 공유할 수 있게 한다.
+동일한 Project State의 Full Vlog Preview와 같은 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 및 Audio 의미를 하나의 1080p / 30 fps / SDR Video로 Export하고 Photos에 저장하거나 공유할 수 있게 한다.
 
 ## Included
 
 - Export Service
 - Shared Composition
+- Canonical Composition Semantics와 Full Preview / Export Parity
 - 1080p Output
 - 30 fps Output
 - SDR Output와 Preview / Export Color / Framing Parity
@@ -1926,11 +1967,11 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 
 ## Implementation Tasks
 
-1. Export 시작 시 현재 유효한 Project의 Immutable Logical Snapshot을 확보하고 Preview와 공통 Composition Definition을 사용하여 Snapshot을 Export한다.
+1. Export 시작 시 현재 유효한 Project의 Immutable Logical Snapshot을 확보하고 Individual Clip Preview 및 Full Vlog Preview와 공통 Canonical Composition Semantics를 사용하여 Snapshot을 Export한다.
 2. `AVAssetExportSession` 기반 MVP Export를 구현한다.
 3. Portrait는 1080 × 1920으로 Export한다.
 4. Landscape는 1920 × 1080으로 Export한다.
-5. Output은 30 fps / SDR 정책을 따르고 동일한 Snapshot State의 Preview와 가능한 한 공통 Color Handling / Framing / Transform 정의를 사용한다.
+5. Output은 30 fps / SDR 정책을 따르고 동일한 Snapshot State의 Full Vlog Preview와 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, Audio Inclusion 및 SDR Interpretation을 같은 의미로 적용한다.
 6. Export Result를 Temporary Location에 생성한다.
 7. Progress State를 UI에 제공한다.
 8. Export Cancel을 처리한다.
@@ -1942,7 +1983,7 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 14. Result Flow가 Resolved되고 Active Consumer, Retry와 Recovery Requirement가 없을 때만 Local Export Artifact를 Idempotent하게 Cleanup한다.
 15. Export 성공 후 Draft를 삭제하지 않는다.
 16. Temporary File Cleanup 정책을 적용한다.
-17. Snapshot에 Clip Identity / Order, Trim, Framing / Transform, Project Orientation, Media Reference와 Audio / Video Composition State를 포함한다.
+17. Snapshot에 Clip Identity / Order, Availability, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirror Semantics, Media Reference, Audio Presence와 SDR / Video Composition State를 포함한다.
 18. Snapshot 획득과 Source Media Usage 등록을 Cleanup과 조정하고 Export 종료 또는 취소 후 실제 Reference Release까지 Source Media를 보존한다.
 19. Export 시작 이후 일반 Clip Edit / Reorder / Clip Delete가 진행 중인 Export Snapshot과 결과를 소급 변경하지 않도록 한다.
 20. Project Delete 시 먼저 Invalid Target을 확립하고 Export에 Cancellation을 요청하며 실제 Release 이전의 Physical Cleanup과 Late Result의 Project Commit을 차단한다.
@@ -1988,7 +2029,8 @@ Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact
 - Output Resolution 확인
 - Output Frame Rate 확인
 - SDR Output 확인 및 HDR Export 경로 제외
-- SDR / HDR / Dolby Vision에서 시작한 Clip을 포함한 동일한 Snapshot State의 Preview / Export Color / Framing / Transform Parity
+- SDR / HDR / Dolby Vision에서 시작한 Clip을 포함한 동일한 Snapshot State의 Full Vlog Preview / Export Clip Order, Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, Audio Inclusion과 SDR Parity
+- Full Vlog Preview와 Export가 자동 Video Transition, Audio Fade 또는 Audio Crossfade를 삽입하지 않는지 확인
 
 ### Export Lifecycle Integration Tests
 
@@ -2038,7 +2080,7 @@ iPhone 12에서 다음을 검증한다.
 - Runtime Disk Full 주입 가능한 범위에서 Partial Output 미노출, Cleanup / Recovery와 공간 확보 후 Retry
 - Background 이동 시 현재 정책
 - Export 중 Clip Mutation / Undo 종료와 Project Delete 후 실제 Media Release 경계
-- SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Preview 색 / Framing 비교
+- SDR / HDR / Dolby Vision Source가 혼합된 Project의 SDR Export와 동일한 Snapshot State의 Full Preview Clip Order, Trim, Framing / Scale / Position, Transform, Front Mirroring, Audio 및 SDR 비교
 
 ## UI Accessibility Verification
 
@@ -2048,11 +2090,12 @@ Export Progress / Completion, Photos Save Failure, Save Retry, Share / Done, uns
 
 ## Acceptance Criteria
 
-- Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Preview와 시각적으로 일치한다.
+- Export 결과가 Export 시작 시 Snapshot과 동일한 Project State의 Full Vlog Preview와 의도적인 Composition 의미에서 일치한다.
 - Successful Render는 Validation을 통과하고 Durable Export Operation / Result Identity와 연결된 Local Export Artifact를 만든다.
 - Output Resolution이 정확하다.
 - Portrait 1080 × 1920 또는 Landscape 1920 × 1080, 30 fps / SDR Output이며 HDR Export를 제공하지 않는다.
-- 동일한 Snapshot State의 Preview와 Export가 가능한 한 동일한 SDR 해석과 Framing / Transform 결과를 사용한다.
+- 동일한 Snapshot State의 Full Vlog Preview와 Export가 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, Audio Inclusion과 SDR Interpretation을 같은 의미로 사용한다.
+- Preview / Export Parity는 Pixel-for-pixel Identity를 요구하지 않지만 Export가 Preview와 다른 Editing Rule, Clip Ordering Source 또는 자동 Video / Audio Transition을 사용하지 않는다.
 - Photos Save가 정상 동작한다.
 - Photos Save Failure는 Successful Render를 실패로 바꾸지 않고 동일 Artifact의 Save Retry와 Share를 제공한다.
 - Share Sheet가 정상 동작한다.
@@ -2565,15 +2608,17 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 9. 4K SDR 및 4K HDR / Dolby Vision Import의 1080p-class / 30 fps / SDR Working Media 생성 시간, Memory Pressure와 Release 및 Thermal Behavior를 측정한다.
 10. Export 반복 후 Temporary File Cleanup을 확인한다.
 11. 비정상 발열이 지속되는 Flow를 조사한다.
-12. 정규화된 SDR Working Media의 Preview Stability와 동일한 Project State의 Export Color / Framing Parity를 iPhone 12에서 검증한다.
+12. 정규화된 SDR Working Media의 Full Vlog Preview Stability와 동일한 Project State의 Export Clip Order, Trim, Framing / Scale / Position, Transform, Front Mirroring, Audio 및 SDR Parity를 iPhone 12에서 검증한다.
 13. 승인된 10초 Recording의 실제 Storage Growth를 측정하고 Phase 4 Estimate와 비교한다.
 14. 4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 10초 Segment Import에서 실제 Peak Additional Storage를 측정하고 Phase 6 Estimate와 비교한다.
 15. Short / Medium / Large Project Export의 실제 Peak Additional Storage를 측정하고 Snapshot Duration / State 기반 Phase 9 Estimate와 비교한다.
 16. Recording / Import / Export 각각의 관측값과 승인된 Safety Reserve가 Estimate Error, Filesystem Overhead, Metadata Persistence와 작은 예기치 않은 Temporary Growth에 합리적인 여유를 제공하는지 검토한다.
 17. Recording / Import / Export를 반복하여 Operation-owned Temporary Artifact가 안전한 Cleanup 이후 비정상적으로 누적되지 않는지 측정한다.
 18. 측정 결과가 기존 Estimate Formula나 Safety Reserve 변경을 요구하면 수치를 임의로 조정하지 않고 Exception and Replanning Protocol과 해당 Decision 기록을 따른다.
+19. Full Preview Composition Preparation, Repeated Open / Close Preview, Seek / Playback Responsiveness, Memory Behavior와 Large Project Preview를 iPhone 12에서 측정한다.
+20. Preview / Export Semantic Parity가 Clip Add, Delete, Replace, Reorder, Trim, Framing, Transform 또는 Media Availability Mutation 뒤에도 회귀하지 않는지 검증한다.
 
-이 검증은 성능 측정 범위를 연결하는 것이며 새로운 수치 Threshold를 확정하지 않고 M07 Performance Threshold는 별도 Repair 대상으로 유지한다.
+이 검증은 성능 측정 범위를 연결하는 것이며 새로운 수치 Threshold, Preview Cache Strategy 또는 Mandatory Full Pre-render를 확정하지 않고 M07 Performance Threshold는 별도 Repair 대상으로 유지한다.
 
 ## Acceptance Criteria
 
@@ -2583,6 +2628,8 @@ iPhone 12를 실제 성능 기준 기기로 사용하여 Camera, Import, Preview
 - Large Project가 임의 Crash하지 않는다.
 - Export 중 Memory Pressure로 반복 종료되지 않는다.
 - App 사용 후 Temporary Media가 비정상적으로 누적되지 않는다.
+- Full Preview Composition Preparation, Repeated Preview, Seek / Playback Responsiveness, Memory Behavior와 Large Project Preview가 iPhone 12에서 측정되고 심각한 회귀가 없는지 검토된다.
+- Preview / Export Semantic Parity가 Composition에 영향을 주는 Mutation 뒤에도 회귀하지 않는다.
 - Recording 실제 Storage Growth, Import Normalization Peak Additional Storage와 Export Peak Additional Storage가 iPhone 12에서 측정되고 각 승인된 Estimate와 비교된다.
 - Safety Reserve의 합리성이 실제 관측값과 반복 Operation / Cleanup 결과를 근거로 검토된다.
 - Storage 측정 결과를 이유로 M07의 새로운 수치 Pass / Fail Threshold를 임의로 만들지 않는다.
@@ -2895,9 +2942,9 @@ Phase 6에서 승인된 구간 선택 구조는 재사용하며 ADR-022의 Frami
 
 - Full Preview Control Structure / Hierarchy
 - Preview 진입·종료와 Project 화면 복귀 Navigation
-- M01 Pending 중 해당 UI 구조에 영향을 주는 부분
+- Scrubber와 Exact Preview Control Behavior 중 해당 UI 구조에 영향을 주는 부분
 
-Preview 기능 범위는 이번 Timing 보정으로 확정하지 않는다.
+ADR-013의 Shared Composition Semantics와 Individual / Full Preview의 effective edited-result 의미는 확정되어 있으며 이 Gate는 Preview Control UI 구조만 다룬다.
 
 ## Before Phase 9
 
