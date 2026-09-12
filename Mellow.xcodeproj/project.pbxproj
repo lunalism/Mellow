@@ -1,0 +1,653 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 71;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		000000000000000000000201 /* MellowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000101 /* MellowApp.swift */; };
+		000000000000000000000202 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000102 /* AppEnvironment.swift */; };
+		000000000000000000000203 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000103 /* AppRouter.swift */; };
+		000000000000000000000204 /* MellowLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* MellowLog.swift */; };
+		000000000000000000000205 /* MellowDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* MellowDesignSystem.swift */; };
+		000000000000000000000206 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* Assets.xcassets */; };
+		000000000000000000000207 /* MellowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000107 /* MellowTests.swift */; };
+		000000000000000000000208 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* XCTest.framework */; };
+		000000000000000000000209 /* MellowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* MellowUITests.swift */; };
+		00000000000000000000020A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* XCTest.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		000000000000000000000701 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000000000003;
+			remoteInfo = Mellow;
+		};
+		000000000000000000000702 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000000000003;
+			remoteInfo = Mellow;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000101 /* MellowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowApp.swift; sourceTree = "<group>"; };
+		000000000000000000000102 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		000000000000000000000103 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
+		000000000000000000000104 /* MellowLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowLog.swift; sourceTree = "<group>"; };
+		000000000000000000000105 /* MellowDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowDesignSystem.swift; sourceTree = "<group>"; };
+		000000000000000000000106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		000000000000000000000107 /* MellowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowTests.swift; sourceTree = "<group>"; };
+		000000000000000000000108 /* MellowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowUITests.swift; sourceTree = "<group>"; };
+		000000000000000000000109 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		00000000000000000000010A /* Mellow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mellow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		00000000000000000000010B /* MellowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MellowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		00000000000000000000010C /* MellowUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MellowUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		000000000000000000000403 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000406 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000208 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000409 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00000000000000000000020A /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000301 = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000303 /* MellowApp */,
+				000000000000000000000304 /* MellowTests */,
+				000000000000000000000305 /* MellowUITests */,
+				000000000000000000000302 /* Products */,
+				CCAE2539305599AC0044B382 /* Recovered References */,
+			);
+			sourceTree = "<group>";
+		};
+		000000000000000000000302 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000010A /* Mellow.app */,
+				00000000000000000000010B /* MellowTests.xctest */,
+				00000000000000000000010C /* MellowUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		000000000000000000000303 /* MellowApp */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000306 /* App */,
+				000000000000000000000307 /* Domain */,
+				00000000000000000000030B /* Features */,
+				000000000000000000000314 /* Core */,
+				00000000000000000000031C /* DesignSystem */,
+				00000000000000000000031D /* Resources */,
+			);
+			path = MellowApp;
+			sourceTree = "<group>";
+		};
+		000000000000000000000304 /* MellowTests */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000107 /* MellowTests.swift */,
+			);
+			path = MellowTests;
+			sourceTree = "<group>";
+		};
+		000000000000000000000305 /* MellowUITests */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000108 /* MellowUITests.swift */,
+			);
+			path = MellowUITests;
+			sourceTree = "<group>";
+		};
+		000000000000000000000306 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000101 /* MellowApp.swift */,
+				000000000000000000000102 /* AppEnvironment.swift */,
+				000000000000000000000103 /* AppRouter.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		000000000000000000000307 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000308 /* Models */,
+				000000000000000000000309 /* Policies */,
+				00000000000000000000030A /* Errors */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		000000000000000000000308 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		000000000000000000000309 /* Policies */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Policies;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030A /* Errors */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Errors;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030B /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000030C /* Home */,
+				00000000000000000000030D /* VlogCreation */,
+				00000000000000000000030E /* Camera */,
+				00000000000000000000030F /* VideoImport */,
+				000000000000000000000310 /* ProjectEditor */,
+				000000000000000000000311 /* Trim */,
+				000000000000000000000312 /* Preview */,
+				000000000000000000000313 /* Export */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030C /* Home */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030D /* VlogCreation */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = VlogCreation;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030E /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Camera;
+			sourceTree = "<group>";
+		};
+		00000000000000000000030F /* VideoImport */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = VideoImport;
+			sourceTree = "<group>";
+		};
+		000000000000000000000310 /* ProjectEditor */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ProjectEditor;
+			sourceTree = "<group>";
+		};
+		000000000000000000000311 /* Trim */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Trim;
+			sourceTree = "<group>";
+		};
+		000000000000000000000312 /* Preview */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Preview;
+			sourceTree = "<group>";
+		};
+		000000000000000000000313 /* Export */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Export;
+			sourceTree = "<group>";
+		};
+		000000000000000000000314 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000315 /* Camera */,
+				000000000000000000000316 /* Media */,
+				000000000000000000000317 /* Persistence */,
+				000000000000000000000318 /* Photos */,
+				000000000000000000000319 /* Permissions */,
+				00000000000000000000031A /* Storage */,
+				00000000000000000000031B /* Thumbnails */,
+				00000000000000000000031E /* Logging */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		000000000000000000000315 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Camera;
+			sourceTree = "<group>";
+		};
+		000000000000000000000316 /* Media */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Media;
+			sourceTree = "<group>";
+		};
+		000000000000000000000317 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		000000000000000000000318 /* Photos */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Photos;
+			sourceTree = "<group>";
+		};
+		000000000000000000000319 /* Permissions */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Permissions;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031A /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031B /* Thumbnails */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Thumbnails;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031C /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000105 /* MellowDesignSystem.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000106 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031E /* Logging */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000104 /* MellowLog.swift */,
+			);
+			path = Logging;
+			sourceTree = "<group>";
+		};
+		CCAE2539305599AC0044B382 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000109 /* XCTest.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000000000003 /* Mellow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000000000602 /* Build configuration list for PBXNativeTarget "Mellow" */;
+			buildPhases = (
+				000000000000000000000402 /* Sources */,
+				000000000000000000000403 /* Frameworks */,
+				000000000000000000000404 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Mellow;
+			productName = Mellow;
+			productReference = 00000000000000000000010A /* Mellow.app */;
+			productType = "com.apple.product-type.application";
+		};
+		000000000000000000000004 /* MellowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000000000603 /* Build configuration list for PBXNativeTarget "MellowTests" */;
+			buildPhases = (
+				000000000000000000000405 /* Sources */,
+				000000000000000000000406 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000801 /* PBXTargetDependency */,
+			);
+			name = MellowTests;
+			productName = MellowTests;
+			productReference = 00000000000000000000010B /* MellowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		000000000000000000000005 /* MellowUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000000000604 /* Build configuration list for PBXNativeTarget "MellowUITests" */;
+			buildPhases = (
+				000000000000000000000407 /* Sources */,
+				000000000000000000000409 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000802 /* PBXTargetDependency */,
+			);
+			name = MellowUITests;
+			productName = MellowUITests;
+			productReference = 00000000000000000000010C /* MellowUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					000000000000000000000003 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					000000000000000000000004 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 000000000000000000000003;
+					};
+					000000000000000000000005 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 000000000000000000000003;
+					};
+				};
+			};
+			buildConfigurationList = 000000000000000000000601 /* Build configuration list for PBXProject "Mellow" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 000000000000000000000301;
+			productRefGroup = 000000000000000000000302 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000000000000000000000003 /* Mellow */,
+				000000000000000000000004 /* MellowTests */,
+				000000000000000000000005 /* MellowUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		000000000000000000000404 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000206 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		000000000000000000000402 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000201 /* MellowApp.swift in Sources */,
+				000000000000000000000202 /* AppEnvironment.swift in Sources */,
+				000000000000000000000203 /* AppRouter.swift in Sources */,
+				000000000000000000000204 /* MellowLog.swift in Sources */,
+				000000000000000000000205 /* MellowDesignSystem.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000405 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000207 /* MellowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000407 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000209 /* MellowUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		000000000000000000000801 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000000000003 /* Mellow */;
+			targetProxy = 000000000000000000000701 /* PBXContainerItemProxy */;
+		};
+		000000000000000000000802 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000000000003 /* Mellow */;
+			targetProxy = 000000000000000000000702 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000000000501 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		000000000000000000000502 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		000000000000000000000503 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T394S9X9HC;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Mellow;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mellow.Mellow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		000000000000000000000504 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T394S9X9HC;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Mellow;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mellow.Mellow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		000000000000000000000505 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MellowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mellow.app/Mellow";
+			};
+			name = Debug;
+		};
+		000000000000000000000506 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MellowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mellow.app/Mellow";
+			};
+			name = Release;
+		};
+		000000000000000000000507 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MellowUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Mellow;
+			};
+			name = Debug;
+		};
+		000000000000000000000508 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MellowUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Mellow;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000000000000000000000601 /* Build configuration list for PBXProject "Mellow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000501 /* Debug */,
+				000000000000000000000502 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		000000000000000000000602 /* Build configuration list for PBXNativeTarget "Mellow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000503 /* Debug */,
+				000000000000000000000504 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		000000000000000000000603 /* Build configuration list for PBXNativeTarget "MellowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000505 /* Debug */,
+				000000000000000000000506 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		000000000000000000000604 /* Build configuration list for PBXNativeTarget "MellowUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000507 /* Debug */,
+				000000000000000000000508 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 000000000000000000000001 /* Project object */;
+}
