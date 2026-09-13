@@ -311,7 +311,7 @@ MVP에서는 0.5× Ultra Wide, Telephoto 또는 물리 Lens를 직접 선택하�
 
 Rear Preview와 Active Recording에서 1× 이상 Continuous Zoom을 지원한다.
 
-Recording 중 Zoom 변경은 같은 Clip 안에서 이어지며 Recording을 Stop / Restart하거나 새로운 Clip을 만들거나 10초 Timer를 Reset하지 않고 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
+Recording 중 Zoom 변경은 같은 Clip 안에서 이어지며 Recording을 Stop / Restart하거나 새로운 Clip을 만들거나 선택한 최대 Duration Timer를 Reset하지 않고 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
 
 Zoom Factor는 1×보다 낮아지지 않으며 Phase 3에서 승인할 Maximum Product Quality Limit을 넘지 않도록 제한한다.
 
@@ -351,27 +351,31 @@ Recording 중 Camera Switching은 허용하지 않는다.
 
 ## F-MVP-015 — Maximum Clip Recording Duration
 
-Mellow에서 직접 촬영하는 하나의 Clip은 최대 10초까지 녹화할 수 있다.
+Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
 
-사용자는 10초 이전에는 원하는 시점에 자유롭게 녹화를 종료할 수 있다.
+선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
 
-녹화 시간이 10초에 도달하면 Mellow가 자동으로 녹화를 종료한다.
+Preset은 정확한 Output Duration이 아니라 다음 Clip의 Maximum이며 3s 선택 후 1.4초 수동 종료도 허용한다.
+
+사용자는 선택한 최대 Duration 이전에는 원하는 시점에 자유롭게 녹화를 종료할 수 있다.
+
+녹화 시간이 선택한 최대 Duration에 도달하면 Mellow가 자동으로 녹화를 종료한다.
 
 ### Required
 
 - 녹화 시작 후 자유로운 수동 종료
-- 최대 녹화 시간 10초
-- 10초 도달 시 자동 종료
+- `1s / 2s / 3s / 4s / 5s` 최대 녹화 시간 선택과 기본 `3s`
+- 선택한 최대 Duration 도달 시 자동 종료
 - 촬영 중 현재 녹화 시간 확인
 - 자동 종료된 Clip의 정상 저장
 - 자동 종료 이후 정상적인 다음 촬영 가능
-- 승인된 Recording Estimate와 Safety Reserve를 충족하지 못하면 Recording, Progress와 10초 Timer를 시작하지 않음
+- 승인된 Recording Estimate와 Safety Reserve를 충족하지 못하면 Recording, Progress와 선택한 최대 Duration Timer를 시작하지 않음
 - Storage 부족을 이유로 Capture Quality, Frame Rate, Audio 또는 최대 Recording Duration을 자동으로 낮추지 않음
 
 ### Excluded from MVP
 
-- 1초, 3초, 5초 등의 고정 녹화 시간 Preset
-- 10초를 초과하는 단일 Clip 촬영
+- 선택한 Preset과 정확히 같은 Output Duration 강제
+- 5초를 초과하는 단일 Clip 촬영
 - Recording pause
 - Recording resume
 
@@ -379,17 +383,17 @@ Mellow에서 직접 촬영하는 하나의 Clip은 최대 10초까지 녹화할 
 
 ## F-MVP-016 — Recording Progress Feedback
 
-사용자는 현재 Clip의 녹화 진행 상태와 10초 제한을 자연스럽게 인지할 수 있어야 한다.
+사용자는 현재 Clip의 녹화 진행 상태와 5초 제한을 자연스럽게 인지할 수 있어야 한다.
 
 Recording Progress는 Record Button 주변의 Progress Ring을 중심으로 표현하며 큰 Countdown 숫자는 사용하지 않는다.
 
-구체적인 Progress 표현과 10초 도달 전 Visual Feedback의 세부 동작은 `DESIGN.md`에서 결정한다.
+구체적인 Progress 표현과 선택한 최대 Duration 도달 전 Visual Feedback의 세부 동작은 `DESIGN.md`에서 결정한다.
 
 ### Confirmed Recording Haptic Policy
 
 - Recording Start에는 Haptic을 사용하지 않으며 Record Button Tap 또는 Recording Start 성공을 Haptic 발생 조건으로 사용하지 않는다.
 - Successful Manual Stop 완료 시 subtle completion haptic을 제공한다.
-- Successful 10-second Auto-stop 완료 시 subtle completion haptic을 제공한다.
+- Successful selected-maximum Auto-stop 완료 시 subtle completion haptic을 제공한다.
 
 Manual Stop과 Auto-stop의 Haptic은 모두 "이 Clip의 Recording이 종료되었다."라는 동일한 의미를 가지며 종료 직전의 예고 신호가 아니다.
 
@@ -442,17 +446,17 @@ HDR / Dolby Vision Source도 선택된 Segment를 SDR Working Media로 정규화
 
 ## F-MVP-019 — Imported Video Duration Policy
 
-가져온 원본 영상의 길이가 10초를 초과하더라도 Import 자체를 제한하지 않는다.
+가져온 원본 영상의 길이가 5초를 초과하더라도 Import 자체를 제한하지 않는다.
 
-사용자는 원본 영상 안에서 최대 10초 길이의 원하는 구간을 선택하여 프로젝트에 추가한다.
+사용자는 원본 영상 안에서 최대 5초 길이의 원하는 구간을 선택하여 프로젝트에 추가한다.
 
 ### Required
 
 - 원본 영상의 전체 길이와 관계없이 Import 가능
 - 사용 구간의 시작점 선택
 - 사용 구간의 종료점 선택
-- 선택 가능한 최대 구간 길이 10초
-- 10초보다 짧은 영상은 전체 길이 사용 가능
+- 선택 가능한 최대 구간 길이 5초
+- 5초보다 짧은 영상은 전체 길이 사용 가능
 - 원본 영상의 비파괴적 처리
 
 ### Example
@@ -463,7 +467,9 @@ HDR / Dolby Vision Source도 선택된 Segment를 SDR Working Media로 정규화
 
 ## F-MVP-020 — Normalize Clip Duration Rule
 
-Mellow 프로젝트에서 사용하는 하나의 최종 Clip은 촬영 방식과 관계없이 최대 10초다.
+Mellow 프로젝트에서 사용하는 하나의 최종 Clip은 촬영 방식과 관계없이 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
+
+Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
 
 직접 촬영한 Clip과 Photos에서 가져온 Clip은 이후 Clip 관리, Preview, Trim, Export 단계에서 가능한 한 동일한 구조로 취급한다.
 
@@ -473,7 +479,7 @@ Mellow 프로젝트에서 사용하는 하나의 최종 Clip은 촬영 방식과
 
 사용자가 Imported Clip 추가를 확정하면 프로젝트에서 사용할 Project-owned Local Media를 생성한다.
 
-SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 선택된 최대 10초 Segment를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 선택된 최대 5초 Segment를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다.
 
 1080p-class는 고해상도 Source의 Working Target이며 저해상도 Source의 Upscaling 여부와 정확한 Raster Dimension Rule은 아직 확정하지 않는다.
 
@@ -633,7 +639,7 @@ Trim 작업은 원본 Clip을 직접 수정하지 않는 비파괴 방식으로 
 
 ## F-MVP-028 — Trim Imported Clip
 
-사용자는 Photos에서 가져온 영상에서 프로젝트에 사용할 최대 10초의 구간을 선택할 수 있어야 한다.
+사용자는 Photos에서 가져온 영상에서 프로젝트에 사용할 최대 5초의 구간을 선택할 수 있어야 한다.
 
 프로젝트에 추가한 이후에도 허용된 범위 내에서 선택 구간을 다시 조정할 수 있는 방향을 우선한다.
 
@@ -653,7 +659,7 @@ Trim UX는 빠르고 이해하기 쉬운 조작을 가장 우선한다.
 - 종료점 조절
 - 선택된 구간 Preview
 - 현재 Clip 길이 확인
-- 최대 10초 규칙 유지
+- 최대 5초 규칙 유지
 - 원본 미디어 보존
 
 ### Not Required
@@ -928,7 +934,7 @@ Microphone Permission이 Denied 또는 Restricted이면 Direct Recording을 시�
 
 촬영이 실패한 경우 사용자가 현재 상태를 이해할 수 있어야 한다.
 
-Interruption은 Successful Manual Stop 또는 Successful 10-second Auto-stop으로 표시하지 않고 정상 Completion Haptic을 자동 적용하지 않는다.
+Interruption은 Successful Manual Stop 또는 Successful selected-maximum Auto-stop으로 표시하지 않고 정상 Completion Haptic을 자동 적용하지 않는다.
 
 생성된 Media는 ADR-020의 Transactional Commit / Validation / Recovery와 ADR-021의 Project Validity / Late Result 계약을 따르며 Invalid 또는 Incomplete Media를 정상 Clip으로 Commit하지 않는다.
 
@@ -938,7 +944,7 @@ Recording 시작 전에는 Camera / Microphone Permission, Required Capture Devi
 
 Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left 또는 Landscape Right에서 새 Recording을 시작할 수 있다.
 
-Project Orientation mismatch, Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientation에서는 Recording, Progress와 10초 Timer를 시작하지 않는다.
+Project Orientation mismatch, Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientation에서는 Recording, Progress와 선택한 최대 Duration Timer를 시작하지 않는다.
 
 Recording 중 Device Rotation만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Active Rear Zoom을 Reset하지 않는다.
 
@@ -1227,10 +1233,10 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 2. 새로운 Vlog 프로젝트를 생성한다.
 3. 9:16 또는 16:9를 선택한다.
 4. Rear Camera 또는 Front Camera로 새로운 Clip을 촬영한다.
-5. 사용자가 원하는 시점에 녹화를 종료하거나 10초에 도달하여 자동 종료된다.
+5. 사용자가 원하는 시점에 녹화를 종료하거나 선택한 최대 Duration에 도달하여 자동 종료된다.
 6. 추가 Clip을 촬영할 수 있다.
 7. Photos Library에서 기존 영상을 가져올 수 있다.
-8. 긴 Imported Video에서 최대 10초의 원하는 구간을 선택할 수 있다.
+8. 긴 Imported Video에서 최대 5초의 원하는 구간을 선택할 수 있다.
 9. 촬영 또는 Import한 Clip을 확인할 수 있다.
 10. 불필요한 Clip 삭제가 즉시 UI에 반영되고 F-MVP-025의 확정된 연속 삭제·재정렬·Process 종료 기준에 따라 가장 최근 삭제 한 건의 Undo를 사용할 수 있다.
 11. Clip의 순서를 변경할 수 있다.
@@ -1267,23 +1273,24 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있다.
 - Orientation mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않는다.
 - Recording Interruption은 Successful Completion으로 표시하지 않고 ADR-020 / ADR-021을 따르며 Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
-- 하나의 촬영 Clip은 최대 10초다.
-- 사용자는 10초 이전에는 자유롭게 녹화를 종료할 수 있다.
-- 촬영 시간이 10초에 도달하면 자동으로 녹화를 종료한다.
-- 고정 촬영 시간 Preset은 MVP에 포함하지 않는다.
+- 하나의 촬영 Clip은 최대 5초다.
+- 사용자는 선택한 최대 Duration 이전에는 자유롭게 녹화를 종료할 수 있다.
+- 촬영 시간이 선택한 최대 Duration에 도달하면 자동으로 녹화를 종료한다.
+- Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
+- 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
 - Recording Pause / Resume는 MVP에서 제공하지 않는다.
 - Recording Start에는 Haptic을 사용하지 않는다.
-- Successful Manual Stop과 Successful 10-second Auto-stop에는 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
+- Successful Manual Stop과 Successful selected-maximum Auto-stop에는 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
 - Recording Haptic은 보조 Feedback이며 기존 Visual Recording State / Circular Progress / Completion State를 대체하지 않는다.
 - Photos Library의 기존 영상을 프로젝트에 Import할 수 있다.
 - Imported Video 원본의 길이는 제한하지 않는다.
-- Imported Video에서는 프로젝트에 사용할 최대 10초 구간을 선택한다.
+- Imported Video에서는 프로젝트에 사용할 최대 5초 구간을 선택한다.
 - SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용한다.
-- 선택된 최대 10초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Photos 원본은 변경하지 않는다.
+- 선택된 최대 5초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Photos 원본은 변경하지 않는다.
 - Project Fill + Crop을 Working File에 bake-in하지 않고 이후 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
 - Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 정상적으로 추가된 Project-owned Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지한다.
-- 프로젝트에서 사용하는 하나의 최종 Clip 길이는 최대 10초다.
+- 프로젝트에서 사용하는 하나의 최종 Clip 길이는 최대 5초다.
 - Project orientation은 9:16 Portrait와 16:9 Landscape를 지원한다.
 - 하나의 프로젝트에서는 하나의 Orientation을 유지한다.
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다.
@@ -1353,7 +1360,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 최소 Clip 길이 제한 여부
 - Recording Error / Interruption의 Haptic 정책
 - 승인된 Completion 의미 안의 정확한 Haptic API / Style / Intensity / Pattern / Duration / Generator 구현 및 Tuning
-- 10초 자동 종료 직전 Visual Feedback 방식
+- 선택한 최대 Duration 자동 종료 직전 Visual Feedback 방식
 - 앱이 Background로 이동할 때 촬영 중 Clip 처리 정책
 - Recording Interruption에서 Valid Partial Clip의 최종 처리
 

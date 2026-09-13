@@ -116,7 +116,7 @@ Mellow MVP에서는 4K Export를 제공하지 않는다.
 
 Photos에서 4K를 포함한 고해상도 Video를 Import할 수 있다.
 
-Imported Video는 사용자가 선택한 최대 10초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
+Imported Video는 사용자가 선택한 최대 5초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
 
 1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source를 무조건 Upscale하라는 요구사항은 아니다.
 
@@ -361,7 +361,7 @@ Device Orientation과 Project Orientation은 서로 다른 개념으로 취급�
 - Recorded
 - Imported
 
-Project에서 실제 사용하는 하나의 Clip Duration은 최대 10초다.
+Project에서 실제 사용하는 하나의 Clip Duration은 최대 5초다.
 
 Logical Clip의 존재와 참조 Media의 현재 Usability는 분리한다.
 
@@ -371,13 +371,13 @@ Committed Clip Metadata가 존재해도 Media가 Missing, Unreadable, Corrupt, V
 
 ## 16. Clip Duration Invariant
 
-10초 제한은 단순 UI Rule로만 관리하지 않는다.
+5초 제한은 단순 UI Rule로만 관리하지 않는다.
 
 Domain Layer에서 다음 Invariant를 강제한다.
 
-`0 < effectiveClipDuration <= 10 seconds`
+`0 < effectiveClipDuration <= 5 seconds`
 
-10초 제한은 여러 Feature에 Magic Number로 반복하지 않는다.
+5초 제한은 여러 Feature에 Magic Number로 반복하지 않는다.
 
 공통 Domain Policy에서 관리한다.
 
@@ -385,7 +385,11 @@ Domain Layer에서 다음 Invariant를 강제한다.
 
 `ClipPolicy.maximumDuration`
 
-현재 값은 10초다.
+ADR-029의 현재 제품 기준 값은 5초다.
+
+Phase 2까지 구현된 기존 Domain / Test의 10초 기준은 과거 구현 Baseline이며 이 문서 작업에서 Swift를 변경하지 않는다.
+
+Phase 4에서 실제 Media Recording을 도입하기 전에 Domain Policy와 관련 Test를 새 5초 Invariant에 정렬하며 Phase 6–7도 같은 기준을 사용한다.
 
 ---
 
@@ -599,7 +603,7 @@ Staged Media와 Final Working Media의 Validation은 최소한 다음 성질을 
 - 필요한 Audio / Video Track Metadata에 접근할 수 있다.
 - 불완전한 Write 또는 Partial Output을 Final Media로 취급하지 않는다.
 
-Import Source 전체에 Project Clip의 최대 10초 제한을 적용하지 않으며 Project에서 사용할 Segment에 확정된 Clip Duration Policy를 적용한다.
+Import Source 전체에 Project Clip의 최대 5초 제한을 적용하지 않으며 Project에서 사용할 Segment에 확정된 Clip Duration Policy를 적용한다.
 
 Normalization을 수행했다면 그 Output을 Final Media로 등록하기 전에 다시 Validation한다.
 
@@ -666,7 +670,7 @@ SwiftUI View에서 `AVCaptureSession`을 직접 관리하지 않는다.
 - Preview 연결
 - Recording 시작
 - Recording 종료
-- 10초 Maximum Duration 적용
+- 선택한 Maximum Duration 적용
 - Device / Project / UI / Video Presentation Orientation 정보 분리와 Recording Start Eligibility 처리
 - Front Camera Mirroring Transform Ownership 유지
 - Session Interruption 처리
@@ -747,7 +751,7 @@ MVP Recording은 `AVCaptureMovieFileOutput`을 우선 사용한다.
 
 Rear Continuous Zoom은 Capture-time Camera Behavior이며 Preview와 Active Recording에서 같은 Rear Camera의 Field of View를 변경한다.
 
-Active Recording 중 Zoom 변경은 동일 Clip과 Media Operation Identity 안에서 이어지며 Recording을 Stop / Restart하거나 Clip Boundary를 만들거나 10초 Timer를 Reset하거나 Project Orientation을 변경하지 않는다.
+Active Recording 중 Zoom 변경은 동일 Clip과 Media Operation Identity 안에서 이어지며 Recording을 Stop / Restart하거나 Clip Boundary를 만들거나 선택한 최대 Duration Timer를 Reset하거나 Project Orientation을 변경하지 않는다.
 
 Recording 중 Zoom을 이유로 Capture Session 전체를 불필요하게 재구성하는 설계를 기본으로 하지 않는다.
 
@@ -759,15 +763,23 @@ Editing Framing은 기존 Working Media 영역 안에서 Metadata 기반 Fill + 
 
 ---
 
-## 31. Ten-second Recording Limit
+## 31. Selected Maximum Recording Duration
 
-10초 Recording Limit은 UI Timer에만 의존하지 않는다.
+선택한 최대 Recording Duration 제한은 UI Timer에만 의존하지 않는다.
 
-Capture Pipeline 자체에서도 Maximum Duration을 강제한다.
+Capture Pipeline 자체에서도 선택한 Maximum Duration을 강제하며 Domain의 전체 Clip 상한 5초도 준수한다.
 
-사용자는 10초 이전 언제든 Recording을 직접 종료할 수 있다.
+Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
 
-Recording이 10초에 도달하면 정상적인 Recording Completion Flow를 통해 자동 종료한다.
+선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
+
+Preset은 정확한 Output 길이를 강제하지 않으며 3s 선택 후 1.4초 수동 종료가 가능하다.
+
+Project Orientation은 기존 Project-level 불변 속성으로 유지한다.
+
+사용자는 선택한 최대 Duration 이전 언제든 Recording을 직접 종료할 수 있다.
+
+Recording이 선택한 최대 Duration에 도달하면 정상적인 Recording Completion Flow를 통해 자동 종료한다.
 
 Progress Ring은 실제 제한을 결정하는 Source가 아니라 사용자에게 Recording 상태를 표현하는 UI다.
 
@@ -775,7 +787,7 @@ Progress Ring은 실제 제한을 결정하는 Source가 아니라 사용자에�
 
 ## 32. Recording Progress
 
-UI Recording Progress는 Recording 시작 시점과 최대 10초 Duration을 기준으로 계산한다.
+UI Recording Progress는 Recording 시작 시점과 선택한 최대 Duration을 기준으로 계산한다.
 
 Wall Clock 변경에 영향을 받지 않는 Monotonic Time을 사용한다.
 
@@ -819,7 +831,7 @@ Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientat
 
 Record Request는 Camera / Microphone Authorization과 Capability, Project Validity 및 Orientation Eligibility를 확인한 뒤 Media Writing을 시작해야 한다.
 
-Orientation이 유효하지 않으면 Committed Recording Operation, Recording Progress와 10초 Timer를 시작하지 않는다.
+Orientation이 유효하지 않으면 Committed Recording Operation, Recording Progress와 선택한 최대 Duration Timer를 시작하지 않는다.
 
 Recording 시작 후 Device Orientation이 변경되어도 현재 Recording을 자동 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않는다.
 
@@ -869,9 +881,9 @@ Photos에서 Import하는 원본 Video의 전체 Duration에는 제한을 두지
 
 원본 Video가 몇 초이든 몇 분이든 선택할 수 있다.
 
-Mellow Project에 실제로 추가하는 하나의 Clip Segment는 최대 10초다.
+Mellow Project에 실제로 추가하는 하나의 Clip Segment는 최대 5초다.
 
-사용자는 원본 Video에서 원하는 최대 10초 구간을 선택한다.
+Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
 
 ---
 
@@ -881,7 +893,7 @@ Imported Video는 사용자가 Clip 추가를 확정한 후 Project-owned Media�
 
 4K Source Video가 선택된 경우에도 전체 4K Video를 Draft Storage에 그대로 복사하는 것을 기본 동작으로 하지 않는다.
 
-사용자가 선택한 최대 10초 Segment를 기준으로 Mellow Working Media를 생성한다.
+사용자가 선택한 최대 5초 Segment를 기준으로 Mellow Working Media를 생성한다.
 
 Imported Working Media는 ADR-022의 1080p-class / 30 fps / SDR 기준으로 정규화한다.
 
@@ -898,7 +910,7 @@ Normalization 실패 시 Valid Source / Staging Media를 보존하고 Materializ
 | Layer | Ownership and Contract |
 | --- | --- |
 | Source Media | Photos가 소유한 원본이며 SDR / HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source를 포함할 수 있고 Mellow가 수정하거나 삭제하지 않는다. |
-| Project-owned Working Media | 선택된 최대 10초 Segment를 기반으로 Mellow Project가 소유하며 1080p-class / 30 fps / SDR을 기준으로 하고 이후 Framing 가능한 Source Content를 보존하며 Project Crop을 bake-in하지 않는다. |
+| Project-owned Working Media | 선택된 최대 5초 Segment를 기반으로 Mellow Project가 소유하며 1080p-class / 30 fps / SDR을 기준으로 하고 이후 Framing 가능한 Source Content를 보존하며 Project Crop을 bake-in하지 않는다. |
 | Project Output / Export | 고정된 Project Orientation에 따라 Portrait 9:16은 1080 × 1920, Landscape 16:9는 1920 × 1080이며 30 fps / SDR로 출력하고 Trim / Framing / Transform / Order를 Composition에서 적용한다. |
 
 ### Spatial Normalization Contract
@@ -964,7 +976,7 @@ Photos 원본은 삭제하거나 수정하지 않는다.
 
 Imported Video에서 선택한 Segment를 1080p Working Media로 Materialize할 경우 이후 Re-trim 가능한 범위가 제한될 수 있다.
 
-예를 들어 2분 Source에서 20초 지점부터 30초 지점까지 선택하여 10초 Segment만 Materialize하면 이후 사용자가 전혀 다른 1분 지점으로 이동할 수 없다.
+예를 들어 2분 Source에서 20초 지점부터 25초 지점까지 선택하여 5초 Segment만 Materialize하면 이후 사용자가 전혀 다른 1분 지점으로 이동할 수 없다.
 
 MVP에서 Re-trim을 현재 Materialized Segment 내부에서만 허용할지 원본 Source 범위까지 다시 접근할 수 있게 할지는 아직 확정하지 않는다.
 
@@ -1829,9 +1841,9 @@ Estimate 조정을 이유로 승인된 Media Quality 변경, User Media 자동 C
 
 ### Operation-specific Estimates
 
-Recording Estimate는 승인된 최대 10초 Capture Profile이 생성할 Media, Staging / Finalization Overhead, Transactional Commit과 Safety Reserve를 고려한다.
+Recording Estimate는 승인된 최대 5초 Capture Profile이 생성할 Media, Staging / Finalization Overhead, Transactional Commit과 Safety Reserve를 고려한다.
 
-Import Estimate는 선택된 최대 10초 Source Segment의 Operation-owned Storage, Staging, Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 고려한다.
+Import Estimate는 선택된 최대 5초 Source Segment의 Operation-owned Storage, Staging, Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 고려한다.
 
 Import Estimate는 전체 Photos Original 4K Source를 Mellow Container에 무조건 복제한다고 가정하지 않으며 ADR-022의 Source / Working Media 계약을 따른다.
 
@@ -1853,7 +1865,7 @@ Operation 특성상 필요한 경우 시작 직전, 큰 Derived Output 생성 �
 
 Storage가 부족하면 기본적으로 해당 Operation만 시작하지 않고 Typed Error를 Feature Layer로 전달한다.
 
-Recording Storage가 부족하면 Recording, Progress, 10초 Timer와 부분 Media Operation을 시작하지 않는다.
+Recording Storage가 부족하면 Recording, Progress, 선택한 최대 Duration Timer와 부분 Media Operation을 시작하지 않는다.
 
 Import Storage가 부족하면 Materialization / Normalization을 시작하지 않는다.
 
@@ -1980,7 +1992,7 @@ Camera Session은 App Lifecycle에 맞게 시작하고 중지한다.
 
 Recording 중 App Lifecycle / Capture Session / System Interruption, Camera Resource Unavailable 또는 Unexpected Termination이 발생하면 Capture Operation을 안전하게 Stop / Cancel / Finalize 가능한 경로로 이동한다.
 
-Interruption을 Successful Manual Stop 또는 Successful 10-second Auto-stop으로 표시하지 않고 H04의 Completion Haptic을 자동 적용하지 않는다.
+Interruption을 Successful Manual Stop 또는 Successful selected-maximum Auto-stop으로 표시하지 않고 H04의 Completion Haptic을 자동 적용하지 않는다.
 
 Interruption으로 생성된 Media는 ADR-020의 Transactional Commit / Validation / Recovery를 따르며 Invalid / Incomplete Media는 정상 Clip으로 Commit하지 않는다.
 
@@ -2106,7 +2118,7 @@ Primary Physical Test Device는 iPhone 12다.
 - Camera Switching
 - Camera / Microphone Permission Denied 상태에서 Direct Recording 차단과 Photos Import 독립성
 - 1080p 30 fps Recording
-- 10초 자동 종료
+- 선택한 최대 Duration 자동 종료
 - Microphone Audio
 - Portrait 9:16 Recording
 - Landscape 16:9 Recording
@@ -2139,7 +2151,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 
 다음 Logic은 AVFoundation Hardware 없이 Unit Test할 수 있어야 한다.
 
-- Clip 최대 10초 Validation
+- Clip 최대 5초 Validation
 - Project Duration 계산
 - Clip Reorder
 - Clip Delete / Undo State
@@ -2305,7 +2317,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - MVP에서 60 fps Export를 제공하지 않는다.
 - 4K를 포함한 고해상도 Photos Video를 Import할 수 있다.
 - SDR, HDR / Dolby Vision 및 30 fps 초과 Source Import를 허용한다.
-- Imported Video는 선택한 최대 10초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
+- Imported Video는 선택한 최대 5초 구간을 기준으로 1080p-class / 30 fps / SDR Working Media로 정규화한다.
 - Working Media는 Source Presentation Aspect Ratio와 Framing 가능 영역을 보존하며 Project Fill + Crop을 bake-in하지 않는다.
 - MVP Preview와 Export는 SDR이며 HDR Export는 MVP에서 제공하지 않는다.
 - Individual Clip Preview, Full Vlog Preview와 Export는 Canonical Composition Semantics를 사용하여 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR Interpretation과 Audio Inclusion을 같은 의미로 적용한다.
@@ -2316,12 +2328,12 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Absolute File Path를 SwiftData에 저장하지 않는다.
 - Camera Session은 SwiftUI View에서 분리한다.
 - MVP Recording은 `AVCaptureMovieFileOutput`을 우선 사용한다.
-- Clip 최대 10초 Rule은 Domain과 Capture Pipeline 모두에서 강제한다.
+- Clip 최대 5초 Rule은 Domain과 Capture Pipeline 모두에서 강제한다.
 - Front Camera와 Rear Camera를 지원한다.
 - Recording 중 Camera Switching은 허용하지 않는다.
 - Rear Camera는 기본 1× Wide를 사용하고 Preview와 Active Recording에서 1× 이상 Continuous Zoom을 지원한다.
 - Rear Zoom은 Phase 3에서 승인한 Maximum Product Quality Limit으로 Clamp하며 0.5× Ultra Wide / Telephoto / Lens Selector와 Front Camera Zoom은 MVP에서 제공하지 않는다.
-- Rear Zoom은 동일 Recording / Clip / Operation Identity와 10초 Timer를 유지하며 Phase 7 Editing Framing과 별개의 Capture-time Behavior다.
+- Rear Zoom은 동일 Recording / Clip / Operation Identity와 선택한 최대 Duration Timer를 유지하며 Phase 7 Editing Framing과 별개의 Capture-time Behavior다.
 - Front Camera Preview와 Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하고 Photos Import Source에는 이 정책을 적용하지 않는다.
 - Direct Recording은 Camera와 Microphone Authorization을 모두 요구하며 Video-only 자동 Fallback 없이 Photos Import와 독립적으로 동작한다.
 - Project Orientation과 Device Orientation을 분리한다.
@@ -2389,7 +2401,7 @@ MediaStore Actor만으로 Cross-service Lifecycle이 해결된다고 가정하�
 
 ### Clip Duration
 
-Project에서 사용하는 하나의 Clip은 10초를 초과하지 않는다.
+Project에서 사용하는 하나의 Clip은 5초를 초과하지 않는다.
 
 ### Project Orientation
 
@@ -2569,7 +2581,7 @@ Architecture는 최소한 다음 질문에 명확한 답을 제공해야 한다.
 - 실제 Video File은 어디에 저장하는가?
 - 촬영된 Clip은 어떻게 안전하게 Project에 추가하는가?
 - Photos 원본은 어떻게 보호하는가?
-- 긴 Photos Video에서 어떻게 최대 10초 Clip을 만드는가?
+- 긴 Photos Video에서 어떻게 최대 5초 Clip을 만드는가?
 - Trim은 어떻게 비파괴적으로 관리하는가?
 - 9:16과 16:9 Project를 어떻게 일관되게 유지하는가?
 - Preview와 Export 결과를 어떻게 동일하게 유지하는가?

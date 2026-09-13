@@ -220,11 +220,11 @@ The following guardrails must not be changed without an approved decision and co
 - Device rotation does not silently change project orientation.
 - Rear and front cameras are supported.
 - Camera switching is allowed only when not recording.
-- Directly recorded clips may be recorded freely up to 10 seconds.
-- Recording automatically stops at 10 seconds.
-- There are no fixed 1-second, 3-second, or 5-second recording presets in the MVP.
-- Imported source videos may be longer than 10 seconds.
-- A Mellow project clip may use at most a 10-second segment.
+- Direct capture offers maximum-duration presets of 1 / 2 / 3 / 4 / 5 seconds, defaulting to 3 seconds.
+- Recording automatically stops at the selected maximum; manual early stop is allowed and exact integer output duration is not required.
+- Duration selection is a camera/capture-level setting changeable between clips, not an immutable project property.
+- Imported source video duration is unrestricted.
+- Any Mellow clip must satisfy 0 < duration <= 5 seconds; imported segments may have noninteger durations and do not follow camera presets.
 - Photos original media must not be modified or deleted by Mellow.
 - Multiple local drafts are supported.
 - Drafts do not automatically expire.
@@ -348,7 +348,7 @@ The following areas require iPhone 12 validation when they are implemented or ma
 - front camera preview
 - camera switching
 - video recording
-- 10-second automatic stop
+- selected-maximum automatic stop
 - microphone audio
 - project/device orientation behavior
 - haptics
@@ -423,7 +423,7 @@ Use descriptive commit messages such as:
 
 - `feat: add vlog project domain models`
 - `feat: implement camera preview`
-- `feat: enforce ten second recording limit`
+- `feat: enforce selected recording duration limit`
 - `fix: preserve clip after recording interruption`
 - `test: cover clip duration policy`
 - `docs: record export codec decision`

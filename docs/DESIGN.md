@@ -314,11 +314,15 @@ Mirror Toggle은 MVP에서 제공하지 않는다.
 
 사용자가 Record Button을 누르면 즉시 녹화를 시작한다.
 
-사용자는 10초 이전 언제든 Record Button을 다시 눌러 녹화를 종료할 수 있다.
+사용자는 선택한 최대 Duration 이전 언제든 Record Button을 다시 눌러 녹화를 종료할 수 있다.
 
-10초에 도달하면 Mellow가 자동으로 Recording을 종료한다.
+선택한 최대 Duration에 도달하면 Mellow가 자동으로 Recording을 종료한다.
 
-고정된 1초, 3초, 5초 등의 Recording Preset은 제공하지 않는다.
+Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
+
+선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
+
+Preset은 정확한 Output 길이를 강제하지 않으며 3s 선택 후 1.4초에 수동 종료할 수 있다.
 
 녹화 중 Pause / Resume 기능은 제공하지 않는다.
 
@@ -326,7 +330,7 @@ Mirror Toggle은 MVP에서 제공하지 않는다.
 
 ## 13. Recording Feedback
 
-Record Button 주변에 10초 Recording Progress를 표현하는 Circular Progress 형태를 우선 검토한다.
+Record Button 주변에 선택한 최대 Duration Recording Progress를 표현하는 Circular Progress 형태를 우선 검토한다.
 
 Progress 표현은 Timer를 읽지 않아도 촬영 종료가 가까워지고 있음을 직관적으로 알 수 있게 해야 한다.
 
@@ -334,7 +338,7 @@ Progress 표현은 Timer를 읽지 않아도 촬영 종료가 가까워지고 �
 
 마지막 구간에서는 기존 Visual Progress 변화로 자동 종료가 가까워졌음을 자연스럽게 알릴 수 있다.
 
-Recording Start에는 Haptic을 사용하지 않고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시에만 동일한 종료 의미의 subtle completion haptic을 제공하며 종료 직전 예고 Haptic으로 사용하지 않는다.
+Recording Start에는 Haptic을 사용하지 않고 Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시에만 동일한 종료 의미의 subtle completion haptic을 제공하며 종료 직전 예고 Haptic으로 사용하지 않는다.
 
 Haptic은 기존 Visual Recording State / Circular Progress / Completion State를 보조하며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 Recording 상태를 이해할 수 있어야 한다.
 
@@ -364,9 +368,9 @@ Import 기능은 Camera 촬영보다 숨겨져서는 안 되지만 Record Button
 
 Photos에서 영상을 선택하면 원본 영상의 길이에 관계없이 사용할 수 있어야 한다.
 
-10초보다 긴 영상은 Import 이후 사용할 최대 10초 구간을 선택한다.
+5초보다 긴 영상은 Import 이후 사용할 최대 5초 구간을 선택한다.
 
-10초보다 짧은 영상은 전체 영상을 기본 선택 상태로 보여줄 수 있다.
+5초보다 짧은 영상은 전체 영상을 기본 선택 상태로 보여줄 수 있다.
 
 ---
 
@@ -376,7 +380,7 @@ Imported Video의 Trim 화면은 원본 전체 영상에서 사용할 구간을 
 
 사용자는 시작점과 종료점을 조절할 수 있어야 한다.
 
-선택된 구간은 최대 10초를 초과할 수 없다.
+Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
 
 Trim UI는 전문 Timeline Editor처럼 복잡하게 보이지 않아야 한다.
 
@@ -640,7 +644,7 @@ MVP Recording Haptic의 사용 여부와 의미는 다음과 같이 확정한다
 | --- | --- |
 | Recording Start | Haptic 없음 |
 | Successful Manual Stop | 완료 시 subtle completion haptic |
-| Successful 10-second Auto-stop | 완료 시 subtle completion haptic |
+| Successful selected-maximum Auto-stop | 완료 시 subtle completion haptic |
 | Recording Error / Interruption | 별도 Pending |
 
 Manual Stop과 Auto-stop의 Haptic은 모두 "이 Clip의 Recording이 종료되었다."라는 동일한 의미를 갖는다.
@@ -768,13 +772,13 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - 프로젝트 화면 비율은 생성 이후 자동 변경하지 않는다.
 - 기기 방향이 Project Orientation과 다르면 조용한 회전 안내를 표시한다.
 - Camera Preview는 촬영 화면의 가장 중요한 시각 요소다.
-- 하나의 Clip은 최대 10초까지 자유롭게 촬영한다.
-- 사용자는 10초 이전 언제든 녹화를 종료할 수 있다.
-- 10초에 도달하면 자동으로 녹화를 종료한다.
+- 하나의 Clip은 최대 5초까지 자유롭게 촬영한다.
+- 사용자는 선택한 최대 Duration 이전 언제든 녹화를 종료할 수 있다.
+- 선택한 최대 Duration에 도달하면 자동으로 녹화를 종료한다.
 - Recording Progress는 Record Button 주변의 Progress Ring 방향을 우선한다.
 - 큰 Countdown 숫자는 사용하지 않는다.
 - Recording Start에는 Haptic을 사용하지 않는다.
-- Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
+- Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
 - Haptic은 기존 Visual Recording State / Circular Progress / Completion State를 보조하며 종료 직전 예고 신호로 사용하지 않는다.
 - Front / Rear Camera Switch는 녹화하지 않는 상태에서만 가능하다.
 - 녹화 중 Camera Switch는 허용하지 않는다.
@@ -785,7 +789,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Project Orientation mismatch, Face Up / Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 quiet Rotate Device Guidance를 제공한다.
 - Mid-record Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation을 변경하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
 - Photos에서 가져온 영상 원본 길이는 제한하지 않는다.
-- Imported Video에서 사용할 구간은 최대 10초다.
+- Imported Video에서 사용할 구간은 최대 5초다.
 - Project Orientation과 다른 Imported Video는 기본적으로 Fill + Crop 처리한다.
 - 사용자가 Imported Video의 Framing을 조절할 수 있어야 한다.
 - Clip 삭제는 즉시 적용하고 Undo를 제공한다.
@@ -825,10 +829,10 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
 | --- | --- | --- |
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
-| Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
+| Phase 3 — Camera Foundation | ADR-029 Duration Selector의 배치 / Interaction 구조, Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
 | Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
-| Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
+| Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
 | Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
@@ -839,7 +843,7 @@ Phase 4 전용 표현이 Phase 3 Layout 구조에 이미 영향을 준다면 필
 
 Phase 6에서 구간 선택을 실제로 구현하므로 그 최소 구조를 Phase 7이나 Phase 12까지 미루지 않으며 Phase 7은 이미 승인된 부분을 재사용하고 나머지 Trim / Framing 구조를 구현 전에 결정한다.
 
-이미 확정된 New Vlog의 Primary Action 역할, Project Orientation 고정, Front / Rear Camera, 최대 10초 Recording과 Circular Progress Ring, Drag Framing / Reorder, Share / Done 및 Draft 유지 동작은 다시 Open으로 만들지 않는다.
+이미 확정된 New Vlog의 Primary Action 역할, Project Orientation 고정, Front / Rear Camera, 최대 5초 Recording과 Circular Progress Ring, Drag Framing / Reorder, Share / Done 및 Draft 유지 동작은 다시 Open으로 만들지 않는다.
 
 Rear 1× Wide와 1× 이상 Continuous Zoom, 0.5× / Telephoto / Lens Selector 및 Front Zoom 제외, Front Mirrored Preview / Result Parity와 Permission / Orientation 동작은 ADR-023을 따르며 다시 Open으로 만들지 않는다.
 
@@ -851,7 +855,7 @@ Trim / Framing 구조는 ADR-022의 Working Media Crop bake-in 금지와 Metadat
 
 ADR-013의 Shared Preview / Export Composition 실행 계약과 ADR-025로 확정된 Export Result Lifecycle은 이 표에서 다시 결정하지 않으며 Background Export, 재Export가 필요한 경우의 Retry 세부 정책과 Exact Result UI는 해당 UI 구현 전에 해결해야 한다는 시점만 정의한다.
 
-Recording Start에는 Haptic 없음, Successful Manual Stop / 10-second Auto-stop에는 subtle completion haptic이라는 승인 정책은 29절을 따르며 이 Structural UX 분류로 다시 Open으로 만들지 않는다.
+Recording Start에는 Haptic 없음, Successful Manual Stop / selected-maximum Auto-stop에는 subtle completion haptic이라는 승인 정책은 29절을 따르며 이 Structural UX 분류로 다시 Open으로 만들지 않는다.
 
 Error / Interruption Haptic은 별도 Pending이며 정확한 구현과 Completion 의미 안의 Tuning은 미확정 구현 세부사항으로 유지한다.
 
@@ -889,7 +893,7 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 
 ### Recording
 
-- 10초 마지막 몇 초부터 Visual 종료 Feedback을 강화할지
+- 선택한 최대 Duration의 종료 전 어느 시점부터 Visual 종료 Feedback을 강화할지
 - 승인된 Completion 의미 안의 정확한 Haptic 구현과 Timing Tuning
 - Recording Error / Interruption Haptic 정책
 - 자동 종료 시 Animation

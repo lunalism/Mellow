@@ -166,7 +166,11 @@ Device Orientation과 Project Orientation은 별개의 상태로 관리한다.
 # ADR-005 — Maximum 10-second Clip
 
 **Date:** 2026-09-10  
-**Status:** Accepted
+**Status:** Superseded by ADR-029
+
+이 ADR의 아래 내용은 과거 결정 기록이며 현재 Duration 정책은 ADR-029가 대체한다.
+
+Duration 외 기존 Photos Import / Media Safety, Pause / Resume 제외와 Progress Ring 방향은 ADR-029에서 유지한다.
 
 ## Context
 
@@ -201,7 +205,11 @@ Recording Progress는 Progress Ring을 중심으로 표현한다.
 # ADR-006 — Existing Photos Video Import
 
 **Date:** 2026-09-10  
-**Status:** Accepted
+**Status:** Superseded by ADR-029
+
+이 ADR의 아래 내용은 과거 결정 기록이며 현재 Duration 정책은 ADR-029가 대체한다.
+
+Duration 외 기존 Photos Import / Media Safety, Pause / Resume 제외와 Progress Ring 방향은 ADR-029에서 유지한다.
 
 ## Context
 
@@ -237,6 +245,10 @@ Photos 원본 Video는 비파괴적으로 유지한다.
 
 **Date:** 2026-09-10  
 **Status:** Accepted
+
+**Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
+
+현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
 ## Context
 
@@ -478,6 +490,10 @@ Preview에서는 가능한 한 완성 Video File을 매번 Render하지 않고 V
 
 **Date:** 2026-09-10  
 **Status:** Accepted
+
+**Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
+
+현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
 ## Context
 
@@ -894,6 +910,10 @@ Photos Save / Share 완료 파일의 상세 Lifecycle은 M05 / Export Lifecycle 
 
 **Status:** Accepted
 
+**Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
+
+현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
+
 ## Context
 
 Phase 6에서 실제 4K / HDR Import Source로 Project-owned Working Media를 생성해야 하지만 기존 HDR / SDR Decision Gate는 Phase 9에 있어 구현 시점보다 늦었다.
@@ -989,6 +1009,10 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 **Date:** 2026-09-12
 
 **Status:** Accepted
+
+**Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
+
+현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
 ## Context
 
@@ -1110,6 +1134,10 @@ ADR-020의 Transactional Commit / Recovery, ADR-021의 Project Validity / Late R
 **Date:** 2026-09-12
 
 **Status:** Accepted
+
+**Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
+
+현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
 ## Context
 
@@ -1434,6 +1462,75 @@ Domain / Persistence Architecture 변경, 실제 Camera / Thumbnail / Media 기�
 
 ---
 
+# ADR-029 — Short Clip Duration Policy
+
+**Date:** 2026-09-13
+**Status:** Accepted
+
+## Context
+
+Phase 2 완료 후 사용자가 Mini Vlog의 짧은 순간과 리듬을 강화하는 Product Direction 변경을 승인했다.
+
+여러 짧은 Clip이 하나의 이야기를 구성하고 하나의 Clip이 Vlog를 지배하는 경향을 줄이는 것이 Mellow Mini Vlog Camera의 방향이다.
+
+## Decision
+
+### Direct Capture
+
+- Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration 선택을 제공하며 기본 선택은 `3s`다.
+- 선택한 Preset은 다음 Recorded Clip의 Maximum이며 해당 시점에 자동 종료한다.
+- 사용자는 선택한 Maximum 전에 수동 종료할 수 있으며 3s 선택 후 1.4초에 Stop하면 약 1.4초 Clip을 만든다.
+- Preset은 정확한 정수 Output Duration을 강제하지 않는다.
+- Duration 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있고 Project-level 불변 속성이 아니다.
+- Project Orientation은 9:16 Portrait / 16:9 Landscape의 기존 Project-level 불변 정책을 유지한다.
+
+### Imported Video
+
+- Photos Source Video의 전체 Duration은 제한하지 않으며 2분 또는 20분 Source도 선택할 수 있다.
+- 사용자는 Source에서 원하는 구간을 자유롭게 선택 / Trim하며 사용 구간은 0초보다 길고 5초 이하다.
+- 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아닌 Duration도 허용하며 Camera Preset은 Imported Trim에 적용하지 않는다.
+- Photos 원본 비파괴 보존과 Project-owned Working Media 방향은 유지한다.
+
+### Canonical Invariant
+
+Source와 관계없이 Mellow Vlog에서 사용하는 모든 Clip은 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
+
+## Superseded Decisions
+
+ADR-005의 최대 10초 자유 Recording / Preset 미제공 및 공통 Clip 상한과 ADR-006의 최대 10초 Imported Segment 정책을 대체한다.
+
+ADR-007 / ADR-014 / ADR-022 / ADR-023 / ADR-024에서 참조하던 10초 Duration / Timer 기준도 대체하며 Media Ownership, 전체 Vlog 제한 없음, Normalization, Zoom / Permission / Interruption 및 Storage Safety 계약은 유지한다.
+
+ADR-005 / ADR-006의 Duration 외 기존 Pause / Resume 제외, Progress Ring 방향, Photos Import와 Media Safety 정책은 유지한다.
+
+ADR-028의 Phase 2 Structural UX는 변경하지 않는다.
+
+## Rationale
+
+1–5초 최대 Preset은 엄격한 1–3초보다 유연하면서 짧은 순간을 여러 Clip으로 연결하는 Short-form 정체성과 Mini Vlog의 리듬을 유지한다.
+
+## Consequences
+
+Phase 3 Camera Structural UX Gate에서 Duration Selector의 존재와 새 정책을 전제로 배치 / Interaction 구조를 승인하며 실제 Recording은 Phase 4가 소유한다.
+
+Phase 4는 기존 Domain / Test의 Duration 기준을 정렬하고 Selector, 기본 3s, Manual Early Stop, 선택한 Maximum Auto Stop과 공통 5초 상한을 구현·검증한다.
+
+Phase 6 Import와 Phase 7 Trim은 길이 제한 없는 Source와 정수 Preset에 구속되지 않는 `0 < duration <= 5 seconds` Segment를 구현·검증한다.
+
+이 변경은 문서와 Product Decision만 기록하며 Swift / Xcode 파일을 수정하지 않고 Phase 3 또는 이후 구현을 시작하거나 완료하지 않는다.
+
+## Open Details / Non-goals
+
+Preset의 App Relaunch 이후 유지, Project별 기억 여부와 Preset 변경의 기존 Clip 영향은 이 결정에서 확정하지 않고 Phase 4 구현 전 Gate에 남긴다.
+
+Selector Placement / Camera Control Layout은 Phase 3 Structural UX Gate에서 결정한다.
+
+기존 승인된 Haptic, Audio, Circular Progress와 Countdown 정책은 변경하지 않으며 새로운 Animation / Timing / Haptic 동작을 만들지 않는다.
+
+기존 Pending인 Interruption Partial Clip 처리와 Minimum Valid Clip Duration의 추가 하한은 해당 Gate에 남기되 공통 `0 < duration <= 5 seconds` Invariant를 완화하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
@@ -1517,7 +1614,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Imported Video Crop에서 Pinch to Zoom 지원 여부
 - Recording Haptic의 정확한 Timing — 기존 Pending 이력을 유지하며 H04 사용자 승인으로 정상 Recording의 사용 시점과 의미를 다음과 같이 동기화한다.
   - Recording Start Haptic — Resolved: 사용하지 않으며 Record Button Tap 또는 Recording Start 성공에 Haptic을 제공하지 않는다.
-  - Successful Recording Completion Haptic — Resolved: Manual Stop과 10-second Auto-stop 완료 시 동일한 "이 Clip의 Recording이 종료되었다."라는 의미의 subtle completion haptic을 제공하며 종료 직전 예고 신호가 아니다.
+  - Successful Recording Completion Haptic — Resolved: Manual Stop과 selected-maximum Auto-stop 완료 시 동일한 "이 Clip의 Recording이 종료되었다."라는 의미의 subtle completion haptic을 제공하며 종료 직전 예고 신호가 아니다.
   - Visual Recording State / Circular Progress / Completion State는 주된 상태 전달 수단이며 Haptic은 이를 대체하지 않는 보조 Feedback이다.
   - Recording Error / Interruption Haptic — Pending.
   - 정확한 Haptic API / Style / Intensity / Sharpness / Pattern / Duration / Generator 구현과 Timing — 승인된 Completion 의미 안의 Native iOS Implementation Detail / Tuning으로 유지하며 이번 결정에서 특정 값을 확정하지 않는다.

@@ -221,8 +221,8 @@ Apple Native Tooling을 우선하며 OSLog 또는 Signpost, Instruments, Xcode D
 
 | Scenario Family | 최소 Scenario Meaning | 의미 있는 Measurement Category |
 | --- | --- | --- |
-| Direct Recording | Rear Camera, Front Camera, 최대 10초 Clip, Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence를 포함한다. | Capture Stability, Completion Reliability, Post-record Commit Latency, Memory, Thermal, Repeated Capture Stability와 Unexpected Dropped 또는 Failed Capture를 관찰한다. |
-| Photos Import / Normalization | 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 최대 10초 Selected Segment를 포함한다. | Import / Normalization Duration, Peak Memory, Peak Additional Storage, Thermal, Operation Success와 필요한 Cancellation Responsiveness를 관찰한다. |
+| Direct Recording | Rear Camera, Front Camera, 최대 5초 Clip, Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence를 포함한다. | Capture Stability, Completion Reliability, Post-record Commit Latency, Memory, Thermal, Repeated Capture Stability와 Unexpected Dropped 또는 Failed Capture를 관찰한다. |
+| Photos Import / Normalization | 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 최대 5초 Selected Segment를 포함한다. | Import / Normalization Duration, Peak Memory, Peak Additional Storage, Thermal, Operation Success와 필요한 Cancellation Responsiveness를 관찰한다. |
 | Individual Clip Preview | Trim, Framing, Front Mirrored Clip과 Imported Silent Clip을 포함한다. | Preparation Latency, First Usable Playback Readiness, Playback Stability, 필요한 Seek Responsiveness와 Memory를 관찰한다. |
 | Full Vlog Preview | Small, Representative, Larger MVP Project, Mixed Recorded / Imported Clip, Edited Clip과 Repeated Preview Open / Close를 포함한다. | Composition Preparation, First Usable Playback, Seek / Playback Responsiveness, Playback Stall 또는 Dropped Presentation, Memory, Thermal과 Repeated-preview Stability를 관찰한다. |
 | Export | Short, Representative, Larger Project와 Mixed Source, Trim / Framing / Mirror를 포함한다. | Elapsed Export, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 관찰한다. |
@@ -467,7 +467,7 @@ Emergency Fix는 최소 범위로 수행하고 이후 관련 문서와 Test를 �
 
 - `feat: add vlog project domain models`
 - `feat: implement camera preview`
-- `feat: enforce ten second recording limit`
+- `feat: enforce selected recording duration limit`
 - `test: cover clip duration policy`
 - `fix: preserve recording after interruption`
 - `docs: record import media decision`
@@ -595,10 +595,10 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | Vlog Project / Orientation | Phase 1–2 |
 | Multiple Drafts / Autosave | Phase 1–2, Phase 10 |
 | Camera Preview / Switching | Phase 3 |
-| 10-second Recording / Audio | Phase 4 |
+| 1–5-second Maximum Presets / Recording / Audio | Phase 4 |
 | Clip List / Reorder / Delete / Undo | Phase 5 |
 | Photos Video Import | Phase 6 |
-| Imported Video 10-second Selection | Phase 6–7 |
+| Imported Video 5-second Selection | Phase 6–7 |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
 | Full Vlog Preview | Phase 8 |
@@ -691,6 +691,10 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 
 # Phase 1 — Domain and Persistence Foundation
 
+아래 Duration 요구사항은 ADR-029의 현재 제품 기준으로 정렬한 것이며 완료된 Phase 1 구현 / 검증 당시의 10초 Baseline을 새 구현 완료로 재해석하지 않는다.
+
+기존 Domain Policy와 Test의 실제 5초 정렬은 Phase 4 Recording 구현 전에 수행하며 이번 문서 변경에는 포함하지 않는다.
+
 ## Goal
 
 실제 UI와 Media 기능을 만들기 전에 Mellow의 Project 및 Clip Domain과 Draft Metadata Persistence 기반을 구현한다.
@@ -725,7 +729,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 
 1. Domain Model과 SwiftData Model의 책임을 정의한다.
 2. `ProjectOrientation`에 `portrait9x16`, `landscape16x9`를 구현한다.
-3. `ClipPolicy.maximumDuration = 10 seconds`를 단일 기준으로 정의한다.
+3. `ClipPolicy.maximumDuration = 5 seconds`를 단일 기준으로 정의한다.
 4. 유효하지 않은 Clip Duration을 Domain Layer에서 거부한다.
 5. Project Duration을 Clip Effective Duration의 합으로 계산한다.
 6. Project Display Name을 `createdAt`과 Locale 기반 Formatter로 생성한다.
@@ -737,8 +741,8 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 
 ## Unit Tests
 
-- 10초 Clip 허용
-- 10초 초과 Clip 거부
+- 5초 Clip 허용
+- 5초 초과 Clip 거부
 - 0 이하 Duration 거부
 - Portrait Orientation 생성
 - Landscape Orientation 생성
@@ -929,7 +933,7 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 ## Explicitly Excluded
 
 - 실제 Video Recording
-- 10초 Timer
+- 선택한 최대 Duration Timer
 - Audio Recording File
 - Clip 저장
 - Import
@@ -943,6 +947,8 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 ## Decision Gate Before Implementation
 
 ADR-023의 Camera Capture, Rear Zoom, Permission, Front Mirroring과 Orientation High-level Behavior가 Accepted 상태여야 한다.
+
+ADR-029의 1–5초 최대 Preset / 기본 3s 정책을 전제로 Duration Selector의 배치 / Interaction 구조를 이 Gate에서 승인하되 실제 Recording은 Phase 4에 남긴다.
 
 Camera 화면의 구현 구조에 필요한 다음 UX Pending을 Phase 3 시작 전에 사용자 승인으로 해결한다.
 
@@ -1061,7 +1067,36 @@ ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permissio
 
 ## Goal
 
-Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 완성한다.
+ADR-029의 `1s / 2s / 3s / 4s / 5s` 최대 Duration Selector, 기본 `3s`, Manual Early Stop과 선택한 Maximum Auto Stop을 실제 iPhone에서 완성한다.
+
+Duration은 Clip 사이에 변경 가능한 Capture-level 설정이며 Project Orientation의 불변성은 유지한다.
+
+Preset은 정확한 Output 길이를 강제하지 않으며 3s 선택 후 1.4초 Stop도 허용한다.
+
+Phase 4 Recording 구현 전 기존 Domain Policy / Test를 `0 < effectiveClipDuration <= 5 seconds`로 정렬한다.
+
+### Documentation-first Transition Inventory
+
+현재 Swift 구현은 아직 ADR-029의 5초 상한을 구현하지 않았으며 아래 목록은 변경 대상 / 검증 경로이고 완료 기록이 아니다.
+
+| 현재 구현 / Test | 현재 상태 | Migration Owner |
+| --- | --- | --- |
+| `MellowApp/Domain/Policies/ClipPolicy.swift` — `maximumDuration`, `validateEffectiveDuration` | 상수는 `.seconds(10)`이며 공통 Validation도 이 상한을 사용한다. | Phase 4: 실제 Recording 도입 전에 5초 상한으로 정렬한다. |
+| `MellowApp/Domain/Models/VlogClip.swift` — initializer, `assigningSortOrder` | `trimDuration` Validation이 기존 ClipPolicy에 의존하며 Recorded / Imported 모두 기존 상한을 적용한다. | Phase 4: 공통 Policy 변경 후 생성 / Reorder 경로를 검증하며 별도 상한을 중복 구현하지 않는다. |
+| `MellowApp/Core/Persistence/PersistedVlogModels.swift` — `PersistedVlogClip.domainValue(projectID:)` | VlogClip 복원 시 기존 Policy에 의존하며 독립적인 Duration 상수는 없다. | Phase 4: 새 Policy의 Persistence Round-trip / 복원 영향과 Integration Test를 확인한다. |
+| `MellowTests/DomainModelsTests.swift` — `testTenSecondClipIsAccepted` | 10초 Clip을 허용한다. | Phase 4: 5초 경계 허용 Test로 정렬한다. |
+| `MellowTests/DomainModelsTests.swift` — `testClipLongerThanTenSecondsIsRejected` | `6_001 / 600`초로 기존 상한 바로 위를 검증한다. | Phase 4: 5초 바로 위 거부 경계로 정렬한다. |
+| `MellowTests/DomainModelsTests.swift` — `testProjectDurationSumsEffectiveClipDurations` | 3초 + 7초 Clip을 사용한다. | Phase 4: 각 Clip이 새 상한을 만족하는 Fixture로 정렬하며 Project Total 자체의 10초는 유효하다. |
+| `MellowTests/DomainModelsTests.swift` — `makeClip` | 기본 Fixture가 10초이며 Reorder Test도 이를 사용한다. | Phase 4: 새 상한에 맞는 Fixture와 Reorder 검증으로 정렬한다. |
+
+현재 Camera는 Placeholder이며 실제 Recording Selector / Auto Stop, Photos Import / Trim 구현은 없으므로 이 기능들이 새 정책을 이미 적용한다고 주장하지 않는다.
+
+Phase 6는 공통 Policy에 맞는 Imported Segment 선택 / Materialization을 구현하고 Phase 7은 Trim 검증을 구현하며 Source 전체 길이에 Clip 상한을 적용하지 않는다.
+
+Phase 3는 기존 Camera Shell / Structural UX 경계 안에서 Selector 배치와 Interaction 구조만 결정하며 실제 Selector의 Recording 동작과 Domain / Test Migration은 Phase 4에 남긴다.
+
+
+Preset의 Relaunch 유지, Project별 기억과 기존 Clip 영향은 Phase 4 구현 전 사용자 결정 Gate로 남긴다.
 
 최초 Production Media를 생성하는 Phase이므로 공통 Media Commit Lifecycle의 최소 구현과 기본 Crash / Relaunch Recovery를 이 Phase에 포함한다.
 
@@ -1072,7 +1107,7 @@ Mellow의 핵심인 최대 10초 자유 Recording Flow를 실제 iPhone에서 �
 - 1080p 30 fps Recording
 - Audio Recording
 - Manual Stop
-- 10초 Auto Stop
+- 선택한 최대 Duration Auto Stop
 - Recording Progress
 - Clip File Staging
 - Safe Media Write
@@ -1118,7 +1153,7 @@ ADR-024의 Operation-aware Storage Preflight, Operation-scoped Shortage, No Sile
 
 실제 Recording Media Writing을 구현하기 전에 다음 항목을 사용자 승인으로 확정한다.
 
-- 최대 10초 Recording의 Estimated Peak Additional Storage 계산 방법
+- 최대 5초 Recording의 Estimated Peak Additional Storage 계산 방법
 - Recording에 필요한 Safety Reserve 정책
 - 승인된 1080p / 30 fps Capture Profile과 Storage Estimate의 관계
 
@@ -1135,9 +1170,9 @@ Recording UI를 구현하기 전에 다음 Structural UX Pending을 사용자 �
 - Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
 - Recording Storage 부족으로 해당 작업을 시작할 수 없고 기존 Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조
 
-Phase 3에서 승인한 Camera Layout을 재사용하며 최대 10초 자유 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
+Phase 3에서 승인한 Camera Layout을 재사용하며 ADR-029의 선택형 최대 1–5초 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
 
-Recording Haptic은 H04 사용자 승인에 따라 Start에는 제공하지 않고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공하며 이 UX Gate에서 사용 여부를 다시 결정하지 않는다.
+Recording Haptic은 H04 사용자 승인에 따라 Start에는 제공하지 않고 Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공하며 이 UX Gate에서 사용 여부를 다시 결정하지 않는다.
 
 Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 정상 Recording의 승인 정책을 다시 Open으로 만들지 않는다.
 
@@ -1146,11 +1181,11 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 1. `AVCaptureMovieFileOutput` 기반 Recording을 구현한다.
 2. 기본 Capture Profile을 1080p 30 fps로 설정한다.
 3. Recording Start와 Stop API를 구성한다.
-4. 사용자가 10초 이전 언제든 Stop할 수 있게 한다.
-5. Capture Pipeline 자체에서 10초 Maximum Duration을 강제한다.
+4. 사용자가 선택한 최대 Duration 이전 언제든 Stop할 수 있게 한다.
+5. Capture Pipeline 자체에서 선택한 Maximum Duration을 강제한다.
 6. UI Progress Ring을 구현한다.
 7. Progress 계산은 Monotonic Time을 사용한다.
-8. 10초 Auto Stop 이후 정상 Completion Flow로 들어간다.
+8. 선택한 최대 Duration Auto Stop 이후 정상 Completion Flow로 들어간다.
 9. Audio Track이 포함되도록 구성한다.
 10. Media 작성 전에 Durable Operation Identity와 Project / Clip / Media 연결을 확보하고 Recording 결과를 Staging에 생성하며 Incomplete Write와 Completed Staging을 구별한다.
 11. Staged Media를 검증하고 필요한 Normalization이 있다면 그 Output도 Final Working Media로 등록하기 전에 다시 검증한다.
@@ -1158,7 +1193,7 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 13. Project가 여전히 유효한지 확인하며 해당 Media를 참조하는 Clip Metadata를 Persist하고 실패 시 Recoverable Media와 Operation 정보를 보존한다.
 14. Final Media 존재, Final Validation 성공, Metadata Persistence 성공과 유효한 Project를 모두 만족한 Committed Clip만 UI에 표시한다.
 15. Recording Start에 Haptic이 발생하지 않도록 하며 Record Button Tap 또는 Recording Start 성공을 Haptic 발생 조건으로 사용하지 않는다.
-16. Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 "이 Clip의 Recording이 종료되었다."라는 동일한 의미의 subtle completion haptic을 제공하고 기존 Visual Recording State / Circular Progress / Completion State를 유지한다.
+16. Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시 "이 Clip의 Recording이 종료되었다."라는 동일한 의미의 subtle completion haptic을 제공하고 기존 Visual Recording State / Circular Progress / Completion State를 유지한다.
 17. Recording 중 App Background 또는 Session Interruption을 처리한다.
 18. 가능한 경우 유효한 Partial Recording을 보호한다.
 19. Completed Staging과 Materialized Media에서 중단된 Operation을 재실행 후 연결하여 가능한 후속 처리와 Metadata Commit을 재개한다.
@@ -1167,17 +1202,17 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
 23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
 24. Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-25. Rear Camera의 승인된 Zoom Range 안에서 Active Recording 중 Continuous Zoom을 지원하고 Zoom 변경이 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 10초 Timer와 Durable Media Operation Identity를 Reset하지 않게 한다.
+25. Rear Camera의 승인된 Zoom Range 안에서 Active Recording 중 Continuous Zoom을 지원하고 Zoom 변경이 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 선택한 최대 Duration Timer와 Durable Media Operation Identity를 Reset하지 않게 한다.
 26. Front Recording에는 Zoom UI나 Behavior를 제공하지 않는다.
-27. Record Request에서 Camera / Microphone Authorization, Required Capture Device와 Session Configuration, Project Validity 및 Orientation Eligibility를 Media Writing과 Progress / 10초 Timer 시작 전에 검증한다.
+27. Record Request에서 Camera / Microphone Authorization, Required Capture Device와 Session Configuration, Project Validity 및 Orientation Eligibility를 Media Writing과 Progress / 선택한 최대 Duration Timer 시작 전에 검증한다.
 28. Camera 또는 Microphone Permission이 Denied / Restricted이면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import 경로는 Audio Track이 없는 Source를 포함하여 계속 사용할 수 있게 한다.
 29. Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left / Right에서 Recording을 시작하고 Mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 조용한 Rotate Device Guidance와 함께 시작을 차단한다.
 30. Mid-record Rotation만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하거나 Camera를 전환하거나 Active Rear Zoom을 Reset하지 않게 한다.
 31. Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 검증한다.
 32. Direct-recorded Front Clip이 Preview에서 본 Mirrored Appearance를 이후 Preview / Editing / Export에서도 유지하도록 승인된 Transform Ownership을 적용한다.
-33. Interruption은 Successful Manual Stop이나 Successful 10-second Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021에 따라 검증·복구·Late Commit 차단한다.
-34. Recording Operation과 실제 Media Writing을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 승인된 최대 10초 Capture Profile의 예상 Media, Staging / Finalization Overhead, Transactional Commit과 Recovery-safe Overlap 및 Safety Reserve를 반영한 Required Free Space를 계산한다.
-35. Recording Storage Preflight가 실패하면 Operation-owned Artifact나 부분 Operation State를 만들지 않고 Recording / Progress / 10초 Timer를 시작하지 않으며 기존 Clip과 Draft를 변경하지 않는다.
+33. Interruption은 Successful Manual Stop이나 Successful selected-maximum Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021에 따라 검증·복구·Late Commit 차단한다.
+34. Recording Operation과 실제 Media Writing을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 승인된 최대 5초 Capture Profile의 예상 Media, Staging / Finalization Overhead, Transactional Commit과 Recovery-safe Overlap 및 Safety Reserve를 반영한 Required Free Space를 계산한다.
+35. Recording Storage Preflight가 실패하면 Operation-owned Artifact나 부분 Operation State를 만들지 않고 Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않으며 기존 Clip과 Draft를 변경하지 않는다.
 36. Recording 공간 부족은 해당 Recording만 차단하고 앱 전체를 Fatal State로 전환하거나 1080p / 30 fps, Audio 또는 최대 Recording Duration을 조용히 낮추지 않는다.
 37. Preflight 통과 후 Write / Finalization 도중 Disk Full이 발생하면 Partial Output을 Committed Clip으로 표시하지 않고 기존 Committed Media와 다른 Draft를 보존하며 ADR-020 / ADR-021에 따라 Recovery Candidate와 Disposable Artifact를 분류한다.
 38. Storage 부족으로 Final Media 생성 후 Metadata Persistence가 실패하면 해당 Media와 Durable Operation을 Recovery Candidate로 보존하고 Cleanup 실패를 재시도 가능하게 한다.
@@ -1191,7 +1226,9 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 
 ## Unit Tests
 
-- 10초 Recording Policy
+- 1 / 2 / 3 / 4 / 5초 최대 Preset, 기본 3s, Clip 사이 선택 변경과 Manual Early Stop Policy
+- 3s 선택 후 1.4초 수동 종료 및 각 Preset별 Auto Stop
+- Domain에서 5초 허용 / 5초 초과 및 0 이하 거부
 - Manual Stop State
 - Auto Stop State
 - Recording Progress Calculation
@@ -1199,13 +1236,13 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 - Committed Clip 조건과 Progress State의 구분
 - Operation / Clip Identity 기반 Duplicate Commit 방지
 - 정상 Recording Start에서 Haptic Event가 발생하지 않음
-- Successful Manual Stop과 Successful 10-second Auto-stop이 동일한 Completion 의미의 Haptic Event로 연결됨
+- Successful Manual Stop과 Successful selected-maximum Auto-stop이 동일한 Completion 의미의 Haptic Event로 연결됨
 - Active Rear Zoom 변경 중 동일 Clip / Timer / Media Operation Identity 유지와 승인 Range Clamp
 - Permission / Capability / Project Validity / Orientation 실패 시 Recording / Progress / Timer 미시작
 - Mid-record Rotation에서 Recording / Project Orientation / Rear Zoom 상태 유지와 다음 Recording 전 Orientation 재검증
 - Interruption과 Successful Completion State / Haptic Event 분리
 - 승인된 Capture Profile 기반 Recording Estimated Peak Additional Storage와 Safety Reserve 입력 적용
-- Storage Preflight 실패 시 Recording Operation / Progress / 10초 Timer 미시작
+- Storage Preflight 실패 시 Recording Operation / Progress / 선택한 최대 Duration Timer 미시작
 - Recording Storage 부족이 다른 사용 가능한 Operation을 전역 차단하지 않는 상태 분리
 - Storage 부족 시 1080p / 30 fps, Audio와 최대 Duration 유지 및 Silent Downgrade 금지
 - Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
@@ -1214,7 +1251,7 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 
 - 생성된 Movie File이 AVAsset으로 열리는지 확인
 - Audio Track 존재 확인
-- Duration <= 10 seconds 확인
+- `0 < Duration <= selectedMaximum <= 5 seconds` 확인
 
 Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration Test를 적용한다.
 
@@ -1235,7 +1272,7 @@ Project Delete와 Recording Finalization을 Staging 완료, Materialization 이�
 
 Project가 Invalid Target으로 전환된 이후에는 Late Commit과 Project Resurrection이 없고 Active Operation과 Recovery에 필요한 Media가 조기 삭제되지 않는지 확인한다.
 
-Recording Storage Preflight 부족 상태를 주입하여 Operation-owned Artifact, Recording, Progress와 10초 Timer가 시작되지 않고 기존 Committed Clip과 Draft가 유지되는지 확인한다.
+Recording Storage Preflight 부족 상태를 주입하여 Operation-owned Artifact, Recording, Progress와 선택한 최대 Duration Timer가 시작되지 않고 기존 Committed Clip과 Draft가 유지되는지 확인한다.
 
 Staging Write, Finalization과 Metadata Persistence 경계에서 Runtime Disk Full을 주입하여 Partial Output이 성공으로 Commit되지 않고 Valid Media가 Recovery Candidate로 보존되며 안전하게 분류된 Disposable Artifact만 정리되는지 확인한다.
 
@@ -1247,12 +1284,12 @@ iPhone 12에서 다음을 반드시 검증한다.
 
 - Rear Camera 2초 Manual Stop
 - Rear Camera 9초 Manual Stop
-- Rear Camera 10초 Auto Stop
+- Rear / Front Camera의 1 / 2 / 3 / 4 / 5초 각 Preset Auto Stop과 Manual Early Stop
 - Front Camera Recording
 - Rear Camera 1× Recording
 - Recording 전 Rear Zoom
 - 하나의 Clip Recording 중 Rear Zoom In과 1× 복귀
-- Rear Zoom으로 Clip이 분리되거나 10초 Timer가 Reset되지 않음
+- Rear Zoom으로 Clip이 분리되거나 선택한 최대 Duration Timer가 Reset되지 않음
 - 승인된 Rear Maximum Zoom Clamp
 - Front Preview와 Direct-recorded Result의 Mirrored Appearance 일치
 - Audio 정상 Recording
@@ -1269,17 +1306,17 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Camera Permission Denied / Restricted에서 Recording 차단 및 Import 접근 가능
 - Microphone Permission Denied / Restricted에서 Recording 차단, 무음 Recording 미생성 및 Import 접근 가능
 - Background Interruption
-- 승인된 10초 Recording의 실제 Storage Growth와 Preflight Estimate의 합리성 측정
-- Recording Storage Preflight 부족 시 Recording / Progress / 10초 Timer 미시작과 기존 Clip / Draft 보존
+- 승인된 5초 Recording의 실제 Storage Growth와 Preflight Estimate의 합리성 측정
+- Recording Storage Preflight 부족 시 Recording / Progress / 선택한 최대 Duration Timer 미시작과 기존 Clip / Draft 보존
 - Runtime Disk Full 주입 가능한 범위에서 Partial Output 미등록, Recovery Classification과 공간 확보 후 재시도
 - 저장 경계에서 중단 후 Relaunch 시 Valid Staging / Materialized Media의 복구와 중복 Clip 방지
 - Recording Finalization 중 Project Delete 이후 Late Result와 Relaunch가 Project를 되살리지 않는지 확인
-- Record Button Tap / Recording Start 성공에 Haptic이 없고 Successful Manual Stop / 10-second Auto-stop 완료 시 subtle completion haptic이 동일한 종료 의미로 인지되는지 확인
+- Record Button Tap / Recording Start 성공에 Haptic이 없고 Successful Manual Stop / selected-maximum Auto-stop 완료 시 subtle completion haptic이 동일한 종료 의미로 인지되는지 확인
 - 종료 직전 예고 Haptic이 없으며 Haptic을 사용할 수 없거나 인지하지 못하는 경우에도 Visual Recording State / Circular Progress / Completion State로 상태를 이해할 수 있는지 확인
 
 ### Recording Baseline Measurement Evidence
 
-Phase 4는 Physical iPhone 12에서 Rear / Front Camera, 최대 10초 Recording, Active Rear Zoom, Repeated Clip Capture, Commit, Thumbnail과 Draft Persistence를 포함한 재현 가능한 Recording Baseline Measurement Evidence를 남긴다.
+Phase 4는 Physical iPhone 12에서 Rear / Front Camera, 최대 5초 Recording, Active Rear Zoom, Repeated Clip Capture, Commit, Thumbnail과 Draft Persistence를 포함한 재현 가능한 Recording Baseline Measurement Evidence를 남긴다.
 
 Evidence에는 Scenario, Build / Commit, actual Recording Behavior, Relevant Elapsed 또는 Commit-latency Observation, Memory / Thermal Anomaly와 Repeated Capture Observation을 기록하며 Capture Stability, Completion Reliability와 Unexpected Dropped 또는 Failed Capture를 함께 관찰한다.
 
@@ -1293,16 +1330,16 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 
 ## Acceptance Criteria
 
-- 모든 저장된 Clip은 최대 10초다.
-- 10초 도달 시 Recording이 자동 종료된다.
+- 모든 저장된 Clip은 최대 5초다.
+- 선택한 최대 Duration 도달 시 Recording이 자동 종료된다.
 - Manual Stop이 안정적으로 동작한다.
-- Recording Start에는 Haptic이 없고 Successful Manual Stop과 Successful 10-second Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공한다.
+- Recording Start에는 Haptic이 없고 Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시 동일한 종료 의미의 subtle completion haptic을 제공한다.
 - Haptic은 종료 직전 예고나 유일한 상태 전달 수단이 아니며 사용할 수 없거나 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있다.
 - Video와 Audio가 정상 저장된다.
 - Recording 중 Camera Switch는 불가능하다.
 - Rear Zoom은 Recording 중에도 승인된 1× 이상 Range에서 동작하며 Recording / Clip / Timer / Project Orientation을 다시 시작하거나 변경하지 않는다.
 - Front Recording에는 Zoom이 없고 Direct-recorded 결과는 Front Preview의 Mirrored Appearance를 유지한다.
-- Camera 또는 Microphone Permission이 없거나 Orientation Eligibility가 충족되지 않으면 Recording / Progress / 10초 Timer를 시작하지 않고 Photos Import는 계속 사용할 수 있다.
+- Camera 또는 Microphone Permission이 없거나 Orientation Eligibility가 충족되지 않으면 Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않고 Photos Import는 계속 사용할 수 있다.
 - Landscape Left / Right는 모두 Landscape Project에 유효하며 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않고 다음 Recording 전에 Orientation을 다시 검사한다.
 - Interruption은 Successful Completion으로 표시하거나 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021을 따른다.
 - 연속 Recording으로 App이 불안정해지지 않는다.
@@ -1312,7 +1349,7 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - Metadata Save 직전 / 직후 실패 후에도 Valid Media가 잘못 정리되거나 Clip이 중복 등록되지 않는다.
 - 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
 - Project Delete 이후 Recording Finalization이 Metadata를 Commit하거나 삭제된 Project를 재생성하지 않는다.
-- Recording 시작 전 Operation-aware Storage Preflight가 승인된 Estimate와 Safety Reserve를 적용하고 부족하면 Operation / Recording / Progress / 10초 Timer를 시작하지 않는다.
+- Recording 시작 전 Operation-aware Storage Preflight가 승인된 Estimate와 Safety Reserve를 적용하고 부족하면 Operation / Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않는다.
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 기존 Media를 보호하며 Recovery Candidate를 보존한다.
 - Storage 부족 때문에 Capture Quality, Frame Rate, Audio나 최대 Recording Duration을 자동으로 낮추지 않는다.
 - 공간 확보 후 Recording을 안전하게 재시도할 수 있다.
@@ -1330,7 +1367,7 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 
 ADR-023의 Active Rear Zoom, Permission Readiness, Orientation Start Gate / Mid-record Rotation, Front Mirroring과 Interruption Safety 계약의 Test 및 iPhone 12 검증이 완료되어야 한다.
 
-ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Metadata Persistence Failure / Retry Integration Test 및 iPhone 12 실제 10초 Storage Growth 측정이 완료되어야 한다.
+ADR-024의 Recording Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Metadata Persistence Failure / Retry Integration Test 및 iPhone 12 실제 5초 Storage Growth 측정이 완료되어야 한다.
 
 Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
@@ -1524,6 +1561,10 @@ Logical Deletion, Most-recent Undo, 결정적 복원, Unavailable Clip Replaceme
 
 # Phase 6 — Photos Video Import
 
+ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segment는 `0 < duration <= 5 seconds`이고 Camera 정수 Preset과 독립적으로 자유롭게 선택한다.
+
+1.3초 / 2.7초 / 4.5초 / 5.0초 허용과 0 이하 / 5초 초과 거부를 검증한다.
+
 ## Goal
 
 Photos Library의 기존 Video를 Mellow Project에 안전하게 추가할 수 있게 한다.
@@ -1536,7 +1577,7 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - Video Selection
 - 긴 Source 허용
 - Source Metadata Load
-- 최대 10초 Segment Selection 준비
+- 최대 5초 Segment Selection 준비
 - SDR / HDR / Dolby Vision Source 허용
 - 4K / High-resolution 및 30 fps 초과 Source 허용
 - Project-owned Media Materialization
@@ -1587,7 +1628,7 @@ Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개
 
 Tone-mapping 구현 방법은 여전히 Pending이며 필요한 결정은 관련 Normalization 구현 전에 해결하되 여기서 특정 Algorithm이나 Apple API 조합을 강제하지 않는다.
 
-Import Storage Estimate는 선택된 최대 10초 Segment와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 하며 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않는다.
+Import Storage Estimate는 선택된 최대 5초 Segment와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 하며 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않는다.
 
 ### Existing Re-trim Decision Gate
 
@@ -1595,14 +1636,14 @@ Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase �
 
 선택지는 최소한 다음을 비교한다.
 
-- Materialized 최대 10초 Segment 내부에서만 Re-trim
+- Materialized 최대 5초 Segment 내부에서만 Re-trim
 - Source Reference를 유지하여 원본 전체 범위 Re-trim 허용
 
 사용자 승인 전에는 임의로 선택하지 않는다.
 
 ### Structural UX Gate for Import Selection
 
-이 Phase가 이미 포함하는 최대 10초 Segment Selection의 최소 Control / Interaction 구조는 Phase 6 구현 전에 사용자 승인으로 결정한다.
+이 Phase가 이미 포함하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조는 Phase 6 구현 전에 사용자 승인으로 결정한다.
 
 Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조도 이 Gate에서 사용자 승인으로 결정한다.
 
@@ -1616,7 +1657,7 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 2. Broad Photos Read Permission 없이 가능한 Flow를 우선한다.
 3. Source Video Duration과 Display Transform을 읽는다.
 4. SDR / HDR / Dolby Vision, 4K / High-resolution, Portrait / Landscape 및 Project Aspect와 다른 Source를 정상적으로 다룰 수 있게 한다.
-5. 사용자가 최대 10초 Segment를 선택할 수 있는 Import Editing State를 준비한다.
+5. 사용자가 최대 5초 Segment를 선택할 수 있는 Import Editing State를 준비한다.
 6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Media 작성 전에 Durable Operation Identity를 확보하고 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
 7. 검증된 Source / Staged Media에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다.
 8. 30 fps 초과 Source를 포함하여 Working Media를 30 fps 기준으로 정규화하고 Source FPS를 Photos 원본에서 변경하지 않으며 VFR 변환 구현은 승인된 기준을 따른다.
@@ -1629,8 +1670,8 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
 16. Import / Normalization / Materialization 중 Project Delete가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
-18. Photos Import와 최대 10초 Segment Selection Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 선택된 최대 10초 Segment, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
+18. Photos Import와 최대 5초 Segment Selection Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 선택된 최대 5초 Segment, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
 21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
 22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
@@ -1640,7 +1681,7 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 ## Unit Tests
 
 - Import State
-- 10초 Segment Validation
+- 5초 Segment Validation
 - Source Metadata Mapping
 - Imported Clip SourceKind
 - 승인된 Working Media Profile과 Raster / Upscaling Policy의 Source Metadata Mapping
@@ -1657,8 +1698,8 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - Portrait Source
 - Landscape Source
 - 60 fps Source
-- 10초 미만 Source
-- 10초 초과 Source
+- 5초 미만 Source
+- 5초 초과 Source
 - SDR / HDR / Dolby Vision Source 각각의 SDR Working Media 생성
 - 4K / High-resolution → 1080p-class / 30 fps / SDR Working Media
 - 30 fps 초과 Source의 Working Media Frame Rate 확인
@@ -1675,7 +1716,7 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
 - Import / Normalization / Materialization 각각에서 Project Delete를 경합시켜 Metadata Commit과 Resurrection 차단
 - Cancellation 요청 직후 아직 Media를 사용하는 Operation의 Cleanup 지연과 Release 이후 안전한 정리
-- 4K / HDR / Dolby Vision Source의 선택된 최대 10초 Segment에 대한 Staging + Normalization Peak Additional Storage Estimate
+- 4K / HDR / Dolby Vision Source의 선택된 최대 5초 Segment에 대한 Staging + Normalization Peak Additional Storage Estimate
 - Import Storage Preflight 실패 시 Source Materialization / Normalization 미시작과 기존 Project Media 보존
 - Materialization / Normalization / Metadata Persistence 중 Runtime Disk Full에서 Partial Output 미등록, Photos 원본 불변과 Recovery Candidate 보호
 - Storage Failure Cleanup이 Safe Classification 이후에만 실행되고 공간 확보 후 Retry가 중복 Clip을 만들지 않음
@@ -1692,13 +1733,13 @@ Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 �
 
 Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
-4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 10초 Segment로 실제 Import Peak Additional Storage와 Preflight Estimate의 합리성을 측정하며 전체 Photos 원본 복제를 전제로 하지 않는다.
+4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 5초 Segment로 실제 Import Peak Additional Storage와 Preflight Estimate의 합리성을 측정하며 전체 Photos 원본 복제를 전제로 하지 않는다.
 
 Storage Preflight 부족과 Normalization 중 Runtime Disk Full을 검증하여 Photos 원본과 기존 Project Media가 유지되고 Partial Output이 등록되지 않으며 공간 확보 후 안전하게 재시도되는지 확인한다.
 
 ### Import / Normalization Baseline Measurement Evidence
 
-Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 선택된 최대 10초 Segment를 포함한 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
+Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 선택된 최대 5초 Segment를 포함한 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
 
 Evidence에는 Scenario, Build / Commit, Test Asset Identity, Selected Segment와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 applicable한 경우 Cancellation Responsiveness를 관찰한다.
 
@@ -1706,14 +1747,14 @@ Evidence에는 Scenario, Build / Commit, Test Asset Identity, Selected Segment�
 
 ## UI Accessibility Verification
 
-Photos Import와 최대 10초 Segment Selection Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+Photos Import와 최대 5초 Segment Selection Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
 
 현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
 
 ## Acceptance Criteria
 
 - 긴 Video도 선택할 수 있다.
-- Project에 들어가는 Clip은 최대 10초다.
+- Project에 들어가는 Clip은 최대 5초다.
 - SDR / HDR / Dolby Vision Source와 4K / High-resolution Source를 허용하고 승인된 1080p-class / 30 fps / SDR Working Pipeline을 사용한다.
 - 저해상도 Source는 Phase 6 전에 승인된 Upscaling / Raster 정책을 따르며 임의의 확대 여부를 가정하지 않는다.
 - Project Crop이 Working File에 bake-in되지 않고 Phase 7에서 Framing할 Source의 유효 영역과 Presentation Aspect Ratio / Orientation이 보존된다.
@@ -1752,6 +1793,10 @@ Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence 
 
 # Phase 7 — Trim and Framing
 
+ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segment는 `0 < duration <= 5 seconds`이고 Camera 정수 Preset과 독립적으로 자유롭게 선택한다.
+
+1.3초 / 2.7초 / 4.5초 / 5.0초 허용과 0 이하 / 5초 초과 거부를 검증한다.
+
 ## Goal
 
 모든 Clip의 사용 구간을 조정하고 Imported Video의 Framing을 Project Orientation에 맞게 조정할 수 있게 한다.
@@ -1760,7 +1805,7 @@ Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence 
 
 - Recorded Clip Trim
 - Imported Clip Trim
-- Maximum 10-second Rule
+- Maximum 5-second Rule
 - Thumbnail Filmstrip 또는 단순 Trim UI
 - Fill + Crop
 - Drag Framing
@@ -1803,7 +1848,7 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 ## Implementation Tasks
 
 1. `trimStart`와 `trimDuration` Editing State를 구현한다.
-2. Trim 범위가 10초를 초과하지 않도록 한다.
+2. Trim 범위가 5초를 초과하지 않도록 한다.
 3. Recorded Clip Re-trim을 구현한다.
 4. Imported Clip Re-trim을 확정된 정책에 따라 구현한다.
 5. Framing Metadata를 Normalized Coordinate로 저장한다.
@@ -1822,7 +1867,7 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 ## Unit Tests
 
 - Trim Start / End Validation
-- Maximum 10 seconds
+- Maximum 5 seconds
 - CMTime Conversion
 - Normalized Framing
 - Aspect Fill Calculation
@@ -1862,7 +1907,7 @@ Trim / Framing Controls와 선택 구간 표시에서 3.11절의 Touch Target, V
 ## Acceptance Criteria
 
 - 모든 Clip을 비파괴적으로 Trim할 수 있다.
-- Trim 결과는 최대 10초를 초과하지 않는다.
+- Trim 결과는 최대 5초를 초과하지 않는다.
 - 다른 Aspect Ratio Source가 Fill + Crop으로 올바르게 보인다.
 - 사용자가 Framing을 조절할 수 있다.
 - Normalization 시 Project Crop으로 Framing 가능 영역이 손실되지 않았으며 보존된 Source 영역에서 Metadata로 Framing을 변경할 수 있다.
@@ -2706,7 +2751,7 @@ iPhone 12에서 모든 핵심 화면을 Portrait 및 Landscape Project 기준으
 - 주요 기능을 VoiceOver로 식별할 수 있다.
 - Dynamic Type에서 핵심 Flow를 사용할 수 있다.
 - Haptic이 과도하지 않다.
-- Start Haptic 없음과 Successful Manual Stop / 10-second Auto-stop의 동일한 Completion 의미가 유지되며 Haptic 사용 여부를 처음 결정하지 않는다.
+- Start Haptic 없음과 Successful Manual Stop / selected-maximum Auto-stop의 동일한 Completion 의미가 유지되며 Haptic 사용 여부를 처음 결정하지 않는다.
 - 새 기능이 추가되지 않는다.
 - Accessibility가 각 UI Phase부터 적용되었으며 이 Phase의 종합 Regression / Hardening 결과가 확인된다.
 - Core UX Structure를 처음 선택하거나 일반 Polish로 재설계하지 않는다.
@@ -2793,7 +2838,7 @@ Codex는 Gate를 통과시키기 위해 Threshold, Repetition Count, Project Sha
 1. Phase 4 Recording, Phase 6 Import / Normalization, Phase 8 Preview와 Phase 9 Export Baseline Measurement Evidence를 검토하고 Missing Scenario, Environment 또는 Measurement Boundary를 식별한다.
 2. Performance Acceptance Profile의 Scenario, Project Shape, Metric, Measurement Method, Repetition, Cold / Warm Policy, PASS / FAIL Rule과 Release-blocking Scope를 사용자 승인으로 확정한다.
 3. Approved Profile의 Measurement Method가 iPhone 12에서 재현 가능하고 OSLog 또는 Signpost, Instruments, Xcode Device Metrics, Application Instrumentation, AVFoundation Observable Timing 또는 Storage Observation으로 필요한 Evidence를 수집할 수 있는지 검증한다.
-4. Rear / Front Recording, 최대 10초 Completion, Active Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence의 Capture Stability, Completion Reliability, Post-record Commit Observation, Memory와 Thermal Behavior를 Official Scenario로 실행한다.
+4. Rear / Front Recording, 최대 5초 Completion, Active Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence의 Capture Stability, Completion Reliability, Post-record Commit Observation, Memory와 Thermal Behavior를 Official Scenario로 실행한다.
 5. 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 Selected Segment Import / Normalization의 Elapsed Observation, Memory, Peak Additional Storage, Thermal, Success / Failure와 applicable Cancellation Responsiveness를 Official Scenario로 실행한다.
 6. Individual Clip과 Full Vlog Preview의 Composition Preparation, First Usable Playback, applicable Seek / Playback Responsiveness, Playback Stability, Memory, Thermal과 Repeated Open / Close를 Official Scenario로 실행한다.
 7. Short, Representative, Larger Project의 Export Elapsed Observation, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 Official Scenario로 실행한다.
@@ -2847,10 +2892,10 @@ Recording / Import / Export의 Actual Peak Additional Storage, 승인된 Estimat
 3. 9:16 또는 16:9를 선택한다.
 4. Rear Camera로 Clip을 촬영한다.
 5. Front Camera로 Clip을 촬영한다.
-6. 10초 Auto Stop을 검증한다.
+6. 선택한 최대 Duration Auto Stop을 검증한다.
 7. 여러 Clip을 추가한다.
 8. Photos에서 기존 Video를 Import한다.
-9. 긴 Video에서 최대 10초 구간을 선택한다.
+9. 긴 Video에서 최대 5초 구간을 선택한다.
 10. 4K Video를 Import한다.
 11. Imported Clip의 Framing을 조정한다.
 12. Clip을 삭제하고 Undo한다.
@@ -3062,6 +3107,8 @@ Structural UX는 해당 UI를 필요로 하는 가장 이른 Phase 전에 결정
 
 ## Before Phase 3
 
+ADR-029의 1–5초 최대 Preset / 기본 3s 정책을 전제로 Duration Selector의 배치와 Interaction 구조를 승인하며 실제 Recording 구현은 Phase 4에 남긴다.
+
 - Camera Control Placement / Hierarchy와 Overlay 구조
 - Front / Rear Switch 및 기존 진입 Control 배치
 - Portrait / Landscape Camera Layout과 Orientation mismatch 안내 Presentation
@@ -3072,9 +3119,11 @@ ADR-023의 Rear 1× Wide / Continuous Zoom, Front Zoom 제외 / Mirroring, Permi
 
 ## Before Phase 4
 
+ADR-029의 Preset Relaunch 유지, Project별 기억과 기존 Clip 영향은 이 Gate에서 결정하며 Domain / Test의 공통 5초 Invariant 정렬은 실제 Recording 전에 수행한다.
+
 - Transactional Media Commit and Recovery 계약: ADR-020 Accepted 및 `ARCHITECTURE.md` 25절 / 59절을 기준으로 한다.
 - Durable Operation Identity, Committed Clip 정의, Failure Boundary와 Recovery Classification의 기본 검증 범위를 Phase 4에서 확인한다.
-- 최대 10초 Recording의 Estimated Peak Additional Storage 계산 방법, Recording Safety Reserve와 승인된 1080p / 30 fps Capture Profile의 관계를 실제 Media Writing 전에 승인한다.
+- 최대 5초 Recording의 Estimated Peak Additional Storage 계산 방법, Recording Safety Reserve와 승인된 1080p / 30 fps Capture Profile의 관계를 실제 Media Writing 전에 승인한다.
 
 이 Gate의 Transactional 계약과 ADR-024의 Operation-aware Storage 방향은 확정되어 있으며 구체적인 Durable Representation, Capture Codec / Bitrate 상수, Estimate Formula와 Safety Reserve bytes는 필요한 승인 Gate에서 실제 Pipeline Profile을 기준으로 결정한다.
 
@@ -3085,7 +3134,7 @@ ADR-023의 Rear 1× Wide / Continuous Zoom, Front Zoom 제외 / Mirroring, Permi
 - Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
 - Recording Storage 부족 상태와 공간 확보 후 Retry의 Presentation 구조
 
-Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Recording Haptic은 H04에서 승인된 Start 없음 / Successful Manual Stop 및 10-second Auto-stop의 subtle completion 정책을 따른다.
+Camera Layout에 이미 영향을 주는 공통 구조는 Phase 3 이전에 결정하며 Recording Haptic은 H04에서 승인된 Start 없음 / Successful Manual Stop 및 selected-maximum Auto-stop의 subtle completion 정책을 따른다.
 
 Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현과 승인된 의미 안의 Tuning은 Phase 4 구현 세부사항으로 남긴다.
 
@@ -3118,7 +3167,7 @@ HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 P
 
 위 Technical Gate가 해결되기 전에는 실제 Normalization 구현을 시작하지 않으며 Tone-mapping의 필요한 미결정 사항도 관련 구현 전에 해결한다.
 
-Import Estimate는 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않고 선택된 최대 10초 Segment의 실제 Materialization / Normalization Pipeline을 기준으로 한다.
+Import Estimate는 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않고 선택된 최대 5초 Segment의 실제 Materialization / Normalization Pipeline을 기준으로 한다.
 
 Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
 

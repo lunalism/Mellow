@@ -145,9 +145,12 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - Mellow는 iPhone-first Mini Vlog 앱이다.
 - Mellow의 핵심은 짧은 일상 순간을 기록하고 여러 Video Clip을 하나의 Mini Vlog로 만드는 것이다.
 - Photo Workflow는 MVP 범위가 아니다.
-- 하나의 직접 촬영 Clip은 최대 10초다.
+- Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
+- 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
+- 선택한 Maximum에서 Auto Stop하며 Manual Early Stop을 허용하고 정확한 정수 Output 길이를 강제하지 않는다.
+- 모든 Source의 Clip은 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
 - Imported Video Source는 길이 제한 없이 선택할 수 있다.
-- Project에 추가되는 Imported Clip Segment는 최대 10초다.
+- Imported Segment는 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.
 - Project Clip Count에는 임의의 고정 Maximum을 두지 않는다.
 - 9:16 Portrait와 16:9 Landscape Project를 지원한다.
@@ -334,7 +337,7 @@ Commit Message는 실제 변경 내용을 명확하게 설명한다.
 
 - `feat: add vlog project domain models`
 - `feat: implement rear and front camera switching`
-- `feat: enforce ten second recording limit`
+- `feat: enforce selected recording duration limit`
 - `fix: preserve clip after recording interruption`
 - `test: cover imported clip duration policy`
 - `docs: record export codec decision`
@@ -389,7 +392,7 @@ Codex가 직접 실행하지 못한 Test를 통과했다고 보고하지 않는�
 - Front Camera Preview
 - Camera Switching
 - Video Recording
-- 10초 Auto Stop
+- 선택한 최대 Duration Auto Stop
 - Audio Recording
 - Device Orientation
 - Project Orientation UX

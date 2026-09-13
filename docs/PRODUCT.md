@@ -289,7 +289,7 @@ Clip이 0개인 Project도 정상적인 Draft이며 Recent에 존재하고 다�
 
 Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있다.
 
-원본 영상의 전체 길이는 제한하지 않으며 프로젝트에서 사용할 최대 10초 Segment를 선택한다.
+원본 영상의 전체 길이는 제한하지 않으며 프로젝트에서 사용할 최대 5초 Segment를 선택한다.
 
 ### Clip Organizer
 
@@ -383,11 +383,25 @@ Mellow의 첫 번째 목표는
 
 #### Video Recording
 
-Mellow 안에서 하나의 Clip을 자유롭게 촬영하며 최대 촬영 시간은 10초다.
+Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
 
-사용자는 10초 전에 언제든 수동으로 Stop할 수 있고 10초에 도달하면 자동으로 Stop한다.
+선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
 
-고정 Duration Preset과 Recording Pause / Resume는 MVP에서 제공하지 않는다.
+선택한 값은 다음 Clip의 최대 길이이며 정확히 그 길이로 출력해야 한다는 뜻이 아니다.
+
+Source와 관계없이 Mellow Vlog의 모든 Clip은 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
+
+예를 들어 3s 선택 후 1.4초에 수동 Stop하면 약 1.4초 Clip을 만든다.
+
+Project Orientation은 기존 9:16 / 16:9 Project-level 불변 정책을 유지한다.
+
+Mellow는 여러 짧은 순간을 하나의 이야기로 연결하는 Mini Vlog Camera다.
+
+짧은 Clip은 리듬을 살리고 하나의 Clip이 Vlog를 지배하는 경향을 줄이며 1–5초는 엄격한 1–3초보다 유연하면서 Short-form 정체성을 유지한다.
+
+사용자는 선택한 최대 Duration 전에 언제든 수동으로 Stop할 수 있고 선택한 최대 Duration에 도달하면 자동으로 Stop한다.
+
+Recording Pause / Resume는 MVP에서 제공하지 않는다.
 
 기본 Capture Profile은 1080p / 30 fps다.
 
@@ -399,7 +413,7 @@ Rear Camera의 기본 Capture Device는 1× Wide Camera이며 사용자가 0.5×
 
 Rear Camera는 1× 이상에서 Continuous Zoom을 지원하며 Recording 시작 전 Preview와 Recording 중 모두 사용할 수 있다.
 
-Recording 중 Rear Zoom을 변경해도 현재 Recording을 Stop하거나 Restart하지 않고 새로운 Clip을 만들거나 10초 Timer를 Reset하지 않으며 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
+Recording 중 Rear Zoom을 변경해도 현재 Recording을 Stop하거나 Restart하지 않고 새로운 Clip을 만들거나 선택한 최대 Duration Timer를 Reset하지 않으며 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
 
 Rear Zoom의 정확한 Maximum은 iPhone 12의 화질과 사용성을 확인하여 Phase 3 Quality Gate에서 승인하며 Device의 이론적 최대 배율을 Product Maximum으로 자동 사용하지 않는다.
 
@@ -415,7 +429,7 @@ Camera 또는 Microphone Permission 문제는 Photos Video Import를 차단하�
 
 새 Recording은 Device Orientation이 Project Orientation과 일치할 때만 시작하며 Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 상태에서도 시작하지 않는다.
 
-Orientation이 맞지 않으면 Project 비율을 변경하지 않고 조용한 Rotate Device 안내를 제공하며 Record Action, Progress와 10초 Timer는 유효한 Orientation이 확인될 때까지 시작하지 않는다.
+Orientation이 맞지 않으면 Project 비율을 변경하지 않고 조용한 Rotate Device 안내를 제공하며 Record Action, Progress와 선택한 최대 Duration Timer는 유효한 Orientation이 확인될 때까지 시작하지 않는다.
 
 Recording 시작 후 Device를 회전해도 현재 Recording을 자동 Stop하거나 Restart하지 않고 Project Orientation과 Clip Aspect Ratio를 변경하지 않으며 Rear Zoom을 회전만으로 Reset하지 않는다.
 
@@ -431,13 +445,15 @@ Interruption으로 생성된 Valid Partial Clip의 최종 처리와 Minimum Vali
 
 Photos Library의 기존 Video를 프로젝트에 추가할 수 있다.
 
-Source Video의 전체 길이는 제한하지 않으며 긴 Source에서도 원하는 시작점과 종료점을 선택하여 최대 10초 Segment를 추가할 수 있어야 한다.
+Source Video의 전체 길이는 제한하지 않으며 긴 Source에서도 원하는 시작점과 종료점을 선택하여 최대 5초 Segment를 추가할 수 있어야 한다.
 
-10초보다 짧은 Source Video는 전체 구간을 사용할 수 있다.
+0초보다 길고 5초 이하인 Source Video는 전체 구간을 사용할 수 있다.
+
+Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
 
 SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
 
-선택된 최대 10초 Segment로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+선택된 최대 5초 Segment로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
 
 HDR / Dolby Vision의 Dynamic Range와 HDR Metadata를 Working Media에 완전히 보존하는 것은 MVP 목표가 아니다.
 
@@ -553,7 +569,7 @@ Mellow는 Recording, Photos Import / Normalization과 Export 각각에 Operation
 
 Storage 부족을 앱 전체의 Fatal State로 취급하거나 다른 사용 가능한 기능을 자동으로 차단하지 않는다.
 
-Storage 부족을 이유로 1080p / 30 fps, Audio, 최대 10초 Recording 또는 승인된 Import / Export 품질을 자동으로 낮추지 않는다.
+Storage 부족을 이유로 1080p / 30 fps, Audio, 최대 5초 Recording 또는 승인된 Import / Export 품질을 자동으로 낮추지 않는다.
 
 Committed Clip, Draft, Project-owned Valid Media, Recovery Candidate, Undo Candidate, Active Usage Media 또는 다른 Project Media를 공간 확보 목적으로 자동 삭제하지 않는다.
 
@@ -936,7 +952,7 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 
 →
 
-**Import Photos Video / Select up to 10-second Segment**
+**Import Photos Video / Select up to 5-second Segment**
 
 →
 
@@ -1112,12 +1128,14 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 사진 촬영 및 사진 편집 기능은 제품 범위에서 제외한다.
 - 핵심 콘텐츠는 Video다.
 - Mellow 내부에서 짧은 영상 Clip을 여러 개 촬영할 수 있다.
-- 직접 촬영 Clip은 자유롭게 촬영하며 최대 10초다.
-- 사용자는 10초 전에 수동 Stop할 수 있고 10초에 도달하면 자동 Stop한다.
-- Duration Preset과 Recording Pause / Resume는 MVP에서 제공하지 않는다.
+- 직접 촬영 Clip은 자유롭게 촬영하며 최대 5초다.
+- 사용자는 선택한 최대 Duration 전에 수동 Stop할 수 있고 선택한 최대 Duration에 도달하면 자동 Stop한다.
+- Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기본 선택은 `3s`다.
+- 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
+- Recording Pause / Resume는 MVP에서 제공하지 않는다.
 - Front / Rear Camera를 지원하며 Camera Switching은 idle 상태에서만 가능하고 Recording 중에는 금지한다.
 - Rear Camera의 기본 Capture Device는 1× Wide이며 1× 이상 Continuous Zoom을 Preview와 Recording 중 지원한다.
-- Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 10초 Timer를 Reset하지 않으며 정확한 Maximum Quality Limit과 Interaction / Presentation은 Phase 3 Gate에서 결정한다.
+- Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 선택한 최대 Duration Timer를 Reset하지 않으며 정확한 Maximum Quality Limit과 Interaction / Presentation은 Phase 3 Gate에서 결정한다.
 - 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않고 Front Camera Zoom도 MVP에서 제공하지 않는다.
 - Front Camera Preview와 Mellow에서 직접 촬영한 Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 Mirror Toggle은 제공하지 않는다.
 - Direct Recording에는 Camera와 Microphone Permission이 모두 필요하고 어느 하나가 허용되지 않으면 Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있고 Audio Track이 없는 Source도 허용한다.
@@ -1125,9 +1143,9 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Mid-record Device Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Rear Zoom을 회전만으로 Reset하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
 - Recording Interruption은 Successful Manual / Auto-stop으로 표시하지 않고 Media Safety 계약을 따르며 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
 - Photos Video Import는 MVP 필수 기능이다.
-- Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 10초 Segment를 선택한다.
+- Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 5초 Segment를 선택한다.
 - SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용하며 Photos 원본은 수정하거나 삭제하지 않는다.
-- 선택된 최대 10초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+- 선택된 최대 5초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
 - Project Fill + Crop을 Working Media에 미리 적용하여 저장하지 않으며 이후 사용자 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
 - Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 프로젝트는 Portrait 9:16과 Landscape 16:9를 모두 지원한다.
