@@ -26,11 +26,15 @@
 
 Mellow의 핵심 사용자 흐름은 다음과 같다.
 
-**새 Vlog 생성**
+**Mellow 실행 / Splash**
 
 ↓
 
-**9:16 또는 16:9 선택**
+**Permission Onboarding (첫 실행 시에만 표시)**
+
+↓
+
+**Portrait Camera**
 
 ↓
 
@@ -98,13 +102,20 @@ Mellow의 제품 방향에는 적합하지만 첫 번째 MVP에는 포함하지 
 
 새 프로젝트를 만들 때 프로젝트 이름 입력 Prompt를 제공하지 않는다.
 
+ADR-032에 따라 V1은 형식 선택 단계를 제공하지 않고 새 프로젝트는 항상 `9:16 Portrait`이며, App Launch만으로 비어 있는 프로젝트를 저장하지 않는다.
+
 ### Required
 
-- 새로운 Vlog 프로젝트 생성
-- Project orientation 선택
-- Orientation 선택 후 촬영 또는 Clip 추가 흐름으로 진입
+- 새로운 Portrait 9:16 Vlog 프로젝트 생성
+- 형식 선택 단계 없이 Camera에서 촬영 또는 Clip 추가 흐름으로 진입
 - 프로젝트 생성 날짜 및 시간 기록
 - 프로젝트 마지막 수정 시각 기록
+- App Launch / Camera 표시 / Onboarding 완료만으로 빈 프로젝트를 저장하지 않음
+
+### Not Required in V1
+
+- Orientation 선택 UI
+- 새 Landscape 16:9 프로젝트 생성
 
 ### Not Required
 
@@ -116,14 +127,14 @@ Mellow의 제품 방향에는 적합하지만 첫 번째 MVP에는 포함하지 
 
 ## F-MVP-002 — Project Orientation
 
-새로운 프로젝트를 만들 때 사용자는 프로젝트의 화면 비율을 선택한다.
-
-MVP에서 지원하는 화면 비율은 다음 두 가지다.
+Domain이 표현하는 화면 비율은 다음 두 가지다.
 
 - Portrait — 9:16
 - Landscape — 16:9
 
-선택한 화면 비율은 해당 프로젝트가 유지되는 동안 변경되지 않는다.
+ADR-032에 따라 V1이 새로 생성하는 프로젝트는 `9:16 Portrait`뿐이며 Landscape는 Domain / Schema 표현으로만 유지한다.
+
+프로젝트의 화면 비율은 해당 프로젝트가 유지되는 동안 변경되지 않는다.
 
 기기의 물리적인 회전만으로 프로젝트의 화면 비율이 자동 변경되지 않는다.
 
@@ -131,7 +142,9 @@ MVP에서 지원하는 화면 비율은 다음 두 가지다.
 
 9:16 프로젝트는 세로 촬영, 세로 Preview, 세로 Export를 기준으로 동작한다.
 
-16:9 프로젝트는 가로 촬영, 가로 Preview, 가로 Export를 기준으로 동작한다.
+16:9 프로젝트의 가로 촬영, Preview와 Export 동작은 Landscape 복원 Phase가 소유하며 V1 Camera UI 요구사항이 아니다.
+
+기존에 저장된 Landscape 프로젝트는 삭제하거나 Migration하지 않으며 필요한 Compatibility 동작은 Transitional Decision으로 남긴다.
 
 ---
 
@@ -313,13 +326,13 @@ Rear Preview와 Active Recording에서 1× 이상 Continuous Zoom을 지원한�
 
 Recording 중 Zoom 변경은 같은 Clip 안에서 이어지며 Recording을 Stop / Restart하거나 새로운 Clip을 만들거나 선택한 최대 Duration Timer를 Reset하지 않고 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
 
-Zoom Factor는 1×보다 낮아지지 않으며 Phase 3에서 승인할 Maximum Product Quality Limit을 넘지 않도록 제한한다.
+Zoom Factor는 승인된 1.0×–2.0×로 Clamp하며 동일한 Rear Wide Camera를 유지한다.
 
 Device가 지원하는 이론적 최대 Zoom Factor는 Product Maximum으로 자동 채택하지 않는다.
 
 Rear Zoom은 Capture-time Camera Behavior이며 Phase 7의 Metadata 기반 Editing Framing으로 Zoom 이전의 전체 1× Field of View를 복원할 수 있다고 보장하지 않는다.
 
-Pinch-to-zoom은 Primary Interaction Candidate이며 정확한 Interaction, Zoom Factor Indicator와 Visual Presentation 및 Maximum Quality Limit은 Phase 3 Gate에서 결정한다.
+승인된 Interaction은 Pinch-to-zoom이며 Gesture 중 작은 Numeric Indicator만 허용하고 Persistent Zoom Button / Slider는 제공하지 않는다.
 
 ---
 
@@ -886,15 +899,17 @@ Preview와 Export 과정은 사용자의 원본 영상 및 원본 Photos Asset�
 
 ## F-MVP-038 — Camera Permission
 
-Mellow Camera를 처음 사용할 때 필요한 시점에 Camera permission을 요청한다.
+첫 실행 Onboarding에서 Camera 사용 의도를 설명하고 필요한 시점에 Camera permission을 요청한다.
 
-권한이 거부된 경우 사용자가 문제와 해결 방법을 이해할 수 있는 상태를 제공한다.
+권한이 거부된 경우 사용자가 문제와 해결 방법을 이해할 수 있는 상태를 제공하고 앱 전체를 막지 않는다.
 
 Camera Permission이 Denied 또는 Restricted이면 Direct Recording을 시작할 수 없고 Camera Capture UI는 Recording 불가 상태를 명확히 표현한다.
 
-필요한 경우 Settings로 이동할 적절한 경로를 제공할 수 있지만 정확한 Permission 화면과 Copy는 `DESIGN.md`의 Phase 3 Gate에서 결정한다.
+필요한 경우 Settings로 이동할 적절한 경로를 제공할 수 있으며, Camera 권한은 이미 결정된 기존 설치에서는 Onboarding을 건너뜀 상태로 유지할 수 있다.
 
 Camera Permission 문제로 앱 전체나 Photos Video Import를 차단하지 않는다.
+
+Microphone / Photos / Location 권한은 각 기능 소유 Phase에서 별도 요청한다.
 
 ---
 
@@ -944,6 +959,8 @@ Recording 시작 전에는 Camera / Microphone Permission, Required Capture Devi
 
 Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left 또는 Landscape Right에서 새 Recording을 시작할 수 있다.
 
+ADR-032에 따라 V1이 지원하는 Capture 자세는 upright Portrait이며 Landscape 자세에서는 조용한 `Rotate your iPhone` 안내와 함께 Capture를 사용할 수 없는 상태로 유지한다.
+
 Project Orientation mismatch, Face Up, Face Down, Unknown 또는 안정적으로 판단할 수 없는 Orientation에서는 Recording, Progress와 선택한 최대 Duration Timer를 시작하지 않는다.
 
 Recording 중 Device Rotation만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Active Rear Zoom을 Reset하지 않는다.
@@ -974,13 +991,17 @@ Mellow MVP는 최소한 다음 제품 영역을 가진다.
 
 ### Launch
 
-Launch는 Orientation Chooser이며 Format 선택 즉시 Project를 저장한다.
+ADR-032에 따라 Launch는 `MellowSplashLogo` Splash이며 첫 실행은 Permission Onboarding을 거쳐, 이후 실행은 곧바로 Portrait Camera로 진입한다.
 
-Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
+Launch는 Orientation Chooser가 아니며 App Launch만으로 Project를 저장하지 않는다.
+
+ADR-028의 `Format 선택 즉시 Project 저장` Creation Trigger는 Format Chooser와 함께 V1에서 사라지며 Launch 시점 생성으로 대체하지 않는다.
+
+Camera Chrome의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
 
 탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
 
-큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
+큰 Existing-project Text CTA와 Camera의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
 기존 프로젝트 화면의 사용자-facing 명칭은 `Recent Projects`를 사용한다.
 
@@ -996,7 +1017,7 @@ Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary
 
 새로운 Clip을 촬영한다.
 
-Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+ADR-032 이후 V1 구조는 Portrait Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
 
 Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
 
@@ -1273,7 +1294,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Camera Switching은 idle 상태에서만 가능하며 Recording 중에는 허용하지 않는다.
 - Front와 Rear Camera 동시 촬영은 MVP에 포함하지 않는다.
 - Rear Camera는 기본 1× Wide를 사용하며 Preview와 Recording 중 1× 이상 Continuous Zoom을 지원한다.
-- Rear Zoom의 정확한 Maximum Product Quality Limit과 Interaction / Visual Presentation은 Phase 3 Gate에서 결정하고 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않는다.
+- Rear Zoom은 승인된 1.0×–2.0× Pinch와 Gesture 중 Transient Indicator를 사용하고 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않는다.
 - Front Camera Zoom은 MVP에서 제공하지 않고 Front Preview와 Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지한다.
 - Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있다.
 - Orientation mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않는다.
@@ -1296,7 +1317,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 정상적으로 추가된 Project-owned Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지한다.
 - 프로젝트에서 사용하는 하나의 최종 Clip 길이는 최대 5초다.
-- Project orientation은 9:16 Portrait와 16:9 Landscape를 지원한다.
+- Project orientation은 9:16 Portrait와 16:9 Landscape를 지원하며 ADR-032에 따라 V1의 새 Capture는 9:16 Portrait만 사용한다.
 - 하나의 프로젝트에서는 하나의 Orientation을 유지한다.
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다.
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
@@ -1354,8 +1375,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 - Post-MVP Tap to Focus 도입 시점 및 세부 동작
 - Post-MVP Exposure Control 도입 시점 및 세부 동작
-- Rear Zoom의 정확한 Maximum Product Quality Limit — Pending, Phase 3 Gate
-- Rear Zoom의 정확한 Interaction / Zoom Factor Indicator / Visual Presentation — Pinch-to-zoom은 Primary Candidate이며 Final 선택은 Phase 3 Gate
+- Rear Zoom Maximum Product Quality Limit — Resolved: 2.0×, Minimum 1.0×
+- Rear Zoom Interaction / Indicator — Resolved: Pinch, Gesture 중 Transient Numeric Indicator 허용, Persistent Button / Slider 없음
 - Post-MVP Front Camera Zoom과 Advanced Lens Control 도입 시점 및 지원 범위
 - Post-MVP Torch 도입 시점 및 세부 동작
 - Rear 1× Wide, Ultra Wide / Telephoto / Lens Selector 제외와 Front Mirroring 정책 — Resolved by ADR-023

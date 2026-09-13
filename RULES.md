@@ -154,6 +154,8 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.
 - Project Clip Count에는 임의의 고정 Maximum을 두지 않는다.
 - 9:16 Portrait와 16:9 Landscape Project를 지원한다.
+- ADR-032에 따라 V1의 새 Capture는 9:16 Portrait만 사용하며 Landscape는 Domain / Schema 표현으로 유지한다.
+- App Launch만으로 비어 있는 Vlog Project를 저장하지 않는다.
 - 하나의 Project는 생성 이후 하나의 Aspect Ratio를 유지한다.
 - Device Rotation이 Project Aspect Ratio를 변경하지 않는다.
 - Rear Camera와 Front Camera를 지원한다.

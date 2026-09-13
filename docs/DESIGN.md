@@ -121,8 +121,10 @@ Content-oriented Screen에서는 Black, Dark Neutral, White Overlay 등 영상 �
 
 Mellow MVP의 기본 화면 구조는 다음과 같다.
 
-- Launch / Orientation Selection
-  - Portrait 9:16 / Landscape 16:9 → Create / Persist → Camera
+- Launch / Splash
+  - 첫 실행: Permission Onboarding → Portrait Camera
+  - 이후 실행: Portrait Camera
+- Portrait Camera (V1의 기본 Application Surface)
   - Quiet Projects Access → Recent Projects → Existing Project
 
 Project 내부의 주요 흐름은 다음과 같다.
@@ -140,29 +142,43 @@ Project 내부의 주요 흐름은 다음과 같다.
 
 ## 6. Launch
 
-6–7절의 Phase 2 Visual Baseline은 2026-09-13 승인되었으며 ADR-030은 Launch의 Existing-project Entry만 대체하고 나머지 ADR-028 구조를 유지한다.
+ADR-032에 따라 V1의 시작 경험은 Splash이며 Format Chooser, Home Dashboard와 중간 New Vlog Button을 두지 않는다.
 
-시작 화면은 ADR-028의 Orientation Chooser이며 별도 Home Dashboard와 중간 New Vlog Button을 두지 않는다.
+첫 실행은 `Splash → Permission Onboarding → Portrait Camera`, 이후 실행은 `Splash → Portrait Camera`다.
 
-Mellow Header나 대체 장식 없이 `Choose your vlog format` Title과 Format Choices을 Safe Area의 시각적 중앙에 하나의 세로 Group으로 배치한다.
+제품 원칙은 `Mellow를 열면 바로 촬영을 시작한다`이며 Camera가 기본 Application Surface가 된다.
 
-일반 iPhone 12 Text Size에서 Title은 중앙 정렬된 한 줄이며 Title에 마침표나 강제 줄바꿈을 넣지 않는다.
+ADR-028의 `Choose your vlog format` Orientation Chooser와 Format-first Creation은 V1 Target UX에서 제거되며 Phase 2 Visual Baseline은 `DECISIONS.md`의 승인 기록으로 보존한다.
 
-Typography는 Default SF System Design으로 Title 28 Semibold, Portrait / Landscape 20 Semibold, Aspect Ratio 17 Regular를 기준으로 하며 Dynamic Type Scaling을 유지한다.
+### Splash
 
-Portrait 9:16 / Landscape 16:9 Choice는 Title 바로 아래 중앙에 두 열로 배치하며 Accessibility Dynamic Type에서 자연스러운 줄바꿈과 세로 배치를 허용한다.
+승인된 Splash Asset은 `MellowSplashLogo`이며 Catalog 위치는 `MellowApp/Resources/Assets.xcassets/MellowSplashLogo.imageset`이다.
 
-Format Choice는 Page에 섞이는 무배경 표현으로 외부 Fill / Border / Card Container 없이 비율 Preview Outline과 기존 Label만 표시하며 넓은 Padding과 Invisible Content Shape로 Tap Target을 유지한다.
+Launch 표현은 승인된 Camera-symbol Logo Artwork만 사용한다.
 
-일반 Dynamic Type에서는 편안한 두 열을 사용하고 Accessibility Size에서는 세로 한 열로 전환한다.
+Marketing Copy, Tagline, Loading 비율 표시, Onboarding 문구와 장식 Illustration은 두지 않는다.
 
-Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
+Native iOS Launch Screen / Launch Presentation에 Logo를 중앙 배치하고 인위적인 Timer, 강제 지연과 긴 Animation 없이 Application 상태가 준비되는 즉시 전환한다.
 
-탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+Splash는 Brand Identity, Launch Continuity와 Onboarding / Camera로의 매끄러운 전환을 위한 것이며 시작을 의도적으로 지연시키기 위한 화면이 아니다.
 
-큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
+정확한 Logo 표시 크기와 Light / Dark Background 표현은 구현 Visual Review 세부로 남긴다.
 
-시작 화면에는 Recent Item을 직접 표시하지 않으며 사용자에게 Draft 용어를 노출하지 않는다.
+시작 경험에는 Recent Item을 직접 표시하지 않으며 사용자에게 Draft 용어를 노출하지 않는다.
+
+## 6.1 Permission Onboarding
+
+Camera 진입 전 Onboarding은 기능 동작을 설명하고 필수 권한을 준비하는 목적의 간단한 단계다.
+
+이 단계의 목적은 `Splash → Portrait Camera` 전환의 갑작스러운 권한 실패를 줄이고, 사용자 기대를 맞추는 것이다.
+
+Camera 권한은 설명 상태에서 요청되며, 안내 자체와 시스템 권한 요청은 분리한다.
+
+Microphone, Photos, Location은 각각 Owning Phase의 요청 시점에만 다루며 Launch에서 일괄 권한 요청으로 대체하지 않는다.
+
+카메라가 허용된 기존 설치는 Onboarding을 건너뛸 수 있으며, 완료 상태는 앱 재실행 간에 유지되는 app-level flag로 추적한다.
+
+Onboarding은 첫 실행에서만 강하게 제시되며, 앱 전체에서 반복되지 않는다.
 
 ---
 
@@ -202,15 +218,17 @@ Representative Thumbnail은 가능한 범위에서 Project Orientation, Framing,
 
 ## 8. New Vlog
 
-Launch의 Format 선택이 New Vlog Action이며 프로젝트 이름을 입력하도록 요구하지 않는다.
+ADR-032에 따라 V1에는 별도의 New Vlog Action과 형식 선택 단계가 없다.
 
-프로젝트 생성 흐름은 가능한 짧게 유지한다.
+사용자는 Splash 이후 Portrait Camera에 도달하며 프로젝트 이름을 입력하도록 요구하지 않는다.
 
 기본 흐름은 다음과 같다.
 
-1. App Launch의 `9:16` 또는 `16:9` 선택
-2. Project 생성 / 저장
-3. Camera 진입
+1. Splash
+2. 첫 실행에서는 Permission Onboarding
+3. Portrait Camera 진입
+
+App Launch만으로 비어 있는 Project를 저장하지 않으며 새 Portrait Project의 정확한 생성 시점은 Recording / Capture 구현 Phase가 소유한다.
 
 사용자가 촬영 전에 입력해야 하는 필수 Text Field는 두지 않는다.
 
@@ -218,9 +236,9 @@ Launch의 Format 선택이 New Vlog Action이며 프로젝트 이름을 입력�
 
 ## 9. Orientation Selection
 
-새 프로젝트를 만들 때 Sheet가 아닌 전용 Orientation Selection 화면에서 화면 비율을 선택한다.
+ADR-032에 따라 V1은 Orientation Selection 화면을 제공하지 않으며 새 프로젝트는 항상 `9:16 Portrait`이다.
 
-MVP에서는 다음 두 가지 선택지만 제공한다.
+아래 두 형식은 Domain / Schema가 계속 표현하는 값이며 Landscape 선택 UI의 복원은 Post-V1 Product Decision이다.
 
 ### Portrait
 
@@ -238,7 +256,7 @@ MVP에서는 다음 두 가지 선택지만 제공한다.
 
 화면 비율 Preview 또는 간단한 Visual Representation을 사용할 수 있다.
 
-Phase 2에서는 `9:16 Portrait` 또는 `16:9 Landscape` 선택 즉시 기존 Domain / Persistence Layer로 저장한 뒤 별도 Confirm Step 없이 Camera Placeholder로 진입한다.
+Phase 2의 `선택 즉시 저장 후 Camera 진입` 흐름은 ADR-032의 Format Chooser 제거와 함께 V1에서 사용하지 않으며 Launch 시점 생성으로 대체하지 않는다.
 
 Project 삭제는 Item Menu의 Delete에서 System Confirmation Alert를 거치며 Phase 2에서 Swipe-to-delete는 사용하지 않는다.
 
@@ -249,6 +267,8 @@ Project 삭제는 Item Menu의 Delete에서 System Confirmation Alert를 거치�
 프로젝트 Orientation은 프로젝트 생성 시 결정되고 프로젝트가 유지되는 동안 변경하지 않는다.
 
 기기의 물리적 회전으로 프로젝트 비율을 자동 변경하지 않는다.
+
+ADR-032에 따라 V1이 지원하는 Capture 자세는 upright Portrait이며 아래 16:9 Project 동작은 Landscape 복원 Phase가 소유한다.
 
 ### 9:16 Project
 
@@ -286,9 +306,27 @@ Camera는 Mellow에서 가장 중요한 화면이다.
 
 사용자는 Camera를 열었을 때 별도의 설명 없이 바로 촬영 방법을 이해할 수 있어야 한다.
 
-Camera Preview가 화면의 대부분을 차지해야 한다.
+Camera Preview는 화면을 거의 전부 차지하는 Full-bleed 구조로 유지한다.
+
+ADR-032에 따라 V1 Camera는 Portrait 9:16 전용이며 Camera가 기본 Application Surface다.
+
+Splash / Onboarding 단계에서 Camera Foundation 준비가 완료되어도 Camera Preview는 실제 Camera 진입 전에 시작하지 않는다.
+
+출력 비율은 Project Orientation을 기준으로 소프트 가이드나 외곽 틴트로 표시하여 프레이밍 의도를 유지한다.
+
+### Projects Access
+
+Format Selection 화면이 사라지므로 Projects 진입은 Camera Chrome으로 이동하며 구조는 `Portrait Camera → Projects → Recent Projects`다.
+
+Projects는 조용한 Secondary Action으로 유지하고 Camera가 시각적으로 우선한다.
+
+Camera에 Recent Grid를 직접 표시하지 않고 `Continue an existing project?` CTA도 사용하지 않으며 전용 Recent Projects Browser는 유지한다.
+
+선호 배치는 Camera Chrome의 Upper Trailing이고 Accessibility Label은 `Projects`이며 정확한 SF Symbol, 크기, 간격과 Press 표현은 구현 Polish로 남긴다.
 
 ### Primary Controls
+
+Control은 미리보기 위에 오버레이로 배치한다.
 
 - Record
 - Front / Rear Camera Switch
@@ -304,7 +342,9 @@ Rear Camera는 기본 1× Wide Capture와 1× 이상 Continuous Zoom을 Preview 
 
 Rear Zoom은 Content-first Interaction을 유지하며 0.5× / 1× / Telephoto Lens Selector 또는 물리 Lens 선택 UI를 제공하지 않는다.
 
-Pinch-to-zoom은 Primary Interaction Candidate이며 최종 Gesture, Zoom Factor 표시, Visual Feedback, Sensitivity와 Maximum Quality Limit은 Phase 3 Structural UX Gate에서 사용자 승인을 받는다.
+Phase 3 승인 구조는 동일한 Rear 1× Wide Camera에서 1.0×–2.0× Pinch-to-zoom이며 양 끝에서 Clamp한다.
+
+Persistent Zoom Button / Slider는 없으며 Gesture 중 작은 Numeric Indicator만 허용하고 Gesture Feel은 iPhone 12에서 조정할 수 있다.
 
 Front Camera에는 Zoom UI / Gesture를 제공하지 않는다.
 
@@ -412,7 +452,7 @@ MVP의 기본 동작은 **Fill + Crop**을 사용한다.
 
 Project Screen / Lightweight Editor는 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 
-Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+ADR-032 이후 V1 구조는 Portrait Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
 
 Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
 
@@ -857,7 +897,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
 | --- | --- | --- |
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
-| Phase 3 — Camera Foundation | ADR-029 Duration Selector의 배치 / Interaction 구조, Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
+| Phase 3 — Camera Foundation | Resolved 2026-09-13: Full-bleed Camera Preview, UI-only 1–5s Selector / 기본 3s, Flip / Compact Content, 조용한 Mismatch, Camera-only Permission 안내와 Rear 1.0×–2.0× Pinch / Transient Indicator. ADR-032로 Portrait-only V1, Splash 진입과 Camera Chrome Projects Access가 추가되고 Landscape Camera Layout / Control Rail은 V1 범위에서 제외 | Control의 비구조적인 시각 조정과 Portrait Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
 | Phase 5 — Clip Management | ADR-030 Ordered Thumbnail Strip Layout, Long Press + Drag / Accessible Reorder의 상세 표현, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
@@ -875,7 +915,7 @@ Phase 6에서 구간 선택을 실제로 구현하므로 그 최소 구조를 Ph
 
 Rear 1× Wide와 1× 이상 Continuous Zoom, 0.5× / Telephoto / Lens Selector 및 Front Zoom 제외, Front Mirrored Preview / Result Parity와 Permission / Orientation 동작은 ADR-023을 따르며 다시 Open으로 만들지 않는다.
 
-Rear Zoom의 Pinch-to-zoom은 Primary Candidate일 뿐 최종 Structural UX가 아니며 Maximum Product Quality Limit과 함께 Phase 3 Gate에서 승인한다.
+Rear Zoom 구조는 1.0×–2.0× Pinch와 Gesture 중 Transient Numeric Indicator로 승인되었으며 Persistent Button / Slider는 제공하지 않는다.
 
 Clip Delete / Undo Presentation 선택은 `FEATURES.md`의 F-MVP-025와 ADR-021의 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원 의미를 변경하지 않는다.
 
@@ -898,7 +938,7 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 ### Home
 
 - Recent Adaptive Thumbnail Grid와 최소 Item 정보 — Resolved by ADR-028.
-- Launch Orientation Chooser와 기존 Project 진입 Action — Resolved by ADR-028.
+- Launch Orientation Chooser와 기존 Project 진입 Action — Resolved by ADR-028; Orientation Chooser는 ADR-032로 V1에서 제거되고 Projects 진입은 Camera Chrome으로 이동한다.
 - 0 Clip Project의 동일 Item / Neutral Placeholder 구조 — Resolved by ADR-028; 비구조적 Visual Tuning은 유지.
 
 ### Orientation

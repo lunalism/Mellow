@@ -2,98 +2,283 @@ import XCTest
 
 final class MellowUITests: XCTestCase {
     @MainActor
-    func testCreationRelaunchReopenAndConfirmedDeletion() throws {
+    private func cameraTestApp(_ arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchArguments = ["-uiTestCamera"] + arguments
+        return app
+    }
+
+    // MARK: - Root flow
+
+    @MainActor
+    func testFirstRunOnboardingLeadsDirectlyToCamera() throws {
+        let app = cameraTestApp(["-cameraNotDetermined", "-uiTestResetOnboarding"])
         app.launch()
+
+        XCTAssertTrue(app.staticTexts["permissionOnboardingTitle"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["permissionOnboardingTitle"].label, "Before you start")
+        XCTAssertFalse(app.otherElements["cameraShell"].exists, "Camera must not precede onboarding")
+        app.buttons["permissionOnboardingContinue"].tap()
+
+        // Onboarding hands straight to the root Camera; no format chooser in between.
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["formatTitle"].exists)
+        try auditAndCapture(app, name: "First Run Camera")
+
+        app.terminate()
+        // Relaunch without the reset hook: persisted completion, not the hook, suppresses onboarding.
+        app.launchArguments = ["-uiTestCamera", "-cameraNotDetermined"]
+        app.launch()
+        XCTAssertFalse(app.staticTexts["permissionOnboardingTitle"].exists)
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        let existingAuthorizedApp = cameraTestApp(["-uiTestSkipOnboarding"])
+        existingAuthorizedApp.launch()
+        XCTAssertFalse(existingAuthorizedApp.staticTexts["permissionOnboardingTitle"].waitForExistence(timeout: 3))
+        XCTAssertTrue(existingAuthorizedApp.otherElements["cameraShell"].exists)
+        existingAuthorizedApp.terminate()
+    }
+
+    @MainActor
+    func testLaunchAloneDoesNotPersistEmptyProject() throws {
+        let app = cameraTestApp()
+        launchToCamera(app)
         removeProjects(in: app)
-        XCTAssertTrue(app.buttons["portrait9x16"].exists)
-        XCTAssertFalse(app.buttons["continueProject"].exists)
-        app.terminate()
-        app.launch()
-        XCTAssertFalse(app.buttons["continueProject"].exists)
-        create(in: app, orientation: "portrait9x16", title: "9:16 Portrait")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.buttons["continueProject"].exists)
-        create(in: app, orientation: "landscape16x9", title: "16:9 Landscape")
-        app.terminate()
-        app.launch()
-        app.buttons["continueProject"].tap()
-        XCTAssertEqual(projectButtons(in: app).count, 2)
-        try auditAndCapture(app, name: "Recent Multiple Projects")
-        for index in 0..<2 {
-            projectButtons(in: app).element(boundBy: index).tap()
-            XCTAssertTrue(app.staticTexts["cameraPlaceholder"].waitForExistence(timeout: 5))
-            XCTAssertEqual(app.staticTexts["projectOrientation"].label, index == 0 ? "16:9 Landscape" : "9:16 Portrait")
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // Reaching the root Camera repeatedly must never accumulate zero-clip projects.
+        for _ in 0..<3 {
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
         }
+        openProjects(in: app)
+        XCTAssertTrue(app.staticTexts["emptyRecent"].exists, "App launch must not persist a project")
+        XCTAssertEqual(projectButtons(in: app).count, 0)
+        try auditAndCapture(app, name: "Empty Recent After Launches")
+        backToCamera(in: app)
+    }
+
+    @MainActor
+    func testRootCameraChromeHasProjectsAndNoBackRoute() throws {
+        let app = cameraTestApp()
+        launchToCamera(app)
+
+        let projects = app.buttons["projects"]
+        XCTAssertTrue(projects.exists)
+        XCTAssertTrue(projects.isHittable)
+        XCTAssertGreaterThanOrEqual(projects.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(projects.frame.height, 44)
+        // Projects sits in the upper trailing chrome, above the controls.
+        XCTAssertGreaterThan(projects.frame.midX, app.frame.midX)
+        XCTAssertLessThan(projects.frame.midY, app.frame.height / 2)
+
+        // The root Camera is the application root: no Back to a removed format chooser.
+        XCTAssertEqual(app.navigationBars.buttons.matching(identifier: "BackButton").count, 0)
+        XCTAssertFalse(app.buttons["continueProject"].exists)
+        XCTAssertFalse(app.staticTexts["formatTitle"].exists)
+        XCTAssertFalse(app.buttons["portrait9x16"].exists)
+        XCTAssertFalse(app.buttons["landscape16x9"].exists)
+        try auditAndCapture(app, name: "Root Camera Chrome")
+    }
+
+    @MainActor
+    func testProjectsNavigationAndExistingProjectBackSemantics() throws {
+        let app = cameraTestApp(["-uiTestSeedPortrait"])
+        launchToCamera(app)
+
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 1)
+        try auditAndCapture(app, name: "Recent From Camera")
+
+        projectButtons(in: app).firstMatch.tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        // An existing project keeps a Back affordance returning to Recent Projects.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Recent Projects"].waitForExistence(timeout: 3))
+
+        backToCamera(in: app)
+        removeProjects(in: app)
+    }
+
+    @MainActor
+    func testExistingLandscapeProjectIsRefusedWithoutMutation() throws {
+        let app = cameraTestApp(["-uiTestSeedLandscape"])
+        launchToCamera(app)
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 1)
+
+        projectButtons(in: app).firstMatch.tap()
+        // V1 refuses landscape capture instead of silently reinterpreting the project as portrait.
+        XCTAssertTrue(app.otherElements["unsupportedCapture"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["cameraShutter"].exists)
+        try auditAndCapture(app, name: "Unsupported Landscape Project")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Recent Projects"].waitForExistence(timeout: 3))
+        // The persisted orientation is untouched by opening it.
+        XCTAssertEqual(projectButtons(in: app).count, 1)
+        backToCamera(in: app)
+        removeProjects(in: app)
+    }
+
+    // MARK: - Portrait camera
+
+    @MainActor
+    func testPortraitCameraFullBleedAndFraming() throws {
+        let app = cameraTestApp()
+        launchToCamera(app)
+
+        let shell = app.otherElements["cameraShell"]
+        let appFrame = app.frame
+        XCTAssertGreaterThan(shell.frame.width, appFrame.width * 0.9)
+        XCTAssertGreaterThan(shell.frame.height, appFrame.height * 0.9)
+        XCTAssertGreaterThan(appFrame.height, appFrame.width, "V1 capture is portrait only")
+        try auditAndCapture(app, name: "Portrait Camera Full Bleed")
+    }
+
+    @MainActor
+    func testCameraControlsAndDurationSelector() throws {
+        let app = cameraTestApp()
+        launchToCamera(app)
+        XCTAssertEqual(app.alerts.count, 0, "Mock authorization must avoid system permission alerts")
+
+        let shutter = app.buttons["cameraShutter"]
+        XCTAssertTrue(shutter.waitForExistence(timeout: 5))
+        XCTAssertTrue(shutter.isEnabled)
+        XCTAssertEqual(app.buttons["duration3"].value as? String, "Selected")
+        for duration in 1...5 {
+            let control = app.buttons["duration\(duration)"]
+            XCTAssertGreaterThanOrEqual(control.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(control.frame.height, 44)
+            control.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.08)).tap()
+            XCTAssertEqual(control.value as? String, "Selected")
+        }
+
+        let flip = app.buttons["cameraSwitch"]
+        XCTAssertTrue(flip.isEnabled)
+        flip.tap()
+        XCTAssertEqual(flip.value as? String, "Front camera")
+        flip.tap()
+        XCTAssertEqual(flip.value as? String, "Rear camera")
+
+        let preview = app.otherElements["cameraShell"]
+        preview.pinch(withScale: 4, velocity: 2)
+        expectZoom(preview, "2.0×")
+        // A pinch-close starts at the element's outer bounds, which on the full-bleed layout is the
+        // overlay control row; those touches belong to the controls. The clamp back to 1.0× through a
+        // real gesture is covered by testCameraAccessibilityLargeText, where controls sit below the
+        // preview, and the clamp itself by CameraModelTests.
+
+        XCTAssertTrue(app.otherElements["projectContent"].exists)
+        try auditAndCapture(app, name: "Camera Controls")
+
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let resumed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: shutter)
+        XCTAssertEqual(XCTWaiter.wait(for: [resumed], timeout: 5), .completed)
+    }
+
+    @MainActor
+    func testRotateGuidanceDisablesCapture() throws {
+        let app = cameraTestApp(["-cameraMismatch"])
+        launchToCamera(app)
+        XCTAssertTrue(app.staticTexts["cameraMismatch"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["cameraShutter"].isEnabled)
+        XCTAssertTrue(app.buttons["cameraSwitch"].isEnabled)
+        try auditAndCapture(app, name: "Rotate Your iPhone")
+    }
+
+    @MainActor
+    func testCameraDeniedRestrictedAndFailureStates() throws {
+        for argument in ["-cameraDenied", "-cameraRestricted", "-cameraFailure"] {
+            let app = cameraTestApp([argument])
+            launchToCamera(app)
+            XCTAssertFalse(app.buttons["cameraShutter"].isEnabled)
+            XCTAssertEqual(app.alerts.count, 0)
+            XCTAssertFalse(app.buttons["cameraSwitch"].isEnabled)
+            if argument == "-cameraFailure" {
+                XCTAssertTrue(app.buttons["Try Again"].exists)
+            } else {
+                XCTAssertTrue(app.buttons["openSettings"].isHittable)
+            }
+            // Projects access stays reachable even when capture is unavailable.
+            XCTAssertTrue(app.buttons["projects"].exists)
+            try auditAndCapture(app, name: argument)
+            app.terminate()
+        }
+    }
+
+    // MARK: - Accessibility
+
+    @MainActor
+    func testCameraAccessibilityLargeText() throws {
+        let app = cameraTestApp(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        launchToCamera(app)
+        let preview = app.otherElements["cameraShell"]
+        // Controls sit below the preview at this size, so both pinch directions reach the gesture.
+        preview.pinch(withScale: 4, velocity: 2)
+        expectZoom(preview, "2.0×")
+        preview.pinch(withScale: 0.2, velocity: -2)
+        expectZoom(preview, "1.0×")
+        app.swipeUp()
+        for duration in 1...5 {
+            let control = app.buttons["duration\(duration)"]
+            XCTAssertTrue(control.isHittable)
+            XCTAssertGreaterThanOrEqual(control.frame.height, 44)
+            control.tap()
+            XCTAssertEqual(control.value as? String, "Selected")
+        }
+        try auditAndCapture(app, name: "Accessibility Camera")
+    }
+
+    @MainActor
+    func testAccessibilityRecentAndDeleteConfirmation() throws {
+        let app = cameraTestApp(["-uiTestSeedPortrait"])
+        launchToCamera(app)
+        openProjects(in: app)
+        XCTAssertTrue(projectButtons(in: app).firstMatch.isHittable)
+        try auditAndCapture(app, name: "Recent Projects")
+
         options(in: app).firstMatch.tap()
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.alerts["Delete vlog?"].waitForExistence(timeout: 3))
+        try auditAndCapture(app, name: "Delete Confirmation")
         app.alerts.buttons["Cancel"].tap()
-        XCTAssertEqual(projectButtons(in: app).count, 2)
+        XCTAssertEqual(projectButtons(in: app).count, 1)
+
         options(in: app).firstMatch.tap()
         app.buttons["Delete"].tap()
         app.alerts.buttons["Delete"].tap()
-        XCTAssertEqual(projectButtons(in: app).count, 1)
-        app.terminate()
-        app.launch()
-        app.buttons["continueProject"].tap()
-        XCTAssertEqual(projectButtons(in: app).count, 1)
-        removeProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 0)
+        backToCamera(in: app)
     }
 
     @MainActor
-    func testAccessibilityDynamicTypeCreationAndRecent() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch()
-        removeProjects(in: app)
-        capture(app, name: "Accessibility Launch")
-        // Contrast auditing misclassifies text clipped at the scroll bounds at this size.
-        // Standard-size contrast and accessibility Recent are audited; inspect this capture too.
-        try app.performAccessibilityAudit(for: [.hitRegion, .sufficientElementDescription])
-        let landscape = app.buttons["landscape16x9"]
-        app.swipeUp()
-        XCTAssertTrue(landscape.isHittable)
-        // Verify the lower option visually and through its actual interaction after scrolling.
-        capture(app, name: "Accessibility Launch Scrolled")
-        landscape.tap()
-        XCTAssertTrue(app.staticTexts["cameraPlaceholder"].waitForExistence(timeout: 5))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.swipeUp()
-        app.buttons["continueProject"].tap()
+    func testAccessibilityDynamicTypeRecent() throws {
+        let app = cameraTestApp([
+            "-uiTestSeedPortrait",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
+        ])
+        launchToCamera(app)
+        openProjects(in: app)
         XCTAssertTrue(projectButtons(in: app).firstMatch.isHittable)
         try auditAndCapture(app, name: "Accessibility Recent")
+        backToCamera(in: app)
         removeProjects(in: app)
     }
 
+    // MARK: - Helpers
+
+    /// Zoom is applied through an async hop, so the clamped value settles after the gesture ends.
     @MainActor
-    func testAccessibilityAndCaptureScreens() throws {
-        let app = XCUIApplication()
-        app.launch()
-        removeProjects(in: app)
-        XCTAssertFalse(app.staticTexts["Mellow"].exists)
-        let title = app.staticTexts["formatTitle"]
-        XCTAssertEqual(title.label, "Choose your vlog format")
-        XCTAssertLessThan(title.frame.height, 35)
-        XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 2)
-        try auditAndCapture(app, name: "Launch Appearance")
-        app.buttons["portrait9x16"].tap()
-        XCTAssertTrue(app.staticTexts["cameraPlaceholder"].waitForExistence(timeout: 5))
-        try auditAndCapture(app, name: "Camera Placeholder")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        let resume = app.buttons["continueProject"]
-        XCTAssertEqual(resume.label, "Continue an existing project?")
-        XCTAssertEqual(resume.frame.midX, app.frame.midX, accuracy: 2)
-        XCTAssertLessThanOrEqual(resume.frame.height, 46)
-        capture(app, name: "Launch With Projects")
-        resume.tap()
-        try auditAndCapture(app, name: "Recent Projects")
-        options(in: app).firstMatch.tap()
-        app.buttons["Delete"].tap()
-        try auditAndCapture(app, name: "Delete Confirmation")
-        app.alerts.buttons["Cancel"].tap()
-        removeProjects(in: app)
+    private func expectZoom(_ preview: XCUIElement, _ expected: String) {
+        let settled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", expected),
+            object: preview
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed,
+                       "zoom settled at \(String(describing: preview.value)) instead of \(expected)")
     }
 
     @MainActor
@@ -103,22 +288,26 @@ final class MellowUITests: XCTestCase {
     }
 
     @MainActor
-    private func capture(_ app: XCUIApplication, name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    private func launchToCamera(_ app: XCUIApplication) {
+        app.launch()
+        if app.staticTexts["permissionOnboardingTitle"].waitForExistence(timeout: 1) {
+            app.buttons["permissionOnboardingContinue"].tap()
+        }
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
     }
 
     @MainActor
-    private func create(in app: XCUIApplication, orientation: String, title: String) {
-        let option = app.buttons[orientation]
-        XCTAssertGreaterThanOrEqual(option.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(option.frame.height, 44)
-        // Exercise the invisible padded corner, outside the illustration and text.
-        option.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.05)).tap()
-        XCTAssertTrue(app.staticTexts["cameraPlaceholder"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["projectOrientation"].label, title)
+    private func openProjects(in app: XCUIApplication) {
+        app.buttons["projects"].tap()
+        XCTAssertTrue(app.navigationBars["Recent Projects"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    private func backToCamera(in app: XCUIApplication) {
+        if app.navigationBars["Recent Projects"].exists {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -134,8 +323,8 @@ final class MellowUITests: XCTestCase {
     @MainActor
     private func removeProjects(in app: XCUIApplication) {
         // Only the dedicated test Simulator's app container is used by this suite.
-        if app.buttons["continueProject"].exists {
-            app.buttons["continueProject"].tap()
+        if !app.navigationBars["Recent Projects"].exists, app.buttons["projects"].exists {
+            openProjects(in: app)
         }
         while options(in: app).count > 0 {
             if !options(in: app).firstMatch.isHittable { app.swipeUp() }
@@ -143,8 +332,15 @@ final class MellowUITests: XCTestCase {
             app.buttons["Delete"].tap()
             app.alerts.buttons["Delete"].tap()
         }
-        if app.navigationBars["Recent Projects"].exists {
-            app.navigationBars.buttons.element(boundBy: 0).tap()
-        }
+        backToCamera(in: app)
+    }
+
+    @MainActor
+    private func capture(_ app: XCUIApplication, name: String) {
+        // Capture the whole display; app.screenshot() can crop rotated landscape bounds.
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }

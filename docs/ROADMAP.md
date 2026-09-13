@@ -914,11 +914,35 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 
 # Phase 3 — Camera Foundation
 
-ADR-030의 Camera Shell / Structural Navigation을 소유하며 Launch의 기존 Continue Text CTA를 Upper Trailing Projects Access로 변경하고 전용 Recent Projects를 유지한다.
+ADR-030의 Camera Shell / Structural Navigation을 소유하며 ADR-032에 따라 V1 Portrait-only 범위와 Direct-to-Camera Launch를 함께 소유한다.
 
-현재 `MellowApp/Features/Home/HomeView.swift`와 `MellowUITests/MellowUITests.swift`는 Phase 2의 조건부 `Continue an existing project?` / `continueProject`를 사용한다.
+**Status:** Completed — 2026-09-14 iPhone 12 Physical-device Gate 통과, Portrait-only V1 Camera Baseline 승인. Phase 4는 시작하지 않았다.
 
-이 문서 변경은 Target UX만 기록하며 해당 View와 UI / Accessibility Test 정렬 및 iPhone 12 확인은 Phase 3 구현에서 수행한다.
+2026-09-14 Physical Review 결과:
+
+- Splash, 첫 실행 Onboarding 이후 Portrait Camera 직접 진입, Full-bleed Live Preview, Projects Access, Flip / Mirroring, 1.0×–2.0× Pinch, Duration Selector, `Rotate your iPhone` Orientation 동작을 iPhone 12에서 확인했다.
+- Background → Foreground 복귀 시 Live Preview가 다시 보이기까지 약 0.5–1.0초가 걸리며 V1에서 이를 허용한다. Session은 Scene `.inactive` 시점에 정지하는 Privacy-conservative Policy를 유지하며 Background-only 정지로 바꾸지 않는다.
+- Camera Session 재시작 자체는 약 0.2–0.3초이며 기존 Session Configuration을 재사용한다. `AVCaptureVideoPreviewLayer`에는 공개 First-frame Callback이 없으므로 Session-running Latency와 Visible Preview를 구분해 기록한다.
+
+Phase 3 V1이 소유하는 범위는 다음과 같다.
+
+- `MellowSplashLogo`를 사용하는 Launch / Splash Branding 통합
+- 첫 실행 Permission Onboarding
+- Camera Authorization
+- Camera Foundation 준비 / Prewarming
+- Portrait Camera를 Application Root로 하는 직접 진입
+- Full-bleed Portrait Preview와 9:16 Framing Guide
+- Camera Chrome의 Projects Access와 전용 Recent Projects 유지
+- 기존 Camera Foundation Lifecycle / Switching / Zoom 작업
+
+Phase 3 V1은 다음을 더 이상 전달 범위로 요구하지 않는다.
+
+- Portrait / Landscape Format Chooser
+- Landscape Camera Shell과 Landscape Control Rail
+- Landscape Camera Framing / Physical-device 검증
+- Landscape 전용 Camera Accessibility Geometry 검증
+
+View와 UI / Accessibility Test는 Portrait-only Direct-to-Camera 구조로 정렬하며 실제 iPhone 12 확인 전 완료로 표시하지 않는다.
 
 Camera의 Compact Project-content Access와 같은 Project의 Review / Editor 연결 구조를 정하되 실제 Capture는 Phase 4, Thumbnail / Clip Management는 Phase 5, 이후 Editing / Preview / Export는 각 기존 Phase에 남긴다.
 
@@ -928,15 +952,17 @@ Camera의 Compact Project-content Access와 같은 Project의 Review / Editor �
 
 ## Included
 
+- Launch / Splash Branding (`MellowSplashLogo`)
+- Direct-to-Camera Portrait Root
+- Camera Chrome Projects Access
 - Camera Permission
-- Microphone Permission 상태 기반
 - Rear Camera Preview
 - Front Camera Preview
 - Rear 1× Wide Camera
 - Rear Preview Continuous Zoom
 - Front / Rear Switching
 - Camera Session Lifecycle
-- Camera / Microphone Recording Readiness
+- Camera Authorization / Preview Readiness
 - Device Orientation Detection
 - Orientation Mismatch State
 - Front Preview Mirroring
@@ -945,6 +971,10 @@ Camera의 Compact Project-content Access와 같은 Project의 Review / Editor �
 ## Explicitly Excluded
 
 - 실제 Video Recording
+- Portrait / Landscape Format Chooser: ADR-032로 V1에서 제거
+- Landscape Camera Layout / Control Rail / Landscape 전용 Physical / Accessibility 검증: Post-V1
+- App Launch만으로 수행하는 빈 Project 저장
+- Microphone Permission / Input / Audio Session 구성: Phase 4 소유
 - 선택한 최대 Duration Timer
 - Audio Recording File
 - Clip 저장
@@ -962,16 +992,28 @@ ADR-023의 Camera Capture, Rear Zoom, Permission, Front Mirroring과 Orientation
 
 ADR-029의 1–5초 최대 Preset / 기본 3s 정책을 전제로 Duration Selector의 배치 / Interaction 구조를 이 Gate에서 승인하되 실제 Recording은 Phase 4에 남긴다.
 
-Camera 화면의 구현 구조에 필요한 다음 UX Pending을 Phase 3 시작 전에 사용자 승인으로 해결한다.
+2026-09-13 사용자 승인으로 다음 Camera Shell 구조와 Rear Zoom Gate가 해결되었다.
 
-- Camera Control Placement / Hierarchy와 Overlay의 구조
-- Front / Rear Switch와 기존 Record / Import / Clips 진입 Control의 배치
-- Portrait / Landscape에서의 의도적인 Camera Layout
-- Orientation mismatch 안내의 Presentation 구조와 위치
-- Rear Zoom의 최종 Interaction / Visual Presentation이며 Pinch-to-zoom을 Primary Candidate로 평가하고 필요한 경우 Zoom Factor Indicator 여부를 결정한다.
-- Camera / Microphone Permission 안내의 Presentation 구조와 Import가 계속 가능함을 보여주는 방식
+- Camera Preview는 화면을 거의 전부 채우는 Full-bleed Surface를 사용하며, Project Aspect Ratio는 프레이밍 가이드/오버레이로 표현한다.
+- Portrait Controls와 Landscape Trailing Controls에 Flip, Shutter Shell과 Compact Project-content Slot을 배치하며 Camera Timeline을 만들지 않는다.
+- `1s / 2s / 3s / 4s / 5s`, 기본 `3s` Selector는 Phase 3에서 UI State만 변경한다.
+- Mismatch는 조용한 `Rotate your iPhone` 안내와 Shutter 비활성화로 표현한다.
+- Rear 1× Wide에서 Pinch-to-zoom을 사용하고 1.0×–2.0×로 Clamp한다.
+- Persistent Zoom Control은 없으며 Pinch 중에만 작은 Numeric Indicator를 허용한다.
+- Camera Permission만 요청하며 Denied / Restricted 안내는 최소 Settings 진입으로 유지한다.
+- Microphone Permission / Input과 Recording Readiness는 Phase 4에서 구현하고 Photos Import는 기존 Phase 6에 남긴다.
 
-Rear Zoom의 Maximum Product Quality Limit은 iPhone 12 Preview 화질과 사용성을 검증하여 Phase 3에서 사용자 승인을 받아야 하며 Device의 이론적 Maximum Zoom Factor를 Product Maximum으로 자동 채택하지 않는다.
+2026-09-13 ADR-032로 다음 V1 범위가 추가로 확정되었다.
+
+- V1의 새 Capture는 `9:16 Portrait`만 사용하며 Landscape 새 Project 생성 / Capture는 Post-V1로 유예한다.
+- Format Chooser를 제거하고 첫 실행은 `Splash → Permission Onboarding → Portrait Camera`, 이후 실행은 `Splash → Portrait Camera`로 진입한다.
+- Splash는 `MellowSplashLogo` Artwork만 사용하고 인위적인 지연 없이 준비되는 즉시 전환한다.
+- Projects 진입은 Camera Chrome의 Upper Trailing으로 이동하며 Camera에 Recent Grid를 직접 표시하지 않는다.
+- App Launch만으로 비어 있는 Vlog Project를 저장하지 않는다.
+- 지원하지 않는 자세에서는 조용한 `Rotate your iPhone` 안내를 유지한다.
+- Landscape Domain / Schema 표현과 기존 Landscape Project 데이터는 유지하며 Migration하지 않는다.
+
+Rear Zoom의 승인된 Product Maximum은 2.0×이며 iPhone 12에서 화질, Clamp와 Gesture Feel을 검증하고 다른 Physical Lens로 자동 전환하지 않는다.
 
 Primary Record Action, Front / Rear 지원, Rear 1× Wide와 1× 이상 Continuous Zoom, Project Orientation 고정, Permission 동작, Front Mirroring과 조용한 mismatch 안내는 재결정하지 않는다.
 
@@ -987,20 +1029,20 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 2. Camera Session을 Main Thread 밖의 안전한 Serial Context에서 구성한다.
 3. Rear Camera Input을 구성한다.
 4. Front Camera Input을 구성한다.
-5. Microphone Input은 다음 Phase Recording 준비가 가능하도록 구성한다.
+5. Camera Permission 결과를 기다린 뒤 Session을 준비하며 Microphone Permission / Input은 Phase 4에 남긴다.
 6. Camera Preview Layer를 SwiftUI에 Bridge한다.
 7. View 재생성으로 Session이 반복 생성되지 않게 한다.
 8. Camera Permission State를 처리한다.
 9. Front / Rear Camera Switching을 구현한다.
-10. Recording 상태가 아니어야 Switch 가능하도록 API 구조를 제한한다.
+10. 실제 Running Session과 발견된 반대 Camera Capability가 있을 때만 Switch를 제공하며 Recording API는 추가하지 않는다.
 11. Device Orientation을 감지한다.
-12. Project Orientation과 Device Orientation mismatch 상태를 Feature Layer에 제공한다.
+12. Project Orientation과 Device Orientation mismatch 상태를 Feature Layer에 제공하며 V1 UI는 Portrait Project 기준으로만 구성한다.
 13. App Background 진입 시 Session을 안전하게 정지한다.
 14. Foreground 복귀 시 필요한 조건에서 Session을 재개한다.
 15. 현재 Phase의 Camera Controls, Front / Rear Switch와 Orientation 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 16. Rear Camera는 기본 1× Wide Device를 선택하고 Preview에서 1× 이상 Continuous Zoom을 제공하며 승인된 Maximum Product Quality Limit으로 Clamp한다.
 17. Front Camera에 Zoom Capability나 UI를 노출하지 않고 Front Preview를 Mirrored Appearance로 표시한다.
-18. Camera / Microphone Authorization과 Required Capture Device / Session Configuration 상태를 Direct Recording Readiness에 반영하며 Denied / Restricted 상태가 Photos Import를 차단하지 않게 한다.
+18. Camera Authorization, Required Capture Device / Session Configuration과 실제 Running 상태를 Preview Readiness에 반영하며 Recording / Import 책임을 추가하지 않는다.
 19. Project Orientation, Device Physical Orientation, UI Orientation과 Video Presentation Orientation Signal을 분리한다.
 20. Portrait Project의 Portrait Posture와 Landscape Project의 Landscape Left / Right를 유효 상태로 판단하고 Mismatch / Face Up / Face Down / Unknown / Unstable 상태를 Recording Start에 유효하지 않은 상태로 제공한다.
 21. Camera Capability가 기대와 다르거나 unavailable이면 Low-level Error를 직접 노출하지 않는 Typed Failure로 전달한다.
@@ -1012,7 +1054,7 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 - Permission State Mapping
 - Camera Switch State Rule
 - Rear Zoom 1× Minimum / 승인된 Maximum Clamp Policy
-- Camera / Microphone Recording Readiness와 Photos Import 독립성
+- Camera-only Authorization과 Preparation / Running Readiness 및 Permission → Prepare → Start 순서
 - Portrait / Landscape Left / Landscape Right Eligibility 및 Face Up / Down / Unknown / Unstable 거부
 - Project / Device / Presentation Orientation State 분리
 
@@ -1025,7 +1067,10 @@ Recording 표현이 Camera Layout 구조에 이미 영향을 주는 부분은 Ph
 - Rear / Front Switching UI
 - Orientation Mismatch UI
 - Rear Zoom 승인 Interaction과 Zoom 상태 Visual Feedback
-- Camera / Microphone Denied 상태에서 Recording 제한과 Import 접근 가능 상태
+- Camera Denied / Restricted 안내와 Shutter 비활성화 및 결정적인 Mock Service 사용
+- 첫 실행 Onboarding → Portrait Camera 진입과 이후 실행의 Portrait Camera 직접 진입
+- Camera Chrome의 Projects Access → Recent Projects 이동
+- Landscape Camera Layout / Control Rail UI Test는 V1 범위가 아니다.
 
 ## Physical Device Test
 
@@ -1037,11 +1082,11 @@ iPhone 12에서 다음을 검증한다.
 - Rear Preview에서 1×부터 승인된 Maximum까지 Continuous Zoom과 Clamp
 - Front Preview Mirrored Appearance와 Front Zoom UI 없음
 - Front / Rear Switching
-- Portrait Project에서 Orientation 안내
-- Landscape Project에서 Orientation 안내
-- Landscape Left / Right Recording Eligibility와 올바른 Preview Orientation
+- Portrait Project에서 Orientation 안내와 Landscape 자세의 조용한 `Rotate your iPhone`
+- Splash → (첫 실행 Onboarding →) Portrait Camera 진입
+- Camera Chrome Projects Access → Recent Projects
 - Face Up / Face Down / Unknown / Unstable 상태의 Recording Start 차단
-- Camera Permission Denied / Restricted와 Microphone Permission Denied / Restricted에서 Recording 차단 및 Photos Import 접근 가능
+- Camera Permission 요청 / Denied / Restricted 상태와 Shutter 비활성화
 - Background / Foreground Session 복구
 
 ## UI Accessibility Verification
@@ -1057,17 +1102,25 @@ iPhone 12에서 다음을 검증한다.
 - Rear Camera는 기본 1× Wide를 사용하고 Preview에서 1× 이상 Continuous Zoom이 승인된 Maximum Quality Limit 안에서 동작한다.
 - 0.5× Ultra Wide / Telephoto / Lens Selector와 Front Camera Zoom이 MVP Camera UI에 노출되지 않는다.
 - Front Preview는 Mirrored Appearance를 사용한다.
-- Camera 또는 Microphone Permission이 없으면 Direct Recording Ready가 되지 않지만 Photos Import는 사용할 수 있다.
+- Camera Permission과 실제 Session Configuration / Running 상태가 준비되기 전 Preview Ready로 보고하지 않으며 Microphone은 요청하지 않는다.
 - Orientation Mismatch / Face Up / Down / Unknown / Unstable 상태는 Recording Start 불가 상태로 전달되고 Landscape Left / Right는 모두 Landscape Project에 유효하다.
 - Session Start / Stop으로 UI가 Freeze되지 않는다.
 - Project Orientation이 Device Rotation으로 변경되지 않는다.
 - iPhone 12에서 Preview가 안정적이다.
+- Splash 이후 첫 실행은 Permission Onboarding을 거쳐, 이후 실행은 곧바로 Portrait Camera에 도달한다.
+- Camera Chrome의 Projects Access로 전용 Recent Projects에 진입할 수 있다.
+- App Launch만으로 비어 있는 Vlog Project가 저장되지 않는다.
+- V1 Camera UI에 Format Chooser와 Landscape Camera Layout이 존재하지 않는다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
 
 ## Exit Criteria
 
 Recording 없이 Camera Infrastructure가 안정적으로 검증되어야 한다.
+
+ADR-032의 Portrait-only V1, Splash 진입, Direct-to-Camera Root와 Camera Chrome Projects Access가 iPhone 12에서 확인되어야 한다.
+
+2026-09-14: 위 Exit Criteria를 iPhone 12에서 충족했다.
 
 ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permission Readiness와 Orientation Eligibility가 iPhone 12에서 검증되고 Rear Maximum Product Quality Limit 및 Structural UX Gate가 승인되어야 한다.
 
@@ -1076,6 +1129,10 @@ ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permissio
 ---
 
 # Phase 4 — Video Recording
+
+ADR-032에 따라 Phase 4 Recording은 V1 Portrait 9:16 Project만 대상으로 하며 Landscape Recording 복원은 Post-V1 Product Decision이다.
+
+Microphone Permission / Input / Audio Session과 Camera + Microphone Recording Readiness는 Phase 4 소유이며 Phase 3 Preview Foundation은 Camera Permission만 사용한다.
 
 ## Goal
 
@@ -1101,11 +1158,32 @@ Phase 4 Recording 구현 전 기존 Domain Policy / Test를 `0 < effectiveClipDu
 | `MellowTests/DomainModelsTests.swift` — `testProjectDurationSumsEffectiveClipDurations` | 3초 + 7초 Clip을 사용한다. | Phase 4: 각 Clip이 새 상한을 만족하는 Fixture로 정렬하며 Project Total 자체의 10초는 유효하다. |
 | `MellowTests/DomainModelsTests.swift` — `makeClip` | 기본 Fixture가 10초이며 Reorder Test도 이를 사용한다. | Phase 4: 새 상한에 맞는 Fixture와 Reorder 검증으로 정렬한다. |
 
-현재 Camera는 Placeholder이며 실제 Recording Selector / Auto Stop, Photos Import / Trim 구현은 없으므로 이 기능들이 새 정책을 이미 적용한다고 주장하지 않는다.
+Phase 3 Camera Foundation과 UI-only Duration Selector는 실제 Recording / Auto Stop 또는 5초 Domain Migration의 구현 완료를 뜻하지 않으며 Photos Import / Trim도 이후 Phase에 남긴다.
 
 Phase 6는 공통 Policy에 맞는 Imported Segment 선택 / Materialization을 구현하고 Phase 7은 Trim 검증을 구현하며 Source 전체 길이에 Clip 상한을 적용하지 않는다.
 
 Phase 3는 기존 Camera Shell / Structural UX 경계 안에서 Selector 배치와 Interaction 구조만 결정하며 실제 Selector의 Recording 동작과 Domain / Test Migration은 Phase 4에 남긴다.
+
+### Camera Shell Transition Inventory
+
+현재 Swift/WIP 구현에서 다음 항목은 문서 승인 대상과 정렬 대상인 이행 미스매치로 추적한다.
+
+ADR-032 이후 현재 Swift/WIP과 문서 기준의 이행 미스매치는 다음과 같으며 문서 Review 이후 구현 정렬 작업으로 수행한다.
+
+- `OrientationSelectionView` / Format Chooser가 남아 있으므로 Splash → (첫 실행 Onboarding →) Portrait Camera Root로 정렬해야 한다.
+- Camera 구성에 Landscape Composition과 Landscape Trailing Control Rail이 남아 있으므로 Portrait-only V1 범위로 단순화해야 한다.
+- Landscape Camera UI Test와 Landscape Accessibility Geometry 검증이 남아 있으므로 V1 범위에서 제외해야 한다.
+- Projects Button이 Format Chooser에 있으므로 Camera Chrome의 Upper Trailing으로 이동해야 한다.
+- Project 생성이 Orientation 선택에 묶여 있으므로, Format Chooser 제거 후에도 App Launch만으로 빈 Project를 저장하지 않는 ADR-032 Invariant를 유지해야 한다.
+- Launch / Splash Branding이 아직 `MellowSplashLogo`와 연결되지 않았으므로 Native Launch Presentation에 통합해야 한다.
+
+다음 Camera Foundation 작업은 보존 대상이며 이 정렬로 폐기하지 않는다.
+
+- `CameraCaptureService`, `AVFoundationCameraService`, `CameraSessionWorker`, `FakeCameraCaptureService`, `CameraModel`
+- Orientation / Readiness 모델링, Front / Rear Switching, Front Mirroring, Rear Zoom
+- Camera-only Permission Flow, Prewarming, Session Lifecycle 정확성과 Stop-on-leave 동작
+- iPhone 12에서 확인한 약 200–300 ms Camera 재진입 성능
+- 기존 Accessibility Audit Coverage
 
 
 Preset의 Relaunch 유지, Project별 기억과 기존 Clip 영향은 Phase 4 구현 전 사용자 결정 Gate로 남긴다.
@@ -3145,11 +3223,19 @@ ADR-029의 1–5초 최대 Preset / 기본 3s 정책을 전제로 Duration Selec
 
 - Camera Control Placement / Hierarchy와 Overlay 구조
 - Front / Rear Switch 및 기존 진입 Control 배치
-- Portrait / Landscape Camera Layout과 Orientation mismatch 안내 Presentation
-- Rear Maximum Zoom Product Quality Limit을 iPhone 12 Preview 화질과 사용성으로 검증한 뒤 사용자 승인
-- Rear Zoom Final Interaction / Visual Presentation이며 Pinch-to-zoom Candidate와 필요한 경우 Zoom Factor Indicator를 검토
+- Portrait Camera Layout과 Orientation mismatch 안내 Presentation
+- First-Run Permission Onboarding 단계에서 Camera Permission 요청 위치를 결정한다.
+- Onboarding은 설명 상태와 시스템 권한 요청을 분리하고 Camera-only 허용/차단 기반 Preview Readiness는 Phase 3에서 정렬한다.
+- Camera 진입 이전에 진행되는 Onboarding은 Microphone, Photos, Location 권한 요청을 Phase 3 범위를 넘어 확장하지 않는다.
+- Splash / Onboarding 단계에서는 Camera Preview가 시작되지 않고 Camera Foundation은 허용 상태에서만 준비 가능한 범위까지만 구성한다.
+- Resolved 2026-09-13 by ADR-032: Portrait-only V1, Format Chooser 제거, `MellowSplashLogo` Splash, Direct-to-Camera Root, Camera Chrome Projects Access와 App Launch 시 빈 Project 미생성.
+- Resolved 2026-09-13: Rear 1× Wide의 Pinch-to-zoom 1.0×–2.0× Clamp와 Pinch 중 Transient Numeric Indicator를 승인하며 Persistent Zoom UI / Lens Switching은 제외한다.
 
 ADR-023의 Rear 1× Wide / Continuous Zoom, Front Zoom 제외 / Mirroring, Permission과 Orientation High-level Behavior는 Accepted 상태이며 이 Gate에서 0.5× Ultra Wide / Telephoto / Lens Selector를 MVP 후보로 다시 열지 않는다.
+
+ADR-031의 First-Run Permission Onboarding은 Phase 3 소유로 적용되며 Microphone, Photos, Location는 Owning Phase에서 요청한다.
+
+ADR-032의 Portrait-only V1과 Direct-to-Camera Launch는 Phase 3 소유이며 Landscape Camera UI 복원은 Post-V1 Product Decision으로 남긴다.
 
 ## Before Phase 4
 
@@ -3217,7 +3303,7 @@ ADR-030의 Clip Text 입력 / 수정 정책, Metadata / Persistence와 Phase 8�
 
 Phase 6에서 승인된 구간 선택 구조는 재사용하며 ADR-022의 Framing 영역 보존과 Metadata Editing 계약은 변경하지 않는다.
 
-이 Phase의 Pinch to Zoom Pending은 Phase 7 Editing Framing Interaction에 관한 것으로 ADR-023의 Rear Capture Zoom Candidate와 별개다.
+이 Phase의 Pinch to Zoom Pending은 Phase 7 Editing Framing Interaction에 관한 것으로 ADR-023의 승인된 Rear Capture Zoom과 별개다.
 
 ## Before Phase 8
 

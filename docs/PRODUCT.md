@@ -152,33 +152,32 @@ Mellow의 가장 기본적인 사용자 경험은 다음과 같다.
 
 ### Create
 
-사용자는 새로운 Mellow 프로젝트를 만든다.
+ADR-032에 따라 V1의 새 Capture는 `9:16 Portrait`만 사용한다.
 
-새 프로젝트를 시작할 때
-영상의 기본 화면 비율을 선택한다.
-
-지원하는 기본 방향은 다음 두 가지다.
+사용자는 형식을 고르지 않고 앱을 열어 바로 촬영을 시작한다.
 
 **Portrait — 9:16**
 
-세로형 미니 브이로그를 위한 모드다.
+세로형 미니 브이로그를 위한 V1의 유일한 Capture 형식이다.
 
 Shorts, Reels, TikTok 등
 모바일 중심 콘텐츠와 일상 기록에 적합하다.
 
 **Landscape — 16:9**
 
-가로형 미니 브이로그를 위한 모드다.
+가로형 미니 브이로그를 위한 모드이며
+여행 영상, 풍경, YouTube 스타일의 영상 기록에 적합하다.
 
-여행 영상,
-풍경,
-YouTube 스타일의 영상 기록 등에 적합하다.
+ADR-032에 따라 새 Landscape Project 생성과 Landscape Camera Capture는 V1 이후로 유예한다.
+
+이는 제품 범위 축소이며 Domain / Schema는 두 방향을 계속 표현한다.
 
 ---
 
 ## 7. Project Orientation Policy
 
-Mellow는 세로와 가로 촬영을 모두 지원한다.
+Mellow의 제품 모델은 세로와 가로 프로젝트를 모두 표현하지만
+ADR-032에 따라 V1이 새로 만들 수 있는 프로젝트는 `9:16 Portrait`뿐이다.
 
 그러나 하나의 프로젝트에서는
 하나의 화면 비율만 사용한다.
@@ -208,15 +207,15 @@ Mellow는 세로와 가로 촬영을 모두 지원한다.
 
 Mellow의 대표적인 사용자 흐름은 다음과 같다.
 
-**Mellow 실행**
+**Mellow 실행 / Splash**
 
 ↓
 
-**새 Vlog 생성**
+**Permission Onboarding (첫 실행 시에만 표시)**
 
 ↓
 
-**9:16 또는 16:9 선택**
+**Portrait Camera**
 
 ↓
 
@@ -303,7 +302,7 @@ Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있�
 
 Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7 구현 전 Gate에서 결정하며 복잡한 Typography / Effect Editor, Text Animation System, Keyframe, Multi-track Text Timeline과 Sticker는 추가하지 않는다.
 
-Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+ADR-032 이후 V1 구조는 Portrait Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
 
 Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
 
@@ -346,11 +345,11 @@ Mellow의 첫 번째 목표는
 
 ### MVP Core Flow
 
-**프로젝트 생성**
+**Mellow 실행 / Splash**
 
 →
 
-**9:16 / 16:9 선택**
+**Portrait Camera**
 
 →
 
@@ -390,10 +389,10 @@ Mellow의 첫 번째 목표는
 
 #### Orientation Selection
 
-프로젝트 생성 시 다음 중 하나를 선택할 수 있다.
+ADR-032에 따라 V1은 형식 선택 단계를 제공하지 않으며 새 프로젝트는 항상 `9:16 Portrait`이다.
 
-- 9:16 Portrait
-- 16:9 Landscape
+- 9:16 Portrait — V1 Capture 형식
+- 16:9 Landscape — Domain / Schema 표현은 유지하며 새 생성은 V1 이후로 유예
 
 선택된 화면 비율은 해당 프로젝트 내에서 유지한다.
 
@@ -431,9 +430,9 @@ Rear Camera는 1× 이상에서 Continuous Zoom을 지원하며 Recording 시작
 
 Recording 중 Rear Zoom을 변경해도 현재 Recording을 Stop하거나 Restart하지 않고 새로운 Clip을 만들거나 선택한 최대 Duration Timer를 Reset하지 않으며 Project Orientation 또는 Aspect Ratio를 변경하지 않는다.
 
-Rear Zoom의 정확한 Maximum은 iPhone 12의 화질과 사용성을 확인하여 Phase 3 Quality Gate에서 승인하며 Device의 이론적 최대 배율을 Product Maximum으로 자동 사용하지 않는다.
+Phase 3에서 승인한 Rear Zoom 범위는 동일한 Rear 1× Wide Camera의 1.0×–2.0×이며 양 끝에서 Clamp하고 다른 Lens로 전환하지 않는다.
 
-Pinch-to-zoom은 Rear Zoom의 Primary Interaction Candidate지만 정확한 Interaction, Indicator와 Visual Presentation은 Phase 3 Structural UX Gate에서 결정한다.
+Rear Zoom은 Pinch-to-zoom을 사용하며 Persistent Button / Slider 없이 Gesture 중에만 작은 Numeric Indicator를 허용하고 Gesture Feel은 iPhone 12에서 조정할 수 있다.
 
 Front Camera Zoom과 Mirror Toggle은 MVP에 포함하지 않는다.
 
@@ -1155,7 +1154,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Recording Pause / Resume는 MVP에서 제공하지 않는다.
 - Front / Rear Camera를 지원하며 Camera Switching은 idle 상태에서만 가능하고 Recording 중에는 금지한다.
 - Rear Camera의 기본 Capture Device는 1× Wide이며 1× 이상 Continuous Zoom을 Preview와 Recording 중 지원한다.
-- Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 선택한 최대 Duration Timer를 Reset하지 않으며 정확한 Maximum Quality Limit과 Interaction / Presentation은 Phase 3 Gate에서 결정한다.
+- Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 선택한 최대 Duration Timer를 Reset하지 않으며 승인된 1.0×–2.0× Pinch와 Gesture 중 Transient Indicator만 제공한다.
 - 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않고 Front Camera Zoom도 MVP에서 제공하지 않는다.
 - Front Camera Preview와 Mellow에서 직접 촬영한 Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 Mirror Toggle은 제공하지 않는다.
 - Direct Recording에는 Camera와 Microphone Permission이 모두 필요하고 어느 하나가 허용되지 않으면 Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있고 Audio Track이 없는 Source도 허용한다.
@@ -1240,8 +1239,8 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식
 - Individual Clip Preview와 Full Vlog Preview의 정확한 Playback Controls, Scrubber, Navigation, Entry / Exit Transition 및 Fullscreen Behavior
 - Preview Composition Cache의 정확한 정책과 Optimization Strategy
-- Rear Zoom의 정확한 Maximum Product Quality Limit
-- Rear Zoom의 정확한 Interaction / Indicator / Visual Presentation이며 Pinch-to-zoom은 Primary Candidate
+- Rear Zoom Maximum Product Quality Limit — Resolved: 2.0×, Minimum 1.0×
+- Rear Zoom Interaction / Indicator — Resolved: 1.0×–2.0× Pinch, Gesture 중 Transient Numeric Indicator 허용, Persistent Button / Slider 없음
 - 정확한 Orientation Detection API / Threshold / Debounce
 - Camera / Microphone Permission 안내의 정확한 화면 구성과 Copy
 - Minimum Valid Clip Duration

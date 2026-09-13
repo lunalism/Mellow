@@ -1018,6 +1018,18 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 
 현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
+## Phase 3 Gate Resolution — 2026-09-13
+
+사용자는 Rear 1× Wide Camera에서 1.0×–2.0× Continuous Pinch-to-zoom과 양 끝 Clamp를 승인했다.
+
+다른 Physical Lens로 전환하지 않고 Persistent Zoom Button / Slider를 제공하지 않으며 Gesture 중 작은 Transient Numeric Indicator만 허용한다.
+
+Front Camera에는 User Zoom을 제공하지 않으며 Gesture Feel은 iPhone 12에서 조정할 수 있다.
+
+Phase 3 Correction은 Camera Permission만 사용하고 Microphone Authorization / Input과 실제 Recording은 Phase 4에 남기며 아래 Direct Recording Permission 정책은 변경하지 않는다.
+
+아래 원문의 Zoom Candidate / Maximum Pending은 이 Gate Resolution 이전 이력이며 새 범위를 Pending으로 해석하지 않는다.
+
 ## Context
 
 Phase 3 / 4 Camera 구현 전에 Lens, Zoom, Permission, Mirroring, Orientation과 Interruption 동작이 명확해야 한다.
@@ -1433,9 +1445,9 @@ Camera Capture, Thumbnail Generation, Media File Management와 Phase 3 이후 �
 
 **Status:** Accepted
 
-**Partial Supersession:** Launch의 Existing-project Continue Text Entry만 ADR-030에 의해 Superseded되었으며 아래 원문은 Phase 2 당시 승인 기록으로 보존한다.
+**Partial Supersession:** Launch의 Existing-project Continue Text Entry는 ADR-030에 의해, Format-first Launch / Orientation Chooser와 Format-first Creation은 ADR-032에 의해 V1 범위에서 Superseded되었으며 아래 원문은 Phase 2 당시 승인 기록으로 보존한다.
 
-Format-first Creation, 전용 Recent Projects Browser와 나머지 결정은 유지한다.
+전용 Recent Projects Browser, Grid, Naming, Persistence, Delete와 Immutable Orientation은 유지한다.
 
 ## Context
 
@@ -1607,6 +1619,156 @@ Phase 번호와 기존 Recording / Import / Trim / Preview / Export 경계는 �
 
 ---
 
+# ADR-031 — First-Run Permission Onboarding and Full-bleed Camera Foundation
+
+**Date:** 2026-09-13
+**Status:** Accepted
+
+**Partial Supersession:** ADR-032가 `Onboarding → Format Selection → Camera` Navigation만 `Onboarding → Portrait Camera`로 대체한다. First-Run Permission Onboarding, Camera Permission 소유, 이른 Camera Foundation 준비와 Full-bleed Camera 방향은 유지하며 아래 원문은 승인 기록으로 보존한다.
+
+## Context
+
+Phase 3 이전 사용자 리뷰에서 첫 화면이 지나치게 무겁고 카메라 초기 진입이 느리며, 포맷 선택 전 권한/준비 상태가 흐릿하게 느껴지는 문제가 확인되었다.
+
+## Decision
+
+- 형식 선택 전에 첫 실행 전용 Permission Onboarding을 한 번 표시한다.
+- Onboarding은 기능 동작 설명과 선택 동의를 위한 단계이며 실제 시스템 권한 요청과 분리한다.
+- 카메라 권한은 Camera Shell 소유인 Phase 3에서 요청한다.
+- Microphone, Photos, 위치 권한은 각각 기존 Owning Phase의 요청 타이밍을 따른다.
+- Onboarding 완료는 프로젝트 저장과 분리되는 app-level 상태이며, 완료 후에는 첫 실행이 아닌 경우 다시 강제 표시하지 않는다.
+- 기존 Camera 권한이 이미 허용/차단된 설치는 마이그레이션 시 기존 권한 상태를 바탕으로 Onboarding을 건너뛸 수 있다.
+- 카메라 권한이 허용되면 형식 선택에서 Camera Foundation 준비 작업을 미리 시작할 수 있으나, 형식 선택 화면에서 실제 preview를 시작하지 않는다.
+- Camera는 화면을 대부분 차지하는 Full-bleed Preview 구조로 유지하고, Project aspect ratio를 프레임 가이드 또는 외곽 마스킹으로 시각적으로 나타낸다.
+- Portrait/Landscape 미리보기 카드를 작게 고정한 contained 프레임은 사용하지 않는다.
+- 프로젝트 Orientation 고정과 phase 분리 규칙은 기존 결정 및 Safety 계약을 그대로 유지한다.
+
+## Consequences
+
+Permission 요청은 필요 권한으로 제한되며, 권한 체계는 camera/microphone/photos/location의 Owning Phase와 분리되어 유지된다.
+
+이 결정은 Phase 3 Camera Foundation 구조로의 전환을 정당화하며, 실제 촬영/녹화 기능은 소유 Phase 이전에 구현되지 않는다.
+
+## Non-goals
+
+- 모든 권한을 Launch에서 즉시 요청하지 않는다.
+- Preview를 표시하지 않을 상태에서 카메라를 실제 수집 상태로 실행하지 않는다.
+
+Microphone/Import/Export Copy와 구체적인 안내 문구, 위치 권한의 후속 UX는 해당 Owning Phase가 소유한다.
+
+---
+
+# ADR-032 — Portrait-Only V1 and Direct-to-Camera Launch
+
+**Date:** 2026-09-13
+**Status:** Accepted
+
+**Supersedes:** ADR-028의 Format-first Launch / Orientation Chooser와 Format-first Creation을 V1 범위에서 대체하고, ADR-031의 `Onboarding → Format Selection → Camera` Navigation만 대체한다. ADR-029는 변경하지 않으며 ADR-030은 호환되는 범위에서 유지한다.
+
+## Context
+
+Phase 3 Camera Foundation의 iPhone 12 Physical Review 과정에서 사용자가 V1 제품 범위를 재확인했다.
+
+Mellow의 핵심 가치는 앱을 열고 바로 짧은 순간을 촬영하는 것이며, Portrait 중심 사용에서 촬영 전 형식 선택은 불필요한 단계로 판단되었다.
+
+## Decision
+
+### Portrait-Only V1
+
+- V1의 새 Capture는 `9:16 Portrait`만 사용한다.
+- Landscape `16:9`의 새 Project 생성과 Camera Capture는 V1 이후로 유예한다.
+- 이 결정은 Product Scope 축소이며 Domain / Schema Migration이 아니다.
+- Domain, Persistence와 이후 Architecture는 Portrait 9:16과 Landscape 16:9를 계속 표현할 수 있다.
+
+### Launch Experience
+
+- 승인된 Splash Asset은 `MellowSplashLogo`이며 Catalog 위치는 `MellowApp/Resources/Assets.xcassets/MellowSplashLogo.imageset`이다.
+- Launch 표현은 승인된 Camera-symbol Logo Artwork만 사용하고 Marketing Copy, Tagline, Loading 표시와 장식 Illustration을 두지 않는다.
+- Native iOS Launch Screen / Launch Presentation에 `MellowSplashLogo`를 중앙 배치하며 인위적인 Timer나 강제 지연 없이 Application 상태가 준비되는 즉시 전환한다.
+- Splash는 Brand Identity, Launch Continuity와 Onboarding / Camera로의 매끄러운 전환을 위한 것이며 시작을 의도적으로 지연시키지 않는다.
+- 정확한 Logo 표시 크기와 Light / Dark Background 표현은 구현 Visual Review 세부로 남긴다.
+
+### V1 Launch Flow
+
+첫 실행은 다음과 같다.
+
+`Splash → Permission Onboarding → Camera Authorization → Camera Foundation 준비 → Portrait Camera`
+
+이후 실행은 다음과 같다.
+
+`Splash → Portrait Camera`
+
+- Format Chooser, Home Dashboard, New Vlog CTA와 Launch의 Recent 목록은 V1 Target UX에 두지 않는다.
+- Camera가 기본 Application Surface가 된다.
+
+### Projects Access
+
+- Projects 진입은 Format Selection 화면에서 Camera Chrome으로 이동한다.
+- 구조적 흐름은 `Portrait Camera → Projects → Recent Projects`다.
+- Projects는 조용한 Secondary Action으로 유지하며 Camera가 시각적으로 우선한다.
+- Camera에 Recent Grid를 직접 표시하지 않고 `Continue an existing project?` CTA도 사용하지 않는다.
+- 전용 Recent Projects Browser는 유지한다.
+- 선호 배치는 Camera Chrome의 Upper Trailing이며 정확한 SF Symbol, 크기, 간격과 Press 표현은 구현 Polish로 남긴다.
+
+### Project Creation Invariant
+
+- App Launch만으로 비어 있는 Vlog Project를 저장하지 않는다.
+- Camera가 표시되었다는 사실이나 Onboarding 완료 자체도 Project 저장 사유가 아니다.
+- 정확한 Atomic Creation 경계는 Recording / Capture 구현 Phase가 소유하며, 일반적인 실행에서 버려지는 0 Clip Project가 누적되지 않아야 한다.
+- ADR-028의 `선택 즉시 저장` Creation Trigger는 Format Chooser와 함께 V1에서 사라지며 Launch 시점 생성으로 대체하지 않는다.
+
+### V1 Orientation Behavior
+
+- V1이 지원하는 Capture 자세는 upright Portrait다.
+- Landscape이거나 적합하지 않은 자세에서는 승인된 조용한 `Rotate your iPhone` 안내를 표시하고 Capture를 사용할 수 없는 상태로 유지한다.
+- Device Rotation으로 Project Orientation을 바꾸거나 Landscape Capture를 노출하거나 Landscape Project를 생성하지 않는다.
+- Face Up / Face Down / Unknown / Unstable 처리는 기존 Camera Readiness 구조를 따른다.
+
+### Existing Landscape Data
+
+- 기존 개발 / Pre-release Store의 Landscape Project는 삭제, Migration, Orientation 변경 대상이 아니며 V1을 위해 Schema를 바꾸지 않는다.
+- V1은 새 Landscape Project 생성을 노출하지 않는다.
+- 기존 Landscape Project 열람에 필요한 호환 동작은 명시적인 Transitional / Future Decision으로 남긴다.
+- 과거 개발 데이터를 이유로 V1이 완전한 Landscape Camera UI를 유지할 필요는 없다.
+
+### Imported Media Orientation
+
+- Portrait-only Capture는 Source Media의 Portrait 제한을 의미하지 않는다.
+- 이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 Source 길이를 제한하지 않으며 선택 Segment는 `0 < duration <= 5 seconds`를 만족한다.
+- Portrait 9:16 Project에 삽입할 때 비율 불일치는 승인된 Fill + Crop과 조정 가능한 Framing을 사용한다.
+
+### Editor / Preview / Export
+
+- V1의 Editor, Preview와 Export는 Portrait 9:16 Project를 대상으로 한다.
+- ADR-030의 `Camera → Clip Review / Management → Editor → Export` 구조는 유효하다.
+
+## Consequences
+
+V1 사용자는 형식 선택 없이 실행 직후 Portrait Camera에 도달하며 Mellow의 Capture-first 정체성이 강화된다.
+
+Landscape Capture UI는 V1 전달 범위에서 빠지지만 Orientation / Readiness Architecture와 Domain 표현은 재사용 가능한 상태로 남는다.
+
+Phase 3의 Landscape Camera Layout, Control Rail, Landscape 전용 Physical Validation과 Accessibility Geometry 검증은 V1 필수 범위에서 제외된다.
+
+현재 Phase 3 Swift 구현의 Format Chooser / Landscape Camera 구성은 이 문서 결정 이후 정렬 대상 이행 작업으로 추적한다.
+
+### Phase 3 Physical Gate Resolution — 2026-09-14
+
+- iPhone 12 Physical Review로 Portrait-only V1 Camera Baseline을 승인했다.
+- Camera Surface는 9:16 Framing Guide / 외곽 Dim 없이 Edge-to-edge Live Preview를 사용하며 Portrait 9:16은 내부 Project / Output Policy로만 유지한다.
+- Orientation Readiness는 Definite Posture(Portrait / Landscape)만 `Rotate your iPhone`을 표시하고 Face Up / Face Down / Unknown / Unstable은 마지막 Definite Posture를 보존하며, 첫 실행처럼 Stable Posture가 없으면 Portrait Interface Orientation을 Provisional Posture로 사용한다.
+- Background → Foreground 복귀 시 약 0.5–1.0초의 Visible Preview 복구를 V1에서 허용하고 Scene `.inactive` 시점의 Session 정지 Policy를 유지한다.
+
+## Non-goals
+
+- Domain / Schema에서 Landscape를 제거하지 않는다.
+- 기존 Landscape Project를 Migration하거나 변형하지 않는다.
+- Recording, Editor, Preview, Export와 Photos Import 동작을 이 결정에서 구현하거나 재정의하지 않는다.
+- Landscape 복원 시점은 이 결정에서 확정하지 않으며 Post-V1 Product Decision으로 남긴다.
+- Splash의 정확한 Visual Spec과 Projects Control의 Iconography를 이 결정에서 확정하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
@@ -1657,8 +1819,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 - Rear Camera Lens 정책 — Resolved by ADR-023: MVP 기본 1× Wide이며 0.5× Ultra Wide / Telephoto / Lens Selector는 제외.
 - Rear Continuous Zoom — Resolved by ADR-023: Preview와 Active Recording에서 1× 이상 지원.
-- Rear Maximum Zoom Product Quality Limit — Pending, Phase 3 Gate.
-- Rear Zoom Interaction / Indicator / Visual Presentation — Pinch-to-zoom은 Primary Candidate이며 Final Structural UX는 Pending, Phase 3 Gate.
+- Rear Maximum Zoom Product Quality Limit — Resolved by ADR-023 Phase 3 Gate Resolution: 1.0×–2.0×.
+- Rear Zoom Interaction / Indicator / Visual Presentation — Resolved by ADR-023 Phase 3 Gate Resolution: Pinch, Gesture 중 Transient Numeric Indicator만 허용.
 - Front Camera Zoom — Out of MVP by ADR-023.
 - Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result의 Mirrored Appearance 유지.
 - Camera Permission의 Direct Recording 동작 — High-level Policy Resolved by ADR-023: Denied / Restricted이면 Recording 차단, Photos Import는 독립.
@@ -1703,6 +1865,14 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Exact Unavailable Visual과 Replace UI — Pending, Owning UX Gate.
 - Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Migration 및 Reset Communication — Pending, Before Replacement Implementation.
 - Project Metadata Recovery Algorithm과 Exact Corrupted-project UI / Copy — Pending.
+
+### Portrait-Only V1 Transition
+
+- Landscape Camera Capture / 새 Landscape Project 생성의 복원 시점 — Pending, Post-V1 Product Decision by ADR-032.
+- 기존 Landscape Project를 V1에서 열 때 필요한 Compatibility 동작 — Pending, Transitional Decision by ADR-032이며 V1이 완전한 Landscape Camera UI를 유지하는 근거로 사용하지 않는다.
+- 새 Portrait Project의 정확한 Atomic Creation 경계 — Pending, Before Phase 4이며 App Launch만으로 빈 Project를 저장하지 않는 ADR-032 Invariant를 만족해야 한다.
+- Splash의 정확한 Logo 표시 크기와 Light / Dark Background 표현 — Pending, Phase 3 구현 Visual Review.
+- Camera Chrome Projects Control의 정확한 SF Symbol / 크기 / 간격 / Press 표현 — Pending, Phase 3 구현 Polish.
 
 Pending Decision이 확정되면 기존 ADR에 단순히 내용을 끼워 넣기보다 결정의 중요도에 따라 새로운 ADR을 추가한다.
 

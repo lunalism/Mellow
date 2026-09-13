@@ -671,6 +671,12 @@ SwiftUI View에서 `AVCaptureSession`을 직접 관리하지 않는다.
 
 `CameraCaptureService`가 Camera Session과 Recording Lifecycle을 관리한다.
 
+Phase 3 Correction의 승인 범위는 Camera Authorization과 Preview Foundation만 포함하며 Microphone Authorization / Input과 Recording API는 Phase 4가 소유한다.
+
+Phase 3의 Ready는 Preview Ready이며 Camera와 Microphone이 모두 필요한 Direct Recording Ready를 의미하지 않는다.
+
+Rear Zoom은 동일한 Wide Camera의 1.0×–2.0×로 Clamp하며 다른 Lens로 전환하지 않는다.
+
 ### Responsibilities
 
 - Capture Session 구성
@@ -1927,6 +1933,10 @@ Permission Logic을 SwiftUI View마다 반복 구현하지 않는다.
 - Microphone
 - Photos Save
 
+`OnboardingStateStore`(또는 동등한 영속 저장 단위)가 앱 수준에서 First-Run Onboarding 완료 상태를 관리한다.
+
+Onboarding은 실제 권한 자체를 시작하는 단계가 아니라 사용자 동의/예상 동작 설명 단계이다.
+
 Photos Video Import는 가능한 한 System Photos Picker를 사용하여 광범위한 Photos Read Permission 의존성을 최소화한다.
 
 Direct Recording Ready 상태는 최소한 Camera Authorization 허용, Microphone Authorization 허용, Required Capture Device 사용 가능, Capture Session 구성 성공, 유효한 Project와 Orientation Eligibility 충족을 요구한다.
@@ -1934,6 +1944,12 @@ Direct Recording Ready 상태는 최소한 Camera Authorization 허용, Micropho
 Camera 또는 Microphone Permission이 Denied / Restricted이면 Capture Pipeline이나 Recording Timer를 부분적으로 시작하지 않고 Typed Permission Failure를 Feature Layer에 전달한다.
 
 Microphone Permission이 없을 때 Video-only Direct Recording으로 자동 Fallback하지 않는다.
+
+Camera 권한이 이미 허용되어 있으면 Onboarding은 사용자 동의 상태 저장만 완료하고 ADR-032의 Portrait Camera로 즉시 진행할 수 있다.
+
+Camera 권한이 허용된 상태에서는 Splash / Onboarding 단계에서 Camera Capture Service 준비를 사전 구성할 수 있으나 실제 미리보기 및 캡처는 Camera 화면 진입 시점에서만 시작해야 한다.
+
+ADR-032에 따라 V1의 Application Root는 Portrait Camera이며, App Launch나 Camera 표시 자체가 비어 있는 Vlog Project를 저장하는 사유가 되지 않는다.
 
 Photos Video Import는 Camera / Microphone Authorization과 결합하지 않고 자체 Photos Picker / Permission 계약을 따르며 Camera 또는 Microphone Permission 문제로 차단하지 않고 Audio Track이 없는 Source도 허용한다.
 
@@ -2093,6 +2109,7 @@ App Startup에서 `AppEnvironment` 또는 유사한 Dependency Container를 구�
 - ExportService
 - PhotoLibraryService
 - PermissionService
+- OnboardingStateStore
 - StorageMonitor
 
 Production과 Test에서 서로 다른 구현을 주입할 수 있어야 한다.
@@ -2233,9 +2250,9 @@ UI Test에서는 실제 Camera Hardware 대신 Test Double을 주입할 수 있�
 
 다음 Flow를 자동 검증할 수 있는 방향을 목표로 한다.
 
-- Home
-- New Vlog
-- Orientation Selection
+- Splash / First-Run Permission Onboarding
+- Portrait Camera Root
+- Camera Chrome Projects Access → Recent Projects
 - Mock Recorded Clip 추가
 - Mock Imported Clip 추가
 - Clip Reorder
@@ -2512,8 +2529,8 @@ Threshold와 Project Shape는 실제 iPhone 12 Baseline Measurement, 승인된 M
 - Camera Session Preset의 세부 설정
 - Rear Camera Lens 정책 — Resolved by ADR-023: MVP 기본 1× Wide이며 0.5× Ultra Wide / Telephoto / Lens Selector는 제외.
 - Rear Continuous Zoom — Resolved by ADR-023: Preview와 Active Recording에서 1× 이상 지원.
-- Rear Maximum Zoom Product Quality Limit — Pending, Phase 3 Gate.
-- Rear Zoom의 정확한 Interaction / Indicator / Visual Presentation — Pinch-to-zoom은 Primary Candidate이며 Final 선택은 Phase 3 Gate.
+- Rear Maximum Zoom Product Quality Limit — Resolved: 2.0×, Minimum 1.0×.
+- Rear Zoom Interaction / Indicator — Resolved: Pinch, Gesture 중 Transient Numeric Indicator 허용, Persistent Button / Slider 없음.
 - Front Camera Zoom — Out of MVP by ADR-023.
 - Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result 모두 Mirrored Appearance 유지.
 - Camera / Microphone Permission의 Direct Recording 동작 — Resolved by ADR-023: 둘 다 필요하며 Video-only Fallback 없음.
