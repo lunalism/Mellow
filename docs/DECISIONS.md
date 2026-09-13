@@ -648,6 +648,10 @@ Export와 Project Lifecycle을 분리하면 사용자가 결과물을 자유롭�
 **Date:** 2026-09-10  
 **Status:** Accepted
 
+**Partial Supersession:** Text Overlay의 일괄 Post-MVP 분류만 ADR-030의 가벼운 Clip Text 승인으로 대체하며 아래 원문은 당시 기록이다.
+
+나머지 Photo / Advanced Editing / Creative Feature 제외 정책은 유지한다.
+
 ## Context
 
 Mellow의 핵심 가치는 짧은 Video Clip을 촬영하고 이어 하나의 Mini Vlog로 만드는 것이다.
@@ -1429,6 +1433,10 @@ Camera Capture, Thumbnail Generation, Media File Management와 Phase 3 이후 �
 
 **Status:** Accepted
 
+**Partial Supersession:** Launch의 Existing-project Continue Text Entry만 ADR-030에 의해 Superseded되었으며 아래 원문은 Phase 2 당시 승인 기록으로 보존한다.
+
+Format-first Creation, 전용 Recent Projects Browser와 나머지 결정은 유지한다.
+
 ## Context
 
 Physical-device Review 후 사용자가 Phase 2 Structural UX를 명시적으로 변경하여 ADR-027을 대체한다.
@@ -1528,6 +1536,74 @@ Selector Placement / Camera Control Layout은 Phase 3 Structural UX Gate에서 �
 기존 승인된 Haptic, Audio, Circular Progress와 Countdown 정책은 변경하지 않으며 새로운 Animation / Timing / Haptic 동작을 만들지 않는다.
 
 기존 Pending인 Interruption Partial Clip 처리와 Minimum Valid Clip Duration의 추가 하한은 해당 Gate에 남기되 공통 `0 < duration <= 5 seconds` Invariant를 완화하지 않는다.
+
+---
+
+# ADR-030 — Capture-to-Editor Structural UX
+
+**Date:** 2026-09-13
+**Status:** Accepted
+
+## Context
+
+Mellow의 짧은 Clip을 Capture에서 Composition으로 빠르게 연결하고 단순한 배열과 명시적인 Control로 Editing 복잡성을 낮추기 위해 사용자가 구조를 승인했다.
+
+## Decision
+
+### Launch and Projects
+
+- Format-first Launch와 중앙 `Choose your vlog format`, Portrait 9:16 / Landscape 16:9를 유지한다.
+- 눈에 띄는 `Continue an existing project?` Text CTA를 제거하고 Upper Trailing 영역의 작은 Projects Button을 조용한 Secondary Access로 제공한다.
+- Accessibility Label은 `Projects`이며 정확한 Iconography는 Phase 3 Visual 구현 세부사항이다.
+- Projects는 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 전에 새 Format을 선택하도록 강제하지 않는다.
+- Launch에는 Project Thumbnail, Metadata와 Recent Grid를 직접 표시하지 않는다.
+
+### Camera → Clips → Editor
+
+Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+
+Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Access를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동한다.
+
+Camera에 복잡한 Timeline이나 별도 Dashboard를 추가하지 않는다.
+
+### Lightweight Editor
+
+- 큰 Preview가 Primary Visual Focus이며 단순한 Ordered Clip Thumbnail Strip과 가벼운 Tools를 제공한다.
+- Single Tap은 Clip 선택이며 관련 Clip Tools를 노출 / 활성화하고 Text Entry를 즉시 열지 않는다.
+- Long Press + Drag는 Clip Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
+- Clip을 선택한 뒤 발견하기 쉬운 명시적인 `T` Tool을 탭하여 해당 Clip의 Text를 추가 / 수정한다.
+- Trim / Text / Delete Action과 Camera / Photos Library를 지원하는 Add Clip을 명시적으로 제공한다.
+- Final Output Action을 명확히 제공하되 정확한 Label과 Export 구현은 Phase 9가 소유한다.
+- Toolbar Geometry, Text Font / Position / Size / Duration / Animation 세부 정책은 이 결정에서 고정하지 않는다.
+- Multi-track Timeline, Keyframe, Layer Stack, Professional NLE, 복잡한 Typography / Effect / Text Animation System과 Sticker는 추가하지 않는다.
+
+## Superseded Scope
+
+ADR-028의 Existing-project Launch Entry만 대체하며 원문은 Phase 2 승인 이력으로 보존한다.
+
+Format-first Creation, 전용 Recent Projects Browser, Grid, Naming, Persistence, Delete와 Immutable Orientation 등 ADR-028의 나머지 결정은 유지한다.
+
+ADR-019의 Text 일괄 Post-MVP 분류는 가벼운 Clip Text 범위에 한해 대체하고 그 외 MVP 제외 정책은 유지한다.
+
+ADR-029의 Duration 정책은 변경하지 않는다.
+
+## Roadmap Ownership
+
+- Phase 3: Launch Projects Access와 Camera Shell / Structural Navigation이며 이후 Editor 기능을 선행 구현하지 않는다.
+- Phase 4: 실제 Capture와 ADR-029 Recording 정책을 구현한다.
+- Phase 5: 실제 Thumbnail / Clip Review, Selection, Long Press + Drag / Accessible Reorder, Delete / Add Clip과 Editor Shell을 구현한다.
+- Phase 6: Photos Import와 Segment Selection을 구현한다.
+- Phase 7: 기존 Trim / Framing과 함께 사용자가 승인한 가벼운 Text 입력 / 수정 UI를 구현하며 세부 Text 정책과 Metadata / Persistence 계약을 구현 전에 승인한다.
+- Phase 8: Shared Individual / Full Preview에 승인된 Text 결과를 반영한다.
+- Phase 9: 명확한 Final Output과 승인된 Text의 Export / Preview Parity를 구현한다.
+
+## Transition and Non-goals
+
+현재 Phase 2 Swift와 UI Test에는 조건부 Continue Text Entry가 남아 있으며 Phase 3에서 정렬한다.
+
+이 결정은 Documentation-only Target이며 UI, Thumbnail, Text, Capture, Import와 Export를 지금 구현하지 않고 완료된 Phase 2를 다시 구현했다고 주장하지 않는다.
+
+Phase 번호와 기존 Recording / Import / Trim / Preview / Export 경계는 유지하며 새 Text 소유권만 사용자 승인에 따라 Phase 7–9에 배정한다.
 
 ---
 

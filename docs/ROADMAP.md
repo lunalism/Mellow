@@ -768,6 +768,10 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 
 # Phase 2 — Home, Recent, and Vlog Creation
 
+이 Phase의 Continue Entry와 승인 Baseline은 당시 구현 이력이며 ADR-030의 Launch Entry 대체는 Phase 3에서 수행한다.
+
+Phase 2 완료 기록을 새 Target UX 구현 완료로 해석하지 않는다.
+
 **Status:** Completed
 
 2026-09-13 사용자 승인으로 LunaTestphone / iPhone 12 / iOS 26.6.2의 Physical-device Gate와 최종 Visual Review가 통과했다.
@@ -909,6 +913,14 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 ---
 
 # Phase 3 — Camera Foundation
+
+ADR-030의 Camera Shell / Structural Navigation을 소유하며 Launch의 기존 Continue Text CTA를 Upper Trailing Projects Access로 변경하고 전용 Recent Projects를 유지한다.
+
+현재 `MellowApp/Features/Home/HomeView.swift`와 `MellowUITests/MellowUITests.swift`는 Phase 2의 조건부 `Continue an existing project?` / `continueProject`를 사용한다.
+
+이 문서 변경은 Target UX만 기록하며 해당 View와 UI / Accessibility Test 정렬 및 iPhone 12 확인은 Phase 3 구현에서 수행한다.
+
+Camera의 Compact Project-content Access와 같은 Project의 Review / Editor 연결 구조를 정하되 실제 Capture는 Phase 4, Thumbnail / Clip Management는 Phase 5, 이후 Editing / Preview / Export는 각 기존 Phase에 남긴다.
 
 ## Goal
 
@@ -1381,6 +1393,10 @@ Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 �
 
 촬영된 여러 Clip을 하나의 Mini Vlog 구조로 정리할 수 있게 한다.
 
+ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
+
+Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
+
 이 Phase는 Healthy Clip의 Availability와 현재 Effective Edit State를 이후 Shared Individual Clip Preview Flow에 전달할 수 있게 연결하지만 Phase 7의 Trim / Framing UI나 Phase 8의 Full Vlog Preview를 선행 구현하지 않는다.
 
 ## Included
@@ -1416,8 +1432,8 @@ Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 �
 
 Clip Management 구현 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
 
-- Clip Organizer의 Horizontal Strip / Grid 등 Primary Layout
-- 이미 요구된 Drag Reorder의 상세 Interaction 구조
+- ADR-030 Ordered Thumbnail Strip의 세부 Layout
+- 승인된 Single Tap Selection, Long Press + Drag Reorder와 Non-drag Accessibility 대안의 상세 표현
 - Clip Delete Action의 Control Placement
 - Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조
 - Project Duration과 Add Clip Action의 배치
@@ -1793,6 +1809,14 @@ Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence 
 
 # Phase 7 — Trim and Framing
 
+ADR-030의 사용자 승인에 따라 가벼운 Clip Text 입력 / 수정은 이 Editing Phase에 포함하고 Text의 Preview / Export 반영은 Phase 8–9가 소유한다.
+
+선택한 Clip에 대해 명시적인 `T` Tool을 사용하며 일반 Tap으로 Text Entry를 열지 않는다.
+
+Font / Position / Size / Duration / Animation 정책과 Metadata / Persistence 및 Shared Composition 연결 계약은 Phase 7 구현 전에 승인하며 복잡한 Text Effect System은 추가하지 않는다.
+
+Text 검증은 Clip 선택 대상의 정확성, 명시적 T 진입, 수정 / Relaunch Persistence, Accessibility와 기존 Clip 관리 동작 보존을 포함한다.
+
 ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segment는 `0 < duration <= 5 seconds`이고 Camera 정수 Preset과 독립적으로 자유롭게 선택한다.
 
 1.3초 / 2.7초 / 4.5초 / 5.0초 허용과 0 이하 / 5초 초과 거부를 검증한다.
@@ -1802,6 +1826,8 @@ ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segmen
 모든 Clip의 사용 구간을 조정하고 Imported Video의 Framing을 Project Orientation에 맞게 조정할 수 있게 한다.
 
 ## Included
+
+- Lightweight Clip Text 입력 / 수정 (`T`)와 승인된 Persistence 계약
 
 - Recorded Clip Trim
 - Imported Clip Trim
@@ -1928,11 +1954,15 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 
 # Phase 8 — Full Vlog Preview
 
+ADR-030과 Phase 7에서 승인한 가벼운 Clip Text를 Individual / Full Preview에 반영하며 Phase 9 Export와 동일한 결과 의미를 검증한다.
+
 ## Goal
 
 현재 Project의 Clip Order와 effective Trim, Framing / Scale / Position, Transform, Orientation, Front Mirroring, SDR 및 Audio를 하나의 연속된 Vlog처럼 Preview할 수 있게 한다.
 
 ## Included
+
+- 승인된 Clip Text의 Shared Preview 반영
 
 - Shared `VideoCompositionBuilder`
 - Canonical Composition Semantics
@@ -1959,7 +1989,7 @@ Project의 모든 Clip이 최종 Vlog에 사용될 정확한 Time Range와 Frami
 
 - Transition
 - Music
-- Text
+- ADR-030의 가벼운 Clip Text를 넘어서는 Advanced Text Effects
 - Filter
 - Rendered Preview Cache unless performance issue proves need
 
@@ -2098,11 +2128,15 @@ Preview Baseline Measurement는 M01 Canonical Composition Semantics를 유지하
 
 # Phase 9 — Export, Photos Save, and Share
 
+ADR-030과 Phase 7에서 승인한 가벼운 Clip Text를 최종 Output에 반영하고 Phase 8 Preview와의 일치를 검증하며 명확한 Final Output Action을 제공한다.
+
 ## Goal
 
 동일한 Project State의 Full Vlog Preview와 같은 Clip Order, effective Trim, Framing / Scale / Position, Transform, Project Orientation, Front Mirroring, SDR 및 Audio 의미를 하나의 1080p / 30 fps / SDR Video로 Export하고 Photos에 저장하거나 공유할 수 있게 한다.
 
 ## Included
+
+- 승인된 Clip Text의 Export와 Preview Parity
 
 - Export Service
 - Shared Composition
@@ -3044,7 +3078,7 @@ Mellow MVP를 내부 TestFlight에서 실제 테스트할 수 있어야 한다.
 
 다음 기능은 MVP 완료 전에 현재 Phase로 끌어오지 않는다.
 
-- Text Overlay
+- ADR-030 범위를 넘어서는 Advanced Text / Typography / Effects
 - Background Music
 - Transitions
 - Video Looks
@@ -3140,7 +3174,7 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현�
 
 ## Before Phase 5
 
-- Clip Organizer Layout과 Drag Reorder의 상세 Interaction 구조
+- ADR-030 Ordered Thumbnail Strip과 Long Press + Drag / Non-drag Accessibility 대안의 상세 표현
 - Delete Control Placement와 Snackbar / Toast 등 Undo Presentation Surface
 - Project Duration / Add Clip 배치
 - Unavailable Clip의 User-visible Representation과 Replace / Delete Action 접근 구조
@@ -3172,6 +3206,8 @@ Import Estimate는 전체 Photos 원본 File을 Mellow Container에 무조건 �
 Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
 
 ## Before Phase 7
+
+ADR-030의 Clip Text 입력 / 수정 정책, Metadata / Persistence와 Phase 8–9 Shared Composition 연결 계약을 승인하며 Font / Position / Size / Duration / Animation 세부사항을 임의로 정하지 않는다.
 
 - Trim과 Crop의 화면 구성
 - Editing Framing에서 Pinch to Zoom MVP 포함 여부

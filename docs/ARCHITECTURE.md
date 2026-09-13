@@ -393,6 +393,20 @@ Phase 4에서 실제 Media Recording을 도입하기 전에 Domain Policy와 관
 
 ---
 
+### Capture / Editor Project Continuity
+
+ADR-030의 Camera → Clip Review / Management → Editor → Export는 같은 Persisted Vlog Project Identity를 사용하며 화면 진입으로 새 Project를 만들지 않는다.
+
+Camera의 Compact Project-content Access는 Project Review로 연결하는 UI 책임이며 Thumbnail 생성과 Persistence를 SwiftUI View에 직접 구현하지 않는다.
+
+Ordered Strip의 Clip Selection은 명시적인 Clip Identity를 대상으로 하며 Reorder는 기존 Project Order / Persistence 경계를 사용하고 Preview / Export도 같은 순서를 반영한다.
+
+Editor의 큰 Preview와 가벼운 Tools는 기존 Feature / Composition 경계를 사용하며 별도 Dashboard, Multi-track Model이나 새로운 Architecture Layer를 이 결정으로 추가하지 않는다.
+
+Clip Text의 Metadata / Persistence와 Composition 연결 계약은 Phase 7 구현 전에 결정하고 Phase 8 Preview / Phase 9 Export에서 같은 승인 결과를 표현하며 이 문서 작업에서 Schema나 Rendering 기술을 선택하지 않는다.
+
+---
+
 ## 17. Project Duration
 
 전체 Vlog Duration에는 고정 최대 제한을 두지 않는다.

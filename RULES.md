@@ -113,7 +113,7 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - Photo Filters
 - Video Filters
 - Music
-- Text Overlay
+- ADR-030의 가벼운 Clip Text를 넘어서는 Text / Typography / Effect 확장
 - Transitions
 - Templates
 - Smart Editing

@@ -123,7 +123,7 @@ Mellow MVP의 기본 화면 구조는 다음과 같다.
 
 - Launch / Orientation Selection
   - Portrait 9:16 / Landscape 16:9 → Create / Persist → Camera
-  - Continue an existing project? → Recent Projects → Existing Project
+  - Quiet Projects Access → Recent Projects → Existing Project
 
 Project 내부의 주요 흐름은 다음과 같다.
 
@@ -140,15 +140,15 @@ Project 내부의 주요 흐름은 다음과 같다.
 
 ## 6. Launch
 
-6–7절의 최종 Visual Baseline은 2026-09-13 iPhone 12 Physical-device / Visual Review에서 사용자 승인되었으며 ADR-028의 구조를 유지한다.
+6–7절의 Phase 2 Visual Baseline은 2026-09-13 승인되었으며 ADR-030은 Launch의 Existing-project Entry만 대체하고 나머지 ADR-028 구조를 유지한다.
 
 시작 화면은 ADR-028의 Orientation Chooser이며 별도 Home Dashboard와 중간 New Vlog Button을 두지 않는다.
 
-Mellow Header나 대체 장식 없이 `Choose your vlog format` Title, Format Choices와 조건부 Continue Action을 Safe Area의 시각적 중앙에 하나의 세로 Group으로 배치한다.
+Mellow Header나 대체 장식 없이 `Choose your vlog format` Title과 Format Choices을 Safe Area의 시각적 중앙에 하나의 세로 Group으로 배치한다.
 
-일반 iPhone 12 Text Size에서 Title과 `Continue an existing project?`는 각각 중앙 정렬된 한 줄이며 Title에 마침표나 강제 줄바꿈을 넣지 않는다.
+일반 iPhone 12 Text Size에서 Title은 중앙 정렬된 한 줄이며 Title에 마침표나 강제 줄바꿈을 넣지 않는다.
 
-Typography는 Default SF System Design으로 Title 28 Semibold, Portrait / Landscape 20 Semibold, Aspect Ratio와 Continue 17 Regular를 기준으로 하며 Dynamic Type Scaling을 유지한다.
+Typography는 Default SF System Design으로 Title 28 Semibold, Portrait / Landscape 20 Semibold, Aspect Ratio 17 Regular를 기준으로 하며 Dynamic Type Scaling을 유지한다.
 
 Portrait 9:16 / Landscape 16:9 Choice는 Title 바로 아래 중앙에 두 열로 배치하며 Accessibility Dynamic Type에서 자연스러운 줄바꿈과 세로 배치를 허용한다.
 
@@ -156,7 +156,11 @@ Format Choice는 Page에 섞이는 무배경 표현으로 외부 Fill / Border /
 
 일반 Dynamic Type에서는 편안한 두 열을 사용하고 Accessibility Size에서는 세로 한 열로 전환한다.
 
-저장된 Project가 있을 때만 선택지 아래 `Continue an existing project?` Text Action으로 별도 Recent Projects 화면에 진입한다.
+Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
+
+탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+
+큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
 시작 화면에는 Recent Item을 직접 표시하지 않으며 사용자에게 Draft 용어를 노출하지 않는다.
 
@@ -406,7 +410,21 @@ MVP의 기본 동작은 **Fill + Crop**을 사용한다.
 
 ## 18. Project Screen
 
-Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
+Project Screen / Lightweight Editor는 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
+
+Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+
+Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
+
+Editor는 큰 Preview를 Primary Visual Focus로 두고 단순한 Ordered Clip Thumbnail Strip, 명시적인 Clip Selection, 가벼운 Clip Tools와 Add Clip / Final Output Action으로 구성한다.
+
+Clip Thumbnail의 Single Tap은 선택이며 Text Entry를 바로 열지 않는다.
+
+Long Press + Drag로 순서를 바꾸고 Move Earlier / Move Later와 같은 Non-drag Accessibility 대안을 제공한다.
+
+Trim / Text / Delete는 명시적인 Clip Action이며 Add Clip은 Camera와 Photos Library를 지원하되 각 기능은 기존 Owning Phase에서 구현한다.
+
+Final Output의 정확한 Label과 동작은 Export Phase에서 결정하며 Toolbar Geometry를 이 결정에서 고정하지 않는다.
 
 사용자는 이 화면에서 현재 Vlog의 전체 구조를 빠르게 이해할 수 있어야 한다.
 
@@ -428,6 +446,16 @@ Project Screen은 현재 Vlog를 구성하는 Clip을 관리하는 공간이다.
 0 Clip Project에는 Individual Clip Preview 대상도 없음을 정상적인 Project 상태로 전달한다.
 
 일부 또는 모든 Clip이 Unavailable이어도 Project를 열고 Healthy Clip을 계속 관리할 수 있어야 하며 Project 전체를 자동으로 제거하지 않는다.
+
+---
+
+### Explicit Text Tool
+
+선택한 Clip → 명시적인 `T` Tool → 해당 Clip의 Text 추가 / 수정 흐름을 제공하며 `T`는 Editor Tool Layout에서 발견하기 쉬워야 한다.
+
+일반 Clip Tap은 선택만 하고 Text Entry를 열지 않는다.
+
+Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7 구현 전 Gate에서 결정하며 복잡한 Typography / Effect Editor, Text Animation System, Keyframe, Multi-track Text Timeline과 Sticker는 추가하지 않는다.
 
 ---
 
@@ -455,7 +483,7 @@ Unavailable Clip 자체에는 Video Preview를 제공하지 않고 사용자가 
 
 ## 20. Reorder Clips
 
-사용자는 Drag Interaction을 통해 Clip 순서를 변경할 수 있어야 한다.
+사용자는 Long Press + Drag로 Clip 순서를 변경하며 Move Earlier / Move Later와 같은 Non-drag Accessibility 대안을 사용할 수 있어야 한다.
 
 Drag 중 현재 Clip의 위치와 삽입될 위치를 명확하게 표시한다.
 
@@ -831,9 +859,9 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | ADR-029 Duration Selector의 배치 / Interaction 구조, Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
-| Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
+| Phase 5 — Clip Management | ADR-030 Ordered Thumbnail Strip Layout, Long Press + Drag / Accessible Reorder의 상세 표현, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
-| Phase 7 — Trim / Framing | Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
+| Phase 7 — Trim / Framing / Text | 명시적 T Tool의 세부 UX와 Text 정책, Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
 | Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
 
@@ -908,8 +936,8 @@ Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Rede
 
 ### Project
 
-- Clip Organizer가 Horizontal Strip인지 Grid인지
-- Reorder Interaction의 정확한 형태
+- ADR-030의 Ordered Thumbnail Strip 안에서의 세부 Layout
+- ADR-030의 Long Press + Drag 및 Non-drag Accessibility 대안의 세부 표현
 - Project 전체 Duration 표시 위치
 - Add Clip Action의 위치
 - Unavailable Clip의 Exact Icon, Placeholder, Label, Color와 Replace / Delete Button Hierarchy

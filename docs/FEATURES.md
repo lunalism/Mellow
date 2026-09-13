@@ -538,7 +538,7 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 현재 Vlog 프로젝트에 포함된 모든 Clip을 사용자가 확인할 수 있어야 한다.
 
-각 Clip을 시각적으로 구분할 수 있어야 한다.
+각 Clip을 Ordered Thumbnail Strip에서 시각적으로 구분하고 Single Tap으로 선택하여 관련 Clip Tools를 노출 / 활성화하며 일반 Tap으로 Text Entry를 열지 않는다.
 
 ### Candidate Information
 
@@ -621,7 +621,7 @@ Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식 및 Coo
 
 ## F-MVP-026 — Reorder Clips
 
-사용자는 프로젝트에 포함된 Clip의 순서를 변경할 수 있어야 한다.
+사용자는 Clip Thumbnail의 Long Press + Drag로 순서를 변경하고 Move Earlier / Move Later 같은 Non-drag Accessibility 대안으로도 같은 결과를 만들 수 있어야 한다.
 
 변경된 순서는 Preview와 Export 결과에 동일하게 반영되어야 한다.
 
@@ -976,7 +976,11 @@ Mellow MVP는 최소한 다음 제품 영역을 가진다.
 
 Launch는 Orientation Chooser이며 Format 선택 즉시 Project를 저장한다.
 
-기존 Project가 있을 때만 `Continue an existing project?` Action으로 전용 Recent Projects Grid에 진입한다.
+Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
+
+탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+
+큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
 기존 프로젝트 화면의 사용자-facing 명칭은 `Recent Projects`를 사용한다.
 
@@ -991,6 +995,10 @@ Launch는 Orientation Chooser이며 Format 선택 즉시 Project를 저장한다
 ### Camera
 
 새로운 Clip을 촬영한다.
+
+Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+
+Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
 
 ### Video Import
 
@@ -1050,22 +1058,19 @@ Rear Camera 촬영 중 Torch를 사용할 수 있는 기능을 검토한다.
 
 ---
 
-# 20. Post-MVP — Text
+# 20. MVP — Lightweight Clip Text
 
-## F-POST-005 — Text Overlay
+## F-MVP-043 — Explicit Clip Text Tool
 
-사용자는 Vlog 위에 짧은 Text를 추가할 수 있는 기능을 향후 사용할 수 있다.
+ADR-030은 기존 F-POST-005 Text Overlay 분류를 가벼운 Clip Text 범위에 한해 대체한다.
 
-### Candidate Features
+선택한 Clip → 명시적인 `T` Tool → 해당 Clip의 Text 추가 / 수정 흐름을 제공하며 `T`는 Editor Tool Layout에서 발견하기 쉬워야 한다.
 
-- Text input
-- Font selection
-- Text size
-- Position
-- Alignment
-- Basic color
+일반 Clip Tap은 선택만 하고 Text Entry를 열지 않는다.
 
-Mellow의 단순성을 해치지 않는 범위에서 기능 범위를 결정한다.
+Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7 구현 전 Gate에서 결정하며 복잡한 Typography / Effect Editor, Text Animation System, Keyframe, Multi-track Text Timeline과 Sticker는 추가하지 않는다.
+
+Phase 7은 Text 입력 / 수정 UI를 소유하고 Phase 8 Preview와 Phase 9 Export는 승인된 동일 Text 결과를 반영한다.
 
 ---
 
@@ -1434,7 +1439,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Future Editing
 
-- Text 기능의 구체적인 범위
+- 가벼운 MVP Clip Text의 세부 정책 — Before Phase 7
 - Music 기능의 구체적인 범위
 - Transition 기능의 구체적인 범위
 - Video Look 기능 도입 여부

@@ -297,11 +297,27 @@ Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있�
 
 ### Simple Editor
 
-Mellow의 편집기는
-전문 영상 편집기를 목표로 하지 않는다.
+선택한 Clip → 명시적인 `T` Tool → 해당 Clip의 Text 추가 / 수정 흐름을 제공하며 `T`는 Editor Tool Layout에서 발견하기 쉬워야 한다.
 
-초기 편집 경험은
-영상의 흐름을 정리하는 데 집중한다.
+일반 Clip Tap은 선택만 하고 Text Entry를 열지 않는다.
+
+Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7 구현 전 Gate에서 결정하며 복잡한 Typography / Effect Editor, Text Animation System, Keyframe, Multi-track Text Timeline과 Sticker는 추가하지 않는다.
+
+Format Selection → Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
+
+Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
+
+Editor는 큰 Preview를 Primary Visual Focus로 두고 단순한 Ordered Clip Thumbnail Strip, 명시적인 Clip Selection, 가벼운 Clip Tools와 Add Clip / Final Output Action으로 구성한다.
+
+Clip Thumbnail의 Single Tap은 선택이며 Text Entry를 바로 열지 않는다.
+
+Long Press + Drag로 순서를 바꾸고 Move Earlier / Move Later와 같은 Non-drag Accessibility 대안을 제공한다.
+
+Trim / Text / Delete는 명시적인 Clip Action이며 Add Clip은 Camera와 Photos Library를 지원하되 각 기능은 기존 Owning Phase에서 구현한다.
+
+Final Output의 정확한 Label과 동작은 Export Phase에서 결정하며 Toolbar Geometry를 이 결정에서 고정하지 않는다.
+
+짧은 순간의 단순한 배열, 명시적 Control과 Capture에서 Composition으로 빠르게 이동하는 낮은 복잡도의 Mini Vlog Editor를 지향하며 Multi-track Timeline, Keyframe, Layer Stack과 복잡한 Effect System을 도입하지 않는다.
 
 ### Preview
 
@@ -481,7 +497,11 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 #### Recent and Local Drafts
 
-Launch Orientation Chooser의 조건부 Continue Action에서 기존 프로젝트를 탐색하는 전용 `Recent Projects` 화면으로 이동한다.
+Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
+
+탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+
+큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
 내부 Domain에서는 `Draft`라는 기술 용어를 사용할 수 있다.
 
@@ -758,9 +778,9 @@ MVP의 핵심 미디어 작업은 Local-first로 동작하며 계정이나 서�
 MVP 이후 Mellow의 핵심 경험을 해치지 않는 범위에서
 추가 기능을 검토할 수 있다.
 
-### Text
+### Advanced Text
 
-영상 위에 짧은 글이나 날짜 등을 추가하는 기능.
+ADR-030의 가벼운 Clip Text / 명시적인 `T` Tool은 MVP이며 그 이상의 Text 확장만 Future 검토 대상이다.
 
 ### Music
 
@@ -1091,7 +1111,7 @@ Mellow는 장기적으로
 향후 Mellow가
 
 - Music
-- Text
+- Advanced Text
 - Transitions
 - Video looks
 - Templates
@@ -1242,7 +1262,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Storage Warning 기준과 Low-storage 화면의 정확한 Layout / Copy / Presentation
 - Audio on/off 설정 여부
 - Clip별 음소거 기능
-- Post-MVP Text 기능 범위
+- MVP Clip Text의 Font / Position / Size / Duration / Animation 세부 정책 — Before Phase 7
 - Post-MVP Music 기능 범위
 - Post-MVP Transition 기능 범위
 - 향후 Video color / look 기능 도입 여부
