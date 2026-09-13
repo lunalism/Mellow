@@ -764,6 +764,18 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 
 # Phase 2 — Home, Recent, and Vlog Creation
 
+**Status:** Completed
+
+2026-09-13 사용자 승인으로 LunaTestphone / iPhone 12 / iOS 26.6.2의 Physical-device Gate와 최종 Visual Review가 통과했다.
+
+ADR-028은 Active Structural UX Decision으로 유지하며 `DESIGN.md` 6–7절의 최종 Launch / Recent 표현을 승인된 Phase 2 Baseline으로 확정한다.
+
+승인 범위는 Format-first Launch, Header 없는 중앙 구성, 무배경 Format Choices, Default SF Dynamic Type, White / Black Page, 조건부 중앙 Continue, 전용 Recent Grid, Neutral Placeholder와 Recent-only Compact Date다.
+
+Canonical Project Naming, Orientation, Ordering과 Menu → Delete → Confirmation 의미는 유지한다.
+
+Phase 3는 별도 지시 전까지 시작하지 않는다.
+
 ## Goal
 
 사용자가 App을 실행하고 새 Vlog를 만들거나 기존 Vlog를 다시 열 수 있는 첫 번째 실제 사용자 Flow를 완성한다.
@@ -793,28 +805,31 @@ Domain과 Persistence Layer가 UI 없이 독립적으로 테스트 가능해야 
 
 ## Decision Gate Before Implementation
 
-Home / Recent를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+Home / Recent의 Structural UX Gate는 사용자 승인 ADR-028로 해결되었다.
 
-- Recent의 List / Grid 또는 이에 준하는 Primary Layout 구조
-- 구현 구조에 영향을 주는 Recent Item의 핵심 정보 Hierarchy
-- New Vlog Entry의 Primary Placement
-- Orientation Selection의 Control 배치와 기존 Project Delete Confirmation의 Presentation 구조
-- 0 Clip Project를 정상 Draft로 전달하는 Empty Project State의 Presentation 구조
-
-New Vlog의 Primary Action 역할, 이름 입력 없음, 9:16 / 16:9 선택과 자동 이름은 확정된 기준을 유지하며 여기서 List / Grid나 구체적인 배치를 선택하지 않는다.
+- Recent는 Adaptive Thumbnail Grid다.
+- Item은 Neutral Placeholder, 기존 Domain의 자동 이름, Orientation / Aspect Ratio와 Clip Count만 표시한다.
+- Launch Orientation 선택 자체가 Primary Creation Action이며 중간 New Vlog Action을 제거한다.
+- 저장된 Project가 있을 때만 Continue Action으로 전용 Recent Projects Grid에 진입한다.
+- Native Semantic Color로 Light / Dark Appearance를 따르고 Accessibility Dynamic Type에서는 한 열로 전환한다.
+- 전용 Orientation Selection 화면의 9:16 Portrait / 16:9 Landscape 선택 즉시 Project를 저장하고 추가 확인 없이 Camera Placeholder로 진입한다.
+- Item Menu의 Delete에서 System Confirmation Alert를 거치며 Swipe-to-delete는 사용하지 않는다.
+- 0 Clip Project도 동일한 Recent Item과 `0 clips`로 표시하며 별도 Card나 Draft Category를 만들지 않는다.
 
 ADR-026의 Empty Project Behavior는 이 Gate에서 구현하며 0 Clip Project를 정상 Draft로 표시하고 다시 열 수 있게 한다.
 
-Exact Empty Project Visual, Placeholder Presentation과 Project-level Corruption의 Exact Failure Presentation은 별도 UX Gate로 유지하며 Accepted Representative Thumbnail Source Selection과 Derived-data Failure 책임은 다시 Open으로 만들지 않는다.
+Empty Project의 동일 Item / Neutral Placeholder 구조는 ADR-028로 확정하며 비구조적 Visual Tuning과 Project-level Corruption의 Exact Failure Presentation은 각 Owning Gate로 유지한다.
+
+Accepted Representative Thumbnail Source Selection과 Derived-data Failure 책임은 다시 Open으로 만들지 않는다.
 
 ## Implementation Tasks
 
-1. Home 화면을 구현한다.
-2. `New Vlog`를 Primary Action으로 배치한다.
-3. Recent 영역을 구현한다.
+1. Launch Orientation Chooser를 구현한다.
+2. 두 Format 선택을 Primary Creation Action으로 배치한다.
+3. 전용 Recent Projects Grid와 조건부 Continue Action을 구현한다.
 4. Recent는 `updatedAt` 기준 최신순으로 정렬한다.
 5. Clip이 없는 Project에는 Placeholder를 표시한다.
-6. New Vlog 선택 시 Orientation Selection 화면으로 이동한다.
+6. 선택 전에는 Project를 생성하지 않는다.
 7. 9:16 선택 시 Portrait Project를 생성한다.
 8. 16:9 선택 시 Landscape Project를 생성한다.
 9. Project Name 입력은 요구하지 않는다.
@@ -847,11 +862,13 @@ Exact Empty Project Visual, Placeholder Presentation과 Project-level Corruption
 
 ## UI Tests
 
-- Empty Home → New Vlog → 9:16
-- Empty Home → New Vlog → 16:9
+- Fresh Launch → 9:16 선택 → 저장
+- Fresh Launch → 16:9 선택 → 저장
 - Recent Project 재진입
 - 0 Clip Recent Project 재진입
-- Project 삭제 Confirmation
+- Project 삭제 Cancel / Confirm
+- Relaunch Persistence와 Continue Action Visibility
+- Light / Dark Appearance와 Accessibility Dynamic Type
 
 ## Physical Device Test
 
@@ -3041,9 +3058,7 @@ Structural UX는 해당 UI를 필요로 하는 가장 이른 Phase 전에 결정
 
 ## Before Phase 2
 
-- Recent List / Grid 및 구현 구조에 영향을 주는 Item 정보 Hierarchy
-- New Vlog Primary Placement
-- Orientation Selection과 기존 Project Delete Confirmation의 Presentation 구조
+- Resolved by ADR-028: Dedicated Recent Grid와 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert와 동일 Item의 0 clips 표현.
 
 ## Before Phase 3
 

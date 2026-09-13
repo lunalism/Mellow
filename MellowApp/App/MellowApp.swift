@@ -8,15 +8,9 @@ struct MellowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MellowBootstrapView()
+            HomeView(model: environment.home)
                 .environment(environment)
         }
         .modelContainer(environment.modelContainer)
-    }
-}
-
-private struct MellowBootstrapView: View {
-    var body: some View {
-        Text("Mellow")
     }
 }

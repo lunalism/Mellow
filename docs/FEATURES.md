@@ -966,11 +966,13 @@ Successful Local Export Artifact도 Active Consumer, Retry 또는 Recovery Requi
 
 Mellow MVP는 최소한 다음 제품 영역을 가진다.
 
-### Home
+### Launch
 
-새 Vlog를 만들고 기존 Vlog 프로젝트를 다시 여는 공간이다.
+Launch는 Orientation Chooser이며 Format 선택 즉시 Project를 저장한다.
 
-기존 프로젝트 영역의 사용자-facing 명칭은 `Recent`를 사용한다.
+기존 Project가 있을 때만 `Continue an existing project?` Action으로 전용 Recent Projects Grid에 진입한다.
+
+기존 프로젝트 화면의 사용자-facing 명칭은 `Recent Projects`를 사용한다.
 
 내부 Domain에서는 `Draft`라는 기술 용어를 사용할 수 있다.
 
@@ -1309,7 +1311,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 프로젝트 이름 입력 Prompt는 MVP에서 제공하지 않는다.
 - 프로젝트 이름은 생성 날짜 및 시간을 기준으로 자동 생성한다.
 - Project Rename은 MVP에서 제공하지 않는다.
-- Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
+- 전용 기존 프로젝트 Browser는 `Recent Projects`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - Draft의 Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 기준으로 하며 Unavailable Clip은 건너뛰고 0 Clip 또는 All-unavailable Project에는 Placeholder를 사용한다.
 - Representative Thumbnail은 Derived / Cache Data이므로 Failure가 Project / Clip Corruption이나 Recent Load Failure를 의미하지 않으며 mutation과 stale async result에서 current Representative를 다시 검증한다.
 - Export 이후에도 Draft를 자동 삭제하지 않는다.
@@ -1357,7 +1359,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Orientation
 
-- Orientation 선택 화면의 정확한 UX
+- Phase 2 Orientation Selection 구조 — Resolved by ADR-028: Launch Chooser에서 선택 즉시 저장 후 Camera Placeholder 진입.
 - 9:16 프로젝트 촬영 중 기기를 가로로 들었을 때 제공하는 회전 안내의 구체적인 형태와 위치
 - 16:9 프로젝트 촬영 중 기기를 세로로 들었을 때 제공하는 회전 안내의 구체적인 형태와 위치
 - 정확한 Orientation Detection API / Threshold / Debounce
@@ -1375,11 +1377,11 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Project
 
-- Recent의 List 또는 Grid Layout과 세부 표시 정보
+- Recent Layout과 Phase 2 표시 정보 — Resolved by ADR-028: Adaptive Thumbnail Grid, Neutral Placeholder, 자동 이름, Orientation과 Clip Count.
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
-- Draft 삭제 전 Confirmation의 세부 UI
+- Phase 2 Project 삭제 Confirmation — Resolved by ADR-028: Item Menu → Delete → System Alert.
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
-- 0 Clip Project의 Exact Empty-state Visual과 Project-level Corruption의 Exact Failure-state UI / Copy
+- Phase 2의 0 Clip Project 표현 — Resolved by ADR-028: 동일 Recent Item에 Neutral Placeholder와 `0 clips`; Project-level Corruption의 Exact Failure-state UI / Copy는 Pending.
 - Project Metadata Recovery Algorithm
 - Representative Thumbnail의 정확한 Frame Selection, Placeholder Visual, Image Format / Dimensions, Cache Directory, Eviction과 Retry Policy
 - Operation-aware Storage Preflight와 Fixed Global Threshold 미사용 — Resolved by ADR-024

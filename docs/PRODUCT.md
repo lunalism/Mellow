@@ -465,7 +465,7 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 #### Recent and Local Drafts
 
-Home에서 기존 프로젝트를 다시 찾는 영역의 사용자-facing 명칭은 `Recent`다.
+Launch Orientation Chooser의 조건부 Continue Action에서 기존 프로젝트를 탐색하는 전용 `Recent Projects` 화면으로 이동한다.
 
 내부 Domain에서는 `Draft`라는 기술 용어를 사용할 수 있다.
 
@@ -924,11 +924,7 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 
 ### First Vertical Slice
 
-**New Vlog**
-
-→
-
-**Orientation Selection**
+**App Launch / Orientation Selection (New Vlog)**
 
 →
 
@@ -1160,7 +1156,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Unresolved Unavailable Clip은 Full Vlog Preview와 Export를 차단하며 Mellow는 해당 Clip을 자동 삭제, 자동 대체 또는 조용히 생략하지 않는다.
 - All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
-- Home의 기존 프로젝트 영역은 `Recent`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
+- 전용 기존 프로젝트 Browser는 `Recent Projects`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - Recent Project Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 Source로 사용하고 Unavailable Clip을 건너뛰며 0 Clip 또는 All-unavailable Project에는 unrelated Media가 아닌 Placeholder를 사용한다.
 - Representative Thumbnail은 Derived / Cache Data이므로 Thumbnail Missing, Corruption, Generation Failure 또는 Cache Cleanup이 Project / Clip Corruption, Delete 또는 사용 차단을 의미하지 않는다.
 - Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Availability Change, Project Reload 또는 Reconciliation 뒤에는 Representative Source를 다시 평가하고 Editing Appearance가 바뀌면 이전 Thumbnail을 영구 current Representative로 사용하지 않는다.

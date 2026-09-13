@@ -3,7 +3,7 @@ import SwiftData
 
 @MainActor
 final class SwiftDataProjectRepository: ProjectRepository {
-    private let modelContext: ModelContext
+    private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -15,7 +15,7 @@ final class SwiftDataProjectRepository: ProjectRepository {
         }
 
         modelContext.insert(PersistedVlogProject(project: project))
-        try modelContext.save()
+        try saveOrRollback()
     }
 
     func project(id: UUID) throws -> VlogProject? {
@@ -31,6 +31,7 @@ final class SwiftDataProjectRepository: ProjectRepository {
         )
         descriptor.includePendingChanges = false
         return try modelContext.fetch(descriptor).map { try $0.domainValue() }
+            .sorted(by: RecentProjectOrdering.precedes)
     }
 
     func update(_ project: VlogProject) throws {
@@ -65,7 +66,7 @@ final class SwiftDataProjectRepository: ProjectRepository {
         persistedProject.apply(project)
         persistedProject.clips = persistedClips
         persistedProject.clips.forEach { $0.project = persistedProject }
-        try modelContext.save()
+        try saveOrRollback()
     }
 
     func deleteProject(id: UUID) throws {
@@ -74,7 +75,21 @@ final class SwiftDataProjectRepository: ProjectRepository {
         }
 
         modelContext.delete(persistedProject)
-        try modelContext.save()
+        try saveOrRollback()
+    }
+
+    private func saveOrRollback() throws {
+        do {
+            try modelContext.save()
+        } catch {
+            let container = modelContext.container
+            modelContext.rollback()
+            // A failed save can leave stale registered models after rollback.
+            // Re-read committed state through a fresh context before allowing retry.
+            modelContext = ModelContext(container)
+            modelContext.autosaveEnabled = false
+            throw error
+        }
     }
 
     private func persistedProject(id: UUID) throws -> PersistedVlogProject? {

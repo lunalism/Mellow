@@ -79,7 +79,7 @@ Mellow의 브랜드는 따뜻하고 차분한 필름 감성을 기반으로 한�
 - Gentle
 - Personal
 
-Mellow의 브랜드 화면에서는 Cream 계열의 따뜻한 배경과 부드러운 Neutral Color를 사용할 수 있다.
+Mellow의 브랜드 화면은 ADR-028의 Native Adaptive System Appearance를 따른다.
 
 Camera와 Video Preview 화면에서는 브랜드 컬러보다 영상 콘텐츠의 가독성을 우선한다.
 
@@ -121,14 +121,9 @@ Content-oriented Screen에서는 Black, Dark Neutral, White Overlay 등 영상 �
 
 Mellow MVP의 기본 화면 구조는 다음과 같다.
 
-- Home
-  - New Vlog
-    - Orientation Selection
-      - Camera
-      - Project
-  - Recent
-    - Existing Project
-      - Project
+- Launch / Orientation Selection
+  - Portrait 9:16 / Landscape 16:9 → Create / Persist → Camera
+  - Continue an existing project? → Recent Projects → Existing Project
 
 Project 내부의 주요 흐름은 다음과 같다.
 
@@ -143,44 +138,47 @@ Project 내부의 주요 흐름은 다음과 같다.
 
 ---
 
-## 6. Home
+## 6. Launch
 
-Home은 Mellow의 시작점이다.
+6–7절의 최종 Visual Baseline은 2026-09-13 iPhone 12 Physical-device / Visual Review에서 사용자 승인되었으며 ADR-028의 구조를 유지한다.
 
-Home의 가장 중요한 두 가지 역할은 새로운 Vlog를 시작하는 것과 기존 Vlog를 다시 여는 것이다.
+시작 화면은 ADR-028의 Orientation Chooser이며 별도 Home Dashboard와 중간 New Vlog Button을 두지 않는다.
 
-### Primary Content
+Mellow Header나 대체 장식 없이 `Choose your vlog format` Title, Format Choices와 조건부 Continue Action을 Safe Area의 시각적 중앙에 하나의 세로 Group으로 배치한다.
 
-- Mellow Branding
-- New Vlog
-- Recent Vlogs
+일반 iPhone 12 Text Size에서 Title과 `Continue an existing project?`는 각각 중앙 정렬된 한 줄이며 Title에 마침표나 강제 줄바꿈을 넣지 않는다.
 
-`New Vlog`는 Home에서 가장 명확한 Primary Action이어야 한다.
+Typography는 Default SF System Design으로 Title 28 Semibold, Portrait / Landscape 20 Semibold, Aspect Ratio와 Continue 17 Regular를 기준으로 하며 Dynamic Type Scaling을 유지한다.
 
-`Recent`는 사용자가 이전 프로젝트를 다시 찾을 수 있는 공간이다.
+Portrait 9:16 / Landscape 16:9 Choice는 Title 바로 아래 중앙에 두 열로 배치하며 Accessibility Dynamic Type에서 자연스러운 줄바꿈과 세로 배치를 허용한다.
 
-사용자 UI에서 `Draft`라는 내부 개념을 주요 명칭으로 사용하지 않는다.
+Format Choice는 Page에 섞이는 무배경 표현으로 외부 Fill / Border / Card Container 없이 비율 Preview Outline과 기존 Label만 표시하며 넓은 Padding과 Invisible Content Shape로 Tap Target을 유지한다.
 
-Clip이 0개인 유효한 Project도 Recent에서 다시 열 수 있으며 Error처럼 표현하거나 자동으로 제거하지 않는다.
+일반 Dynamic Type에서는 편안한 두 열을 사용하고 Accessibility Size에서는 세로 한 열로 전환한다.
+
+저장된 Project가 있을 때만 선택지 아래 `Continue an existing project?` Text Action으로 별도 Recent Projects 화면에 진입한다.
+
+시작 화면에는 Recent Item을 직접 표시하지 않으며 사용자에게 Draft 용어를 노출하지 않는다.
 
 ---
 
 ## 7. Recent
 
-최근 작업한 Vlog 프로젝트를 카드 또는 유사한 시각적 단위로 표시한다.
+Recent Projects는 ADR-028에 따라 전용 화면의 두 열 Adaptive Thumbnail Grid로 표시하고 Accessibility Size에서는 한 열로 전환한다.
+
+Phase 2는 실제 Thumbnail을 생성하지 않으며 Orientation과 무관하게 동일한 외부 Placeholder Geometry를 유지한다.
 
 프로젝트는 마지막 수정 시각을 기준으로 최근 항목부터 표시하는 방향을 우선한다.
 
-### Recommended Project Information
+### Phase 2 Project Information
 
-- Thumbnail
-- 자동 생성된 날짜 및 시간 이름
-- Clip 개수
-- 현재 총 Vlog 길이
-- Last edited
-- Project orientation
+ADR-028에 따라 Neutral Placeholder, 기존 Domain의 자동 Project Name, Project Orientation / Aspect Ratio와 Clip Count만 표시한다.
 
-한 카드에 너무 많은 Metadata를 표시하지 않는다.
+Recent의 날짜 기반 표시 이름만 `Sep 13 · 9:10 AM`과 같은 Locale-aware Compact Month / Day 및 Short Time으로 표현하며 Canonical Domain displayName은 변경하지 않고 일반 Text Size에서 한 줄, Accessibility Size에서 필요한 줄바꿈을 허용한다.
+
+추가 Creation / Modified Timestamp와 Duration은 표시하지 않는다.
+
+0 Clip Project도 동일한 Item에 `0 clips`로 표시하며 별도 Card나 Draft Category를 만들지 않는다.
 
 Thumbnail은 현재 Project의 logical Clip Order에서 첫 번째 Healthy / Usable Clip을 기본 대표 이미지로 사용한다.
 
@@ -200,14 +198,14 @@ Representative Thumbnail은 가능한 범위에서 Project Orientation, Framing,
 
 ## 8. New Vlog
 
-사용자가 `New Vlog`를 누르면 프로젝트 이름을 입력하도록 요구하지 않는다.
+Launch의 Format 선택이 New Vlog Action이며 프로젝트 이름을 입력하도록 요구하지 않는다.
 
 프로젝트 생성 흐름은 가능한 짧게 유지한다.
 
 기본 흐름은 다음과 같다.
 
-1. `New Vlog`
-2. `9:16` 또는 `16:9` 선택
+1. App Launch의 `9:16` 또는 `16:9` 선택
+2. Project 생성 / 저장
 3. Camera 진입
 
 사용자가 촬영 전에 입력해야 하는 필수 Text Field는 두지 않는다.
@@ -216,7 +214,7 @@ Representative Thumbnail은 가능한 범위에서 Project Orientation, Framing,
 
 ## 9. Orientation Selection
 
-새 프로젝트를 만들 때 화면 비율을 선택한다.
+새 프로젝트를 만들 때 Sheet가 아닌 전용 Orientation Selection 화면에서 화면 비율을 선택한다.
 
 MVP에서는 다음 두 가지 선택지만 제공한다.
 
@@ -236,7 +234,9 @@ MVP에서는 다음 두 가지 선택지만 제공한다.
 
 화면 비율 Preview 또는 간단한 Visual Representation을 사용할 수 있다.
 
-선택 이후 별도의 Confirm Step 없이 바로 Camera로 진입하는 방향을 우선한다.
+Phase 2에서는 `9:16 Portrait` 또는 `16:9 Landscape` 선택 즉시 기존 Domain / Persistence Layer로 저장한 뒤 별도 Confirm Step 없이 Camera Placeholder로 진입한다.
+
+Project 삭제는 Item Menu의 Delete에서 System Confirmation Alert를 거치며 Phase 2에서 Swipe-to-delete는 사용하지 않는다.
 
 ---
 
@@ -670,19 +670,13 @@ Haptic은 실제 iPhone 테스트를 통해 승인된 의미 안에서 강도와
 
 ## 30. Color Direction
 
-Mellow의 Brand UI는 따뜻한 Cream 계열을 기본 방향으로 사용한다.
+ADR-028에 따라 Cream 기반 Background를 제거하고 Native iOS Light / Dark Appearance를 자동으로 따른다.
 
-기존 브랜드 방향의 기본 Background Reference는 다음과 같다.
+systemBackground, label, secondaryLabel, secondarySystemBackground와 separator 등 Semantic Color를 우선한다.
 
-`#F4EBDD`
+Launch, Recent Projects와 Camera Placeholder의 전체 Page / Safe-area Background는 Light에서 Pure White, Dark에서 Pure Black으로 보여야 하며 Cream, Grouped Background나 Material로 Page를 착색하지 않는다.
 
-Camera 또는 Video 위 Overlay UI에서는 높은 가독성이 필요하므로 Dark Neutral과 White 계열을 사용할 수 있다.
-
-Pure Black을 브랜드 화면의 기본 컬러로 과도하게 사용하지 않는다.
-
-Camera 화면에서는 콘텐츠 가독성을 위해 필요한 경우 Black 계열을 사용할 수 있다.
-
-정확한 Color Token은 실제 UI Prototype을 통해 확정한다.
+Card만 Neutral Adaptive Secondary Surface를 사용할 수 있으며 Primary Label의 Contrast를 검증한다.
 
 ---
 
@@ -767,10 +761,10 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 
 현재 확정된 Design 및 UX 결정은 다음과 같다.
 
-- Home에서 미완성 프로젝트 영역의 주요 명칭은 `Recent`를 사용한다.
+- 기존 프로젝트를 탐색하는 전용 화면의 명칭은 `Recent Projects`를 사용한다.
 - 사용자에게 `Draft`라는 내부 개념을 주요 UI 용어로 노출하지 않는다.
 - New Vlog 생성 시 프로젝트 이름 입력 단계를 두지 않는다.
-- New Vlog를 누르면 9:16 또는 16:9를 선택한 뒤 Camera로 진입한다.
+- Launch에서 9:16 또는 16:9를 선택한 뒤 저장하고 Camera로 진입한다.
 - 프로젝트 화면 비율은 생성 이후 자동 변경하지 않는다.
 - 기기 방향이 Project Orientation과 다르면 조용한 회전 안내를 표시한다.
 - Camera Preview는 촬영 화면의 가장 중요한 시각 요소다.
@@ -830,7 +824,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 
 | Owning Phase 이전 Gate | Structural Pending 범위 | Phase 12까지 가능한 비구조적 Refinement |
 | --- | --- | --- |
-| Phase 2 — Home / Recent / New Vlog | Recent List / Grid, 구현 구조에 영향을 주는 Item 정보 Hierarchy와 New Vlog Placement, Orientation Selection의 Control 배치, 기존 Project Delete Confirmation의 Presentation 구조와 Empty Project의 정상 상태 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
+| Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | Camera Control Placement / Hierarchy와 Overlay, Front / Rear Switch 및 기존 진입 Control 배치, Rear Zoom의 최종 Interaction / Indicator / Visual Feedback, Permission 안내 구조, Portrait / Landscape의 의도적인 Layout, Orientation mismatch 안내의 Presentation 구조 | Control의 비구조적인 시각 조정과 Orientation별 Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
 | Phase 5 — Clip Management | Clip Organizer Layout, Drag Reorder의 상세 Interaction 구조, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
@@ -863,15 +857,17 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 구현과 Completi
 
 ADR-026의 Empty Project, Unavailable Clip, Preview / Export Eligibility와 Project-level Corruption 격리 동작은 확정되어 있으며 이 표에서 다시 Open으로 만들지 않는다.
 
-Empty / Corrupted Project의 Exact Visual, Replace UI와 Recent Thumbnail의 Exact Placeholder / Crop / Frame Presentation은 각 Owning Phase Gate에서 결정하며 Accepted Representative Source와 Derived-data 책임은 다시 Open으로 만들지 않는다.
+Phase 2 Empty Project의 동일 Item / Neutral Placeholder 구조는 ADR-028로 확정하며 비구조적 Visual Tuning, Corrupted Project의 Exact Visual, Replace UI와 Thumbnail Crop / Frame Presentation은 각 Owning Gate에서 결정한다.
+
+Accepted Representative Source와 Derived-data 책임은 다시 Open으로 만들지 않는다.
 
 Phase 12는 핵심 UX 구조를 처음 선택하거나 대규모 Structural Redesign을 수행하는 Phase가 아니며 구조 변경이 필요하면 `ROADMAP.md`의 Exception and Replanning Protocol을 따른다.
 
 ### Home
 
-- Recent Project를 List 또는 Grid 중 어떤 형태로 표시할지
-- New Vlog 버튼의 정확한 Placement
-- Empty State Visual
+- Recent Adaptive Thumbnail Grid와 최소 Item 정보 — Resolved by ADR-028.
+- Launch Orientation Chooser와 기존 Project 진입 Action — Resolved by ADR-028.
+- 0 Clip Project의 동일 Item / Neutral Placeholder 구조 — Resolved by ADR-028; 비구조적 Visual Tuning은 유지.
 
 ### Orientation
 

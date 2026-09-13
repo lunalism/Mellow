@@ -17,12 +17,7 @@ final class InMemoryProjectRepository: ProjectRepository {
     }
 
     func recentProjects() throws -> [VlogProject] {
-        projects.values.sorted {
-            if $0.updatedAt == $1.updatedAt {
-                return $0.createdAt > $1.createdAt
-            }
-            return $0.updatedAt > $1.updatedAt
-        }
+        projects.values.sorted(by: RecentProjectOrdering.precedes)
     }
 
     func update(_ project: VlogProject) throws {

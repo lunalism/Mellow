@@ -1365,11 +1365,80 @@ ADR-020의 Recovery Candidate Classification, ADR-021의 Delete / Active Usage /
 
 ---
 
+# ADR-027 — Phase 2 Home and Vlog Creation Structure
+
+**Status:** Superseded by ADR-028
+
+## Context
+
+Phase 2의 Home / Recent 구현 전 Structural UX Gate를 사용자 승인으로 해결한다.
+
+## Decision
+
+- Recent는 iPhone 가독성과 Dynamic Type을 고려한 Single-column List를 사용하며 Phase 2에서 2-column Grid를 구현하지 않는다.
+- Item은 Neutral Visual Placeholder, 기존 Domain의 자동 Project Name, Project Orientation / Aspect Ratio와 Clip Count만 표시한다.
+- 추가 Creation / Modified Timestamp, Duration 또는 Speculative Metadata는 표시하지 않는다.
+- Home 상단 가까이에 명확한 Primary `New Vlog` Action을 배치하며 Bottom-fixed / Floating Button은 사용하지 않는다.
+- Orientation Selection은 Sheet가 아닌 전용 화면이며 `9:16 Portrait`와 `16:9 Landscape`를 명확히 표시한다.
+- Orientation 선택 즉시 기존 Domain / Persistence Layer를 통해 Project를 저장하고 추가 Confirmation 없이 Camera Placeholder로 이동한다.
+- Project Item Menu의 Delete에서 System Confirmation Alert를 거쳐 삭제하며 Phase 2에서 Swipe-to-delete는 사용하지 않는다.
+- 0 Clip Project도 동일한 Recent Item에 Neutral Placeholder, 자동 이름, Orientation과 `0 clips`로 표시하며 별도 Card나 Draft Category를 만들지 않는다.
+- 사용자-facing 용어는 `Recent`이며 `Draft`를 노출하지 않는다.
+
+## Consequences
+
+단일 열과 최소 정보 계층은 iPhone에서 가독성과 Dynamic Type 대응을 우선하며 Grid보다 한 화면에 표시하는 Project 수는 줄어든다.
+
+현재 Placeholder 자리에 이후 Thumbnail을 표시할 수 있으며 Home 정보 구조는 유지한다.
+
+## Non-goals
+
+Camera Capture, Thumbnail Generation, Media File Management와 Phase 3 이후 기능은 이 결정으로 추가하지 않는다.
+
+---
+
+# ADR-028 — Format-first Launch and Dedicated Recent Projects
+
+**Status:** Accepted
+
+## Context
+
+Physical-device Review 후 사용자가 Phase 2 Structural UX를 명시적으로 변경하여 ADR-027을 대체한다.
+
+## Decision
+
+- App Launch는 Orientation Chooser이며 별도 Home Dashboard와 중간 New Vlog Action을 제거한다.
+- Header 없는 중앙 Format Prompt 아래 Portrait 9:16 / Landscape 16:9가 직접 생성 Action이 되며 최종 Visual Baseline은 `DESIGN.md` 6–7절을 따른다.
+- 일반 Dynamic Type에서는 iPhone 12에 편안한 두 열을 사용하고 Accessibility Size에서는 세로 한 열로 전환한다.
+- 선택 전에는 Project를 만들지 않으며 선택 즉시 기존 HomeModel / Domain / Repository로 저장한 뒤 추가 Confirmation 없이 Camera Placeholder로 이동한다.
+- 저장된 Project가 있을 때만 선택지 아래 `Continue an existing project?` Text Action으로 전용 `Recent Projects` 화면에 진입한다.
+- Recent Projects는 두 열의 Adaptive Thumbnail Grid이며 Accessibility Size에서는 한 열로 전환한다.
+- Project Orientation과 무관하게 Placeholder의 외부 Geometry는 동일하며 내부 Shape로 비율을 표현할 수 있다.
+- Phase 2는 Neutral Placeholder만 사용하고 실제 Thumbnail Generation이나 Media Infrastructure를 추가하지 않는다.
+- 기존 자동 Project Name / Date, Orientation, Clip Count와 Item Menu만 표시하며 추가 Timestamp, Duration, Favorites와 Folder는 추가하지 않는다.
+- Item Menu → Delete → System Confirmation Alert와 기존 Persistence / Ordering / Error Handling / Naming / Immutable Orientation을 유지한다.
+- 0 Clip Project는 동일한 정상 Project Item에 `0 clips`로 표시하며 사용자에게 Draft 용어를 노출하지 않는다.
+- Cream Background를 제거하고 systemBackground, label, secondaryLabel, secondarySystemBackground 등 Semantic Color로 Native Light / Dark Appearance를 자동으로 따른다.
+
+## Consequences
+
+새 Project 생성까지의 Interaction이 줄고 기존 Project 탐색은 별도 화면에서 수행한다.
+
+2026-09-13 사용자가 최종 Phase 2 UX와 iPhone 12 Physical-device Validation을 승인했다.
+
+ADR-028은 Accepted / Active로 유지하며 Typography와 Recent-only Date 표현을 포함한 최종 Visual Refinement는 `DESIGN.md`의 승인된 Baseline으로 기록한다.
+
+## Non-goals
+
+Domain / Persistence Architecture 변경, 실제 Camera / Thumbnail / Media 기능과 Phase 3 이후 기능은 포함하지 않는다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025` 또는 `Resolved by ADR-026`으로 표시된 High-level Policy는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026` 또는 `Resolved by ADR-028`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -1444,7 +1513,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 ### Design Details
 
-- Recent Project의 List 또는 Grid Layout
+- Recent Project의 Layout과 Phase 2 정보 Hierarchy / 생성 / 삭제 구조 — Resolved by ADR-028.
 - Imported Video Crop에서 Pinch to Zoom 지원 여부
 - Recording Haptic의 정확한 Timing — 기존 Pending 이력을 유지하며 H04 사용자 승인으로 정상 Recording의 사용 시점과 의미를 다음과 같이 동기화한다.
   - Recording Start Haptic — Resolved: 사용하지 않으며 Record Button Tap 또는 Recording Start 성공에 Haptic을 제공하지 않는다.
