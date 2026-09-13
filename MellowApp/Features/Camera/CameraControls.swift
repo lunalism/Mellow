@@ -1,51 +1,110 @@
 import SwiftUI
 
+/// Compact horizontal snap picker: a clipped three-slot window over the five durations with the
+/// selected value always centred. Drag snaps one step per gesture, side taps select and recentre,
+/// and VoiceOver treats the whole control as one adjustable element. UI state only — Phase 3
+/// records nothing, so changing the value never touches the camera service.
 struct CameraDurationSelector: View {
     @Binding var selected: CameraDuration
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @GestureState private var dragTranslation: CGFloat = 0
+    /// 40pt pitch keeps the row tight; the whole picker is the ≥44pt accessibility target and
+    /// side taps map to non-overlapping full-slot regions.
+    private let slotWidth: CGFloat = 40
+    /// ~4.6 slots: neighbours fully visible, the outer values sit just inside the faded edges.
+    private let visibleWidth: CGFloat = 184
+    private let circleDiameter: CGFloat = 28
+    private var selectedIndex: Int { CameraDuration.allCases.firstIndex(of: selected) ?? 0 }
+    /// Leading edge of the strip so the selected slot is centred in the window.
+    private var settledOffset: CGFloat { visibleWidth / 2 - slotWidth / 2 - slotWidth * CGFloat(selectedIndex) }
+    /// Distance-based emphasis: selected 100%, neighbours 70%, outer values 50%. 50% is the
+    /// lowest weight that keeps 15pt white text above the 4.5:1 contrast the accessibility audit
+    /// enforces over the black fallback; anything dimmer fails the audit.
+    private func emphasis(for duration: CameraDuration) -> Double {
+        let distance = abs((CameraDuration.allCases.firstIndex(of: duration) ?? 0) - selectedIndex)
+        switch distance {
+        case 0: return 1
+        case 1: return 0.7
+        default: return 0.5
+        }
+    }
+
     var body: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: dynamicTypeSize.isAccessibilitySize ? 3 : 5)
-        LazyVGrid(columns: columns, spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(CameraDuration.allCases, id: \.rawValue) { duration in
-                Button { selected = duration } label: {
-                    Text("\(duration.rawValue)s")
-                        .font(.headline)
-                        .fontWeight(duration == selected ? .semibold : .regular)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .overlay(alignment: .bottom) {
-                            if duration == selected {
-                                Capsule().fill(.white).frame(width: 20, height: 2)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(duration.rawValue) seconds")
-                .accessibilityHint("Select camera maximum duration")
-                .accessibilityValue(duration == selected ? "Selected" : "Not selected")
-                .accessibilityAddTraits(duration == selected ? .isSelected : [])
-                .accessibilityIdentifier("duration\(duration.rawValue)")
+                let isSelected = duration == selected
+                Text("\(duration.rawValue)s")
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? Color.black : Color.white)
+                    .frame(width: circleDiameter, height: circleDiameter)
+                    .background(Circle().fill(Color.white.opacity(isSelected ? 1 : 0)))
+                    .opacity(emphasis(for: duration))
+                    .frame(width: slotWidth, height: 44)
+                    .contentShape(Rectangle())
+                    .onTapGesture { select(duration) }
             }
         }
-        .frame(maxWidth: 300)
-        .padding(4)
+        .offset(x: settledOffset + dragTranslation)
+        .frame(width: visibleWidth, height: 44, alignment: .leading)
+        .clipped()
+        // Understated edge fade: the peeking outer values soften toward the edges so the row
+        // reads as continuing horizontally, without any instruction text or track.
+        .mask(
+            LinearGradient(
+                stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.035),
+                        .init(color: .black, location: 0.965), .init(color: .clear, location: 1)],
+                startPoint: .leading, endPoint: .trailing
+            )
+        )
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .updating($dragTranslation) { value, state, _ in state = value.translation.width }
+                .onEnded { value in
+                    // One discrete step per gesture: a quarter-slot pull is enough to commit.
+                    let pull = -value.translation.width / slotWidth
+                    if abs(pull) >= 0.25 { select(selected.advanced(by: pull > 0 ? 1 : -1)) }
+                }
+        )
+        .animation(.snappy(duration: 0.22), value: selected)
+        // Modest Dynamic Type only: numeric camera parameters must not wrap or break the row.
+        .dynamicTypeSize(.small ... .xLarge)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Duration")
+        .accessibilityValue(selected.accessibilityValueText)
+        .accessibilityHint("Maximum clip length. Swipe up or down to adjust.")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: select(selected.advanced(by: 1))
+            case .decrement: select(selected.advanced(by: -1))
+            @unknown default: break
+            }
+        }
+        .accessibilityIdentifier("durationPicker")
+    }
+
+    private func select(_ duration: CameraDuration) {
+        guard duration != selected else { return }
+        selected = duration
     }
 }
 
+/// Glyph-only flip: legible over arbitrary preview content through a soft shadow rather than a
+/// dark disc, with an invisible 44pt hit region.
 struct CameraFlipButton: View {
     let enabled: Bool
     let position: CameraPosition
     let flip: () -> Void
-    @ScaledMetric(relativeTo: .title2) private var diameter = 52.0
     var body: some View {
         Button(action: flip) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.title2).frame(width: diameter, height: diameter)
-                .background(Color.white.opacity(0.12)).clipShape(Circle())
-                .contentShape(Circle())
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.white.opacity(enabled ? 1 : 0.45))
+                .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).foregroundStyle(.white).disabled(!enabled)
+        .buttonStyle(.plain).disabled(!enabled)
         .accessibilityLabel("Switch camera")
         .accessibilityValue(position == .front ? "Front camera" : "Rear camera")
         .accessibilityHint("Switches between front and rear camera")
@@ -53,17 +112,29 @@ struct CameraFlipButton: View {
     }
 }
 
+/// Camera-style capture affordance: thin outer ring, a small gap, then a solid inner disc.
+/// Structural only in Phase 3 — it records nothing.
 struct CameraShutter: View {
     let enabled: Bool
-    let size: CGFloat
+    private let outerDiameter: CGFloat = 67
+    private let ringWidth: CGFloat = 3.5
+    private let innerDiameter: CGFloat = 55
     var body: some View {
         Button {} label: {
-            Circle().fill(enabled ? Color.white : Color.white.opacity(0.25))
-                .frame(width: size, height: size)
-                .overlay(Circle().strokeBorder(Color.white.opacity(enabled ? 1 : 0.4), lineWidth: 4))
-                .overlay {
-                    if !enabled { Image(systemName: "slash.circle").font(.title2).foregroundStyle(.black.opacity(0.5)) }
+            ZStack {
+                Circle()
+                    .strokeBorder(Color.white.opacity(enabled ? 0.95 : 0.4), lineWidth: ringWidth)
+                    .frame(width: outerDiameter, height: outerDiameter)
+                Circle()
+                    .fill(Color.white.opacity(enabled ? 1 : 0.28))
+                    .frame(width: innerDiameter, height: innerDiameter)
+                if !enabled {
+                    Image(systemName: "slash.circle")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.black.opacity(0.45))
                 }
+            }
+            .contentShape(Circle())
         }
         .buttonStyle(.plain).disabled(!enabled)
         .accessibilityIdentifier("cameraShutter").accessibilityLabel("Shutter")
@@ -71,51 +142,55 @@ struct CameraShutter: View {
     }
 }
 
+/// Portrait thumbnail-shaped slot. Empty today; a real 9:16 clip thumbnail can replace the
+/// placeholder later without changing this geometry.
 struct CameraContentSlot: View {
     let clipCount: Int
-    @ScaledMetric(relativeTo: .caption) private var thumbnailWidth = 84.0
-    @ScaledMetric(relativeTo: .caption) private var thumbnailHeight = 48.0
+    @ScaledMetric(relativeTo: .caption) private var width = 38.0
+    @ScaledMetric(relativeTo: .caption) private var height = 64.0
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.12))
-                .frame(width: thumbnailWidth, height: thumbnailHeight)
-                .overlay {
-                    // The root Camera owns no project yet, so the empty slot stays a neutral
-                    // affordance rather than a labelled control.
-                    if clipCount > 0 {
-                        Text(clipCount == 1 ? "1 clip" : "\(clipCount) clips")
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                    }
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            )
+            .overlay {
+                if clipCount > 0 {
+                    Text("\(clipCount)")
+                        .font(.caption.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(.white)
+                } else {
+                    Image(systemName: "film")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.3))
                 }
-            if clipCount > 0 {
-                Text("Project content").font(.caption).foregroundStyle(Color.white.opacity(0.82))
             }
-        }
-        // No functional Clip Review destination exists until Phase 5.
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("projectContent")
-        .accessibilityLabel(clipCount == 0 ? "Project content, empty" : "Project content, \(clipCount) clips")
-        .accessibilityHint("Clip review is not available yet")
+            .frame(width: width, height: height)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            // No functional Clip Review destination exists until Phase 5.
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("projectContent")
+            .accessibilityLabel(clipCount == 0 ? "Project content, empty" : "Project content, \(clipCount) clips")
+            .accessibilityHint("Clip review is not available yet")
     }
 }
 
-/// Quiet secondary access to the dedicated Recent Projects browser from the Camera surface.
+/// Quiet secondary access to the dedicated Recent Projects browser from the Camera surface:
+/// a small glyph with a 44pt hit region and no persistent background.
 struct CameraProjectsButton: View {
     let open: () -> Void
-    @ScaledMetric(relativeTo: .title2) private var diameter = 44.0
     var body: some View {
         Button(action: open) {
             Image(systemName: "rectangle.stack")
-                .font(.title3)
-                .frame(width: max(44, diameter), height: max(44, diameter))
-                .background(Color.black.opacity(0.32))
-                .clipShape(Circle())
-                .contentShape(Circle())
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.white)
         .accessibilityLabel("Projects")
         .accessibilityHint("Opens your saved vlogs")
         .accessibilityIdentifier("projects")

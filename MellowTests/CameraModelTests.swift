@@ -257,11 +257,34 @@ final class CameraModelTests: XCTestCase {
         XCTAssertEqual(CameraZoomPolicy.clamp(.nan), 1)
         model.leave(); await model.waitForLifecycle()
     }
+    func testDurationPickerStepsOneSecondAndClampsToRange() {
+        XCTAssertEqual(CameraDuration.three.advanced(by: 1), .four)
+        XCTAssertEqual(CameraDuration.three.advanced(by: -1), .two)
+        XCTAssertEqual(CameraDuration.five.advanced(by: 1), .five, "upper clamp")
+        XCTAssertEqual(CameraDuration.one.advanced(by: -1), .one, "lower clamp")
+        XCTAssertEqual(CameraDuration.one.advanced(by: 9), .five)
+        XCTAssertEqual(CameraDuration.five.advanced(by: -9), .one)
+        XCTAssertEqual(CameraDuration.four.advanced(by: 0), .four)
+    }
+    func testDurationPickerWindowKeepsSelectionCentred() {
+        XCTAssertEqual(CameraDuration.three.visibleWindow, [.two, .three, .four], "default 2s [3s] 4s")
+        XCTAssertEqual(CameraDuration.two.visibleWindow, [.one, .two, .three])
+        XCTAssertEqual(CameraDuration.four.visibleWindow, [.three, .four, .five])
+        XCTAssertEqual(CameraDuration.one.visibleWindow, [nil, .one, .two], "1s sits centred with no left neighbour")
+        XCTAssertEqual(CameraDuration.five.visibleWindow, [.four, .five, nil])
+        for duration in CameraDuration.allCases { XCTAssertEqual(duration.visibleWindow[1], duration) }
+        XCTAssertEqual(CameraDuration.one.accessibilityValueText, "1 second")
+        XCTAssertEqual(CameraDuration.three.accessibilityValueText, "3 seconds")
+    }
     func testDurationSelectionIsFeatureStateOnly() {
         let service = FakeCameraCaptureService()
         let (model, _) = make(service)
         XCTAssertEqual(model.selectedDuration, .three)
         for duration in CameraDuration.allCases { model.selectedDuration = duration; XCTAssertEqual(model.selectedDuration, duration) }
-        XCTAssertTrue(service.calls.isEmpty)
+        // VoiceOver adjustment and drag snapping route through the same clamped stepping.
+        model.selectedDuration = model.selectedDuration.advanced(by: 1)
+        model.selectedDuration = model.selectedDuration.advanced(by: -9)
+        XCTAssertEqual(model.selectedDuration, .one)
+        XCTAssertTrue(service.calls.isEmpty, "duration changes must never reach the camera service")
     }
 }

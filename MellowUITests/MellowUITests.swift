@@ -146,14 +146,28 @@ final class MellowUITests: XCTestCase {
         let shutter = app.buttons["cameraShutter"]
         XCTAssertTrue(shutter.waitForExistence(timeout: 5))
         XCTAssertTrue(shutter.isEnabled)
-        XCTAssertEqual(app.buttons["duration3"].value as? String, "Selected")
-        for duration in 1...5 {
-            let control = app.buttons["duration\(duration)"]
-            XCTAssertGreaterThanOrEqual(control.frame.width, 44)
-            XCTAssertGreaterThanOrEqual(control.frame.height, 44)
-            control.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.08)).tap()
-            XCTAssertEqual(control.value as? String, "Selected")
-        }
+        let picker = app.otherElements["durationPicker"]
+        XCTAssertTrue(picker.exists)
+        XCTAssertGreaterThanOrEqual(picker.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(picker.frame.width, 170)
+        XCTAssertEqual(picker.label, "Duration")
+        XCTAssertEqual(picker.value as? String, "3 seconds", "default remains 3s")
+
+        // Tapping the visible side values selects them; the window recentres each time.
+        tapPickerSide(picker, .right); expectDuration(picker, 4)
+        tapPickerSide(picker, .right); expectDuration(picker, 5)
+        tapPickerSide(picker, .right); expectDuration(picker, 5, "upper clamp: nothing past 5s")
+        tapPickerSide(picker, .left); expectDuration(picker, 4)
+
+        // Dragging snaps exactly one second per gesture, in either direction, clamped at 1s.
+        picker.swipeLeft(); expectDuration(picker, 5)
+        picker.swipeRight(); expectDuration(picker, 4)
+        picker.swipeRight(); expectDuration(picker, 3)
+        picker.swipeRight(); expectDuration(picker, 2)
+        picker.swipeRight(); expectDuration(picker, 1)
+        picker.swipeRight(); expectDuration(picker, 1, "lower clamp: nothing below 1s")
+        picker.swipeLeft(); expectDuration(picker, 2)
+        tapPickerSide(picker, .right); expectDuration(picker, 3)
 
         let flip = app.buttons["cameraSwitch"]
         XCTAssertTrue(flip.isEnabled)
@@ -222,13 +236,15 @@ final class MellowUITests: XCTestCase {
         preview.pinch(withScale: 0.2, velocity: -2)
         expectZoom(preview, "1.0×")
         app.swipeUp()
-        for duration in 1...5 {
-            let control = app.buttons["duration\(duration)"]
-            XCTAssertTrue(control.isHittable)
-            XCTAssertGreaterThanOrEqual(control.frame.height, 44)
-            control.tap()
-            XCTAssertEqual(control.value as? String, "Selected")
-        }
+        // The picker scales only modestly at accessibility sizes and stays a single operable row.
+        let picker = app.otherElements["durationPicker"]
+        XCTAssertTrue(picker.isHittable)
+        XCTAssertGreaterThanOrEqual(picker.frame.height, 44)
+        XCTAssertEqual(picker.value as? String, "3 seconds")
+        tapPickerSide(picker, .left); expectDuration(picker, 2)
+        tapPickerSide(picker, .left); expectDuration(picker, 1)
+        tapPickerSide(picker, .right); expectDuration(picker, 2)
+        picker.swipeLeft(); expectDuration(picker, 3)
         try auditAndCapture(app, name: "Accessibility Camera")
     }
 
@@ -269,6 +285,24 @@ final class MellowUITests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private enum PickerSide { case left, right }
+
+    /// The picker is one adjustable accessibility element, so side values are reached by position:
+    /// the selected value is centred and its neighbours sit one 40pt slot to either side of a
+    /// 184pt window, i.e. at roughly 28% / 72% of the width.
+    @MainActor
+    private func tapPickerSide(_ picker: XCUIElement, _ side: PickerSide) {
+        picker.coordinate(withNormalizedOffset: CGVector(dx: side == .left ? 52.0 / 184 : 132.0 / 184, dy: 0.5)).tap()
+    }
+
+    @MainActor
+    private func expectDuration(_ picker: XCUIElement, _ seconds: Int, _ note: String = "") {
+        let expected = "\(seconds) second\(seconds == 1 ? "" : "s")"
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: picker)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed,
+                       "picker at \(String(describing: picker.value)) instead of \(expected). \(note)")
+    }
 
     /// Zoom is applied through an async hop, so the clamped value settles after the gesture ends.
     @MainActor

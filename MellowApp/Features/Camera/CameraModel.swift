@@ -5,6 +5,23 @@ import OSLog
 #endif
 
 enum CameraDuration: Int, CaseIterable { case one = 1, two, three, four, five }
+
+extension CameraDuration {
+    /// Discrete stepping shared by the picker's drag snap, side taps and VoiceOver adjustment.
+    /// Always clamps to 1s–5s; never produces a fractional or out-of-range duration.
+    func advanced(by steps: Int) -> CameraDuration {
+        let all = CameraDuration.allCases
+        let index = all.firstIndex(of: self) ?? 0
+        return all[min(max(index + steps, 0), all.count - 1)]
+    }
+    /// The three-slot window the picker shows: previous, selected, next (nil at the edges).
+    var visibleWindow: [CameraDuration?] {
+        let all = CameraDuration.allCases
+        let index = all.firstIndex(of: self) ?? 0
+        return [index > 0 ? all[index - 1] : nil, self, index < all.count - 1 ? all[index + 1] : nil]
+    }
+    var accessibilityValueText: String { "\(rawValue) second\(rawValue == 1 ? "" : "s")" }
+}
 enum CameraReadiness: Equatable {
     case permissionPending, denied, restricted, preparing, ready, mismatch, unavailable, interrupted, inactive
     case failed(CameraFailure)

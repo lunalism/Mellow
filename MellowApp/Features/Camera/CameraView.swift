@@ -107,13 +107,13 @@ struct CameraView: View {
                     preview
                     statusOverlay
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    VStack(spacing: 18) {
+                    VStack(spacing: 8) {
                         Spacer()
                         durationSelector
                         overlayControlsPortrait
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 18)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 24)
                 }
             }
         }
@@ -136,8 +136,8 @@ struct CameraView: View {
     @ViewBuilder private var projectsAccess: some View {
         if context.isRoot, let showProjects {
             CameraProjectsButton(open: showProjects)
-                .padding(.top, 8)
-                .padding(.trailing, 12)
+                .padding(.top, 9)
+                .padding(.trailing, 14)
         }
     }
 
@@ -155,29 +155,27 @@ struct CameraView: View {
             VStack(spacing: 20) {
                 CameraContentSlot(clipCount: context.clipCount)
                 HStack(spacing: 44) {
-                    CameraShutter(enabled: model.readiness == .ready, size: 78)
+                    CameraShutter(enabled: model.readiness == .ready)
                     flip
                 }
             }
         } else {
-            HStack {
-                CameraContentSlot(clipCount: context.clipCount)
-                Spacer(minLength: 12)
-                CameraShutter(enabled: model.readiness == .ready, size: 78)
-                Spacer(minLength: 12)
-                flip
-            }
+            overlayControlsPortrait
         }
     }
 
+    /// The shutter sits on the true horizontal centreline: it is centred by the ZStack rather
+    /// than by an HStack whose side controls have unequal widths.
     private var overlayControlsPortrait: some View {
-        HStack(alignment: .bottom, spacing: 18) {
-            CameraContentSlot(clipCount: context.clipCount)
-            Spacer(minLength: 10)
-            CameraShutter(enabled: model.readiness == .ready, size: 82)
-            Spacer(minLength: 10)
-            flip
+        ZStack {
+            HStack {
+                CameraContentSlot(clipCount: context.clipCount)
+                Spacer()
+                flip
+            }
+            CameraShutter(enabled: model.readiness == .ready)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var preview: some View {
@@ -239,8 +237,8 @@ struct CameraView: View {
             Text("Camera temporarily unavailable").font(.headline).multilineTextAlignment(.center).padding()
                 .background(.black.opacity(0.84)).accessibilityIdentifier("cameraInterrupted")
         case .mismatch:
-            Text("Rotate your iPhone").font(.headline).padding(.horizontal, 14).padding(.vertical, 10)
-                .background(.black.opacity(0.74)).clipShape(RoundedRectangle(cornerRadius: 10))
+            Text("Rotate your iPhone").font(.subheadline.weight(.medium)).padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.6)).clipShape(Capsule())
                 .accessibilityIdentifier("cameraMismatch")
         case .permissionPending, .preparing:
             ProgressView().tint(.white).accessibilityLabel("Preparing camera")
