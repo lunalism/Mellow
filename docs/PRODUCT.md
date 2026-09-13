@@ -219,11 +219,15 @@ Mellow의 대표적인 사용자 흐름은 다음과 같다.
 
 ↓
 
-**첫 번째 짧은 Clip 촬영 또는 Photos Video Import**
+**짧은 Clip을 여러 개 촬영 → 각각 Photos에 저장 (Project 없음)**
 
 ↓
 
-**추가 Clip 촬영 또는 Import**
+**Projects → Select Clips (또는 Load Last Saved)**
+
+↓
+
+**선택한 Clip으로 하나의 저장 Project 구성, 필요 시 Photos Video Import**
 
 ↓
 
@@ -438,7 +442,7 @@ Front Camera Zoom과 Mirror Toggle은 MVP에 포함하지 않는다.
 
 Front Camera Preview는 Mirrored Appearance를 사용하며 Mellow에서 직접 촬영한 Front Clip도 이후 Preview, Editing과 Export에서 사용자가 촬영 중 본 Mirrored Framing을 유지한다.
 
-Direct Recording에는 Camera와 Microphone Permission이 모두 필요하며 둘 중 하나가 허용되지 않으면 Recording을 시작하지 않고 무음 Video로 자동 대체하지 않는다.
+ADR-033에 따라 Direct Recording에는 Camera 권한과 Photos Add 권한이 필요하며 Microphone은 선택 권한이다. Microphone이 거부되어도 무음으로 촬영할 수 있고 Camera는 `mic.slash` 상태를 조용히 표시한다. 성공한 Clip은 Photos에 직접 저장되며 Project를 만들지 않는다.
 
 Camera 또는 Microphone Permission 문제는 Photos Video Import를 차단하지 않으며 Audio Track이 없는 Photos Source Video도 Import할 수 있다.
 
@@ -498,7 +502,7 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 Launch의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
 
-탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+ADR-033에 따라 탭하면 저장 Project가 없을 때 `Select Clips`, 있을 때 `Load Last Saved` / `Select Clips`를 제공하며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
 
 큰 Existing-project Text CTA와 Launch의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
@@ -1157,7 +1161,8 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Rear Zoom은 Recording을 Stop / Restart하거나 Clip을 분리하거나 선택한 최대 Duration Timer를 Reset하지 않으며 승인된 1.0×–2.0× Pinch와 Gesture 중 Transient Indicator만 제공한다.
 - 0.5× Ultra Wide, Telephoto와 Lens Selector는 MVP에서 제공하지 않고 Front Camera Zoom도 MVP에서 제공하지 않는다.
 - Front Camera Preview와 Mellow에서 직접 촬영한 Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지하며 Mirror Toggle은 제공하지 않는다.
-- Direct Recording에는 Camera와 Microphone Permission이 모두 필요하고 어느 하나가 허용되지 않으면 Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있고 Audio Track이 없는 Source도 허용한다.
+- Direct Recording에는 Camera와 Photos Add Permission이 필요하고 Microphone은 선택이며 거부 시 무음 Recording을 허용한다(ADR-033). Photos Import는 독립적으로 사용할 수 있고 Audio Track이 없는 Source도 허용한다.
+- Recording은 Project를 만들지 않고 Camera Clip은 Photos에 저장되며, Direct Capture 최소 길이는 1.0초다(ADR-033).
 - Recording Start에는 Project Orientation과 일치하는 Device Posture가 필요하며 Landscape Left / Right는 모두 Landscape Project에 유효하고 Face Up / Down / Unknown / Unstable 상태는 유효하지 않다.
 - Mid-record Device Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Rear Zoom을 회전만으로 Reset하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
 - Recording Interruption은 Successful Manual / Auto-stop으로 표시하지 않고 Media Safety 계약을 따르며 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
@@ -1185,7 +1190,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Storage 부족을 이유로 승인된 1080p / 30 fps, Audio, Recording Duration, Import Working Media 또는 Export 품질을 자동 하향하지 않는다.
 - Storage Pressure로 Draft, Committed Media, Recovery / Undo Candidate, Active Usage Media 또는 다른 Project Media를 자동 삭제하지 않는다.
 - Runtime Disk Full 또는 Write Failure의 Partial / Incomplete Output을 정상 결과로 Commit하지 않고 기존 Committed Media와 Photos 원본을 보호한다.
-- Multiple Drafts와 자동 저장을 지원하며 Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
+- Domain은 Multiple Drafts를 표현하지만 V1 Product는 편집 가능한 저장 Project를 하나만 유지하며(ADR-033) 자동 저장하고 사용자가 대체 / 삭제하기 전까지 자동 만료하지 않는다.
 - 로컬 Draft는 앱 재실행과 기기 재부팅 이후에도 유지한다.
 - Clip이 0개인 Project는 정상적인 Draft이며 Recent에 표시되고 다시 열 수 있고 자동으로 삭제하지 않는다.
 - 0 Clip Project는 Recording과 Photos Video Import를 허용하지만 Full Vlog Preview와 Export는 비활성화한다.
@@ -1193,7 +1198,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Unresolved Unavailable Clip은 Full Vlog Preview와 Export를 차단하며 Mellow는 해당 Clip을 자동 삭제, 자동 대체 또는 조용히 생략하지 않는다.
 - All-unavailable Project도 Draft로 유지하며 새 Direct Recording, Photos Video Import, Replace와 Delete를 허용한다.
 - 프로젝트 이름 입력 Prompt 없이 생성 날짜와 시간 기반 자동 표시 이름을 사용하며 Rename은 MVP에서 제공하지 않는다.
-- 전용 기존 프로젝트 Browser는 `Recent Projects`로 표시하며 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
+- V1 Projects Entry는 `Select Clips` / `Load Last Saved`이며 Multi-project `Recent Projects` Browser는 Post-V1 복원 결정으로 남긴다(ADR-033). 내부 Domain에서는 `Draft` 용어를 사용할 수 있다.
 - Recent Project Representative Thumbnail은 current logical Clip Order의 첫 번째 Healthy / Usable Clip을 Source로 사용하고 Unavailable Clip을 건너뛰며 0 Clip 또는 All-unavailable Project에는 unrelated Media가 아닌 Placeholder를 사용한다.
 - Representative Thumbnail은 Derived / Cache Data이므로 Thumbnail Missing, Corruption, Generation Failure 또는 Cache Cleanup이 Project / Clip Corruption, Delete 또는 사용 차단을 의미하지 않는다.
 - Clip Add, Delete, Undo Restore, Replace 성공, Reorder, Availability Change, Project Reload 또는 Reconciliation 뒤에는 Representative Source를 다시 평가하고 Editing Appearance가 바뀌면 이전 Thumbnail을 영구 current Representative로 사용하지 않는다.

@@ -174,7 +174,7 @@ Camera 진입 전 Onboarding은 기능 동작을 설명하고 필수 권한을 �
 
 Camera 권한은 설명 상태에서 요청되며, 안내 자체와 시스템 권한 요청은 분리한다.
 
-Microphone, Photos, Location은 각각 Owning Phase의 요청 시점에만 다루며 Launch에서 일괄 권한 요청으로 대체하지 않는다.
+ADR-033에 따라 첫 실행 Onboarding은 `Camera → Microphone → Photos Add`를 각각 설명한 뒤 한 번에 하나씩 시스템 요청하며 iOS 권한 Sheet를 동시에 띄우지 않는다. Microphone은 선택(거부 시 무음 Recording), Photos는 가장 좁은 Add-to-library 권한이며 Location은 요청하지 않는다. Phase 3 구현의 Camera-only 요청은 Phase 4에서 이 순서로 확장한다.
 
 카메라가 허용된 기존 설치는 Onboarding을 건너뛸 수 있으며, 완료 상태는 앱 재실행 간에 유지되는 app-level flag로 추적한다.
 
@@ -183,6 +183,8 @@ Onboarding은 첫 실행에서만 강하게 제시되며, 앱 전체에서 반�
 ---
 
 ## 7. Recent
+
+ADR-033에 따라 V1은 편집 가능한 저장 Project를 하나만 유지하며 Camera `Projects` Entry가 저장 Project가 없으면 `Select Clips`, 있으면 `Load Last Saved` / `Select Clips`를 제공한다. 아래 Multi-project Recent Grid는 ADR-028 당시의 승인 기록이며 V1 Primary Projects Flow가 아니고 Post-V1 복원 결정 전까지 구조만 보존한다.
 
 Recent Projects는 ADR-028에 따라 전용 화면의 두 열 Adaptive Thumbnail Grid로 표시하고 Accessibility Size에서는 한 열로 전환한다.
 
@@ -298,6 +300,8 @@ Recording을 시작할 수 없는 상태임은 이해 가능해야 하지만 Pro
 
 Recording이 시작된 뒤 Device를 회전해도 현재 Recording을 자동 Stop / Restart하지 않고 Project Orientation과 Clip Aspect Ratio를 변경하지 않으며 다음 Record 요청 전에 Orientation을 다시 확인한다.
 
+ADR-033에 따라 Active Recording 중에는 `Rotate your iPhone`을 차단 상태로 표시하지 않으며 Progress와 Shutter Stop이 Primary로 유지된다. Recording이 끝나면 즉시 자세를 재평가하여 upright Portrait이 아니면 `Rotate your iPhone` 안내를 복원하고 다음 Recording을 막는다.
+
 ---
 
 ## 11. Camera Screen
@@ -316,11 +320,11 @@ Splash / Onboarding 단계에서 Camera Foundation 준비가 완료되어도 Cam
 
 ### Projects Access
 
-Format Selection 화면이 사라지므로 Projects 진입은 Camera Chrome으로 이동하며 구조는 `Portrait Camera → Projects → Recent Projects`다.
+Format Selection 화면이 사라지므로 Projects 진입은 Camera Chrome으로 이동한다. ADR-033에 따라 구조는 `Portrait Camera → Projects → Select Clips`(저장 Project 없음) 또는 `Portrait Camera → Projects → Load Last Saved / Select Clips`(저장 Project 있음)이며 `Select Clips`로 대체할 때는 `Creating a new project will replace your last saved project.`에 해당하는 확인을 거친다.
 
 Projects는 조용한 Secondary Action으로 유지하고 Camera가 시각적으로 우선한다.
 
-Camera에 Recent Grid를 직접 표시하지 않고 `Continue an existing project?` CTA도 사용하지 않으며 전용 Recent Projects Browser는 유지한다.
+Camera에 Recent Grid를 직접 표시하지 않고 `Continue an existing project?` CTA도 사용하지 않으며 Multi-project Recent Browser는 V1 Primary Flow가 아니다.
 
 선호 배치는 Camera Chrome의 Upper Trailing이고 Accessibility Label은 `Projects`이며 정확한 SF Symbol, 크기, 간격과 Press 표현은 구현 Polish로 남긴다.
 
@@ -368,6 +372,12 @@ Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기
 
 Preset은 정확한 Output 길이를 강제하지 않으며 3s 선택 후 1.4초에 수동 종료할 수 있다.
 
+ADR-033에 따라 Shutter는 Idle에서 Tap → 시작, Recording 중 Tap → Manual Early Stop이며 Hold-to-record는 없다. 실제 길이가 1.0초 이상이면 Finalize / Photos 저장, 1.0초 미만이면 폐기한다. Recording 중에는 Duration Picker, Flip, Projects와 Navigation을 잠그고 Shutter만 Stop Control로 유지하며 저장 성공 / 폐기 / 실패 후 복원한다.
+
+Recording은 Project를 만들지 않는다. 성공한 Clip은 Photos에 저장되며 Project는 `Projects → Select Clips`에서만 만들어진다.
+
+Microphone이 Denied / Restricted이면 `mic.slash` 형태의 조용한 Muted 상태를 표시하고 무음으로 계속 촬영할 수 있으며 이 Control은 Camera를 시각적으로 지배하지 않는다.
+
 녹화 중 Pause / Resume 기능은 제공하지 않는다.
 
 ---
@@ -378,7 +388,7 @@ Record Button 주변에 선택한 최대 Duration Recording Progress를 표현�
 
 Progress 표현은 Timer를 읽지 않아도 촬영 종료가 가까워지고 있음을 직관적으로 알 수 있게 해야 한다.
 
-화면 중앙에 큰 Countdown 숫자를 표시하지 않는다.
+화면 중앙에 큰 Countdown 숫자를 표시하지 않는다. ADR-033에 따라 Shutter 주변 Circular Progress Ring이 `elapsed / selected maximum`을 표현하는 Primary Progress Surface이며 `00:02 / 00:03` Text, 큰 Duration Text나 별도 Timeline / Progress Bar를 두지 않는다. Ring 색상은 Visual 구현 결정이다.
 
 마지막 구간에서는 기존 Visual Progress 변화로 자동 종료가 가까워졌음을 자연스럽게 알릴 수 있다.
 
@@ -645,13 +655,13 @@ Autosave 과정 자체를 사용자에게 반복적으로 알리지 않는다.
 
 Permission은 앱 최초 실행 시 한꺼번에 모두 요청하지 않는다.
 
-Camera, Microphone, Photos 권한은 실제 기능을 처음 사용하는 시점에 Contextual하게 요청한다.
+ADR-033에 따라 첫 실행 Onboarding은 Camera, Microphone, Photos Add를 각각 설명한 뒤 한 번에 하나씩 요청하며 Location은 요청하지 않는다. 이후 Photos Import 등은 실제 기능을 처음 사용하는 시점에 Contextual하게 요청한다.
 
 사용자가 권한을 거부한 경우 Mellow가 해당 권한을 왜 필요로 하는지 짧고 명확하게 설명한다.
 
 Settings 이동이 필요한 경우 적절한 Action을 제공한다.
 
-Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작할 수 없으며 무음 Direct-recorded Video로 자동 대체하지 않는다.
+Camera 또는 Photos Add Permission이 없으면 Direct Recording을 성공 Capture로 완료할 수 없으며 Settings Recovery를 제공한다. Microphone은 선택 권한이며 Denied / Restricted이면 무음으로 촬영을 계속할 수 있고 `mic.slash` 상태 Control이 `.notDetermined` → 요청, `.denied` → Settings, `.restricted` → 설명으로 동작한다.
 
 Permission 안내는 Recording만 제한된다는 사실과 Photos Video Import는 계속 사용할 수 있다는 사실을 구분하여 전달해야 한다.
 

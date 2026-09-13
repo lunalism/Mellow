@@ -1130,7 +1130,25 @@ ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permissio
 
 # Phase 4 — Video Recording
 
-ADR-032에 따라 Phase 4 Recording은 V1 Portrait 9:16 Project만 대상으로 하며 Landscape Recording 복원은 Post-V1 Product Decision이다.
+**Status:** Not Started.
+
+ADR-032에 따라 Phase 4 Recording은 V1 Portrait 9:16만 대상으로 하며 Landscape Recording 복원은 Post-V1 Product Decision이다.
+
+### ADR-033 Capture-First Revision — 2026-09-14
+
+ADR-033은 이 Phase의 전제를 다음과 같이 바꾸며 아래 본문 중 충돌하는 항목은 이 Revision을 따른다.
+
+- Direct Camera Recording은 Project를 만들지 않고 Project-owned Media로 Commit하지 않는다. 결과는 `Temporary Staging → Finalize → 검증 → Photos Add Save → Staging 삭제` Lifecycle을 따른다.
+- 성공 Capture는 Photos에 실제로 존재하는 Media에만 대응한다. Photos Save 실패는 성공으로 보고하지 않고 Project를 만들지 않으며 복구 가능한 Save Error와 명시적 Recovery Policy를 따른다.
+- Microphone은 선택 권한이다. Denied / Restricted여도 무음 Video Recording을 허용하고 `mic.slash` 상태와 상태별 Control 동작(`.notDetermined` 요청 / `.denied` Settings / `.restricted` 설명)을 제공한다.
+- 첫 실행 Onboarding은 `Camera → Microphone → Photos Add`를 설명 후 한 번에 하나씩 요청하며 Location은 요청하지 않는다.
+- Direct Capture 최소 길이는 1.0초다. Manual Early Stop / Interruption / Background 시 1.0초 이상이고 Finalization이 성공하면 Photos에 저장하고 미만이면 폐기한다. Background에서 Recording을 계속하지 않는다.
+- Hard Crash 이후에는 Best-effort Staging Recovery만 수행한다.
+- Recording 시작은 upright Portrait 자세에서만 허용하며 Landscape / Face Up / Face Down / Unknown / Unstable에서는 거부한다.
+- Recording 중 Duration Picker / Flip / Projects / Navigation을 잠그고 Shutter만 Manual Stop으로 유지한다. Shutter 주변 Circular Progress Ring이 `elapsed / selected maximum`을 표현하며 큰 숫자 Timer를 두지 않는다.
+- Recording State는 `idle → preparing → recording → finishing → savingToPhotos → idle`, 실패 시 `failed / cleanup → idle`이며 Project 생성은 포함하지 않는다.
+- ADR-020 / ADR-021 / ADR-024의 Transactional Commit, Late Commit 차단, Recovery Classification과 Storage Preflight는 Photos Import와 Phase 5의 Project Media Materialization(Select Clips)에 계속 적용되며, Recording에는 Staging File Write와 Photos Save를 위한 Storage Preflight / Cleanup만 적용한다.
+- Select Clips, 단일 저장 Project 생성, Load Last Saved, 대체 확인과 Safe Atomic Replacement는 Phase 5가 소유하며 Phase 4는 구현하지 않는다.
 
 Microphone Permission / Input / Audio Session과 Camera + Microphone Recording Readiness는 Phase 4 소유이며 Phase 3 Preview Foundation은 Camera Permission만 사용한다.
 
@@ -1199,22 +1217,28 @@ Preset의 Relaunch 유지, Project별 기억과 기존 Clip 영향은 Phase 4 �
 - Manual Stop
 - 선택한 최대 Duration Auto Stop
 - Recording Progress
-- Clip File Staging
+- Clip File Staging(Temporary, Photos Save 후 삭제)
 - Safe Media Write
-- Durable Operation Identity
-- 기본 Media Commit Recovery와 Recovery Classification
-- Project Clip 추가
+- Photos Add 권한과 Direct Photos Save
+- Microphone 권한 상태와 무음 Recording
+- 첫 실행 Onboarding의 Camera → Microphone → Photos Add 순차 요청
+- Direct Capture 최소 1.0초 검증
+- Recording Control Lock
+- Best-effort Staging Recovery
 - Front Camera Recording
 - Rear Camera Recording
 - Rear Active Recording Continuous Zoom
 - Recording Start Orientation Match Gate
 - Front Preview / Recorded Result Mirroring Parity
-- Camera / Microphone Recording Readiness
+- Camera Recording Readiness(Microphone은 선택)
 - Recording Haptic 기본 구현
 - Interruption 기본 대응
 
 ## Explicitly Excluded
 
+- Project 생성 / Project Clip 추가 / Project-owned Media Commit: ADR-033에 따라 Phase 5 소유
+- Select Clips / Load Last Saved / Project 대체 UI: Phase 5 소유
+- Location 권한
 - Front Camera Zoom
 - 0.5× Ultra Wide / Telephoto / Lens Selector
 - Focus Control
@@ -1251,13 +1275,17 @@ ADR-024의 Operation-aware Storage Preflight, Operation-scoped Shortage, No Sile
 
 이 Gate는 ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Reserve` 계약을 구체화해야 하며 해결되기 전에는 실제 Recording Media Writing 구현을 시작하지 않는다.
 
+### Orientation-During-Recording Gate — Resolved 2026-09-14
+
+ADR-033 Resolution: Recording 시작은 upright Portrait에서만 허용하고, 시작 후에는 Clip의 Capture / Output Orientation을 Recording 전체 동안 Portrait으로 고정한다. 이후 Landscape / Face Up / Face Down / Unknown / Unstable로 바뀌어도 자세 변경만으로는 Stop / Restart하거나 Orientation을 바꾸지 않으며 Shutter Stop, 최대 Duration 도달, Inactive / Background / System Interruption에서만 종료한다. Active Recording 중에는 `Rotate your iPhone`을 차단 상태로 사용하지 않고 종료 직후 자세를 재평가하여 다음 Recording의 Readiness를 복원한다.
+
 ### Structural UX Gate
 
 Recording UI를 구현하기 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
 
 - 확정된 Circular Progress Ring의 Layout-level 표현과 Record Control 주변 배치
-- 현재 녹화 시간 표시의 구체적인 Presentation 구조
-- Clip 저장 완료 Feedback의 비 Haptic Presentation 구조
+- Progress Ring의 색상 / 표현 (ADR-033: 큰 숫자 Timer와 `00:02 / 00:03` Text는 두지 않는다)
+- Photos 저장 완료 / 저장 실패 Feedback의 비 Haptic Presentation 구조와 `mic.slash` Control의 배치
 - Recording Storage 부족으로 해당 작업을 시작할 수 없고 기존 Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조
 
 Phase 3에서 승인한 Camera Layout을 재사용하며 ADR-029의 선택형 최대 1–5초 Recording, Manual Stop / Auto Stop과 Circular Progress Ring 방향은 다시 Open으로 만들지 않는다.
@@ -1277,36 +1305,36 @@ Recording Error / Interruption의 Haptic은 별도 Pending으로 유지하며 �
 7. Progress 계산은 Monotonic Time을 사용한다.
 8. 선택한 최대 Duration Auto Stop 이후 정상 Completion Flow로 들어간다.
 9. Audio Track이 포함되도록 구성한다.
-10. Media 작성 전에 Durable Operation Identity와 Project / Clip / Media 연결을 확보하고 Recording 결과를 Staging에 생성하며 Incomplete Write와 Completed Staging을 구별한다.
-11. Staged Media를 검증하고 필요한 Normalization이 있다면 그 Output도 Final Working Media로 등록하기 전에 다시 검증한다.
-12. 검증된 Final Working Media를 Project Media Directory로 안전하게 Materialize하며 가능한 경우 동일 Filesystem 내 Atomic Move / Rename을 사용한다.
-13. Project가 여전히 유효한지 확인하며 해당 Media를 참조하는 Clip Metadata를 Persist하고 실패 시 Recoverable Media와 Operation 정보를 보존한다.
-14. Final Media 존재, Final Validation 성공, Metadata Persistence 성공과 유효한 Project를 모두 만족한 Committed Clip만 UI에 표시한다.
+10. Recording 결과를 App-owned Temporary Staging File에 생성하고 Incomplete Write와 Completed Staging을 구별하며 Project / Clip Identity를 만들지 않는다.
+11. Finalize된 Staging Media의 Playability와 `1.0s <= duration <= selected maximum`을 검증하며 1초 미만은 폐기한다.
+12. 검증된 Media를 Photos Add 권한으로 사용자 Photos Library에 저장하고 저장 성공 후에만 Staging File을 삭제한다.
+13. Photos Save 실패 시 성공으로 보고하지 않고 복구 가능한 Save Error를 표시하며 Staging Asset은 명시적 Recovery Policy에 따라 보존 / 정리한다.
+14. Photos에 실제로 존재하는 Media에만 성공 Capture UI를 대응시킨다.
 15. Recording Start에 Haptic이 발생하지 않도록 하며 Record Button Tap 또는 Recording Start 성공을 Haptic 발생 조건으로 사용하지 않는다.
 16. Successful Manual Stop과 Successful selected-maximum Auto-stop 완료 시 "이 Clip의 Recording이 종료되었다."라는 동일한 의미의 subtle completion haptic을 제공하고 기존 Visual Recording State / Circular Progress / Completion State를 유지한다.
 17. Recording 중 App Background 또는 Session Interruption을 처리한다.
-18. 가능한 경우 유효한 Partial Recording을 보호한다.
-19. Completed Staging과 Materialized Media에서 중단된 Operation을 재실행 후 연결하여 가능한 후속 처리와 Metadata Commit을 재개한다.
-20. 이미 Persist된 Clip은 기존 Metadata를 사용하고 Operation / Clip Identity로 Duplicate Commit을 방지한다.
-21. Temporary / Intermediate Artifact는 Commit 또는 Recovery Classification 이후 폐기 가능하다고 확인된 경우에 정리하며 Cleanup 실패가 Committed Clip을 무효화하지 않게 한다.
-22. Project Delete가 확정되면 영속적인 Logical Invalid Target을 먼저 확립하고 Finalization Commit 직전의 Project Validity 검증과 결과 적용 사이에 삭제 Race가 발생하지 않게 한다.
-23. 삭제된 Project의 Late Recording Result는 Commit하거나 Project를 재생성하지 않으며 Operation-owned Media는 ADR-020 Classification과 ADR-021 Deletion Safety 이후에 정리한다.
+18. Background / Interruption 시 즉시 정지 / Finalize하고 1.0초 이상이면 Photos에 저장, 미만이면 폐기하며 Background에서 Recording을 계속하지 않는다.
+19. 다음 실행에서 Crash가 남긴 Staging Media를 Best-effort로 검증하여 Playable이고 1.0초 이상이면 Photos Recovery Save를 시도하고 아니면 삭제한다.
+20. Recovery Save는 Photos Save가 실제로 성공한 경우에만 성공으로 보고하며 동일 Staging Asset의 중복 저장을 방지한다.
+21. Staging Artifact는 Photos Save 성공 또는 Recovery 판정 이후에만 정리하며 Cleanup 실패가 이미 Photos에 저장된 Clip을 무효화하지 않게 한다.
+22. Recording 중 Duration Picker, Flip, Projects와 Navigation을 잠그고 Shutter만 Manual Stop으로 유지하며 저장 성공 / 폐기 / 실패 후 복원한다.
+23. Recording 성공 / Photos Save 성공 어느 경우에도 VlogProject를 생성하지 않는다.
 24. Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 25. Rear Camera의 승인된 Zoom Range 안에서 Active Recording 중 Continuous Zoom을 지원하고 Zoom 변경이 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 선택한 최대 Duration Timer와 Durable Media Operation Identity를 Reset하지 않게 한다.
 26. Front Recording에는 Zoom UI나 Behavior를 제공하지 않는다.
-27. Record Request에서 Camera / Microphone Authorization, Required Capture Device와 Session Configuration, Project Validity 및 Orientation Eligibility를 Media Writing과 Progress / 선택한 최대 Duration Timer 시작 전에 검증한다.
-28. Camera 또는 Microphone Permission이 Denied / Restricted이면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import 경로는 Audio Track이 없는 Source를 포함하여 계속 사용할 수 있게 한다.
-29. Portrait Project는 Portrait Posture, Landscape Project는 Landscape Left / Right에서 Recording을 시작하고 Mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 조용한 Rotate Device Guidance와 함께 시작을 차단한다.
-30. Mid-record Rotation만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하거나 Camera를 전환하거나 Active Rear Zoom을 Reset하지 않게 한다.
-31. Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 검증한다.
+27. Record Request에서 Camera Authorization, Photos Add Authorization, Required Capture Device와 Session Configuration, upright Portrait 자세를 Media Writing과 Progress / 선택한 최대 Duration Timer 시작 전에 검증하며 Microphone은 Audio 포함 여부만 결정한다.
+28. Microphone이 Denied / Restricted이면 무음 Video Recording을 허용하고 `mic.slash` 상태와 상태별 Control 동작을 제공하며, Photos Add가 Denied / Restricted이면 Capture 시도 시 Settings / Recovery 경로를 제공하고 성공 Capture로 취급하지 않는다.
+29. Recording 시작은 upright Portrait 물리 자세에서만 허용하고 Landscape / Face Up / Face Down / Unknown / Unstable에서는 거부하며 Phase 3 Preview / Readiness 표현은 유지한다.
+30. Recording 시작 시 Clip Orientation을 Portrait으로 고정하고, Mid-record 자세 변경(Landscape / Face Up / Face Down / Unknown / Unstable)만으로 현재 Recording을 Stop / Restart하거나 새 Clip을 만들거나 Orientation / Aspect Ratio를 변경하거나 Camera를 전환하거나 Active Rear Zoom을 Reset하지 않게 하며, Active Recording 중 `Rotate your iPhone`을 차단 상태로 표시하지 않는다.
+31. Recording 종료 직후 물리 자세를 재평가하여 upright Portrait이 아니면 `Rotate your iPhone` Readiness 안내를 복원하고 다음 Recording을 막으며, upright Portrait으로 돌아오면 Ready 상태를 복원한다.
 32. Direct-recorded Front Clip이 Preview에서 본 Mirrored Appearance를 이후 Preview / Editing / Export에서도 유지하도록 승인된 Transform Ownership을 적용한다.
-33. Interruption은 Successful Manual Stop이나 Successful selected-maximum Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021에 따라 검증·복구·Late Commit 차단한다.
+33. Interruption은 Successful Manual Stop이나 Auto-stop으로 표시하지 않고 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 1.0초 규칙과 Finalization 검증에 따라 Photos 저장 또는 폐기한다.
 34. Recording Operation과 실제 Media Writing을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 승인된 최대 5초 Capture Profile의 예상 Media, Staging / Finalization Overhead, Transactional Commit과 Recovery-safe Overlap 및 Safety Reserve를 반영한 Required Free Space를 계산한다.
 35. Recording Storage Preflight가 실패하면 Operation-owned Artifact나 부분 Operation State를 만들지 않고 Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않으며 기존 Clip과 Draft를 변경하지 않는다.
 36. Recording 공간 부족은 해당 Recording만 차단하고 앱 전체를 Fatal State로 전환하거나 1080p / 30 fps, Audio 또는 최대 Recording Duration을 조용히 낮추지 않는다.
-37. Preflight 통과 후 Write / Finalization 도중 Disk Full이 발생하면 Partial Output을 Committed Clip으로 표시하지 않고 기존 Committed Media와 다른 Draft를 보존하며 ADR-020 / ADR-021에 따라 Recovery Candidate와 Disposable Artifact를 분류한다.
-38. Storage 부족으로 Final Media 생성 후 Metadata Persistence가 실패하면 해당 Media와 Durable Operation을 Recovery Candidate로 보존하고 Cleanup 실패를 재시도 가능하게 한다.
-39. 사용자가 공간을 확보한 뒤 새로운 Recording을 재시도할 수 있게 하며 실패한 Operation의 안전한 Reconciliation이 기존 Project 상태를 손상시키지 않게 한다.
+37. Preflight 통과 후 Write / Finalization 도중 Disk Full이 발생하면 Partial Output을 성공 Capture로 표시하지 않고 Staging Artifact를 Recovery Candidate 또는 Disposable로 분류한다.
+38. Finalize는 성공했지만 Photos Save가 실패하면 Staging Media를 Recovery Candidate로 보존하고 재시도 가능하게 하며 성공으로 보고하지 않는다.
+39. 사용자가 공간을 확보한 뒤 새로운 Recording을 재시도할 수 있게 하며 실패한 Operation의 정리가 Photos에 이미 저장된 Clip이나 저장 Project를 손상시키지 않게 한다.
 
 Completion Haptic을 종료 직전 예고 신호로 사용하지 않으며 Haptic을 사용할 수 없거나 사용자가 인지하지 못해도 기존 Visual Feedback으로 Recording 상태를 이해할 수 있게 한다.
 
@@ -1323,25 +1351,31 @@ Interruption으로 짧아진 Recording의 보존 여부는 기존 확정 Policy�
 - Auto Stop State
 - Recording Progress Calculation
 - Invalid Recording Completion 처리
-- Committed Clip 조건과 Progress State의 구분
-- Operation / Clip Identity 기반 Duplicate Commit 방지
+- 성공 Capture(Photos 존재) 조건과 Progress State의 구분
+- 1.0초 미만 Manual Stop / Interruption / Background 폐기와 1.0초 이상 저장 판정
+- Recording 성공 / Photos Save 성공 시 Project 미생성
+- Recording 중 Control Lock과 종료 후 복원
 - 정상 Recording Start에서 Haptic Event가 발생하지 않음
 - Successful Manual Stop과 Successful selected-maximum Auto-stop이 동일한 Completion 의미의 Haptic Event로 연결됨
 - Active Rear Zoom 변경 중 동일 Clip / Timer / Media Operation Identity 유지와 승인 Range Clamp
-- Permission / Capability / Project Validity / Orientation 실패 시 Recording / Progress / Timer 미시작
-- Mid-record Rotation에서 Recording / Project Orientation / Rear Zoom 상태 유지와 다음 Recording 전 Orientation 재검증
+- Camera / Photos Add Permission, Capability, upright Portrait 자세 실패 시 Recording / Progress / Timer 미시작 및 Microphone Denied 시 무음 Recording 허용
+- Recording Start Gate: upright Portrait 시작 허용, Landscape / Face Up / Face Down / Unknown / Unstable 시작 거부
+- Portrait 시작 → Recording 중 Landscape 회전 → Recording 계속, Portrait 시작 → Recording 중 Face Up → Recording 계속
+- Mid-clip에 Clip / Output Orientation과 Rear Zoom 상태가 변하지 않음
+- 유효하지 않은 자세에서 종료 → 다음 Recording 차단, upright Portrait 복귀 → Ready 복원
 - Interruption과 Successful Completion State / Haptic Event 분리
 - 승인된 Capture Profile 기반 Recording Estimated Peak Additional Storage와 Safety Reserve 입력 적용
 - Storage Preflight 실패 시 Recording Operation / Progress / 선택한 최대 Duration Timer 미시작
 - Recording Storage 부족이 다른 사용 가능한 Operation을 전역 차단하지 않는 상태 분리
 - Storage 부족 시 1080p / 30 fps, Audio와 최대 Duration 유지 및 Silent Downgrade 금지
-- Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
+- Runtime Disk Full과 Photos Save 실패의 Failure State 및 Staging Recovery Candidate 분류
 
 ## Integration Tests
 
 - 생성된 Movie File이 AVAsset으로 열리는지 확인
-- Audio Track 존재 확인
-- `0 < Duration <= selectedMaximum <= 5 seconds` 확인
+- Microphone Authorized 시 Audio Track 존재, Denied 시 무음 Video 확인
+- `1.0s <= Duration <= selectedMaximum <= 5 seconds` 확인과 1초 미만 폐기
+- Photos Add Save 성공 후 Staging File 삭제 확인
 
 Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration Test를 적용한다.
 
@@ -1470,6 +1504,16 @@ Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 �
 ## Goal
 
 촬영된 여러 Clip을 하나의 Mini Vlog 구조로 정리할 수 있게 한다.
+
+### ADR-033 Ownership — 2026-09-14
+
+ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
+
+- Camera `Projects` Entry: 저장 Project가 없으면 `Select Clips`, 있으면 `Load Last Saved` / `Select Clips`.
+- `Select Clips`에서 Photos Clip을 선택해 단일 편집 가능 Project를 생성하며 필요한 Media를 App-managed Project Storage로 Materialize한다(ADR-020 Transactional Commit 적용).
+- 저장 Project가 있을 때의 대체 확인(`Creating a new project will replace your last saved project.`)과 Safe Atomic Replacement(A 보존 → B Workspace → Materialize → Persist → 검증 → 승격 → 그 뒤 A 제거).
+- Project 삭제 / 대체는 Mellow Editing Copy만 제거하며 Photos 원본을 절대 삭제하지 않는다.
+- Multi-project Recent Projects Grid / Browser는 V1 Primary Flow가 아니며 Post-V1 복원 결정 전까지 구조만 보존한다.
 
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
@@ -3238,6 +3282,10 @@ ADR-031의 First-Run Permission Onboarding은 Phase 3 소유로 적용되며 Mic
 ADR-032의 Portrait-only V1과 Direct-to-Camera Launch는 Phase 3 소유이며 Landscape Camera UI 복원은 Post-V1 Product Decision으로 남긴다.
 
 ## Before Phase 4
+
+- Resolved 2026-09-14 by ADR-033: Capture / Project 분리, Photos Add Direct Save, Microphone 선택, 1.0초 최소 Direct Capture, Early / Auto Stop, Control Lock, Shutter Progress Ring, Background / Interruption Finalize-if-valid, Best-effort Crash Recovery, upright Portrait Recording-start Gate.
+- Resolved 2026-09-14 by ADR-033: Recording 시작 후 자세 변경 시 Clip은 Portrait으로 고정되어 계속되고 종료 후 자세를 재평가한다(Orientation-During-Recording Gate).
+- Progress Ring 색상은 ADR 결정 대상이 아니며 구현 / Physical Visual Review Polish다.
 
 ADR-029의 Preset Relaunch 유지, Project별 기억과 기존 Clip 영향은 이 Gate에서 결정하며 Domain / Test의 공통 5초 Invariant 정렬은 실제 Recording 전에 수행한다.
 

@@ -673,7 +673,7 @@ SwiftUI View에서 `AVCaptureSession`을 직접 관리하지 않는다.
 
 Phase 3 Correction의 승인 범위는 Camera Authorization과 Preview Foundation만 포함하며 Microphone Authorization / Input과 Recording API는 Phase 4가 소유한다.
 
-Phase 3의 Ready는 Preview Ready이며 Camera와 Microphone이 모두 필요한 Direct Recording Ready를 의미하지 않는다.
+Phase 3의 Ready는 Preview Ready이며 Direct Recording Ready를 의미하지 않는다. ADR-033에 따라 Direct Recording Ready는 Camera Authorization, Photos Add Authorization, Required Capture Device, Session 구성과 upright Portrait 자세를 요구하며 Microphone은 Audio 포함 여부만 결정한다.
 
 Rear Zoom은 동일한 Wide Camera의 1.0×–2.0×로 Clamp하며 다른 Lens로 전환하지 않는다.
 
@@ -763,6 +763,12 @@ Front Preview는 Mirrored Appearance를 사용하며 저장된 Direct-recorded F
 
 MVP Recording은 `AVCaptureMovieFileOutput`을 우선 사용한다.
 
+ADR-033에 따라 Direct Camera Recording은 Project와 분리된다. 결과는 App-owned Temporary Staging File에 기록되고 Finalize / 검증(`1.0s <= duration <= selected maximum`, Playability) 후 Photos Add 권한으로 사용자 Photos Library에 저장되며 저장 성공 후 Staging File을 삭제한다. Recording은 VlogProject나 Clip Metadata를 만들지 않으며 Project-owned Media로 Materialize하지 않는다.
+
+Recording State는 `idle → preparing → recording → finishing → savingToPhotos → idle`이고 실패 시 `failed / cleanup → idle`이다. Photos Save 실패는 성공 Capture가 아니며 Staging Asset은 명시적 Recovery Policy에 따라 보존 / 정리한다. Background / Interruption은 즉시 정지 / Finalize하고 1.0초 규칙으로 저장 또는 폐기하며, Hard Crash 이후에는 다음 실행에서 Best-effort Staging Recovery만 수행한다.
+
+Recording 중에는 Duration Picker, Flip, Projects와 Navigation을 잠그고 Shutter만 Manual Stop으로 유지한다.
+
 현재 MVP에는 실시간 Filter 또는 Frame-by-frame Video Processing 요구사항이 없다.
 
 따라서 초기부터 `AVCaptureVideoDataOutput`과 `AVAssetWriter`를 이용한 Custom Recording Engine을 만들지 않는다.
@@ -794,6 +800,8 @@ Camera는 `1s / 2s / 3s / 4s / 5s` 최대 Recording Duration을 제공하고 기
 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
 
 Preset은 정확한 Output 길이를 강제하지 않으며 3s 선택 후 1.4초 수동 종료가 가능하다.
+
+ADR-033에 따라 Direct Capture의 최소 길이는 1.0초이며 Manual Stop / Interruption / Background로 1초 미만에 끝난 Capture는 폐기한다. Encoder / Timestamp Tolerance는 제품 규칙을 바꾸지 않는다.
 
 Project Orientation은 기존 Project-level 불변 속성으로 유지한다.
 
@@ -856,6 +864,8 @@ Orientation이 유효하지 않으면 Committed Recording Operation, Recording P
 Recording 시작 후 Device Orientation이 변경되어도 현재 Recording을 자동 Stop / Restart하거나 새 Clip을 만들거나 Project Orientation / Clip Aspect Ratio를 변경하지 않는다.
 
 Mid-record Rotation만으로 Active Rear Zoom Factor를 Reset하지 않고 현재 Clip의 Presentation Orientation은 Recording 시작 시의 Project Orientation 계약을 유지한다.
+
+ADR-033에 따라 `A Mellow V1 Camera clip is Portrait for its entire recording lifetime.` Recording 시작 시 Clip Orientation이 Portrait으로 확정되며 이후 Landscape / Face Up / Face Down / Unknown / Unstable 자세 변경은 Stop / Restart / Orientation 변경을 일으키지 않고 Active Recording 중 `Rotate your iPhone` 차단 상태를 표시하지 않는다. Recording 종료 직후 자세를 재평가하여 다음 Recording의 Readiness를 결정한다.
 
 Recording 종료 후 다음 Record Request 전에 Orientation Eligibility를 다시 확인한다.
 
@@ -1929,21 +1939,22 @@ Permission Logic을 SwiftUI View마다 반복 구현하지 않는다.
 
 `PermissionService`가 다음 권한 상태를 관리한다.
 
-- Camera
-- Microphone
-- Photos Save
+- Camera(필수)
+- Microphone(선택, ADR-033)
+- Photos Add(Direct Camera Save용, 가장 좁은 Add-to-library 권한)
+- Photos Save / Import 관련 권한은 각 Owning Phase의 계약을 따른다
 
 `OnboardingStateStore`(또는 동등한 영속 저장 단위)가 앱 수준에서 First-Run Onboarding 완료 상태를 관리한다.
 
-Onboarding은 실제 권한 자체를 시작하는 단계가 아니라 사용자 동의/예상 동작 설명 단계이다.
+Onboarding은 실제 권한 자체를 시작하는 단계가 아니라 사용자 동의/예상 동작 설명 단계이다. ADR-033에 따라 첫 실행은 `Camera → Microphone → Photos Add` 순서로 각 Capability를 설명한 뒤 한 번에 하나씩 시스템 요청하며 iOS 권한 Sheet를 동시에 띄우지 않고 Location은 요청하지 않는다.
 
 Photos Video Import는 가능한 한 System Photos Picker를 사용하여 광범위한 Photos Read Permission 의존성을 최소화한다.
 
-Direct Recording Ready 상태는 최소한 Camera Authorization 허용, Microphone Authorization 허용, Required Capture Device 사용 가능, Capture Session 구성 성공, 유효한 Project와 Orientation Eligibility 충족을 요구한다.
+Direct Recording Ready 상태는 ADR-033에 따라 Camera Authorization 허용, Photos Add Authorization 허용, Required Capture Device 사용 가능, Capture Session 구성 성공과 upright Portrait 자세를 요구하며 유효한 Project를 요구하지 않는다.
 
-Camera 또는 Microphone Permission이 Denied / Restricted이면 Capture Pipeline이나 Recording Timer를 부분적으로 시작하지 않고 Typed Permission Failure를 Feature Layer에 전달한다.
+Camera 또는 Photos Add Permission이 Denied / Restricted이면 Capture Pipeline이나 Recording Timer를 시작하지 않고 Typed Permission Failure와 Settings Recovery를 Feature Layer에 전달하며 반복 요청 Loop를 만들지 않는다.
 
-Microphone Permission이 없을 때 Video-only Direct Recording으로 자동 Fallback하지 않는다.
+Microphone은 선택 권한이다. Denied / Restricted이면 무음 Video Recording을 허용하고 `mic.slash` 상태를 표시하며 Control Tap은 `.notDetermined` → 요청, `.denied` → Settings, `.restricted` → 설명, `.authorized` → 일반 상태로 동작한다. 이전의 "Video-only Fallback 없음" 규칙은 ADR-033으로 대체되었다.
 
 Camera 권한이 이미 허용되어 있으면 Onboarding은 사용자 동의 상태 저장만 완료하고 ADR-032의 Portrait Camera로 즉시 진행할 수 있다.
 
@@ -2533,7 +2544,7 @@ Threshold와 Project Shape는 실제 iPhone 12 Baseline Measurement, 승인된 M
 - Rear Zoom Interaction / Indicator — Resolved: Pinch, Gesture 중 Transient Numeric Indicator 허용, Persistent Button / Slider 없음.
 - Front Camera Zoom — Out of MVP by ADR-023.
 - Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result 모두 Mirrored Appearance 유지.
-- Camera / Microphone Permission의 Direct Recording 동작 — Resolved by ADR-023: 둘 다 필요하며 Video-only Fallback 없음.
+- Camera / Microphone Permission의 Direct Recording 동작 — ADR-023의 "둘 다 필요"는 ADR-033으로 대체: Camera + Photos Add 필요, Microphone 선택(거부 시 무음 Recording).
 - 정확한 Orientation Detection API / Threshold / Debounce — Pending.
 - Minimum Valid Clip Duration — Pending.
 - Recording Interruption에서 Valid Partial Clip의 최종 처리 — Pending.

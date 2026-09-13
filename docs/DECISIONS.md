@@ -708,6 +708,8 @@ MVP가 안정적으로 완성되기 전에는 기능 수를 늘리는 것보다 
 
 **Status:** Accepted
 
+**Partial Supersession:** ADR-033에 따라 Direct Camera Recording은 Project-owned Media로 Commit하지 않고 Staging → Photos Save Lifecycle을 따른다. 이 ADR의 Transactional Commit / Recovery 계약은 Photos Import와 이후 Project Media Materialization(Select Clips)에 계속 적용되며 아래 원문은 당시 기준의 기록이다.
+
 ## Context
 
 Media File과 SwiftData Metadata는 하나의 Atomic Transaction으로 저장되지 않는다.
@@ -806,6 +808,8 @@ Delete / Undo의 Active-consumer Lifecycle을 포함한 B03은 Step 3에서 별�
 **Date:** 2026-09-11
 
 **Status:** Accepted
+
+**Partial Supersession:** ADR-033에 따라 Recording Finalization은 더 이상 Project를 Commit 대상으로 갖지 않으므로 Late Recording Commit 차단 계약은 Project Materialization / Import 경로에만 적용되며, Project 삭제 / 대체는 Photos 원본을 절대 삭제하지 않는다. 아래 원문은 당시 기준의 기록이다.
 
 ## Context
 
@@ -1013,6 +1017,8 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 **Date:** 2026-09-12
 
 **Status:** Accepted
+
+**Partial Supersession:** ADR-033이 Microphone 필수 Direct Recording(Denied / Restricted 시 Recording 차단, Video-only Fallback 없음)을 대체하여 Microphone을 선택 권한으로 하고 무음 Recording을 허용하며, Recording Start Gate를 upright Portrait 자세만 허용(Landscape / Face Up / Face Down / Unknown / Unstable 거부)으로 확정한다. Recording 중 자세 변경은 ADR-033(2026-09-14 Resolution)으로 확정되어 Clip Orientation이 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다. 나머지 Lens / Zoom / Mirroring / Interruption 계약은 유지하며 아래 원문은 당시 기준의 기록이다.
 
 **Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
 
@@ -1328,6 +1334,8 @@ ADR-020의 Valid Artifact와 Partial / Incomplete Output 분류 및 Recovery Can
 
 **Status:** Accepted
 
+**Partial Supersession:** ADR-033에 따라 V1은 Recording으로 Project를 만들지 않고 편집 가능한 저장 Project를 최대 하나만 유지하므로 0 Clip Project는 V1 정상 흐름에서 생성되지 않는다. Unavailable Clip / Replace 정책은 유지하며 아래 원문은 당시 기준의 기록이다.
+
 ## Context
 
 0 Clip Draft는 정상 사용자 Workflow 중 발생할 수 있다.
@@ -1447,7 +1455,7 @@ Camera Capture, Thumbnail Generation, Media File Management와 Phase 3 이후 �
 
 **Partial Supersession:** Launch의 Existing-project Continue Text Entry는 ADR-030에 의해, Format-first Launch / Orientation Chooser와 Format-first Creation은 ADR-032에 의해 V1 범위에서 Superseded되었으며 아래 원문은 Phase 2 당시 승인 기록으로 보존한다.
 
-전용 Recent Projects Browser, Grid, Naming, Persistence, Delete와 Immutable Orientation은 유지한다.
+Naming, Persistence, Delete와 Immutable Orientation은 유지한다. ADR-033에 따라 Multi-project Recent Projects Grid / Browser는 V1 Primary Projects Flow에서 제외되고 Camera Projects Entry(`Select Clips` / `Load Last Saved`)로 대체되며 Browser 구조는 이후 Version을 위해 보존한다.
 
 ## Context
 
@@ -1556,6 +1564,8 @@ Selector Placement / Camera Control Layout은 Phase 3 Structural UX Gate에서 �
 **Date:** 2026-09-13
 **Status:** Accepted
 
+**Partial Supersession (ADR-033):** `Camera → Short Clip Capture → Clip Review / Management → Editor → Export`를 하나의 Persisted Project 안에서 연결한다는 전제 중 Capture 단계는 Project에 속하지 않는다. Camera Clip은 Photos에 저장되고 Project는 이후 `Select Clips`에서 만들어지며 Compact Project-content Access는 단일 저장 Project 진입으로 재해석한다. Lightweight Editor 구조는 유지한다.
+
 ## Context
 
 Mellow의 짧은 Clip을 Capture에서 Composition으로 빠르게 연결하고 단순한 배열과 명시적인 Control로 Editing 복잡성을 낮추기 위해 사용자가 구조를 승인했다.
@@ -1624,6 +1634,8 @@ Phase 번호와 기존 Recording / Import / Trim / Preview / Export 경계는 �
 **Date:** 2026-09-13
 **Status:** Accepted
 
+**Partial Supersession (ADR-033):** 첫 실행 권한 순서는 `Camera → Microphone → Photos Add`로 확장되며 각 권한은 설명 후 한 번에 하나씩 요청한다. Phase 3 구현의 Camera-only 요청은 Phase 3 당시 기준이며 Microphone / Photos Add 요청 추가는 Phase 4가 소유한다.
+
 **Partial Supersession:** ADR-032가 `Onboarding → Format Selection → Camera` Navigation만 `Onboarding → Portrait Camera`로 대체한다. First-Run Permission Onboarding, Camera Permission 소유, 이른 Camera Foundation 준비와 Full-bleed Camera 방향은 유지하며 아래 원문은 승인 기록으로 보존한다.
 
 ## Context
@@ -1662,6 +1674,8 @@ Microphone/Import/Export Copy와 구체적인 안내 문구, 위치 권한의 �
 
 **Date:** 2026-09-13
 **Status:** Accepted
+
+**Partial Supersession (ADR-033):** `Portrait Camera → Projects → Recent Projects` 구조와 Recording / Capture Phase가 소유하던 Atomic Creation 경계는 ADR-033의 Capture / Project 분리와 Camera Projects Entry(`Select Clips` / `Load Last Saved`)로 대체된다. Launch 시 빈 Project 미생성 Invariant는 Recording 성공에도 확장 적용된다.
 
 **Supersedes:** ADR-028의 Format-first Launch / Orientation Chooser와 Format-first Creation을 V1 범위에서 대체하고, ADR-031의 `Onboarding → Format Selection → Camera` Navigation만 대체한다. ADR-029는 변경하지 않으며 ADR-030은 호환되는 범위에서 유지한다.
 
@@ -1769,6 +1783,149 @@ Phase 3의 Landscape Camera Layout, Control Rail, Landscape 전용 Physical Vali
 
 ---
 
+# ADR-033 — Capture-First Recording, Photos Save, and Single-Project V1 Policy
+
+**Date:** 2026-09-14
+**Status:** Accepted
+
+**Supersedes:** ADR-023의 Microphone 필수 Direct Recording 정책과 Recording Start Orientation Gate 중 Face Up / Face Down / Unknown / Unstable 처리의 미해결 부분, ADR-020 / ADR-021 / ADR-024의 "Direct Recording 결과를 Project-owned Media로 Commit한다"는 전제(Project Media Materialization 자체는 유지하고 Camera Recording에서 분리), ADR-026 / ADR-028 / ADR-030 / ADR-032의 V1 Multi-project Recent Projects Browser 요구, ADR-031의 Camera-only 첫 실행 권한 순서, 그리고 ADR-032 이후 Pending이던 "첫 Recording에서의 Project Atomic Creation" 가정을 대체한다. ADR-029의 1–5초 최대 Preset 정책은 그대로 유지하며 이 ADR은 1.0초 최소 Direct Capture 규칙을 추가한다.
+
+## Context
+
+Phase 3 Camera Foundation의 Physical Review 이후 사용자는 V1 제품 모델을 다음으로 확정했다.
+
+짧은 순간을 먼저 촬영한다 → Photos에 저장한다 → 나중에 Vlog Project를 구성한다.
+
+Camera Capture와 Vlog Project 구성은 서로 다른 책임이며, 사용자는 Mellow Project를 하나도 만들지 않고도 많은 순간을 촬영할 수 있어야 한다.
+
+## Decision
+
+### Capture / Project 분리
+
+- `Recording a clip does NOT create a VlogProject.`
+- App Launch, Camera 진입, Shutter Tap, Recording 성공, Photos Save 성공 중 어느 것도 Project를 만들지 않는다.
+- Camera Clip은 Photos에 저장되는 독립적인 짧은 순간이며 Project 생성은 명시적인 Projects / Composition Flow에서만 일어난다.
+- Project Domain / Schema Architecture는 제거하지 않는다.
+
+### 첫 실행 Permission Onboarding
+
+첫 실행은 `Splash → Permission Onboarding → Camera → Microphone → Photos Add → Portrait Camera`이며 각 Capability는 시스템 요청 전에 설명하고 한 번에 하나씩 요청한다. iOS 권한 Sheet를 동시에 띄우지 않는다.
+
+- **Camera** — 필수. Denied / Restricted이면 Preview / Capture를 사용할 수 없고 기존 Settings Recovery Pattern을 사용하며 반복 요청 Loop를 만들지 않는다.
+- **Microphone** — 선택. Authorized이면 Clip에 Audio가 포함되고, Denied / Restricted이면 Video Recording은 계속 가능하며 Clip은 무음으로 기록된다. Camera는 `mic.slash` 또는 동등한 SF Symbol로 Muted 상태를 조용히 표시하고 이 Control은 Camera를 시각적으로 지배하지 않는다. Microphone Control Tap은 `.notDetermined` → 권한 요청, `.denied` → Settings Recovery, `.restricted` → 사용 불가 설명, `.authorized` → 일반 Audio Capture 상태다. Microphone 거부는 Video Recording을 차단하지 않는다.
+- **Photos** — Direct Camera Save Workflow에는 가장 좁은 권한인 Photos Add Only(Add-to-library) 권한을 사용하며 저장을 위해 Library Read 권한을 요구하지 않는다. Denied / Restricted이면 Preview는 유지될 수 있지만 필수 저장 위치를 완료할 수 없으므로 Video를 성공 Capture로 취급하지 않으며 Capture 시도 시 Settings / Recovery 경로를 제공한다. 이후 Photos Import는 System PhotosPicker 또는 해당 Phase에 적합한 권한 모델을 사용하고 전체 Library Read 권한을 미리 요구하지 않는다.
+- **Location** — Phase 4에서 요청하지 않으며 미래 Location Metadata Capability가 소유하는 선택 권한으로 남긴다.
+
+### V1 Single Saved Project
+
+- `Mellow V1 retains only the most recently committed editable Project.`
+- V1은 편집 가능한 저장 Project를 최대 하나만 유지하며 Multi-project Grid / Browser를 V1 Primary Projects Flow로 노출하지 않는다.
+- 이는 V1 Product 동작 제한이며 Domain / Schema를 하나의 Project로 제한하는 파괴적 Migration이 아니다. 이후 Version은 Multi-project를 복원할 수 있다.
+
+### Camera Projects Entry
+
+- 저장 Project가 없으면 `Projects → Select Clips`이며 Clip 선택이 단일 저장 Project 생성을 시작한다. 빈 Recent Projects Browser를 보여주지 않는다.
+- 저장 Project가 있으면 `Load Last Saved`(현재 저장된 편집 가능 Project 열기)와 `Select Clips`(선택 Clip으로 새 대체 Project 생성)에 해당하는 두 Primary Action을 제공한다.
+- 정확한 사용자-facing Copy는 Localization / Polish로 남기되 위 Semantics는 Canonical이다.
+
+### Safe Atomic Project Replacement
+
+저장 Project A가 있는 상태에서 `Select Clips`로 새 Project를 만들면 `Creating a new project will replace your last saved project.`에 해당하는 명시적 확인(Cancel / Create New Project)을 요구하며 기존 Project를 즉시 삭제하지 않는다.
+
+1. 기존 Project A는 온전히 유지된다.
+2. 사용자가 Clip을 선택한다.
+3. Project B의 Temporary Workspace를 만든다.
+4. 필요한 선택 Media를 Materialize / Copy한다.
+5. Project B와 Clip Metadata를 만든다.
+6. Project B를 완전히 Persist한다.
+7. B의 Commit 성공을 검증한다.
+8. B를 새 단일 저장 Project로 승격한다.
+9. 그 뒤에만 Project A와 A의 App-managed Editing Media를 제거한다.
+
+B 생성이 완료 전에 실패하면 B의 Temporary / Copied Media와 부분 Metadata를 폐기하고 A를 그대로 보존한다.
+
+`A failed replacement must never destroy the last valid saved Project.`
+
+Project 삭제 / 대체는 Project Metadata와 Mellow-owned Editing / Materialized Copy만 제거할 수 있으며 사용자 Photos Library의 원본 Camera Clip이나 사용자가 선택한 다른 Photos 원본은 절대 삭제하지 않는다. 이 구현은 Phase 4 Camera Recording이 아니라 Project / Import / Composition Phase가 소유한다.
+
+### Duration
+
+- ADR-029의 `1s / 2s / 3s / 4s / 5s` 최대 Preset과 기본 `3s`를 유지하며 선택 Preset은 다음 Direct Camera Clip의 최대 길이이지 고정 출력 길이가 아니다.
+- **Direct Capture 최소 길이는 1.0초다.** 유효한 Direct Camera Duration은 `1.0s <= actual duration <= selected maximum`이다.
+- 3s Preset에서 1.4초 수동 종료 → 저장. 5s Preset에서 2.2초 Interruption → Finalization 성공 시 저장. 3s Preset에서 0.7초 수동 종료 → 폐기. 5s Preset에서 0.8초 Background → 폐기.
+- 1초 미만 Clip을 1초로 반올림하지 않는다. Encoder / Timestamp Tolerance는 1.0초 경계 부근에 기술적으로 존재할 수 있지만 제품 규칙을 바꾸지 않는다.
+- 이 최소 길이는 Direct Camera Capture에 적용되며 Imported Clip의 최소 길이를 자동으로 재정의하지 않는다.
+
+### Shutter Interaction
+
+- Idle에서 Shutter Tap → Recording 시작. Recording 중 Shutter Tap → Manual Early Stop 요청이며 실제 길이가 1.0초 이상이면 Finalize / Save, 미만이면 폐기.
+- 선택한 최대 길이에 도달하면 자동 정지 후 Finalize / Save. Hold-to-record 요구는 없다.
+
+### Recording Control Lock
+
+Recording 중에는 Duration Picker, Camera Flip, Projects와 Capture를 불안정하게 할 수 있는 Navigation / Action을 비활성화하고 Shutter만 명시적 Manual Stop Control로 유지한다. 저장 성공 / 폐기 / 실패 후 일반 Control을 복원하며 Active Capture 중 선택 Maximum을 변경할 수 없다.
+
+### Shutter Recording Progress
+
+기존 Shutter를 Primary Recording Progress Surface로 사용한다. Shutter 주변 Circular Progress Ring이 `elapsed time / selected maximum duration`을 표현하며 큰 숫자 Timer, `00:02 / 00:03` Text, 큰 Duration Text나 별도 Timeline / Progress Bar를 추가하지 않는다. Ring 색상은 Visual 구현 결정으로 남긴다.
+
+### Capture File Lifecycle
+
+`Recording → Temporary Staging File → 정지 → Finalize → Media / Duration 검증 → Photos Save → 성공 → Staging File 삭제`
+
+Temporary File은 Infrastructure이며 사용자의 Canonical Long-term Original이 아니다. Photos Save 성공 후 App 내부에 Camera Original 복제본을 무기한 보관하지 않는다.
+
+### Save Failure Semantics
+
+Camera Recording은 전체 Save 경로가 성공했을 때만 성공 Capture다. Recording은 성공했지만 Photos Save가 실패하면 성공으로 보고하지 않고, Project를 만들지 않고, 보이지 않는 Orphan Staging File을 무기한 남기지 않으며, 복구 가능한 Save Error를 표시하고, Staging Asset은 명시적 Recovery Policy에 따라서만 정리 / 보존한다.
+
+`A successful Camera result must correspond to media that actually exists in Photos.`
+
+### Background / Interruption
+
+Recording 중 Mellow가 Inactive / Background가 되거나 System Event로 Capture가 중단되면 즉시 정지 / Finalization을 요청한다. 실제 길이가 1.0초 이상이고 Finalization이 성공하면 Photos에 저장하고, 1.0초 미만이면 폐기한다. Background에서 Active Camera Recording을 계속하지 않으며 이는 Interruption에 의한 Automatic Early Stop과 동일하게 취급한다.
+
+### Crash Recovery
+
+Hard Process Crash 시점까지의 저장을 보장하지 않는다. Crash가 남긴 Staging Media가 있으면 다음 실행에서 Best-effort로 검증하여 Playable / Complete이고 1.0초 이상이면 Photos Recovery Save를 시도하고, Corrupt / Incomplete이거나 1.0초 미만이면 Staging Artifact를 삭제한다. Photos Save가 실제로 성공하기 전에는 Recovery 성공을 보고하지 않는다.
+
+### Recording Start Orientation Gate
+
+Phase 3 Preview / Readiness 동작은 유지하되 Recording 시작은 물리적 자세가 upright Portrait일 때만 허용하고 Landscape / Face Up / Face Down / Unknown / Unstable에서는 시작을 거부한다. 출력 Orientation을 조용히 회전시키지 않으며 V1은 Portrait-only다. 이는 ADR-023에서 이월된 Recording-start Gate를 해결한다.
+
+### Orientation During Active Recording — Resolved 2026-09-14
+
+`A Mellow V1 Camera clip is Portrait for its entire recording lifetime.`
+
+- Recording이 성공적으로 시작되면 해당 Clip의 Capture / Output Orientation은 Recording 전체 동안 Portrait으로 고정되며 시작 시점에 확정된다.
+- 이후 Device가 Landscape / Face Up / Face Down / Unknown / Unstable로 바뀌어도 자세 변경만으로는 Recording을 Stop하거나 Restart하지 않고, Clip / Project Orientation을 바꾸지 않으며, Mid-clip에 Output을 회전시키지 않는다.
+- Recording은 사용자의 Shutter Stop, 선택한 최대 Duration 도달, 또는 App Inactive / Background나 System Capture Interruption 같은 독립적인 Stop 조건에서만 끝난다. Background / Interruption Policy는 변경하지 않는다.
+- 자세 변경 자체는 1.0초 규칙의 Stop 경로를 발생시키지 않는다. 다른 승인된 이유로 Stop되면 기존대로 1.0초 이상은 Finalize / Save, 미만은 폐기한다.
+- Active Recording 중에는 `Rotate your iPhone`을 차단 상태로 사용하지 않으며 Modal Orientation 경고를 두지 않는다. Recording Progress와 Shutter Stop이 Primary로 유지된다. 선택적인 미세한 Non-blocking Hint는 과도하게 규정하지 않는다.
+- Recording이 끝나면 즉시 물리 자세를 재평가하여 upright Portrait이 아니면 일반 `Rotate your iPhone` Readiness 안내를 복원하고 다음 Recording 시작을 막으며, upright Portrait으로 돌아오면 일반 Ready 상태를 복원한다.
+
+### Recording State Model
+
+`idle → preparing → recording → finishing → savingToPhotos → idle`, 실패 경로는 `any active state → failed / cleanup → idle`. Project 생성은 이 State Machine에 포함되지 않는다.
+
+### Future Project Media Materialization
+
+사용자가 이후 Photos Clip을 선택해 Project를 만들 때 Mellow는 안정적인 편집을 위해 해당 Media를 App-managed Project Storage로 Materialize / Copy할 수 있다. Project 삭제 / 대체 시 Mellow Editing Copy는 삭제될 수 있지만 Photos 원본은 유지된다. 구현은 이후 Project / Import Phase가 소유한다.
+
+## Consequences
+
+Phase 4는 Camera Recording, Photos Direct-save, 선택적 Microphone / Audio만 소유하며 Project를 만들지 않는다. Select Clips, 단일 편집 Project 생성, Load Last Saved, 대체 확인과 Safe Atomic Replacement는 Project / Composition Phase(Phase 5)가 소유하고 Import / Trim / Editor Phase의 기존 책임은 유지된다.
+
+Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 빠지지만 이후 Version을 위해 재사용 가능한 상태로 남긴다.
+
+## Non-goals
+
+- Recording Progress Ring의 정확한 색상은 이 ADR에서 확정하지 않으며 구현 / Physical Visual Review Polish로 남긴다.
+- Imported Clip 최소 길이, Location Metadata, Multi-project 복원 시점은 이 결정에서 확정하지 않는다.
+- 이 ADR은 구현이 아니며 Phase 4는 시작되지 않았다.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
@@ -1824,11 +1981,11 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Front Camera Zoom — Out of MVP by ADR-023.
 - Front Camera 저장 영상의 Mirror Policy — Resolved by ADR-023: Preview와 Direct-recorded Result의 Mirrored Appearance 유지.
 - Camera Permission의 Direct Recording 동작 — High-level Policy Resolved by ADR-023: Denied / Restricted이면 Recording 차단, Photos Import는 독립.
-- Microphone Permission의 Direct Recording 동작 — High-level Policy Resolved by ADR-023: Denied / Restricted이면 Recording 차단, Video-only Fallback 없음, Photos Import는 독립.
-- Orientation Mismatch와 Mid-record Rotation — High-level Policy Resolved by ADR-023: Start Gate 적용, Recording / Project Orientation 유지, 다음 Recording 전 재평가.
+- Microphone Permission의 Direct Recording 동작 — Superseded by ADR-033: Microphone은 선택 권한이며 Denied / Restricted이면 무음 Video Recording을 허용하고 `mic.slash` 상태와 Settings Recovery를 제공한다.
+- Orientation Mismatch와 Mid-record Rotation — Resolved by ADR-033: Start Gate는 upright Portrait만 허용하고, Recording 시작 후 자세 변경은 Stop / Restart / Orientation 변경 없이 Portrait Clip으로 계속되며 종료 후 자세를 재평가한다.
 - 정확한 Orientation Detection API / Threshold / Debounce — Pending.
-- Minimum Valid Clip Duration — Pending.
-- Recording Interruption에서 Valid Partial Clip의 최종 처리 — Pending.
+- Minimum Valid Clip Duration — Resolved by ADR-033: Direct Capture 1.0초 이상, Imported Clip 최소 길이는 별도 Pending.
+- Recording Interruption에서 Valid Partial Clip의 최종 처리 — Resolved by ADR-033: 1.0초 이상이고 Finalization 성공 시 Photos 저장, 미만이면 폐기.
 - Recording Error / Interruption Haptic — Pending.
 - Tap to Focus 도입 시점
 - Exposure Control 도입 시점
@@ -1866,11 +2023,19 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Migration 및 Reset Communication — Pending, Before Replacement Implementation.
 - Project Metadata Recovery Algorithm과 Exact Corrupted-project UI / Copy — Pending.
 
+### Capture-First V1 (ADR-033)
+
+- Recording 시작 후 Device 자세 변경 시 동작 — Resolved 2026-09-14 by ADR-033: Clip은 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다.
+- Recording Progress Ring의 정확한 색상 / 표현 — Pending, Phase 4 구현 / Physical Visual Review Polish이며 ADR 결정 대상이 아니다.
+- Imported Clip의 최소 길이 — Pending, Phase 6.
+- Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Pending, Phase 5 Structural UX Gate.
+- Multi-project 복원 시점 — Pending, Post-V1 Product Decision.
+
 ### Portrait-Only V1 Transition
 
 - Landscape Camera Capture / 새 Landscape Project 생성의 복원 시점 — Pending, Post-V1 Product Decision by ADR-032.
 - 기존 Landscape Project를 V1에서 열 때 필요한 Compatibility 동작 — Pending, Transitional Decision by ADR-032이며 V1이 완전한 Landscape Camera UI를 유지하는 근거로 사용하지 않는다.
-- 새 Portrait Project의 정확한 Atomic Creation 경계 — Pending, Before Phase 4이며 App Launch만으로 빈 Project를 저장하지 않는 ADR-032 Invariant를 만족해야 한다.
+- 새 Portrait Project의 정확한 Atomic Creation 경계 — Resolved by ADR-033: Recording은 Project를 만들지 않으며 Project는 `Select Clips`에서 Safe Atomic Replacement로 생성된다(Phase 5 소유).
 - Splash의 정확한 Logo 표시 크기와 Light / Dark Background 표현 — Pending, Phase 3 구현 Visual Review.
 - Camera Chrome Projects Control의 정확한 SF Symbol / 크기 / 간격 / Press 표현 — Pending, Phase 3 구현 Polish.
 

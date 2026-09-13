@@ -156,11 +156,16 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - 9:16 Portrait와 16:9 Landscape Project를 지원한다.
 - ADR-032에 따라 V1의 새 Capture는 9:16 Portrait만 사용하며 Landscape는 Domain / Schema 표현으로 유지한다.
 - App Launch만으로 비어 있는 Vlog Project를 저장하지 않는다.
+- Recording a clip does NOT create a VlogProject: Camera Clip은 Photos에 저장되고 Project는 명시적 `Select Clips` Flow에서만 생성된다.
+- Direct Camera Capture는 1.0초 이상이어야 유효하며 1초 미만 Capture는 폐기한다.
+- Microphone은 선택 권한이며 Denied / Restricted여도 무음 Video Recording을 허용한다.
+- V1은 편집 가능한 저장 Project를 최대 하나만 유지하며 대체는 Safe Atomic Replacement로 수행한다.
+- Project 삭제 / 대체는 Photos 원본을 절대 삭제하지 않는다.
 - 하나의 Project는 생성 이후 하나의 Aspect Ratio를 유지한다.
 - Device Rotation이 Project Aspect Ratio를 변경하지 않는다.
 - Rear Camera와 Front Camera를 지원한다.
 - Recording 중 Camera Switching은 허용하지 않는다.
-- 여러 Draft를 동시에 유지할 수 있다.
+- 여러 Draft를 동시에 유지할 수 있다 — Domain 능력으로 유지하되 ADR-033에 따라 V1 Product는 저장 Project 하나만 노출한다.
 - Draft는 사용자가 삭제하기 전까지 자동 만료하지 않는다.
 - Export 이후에도 Draft를 유지한다.
 - Photos 원본 Media를 수정하거나 삭제하지 않는다.

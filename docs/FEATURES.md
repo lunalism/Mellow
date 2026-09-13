@@ -152,13 +152,14 @@ ADR-032에 따라 V1이 새로 생성하는 프로젝트는 `9:16 Portrait`뿐�
 
 ## F-MVP-003 — Multiple Draft Projects
 
-사용자는 여러 개의 미완성 Vlog 프로젝트를 동시에 보관할 수 있어야 한다.
+Domain은 여러 개의 미완성 Vlog 프로젝트를 표현할 수 있지만 ADR-033에 따라 **V1 Product는 편집 가능한 저장 Project를 최대 하나만 유지한다.**
 
-하나의 프로젝트를 완료하지 않았다는 이유로 새로운 프로젝트 생성을 제한하지 않는다.
+- 저장 Project가 없으면 Camera `Projects → Select Clips`로 첫 Project를 만든다.
+- 저장 Project가 있으면 `Load Last Saved`로 열거나 `Select Clips`로 대체 Project를 만들며 대체는 명시적 확인과 Safe Atomic Replacement를 거친다.
+- Recording은 Project를 만들지 않으므로 V1 정상 흐름에서 0 Clip Project는 생성되지 않는다.
+- Multi-project 보관 / Recent Browser는 Post-V1 복원 결정으로 남기며 Domain 능력은 제거하지 않는다.
 
-Clip이 0개인 Project도 유효한 Draft이며 Recent에 존재하고 다시 열 수 있다.
-
-0 Clip Project는 자동으로 삭제하지 않는다.
+Project 삭제 / 대체는 Mellow Editing Copy만 제거하며 Photos 원본은 절대 삭제하지 않는다.
 
 ---
 
@@ -374,13 +375,17 @@ Preset은 정확한 Output Duration이 아니라 다음 Clip의 Maximum이며 3s
 
 녹화 시간이 선택한 최대 Duration에 도달하면 Mellow가 자동으로 녹화를 종료한다.
 
+ADR-033에 따라 Direct Capture의 최소 길이는 1.0초이며 `1.0s <= actual duration <= selected maximum`만 유효하다. 3s Preset에서 1.4초 종료는 저장, 0.7초 종료는 폐기하며 1초 미만을 반올림하지 않는다.
+
 ### Required
 
-- 녹화 시작 후 자유로운 수동 종료
+- 녹화 시작 후 자유로운 수동 종료(Shutter Tap → Early Stop)
 - `1s / 2s / 3s / 4s / 5s` 최대 녹화 시간 선택과 기본 `3s`
 - 선택한 최대 Duration 도달 시 자동 종료
-- 촬영 중 현재 녹화 시간 확인
-- 자동 종료된 Clip의 정상 저장
+- 1.0초 미만 Capture 폐기
+- Recording 중 Duration Picker / Flip / Projects Lock과 Shutter만 Manual Stop
+- Shutter 주변 Circular Progress Ring(`elapsed / selected maximum`)으로 진행 표시, 큰 숫자 Timer 없음
+- 자동 종료된 Clip의 Photos 저장
 - 자동 종료 이후 정상적인 다음 촬영 가능
 - 승인된 Recording Estimate와 Safety Reserve를 충족하지 못하면 Recording, Progress와 선택한 최대 Duration Timer를 시작하지 않음
 - Storage 부족을 이유로 Capture Quality, Frame Rate, Audio 또는 최대 Recording Duration을 자동으로 낮추지 않음
@@ -424,11 +429,11 @@ Recording Error / Interruption의 Haptic 정책은 별도 Pending으로 유지�
 
 ## F-MVP-017 — Record Audio
 
-영상 촬영 시 기본적으로 Microphone Audio를 함께 녹음한다.
+영상 촬영 시 Microphone이 허용되어 있으면 Audio를 함께 녹음한다.
 
-Direct Recording에는 Camera와 Microphone Permission이 모두 필요하며 둘 중 하나가 Denied 또는 Restricted이면 Recording을 시작하지 않는다.
+ADR-033에 따라 Microphone은 선택 권한이다. Denied / Restricted여도 Video Recording은 계속 가능하며 Clip은 무음으로 기록되고 Camera는 `mic.slash` 상태를 조용히 표시한다. Microphone Control Tap은 `.notDetermined` → 권한 요청, `.denied` → Settings Recovery, `.restricted` → 사용 불가 설명, `.authorized` → 일반 상태다.
 
-Microphone Permission이 없을 때 무음 Direct-recorded Video를 자동 생성하지 않는다.
+Direct Recording 시작에는 Camera 권한과 Photos Add 권한이 필요하며 Microphone 거부는 Recording을 차단하지 않는다.
 
 Camera 또는 Microphone Permission 상태와 관계없이 Photos Video Import는 자체 Picker / Permission Flow를 통해 사용할 수 있어야 하며 Audio Track이 없는 Source Video도 허용한다.
 
@@ -953,7 +958,7 @@ Interruption은 Successful Manual Stop 또는 Successful selected-maximum Auto-s
 
 생성된 Media는 ADR-020의 Transactional Commit / Validation / Recovery와 ADR-021의 Project Validity / Late Result 계약을 따르며 Invalid 또는 Incomplete Media를 정상 Clip으로 Commit하지 않는다.
 
-Valid Partial Media를 보존하거나 Commit할지 또는 폐기할지와 Minimum Valid Clip Duration은 별도 Pending으로 유지한다.
+ADR-033에 따라 Interruption / Background Partial Media는 1.0초 이상이고 Finalization이 성공하면 Photos에 저장하고 1.0초 미만이면 폐기하며, Hard Crash 이후에는 Best-effort Staging Recovery만 수행한다.
 
 Recording 시작 전에는 Camera / Microphone Permission, Required Capture Device, Session Configuration, Project Validity와 Orientation Eligibility를 확인한다.
 
@@ -999,7 +1004,7 @@ ADR-028의 `Format 선택 즉시 Project 저장` Creation Trigger는 Format Choo
 
 Camera Chrome의 Upper Trailing 영역에 작은 Projects Button을 조용한 Secondary Access로 두고 Accessibility Label은 `Projects`로 제공한다.
 
-탭하면 기존 전용 `Recent Projects` Browser를 열며 기존 Project를 열기 위해 새 Format을 선택할 필요가 없다.
+ADR-033에 따라 Projects는 저장 Project가 없으면 `Select Clips`, 있으면 `Load Last Saved` / `Select Clips`를 제공하며 Multi-project Recent Browser는 V1 Primary Flow가 아니다. Phase 3 구현의 Recent Projects 화면은 Phase 5에서 이 Entry로 정렬한다.
 
 큰 Existing-project Text CTA와 Camera의 Project Thumbnail / Metadata / Recent Grid는 제공하지 않으며 정확한 Iconography는 Phase 3 Visual 구현에서 정한다.
 
@@ -1298,7 +1303,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Front Camera Zoom은 MVP에서 제공하지 않고 Front Preview와 Direct-recorded Front Clip의 Preview / Editing / Export는 동일한 Mirrored Appearance를 유지한다.
 - Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작하거나 무음 Video로 대체하지 않으며 Photos Import는 독립적으로 사용할 수 있다.
 - Orientation mismatch / Face Up / Face Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않는다.
-- Recording Interruption은 Successful Completion으로 표시하지 않고 ADR-020 / ADR-021을 따르며 Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
+- Recording Interruption은 Successful Completion으로 표시하지 않으며 ADR-033에 따라 1.0초 이상이고 Finalization이 성공하면 Photos에 저장하고 미만이면 폐기한다.
 - 하나의 촬영 Clip은 최대 5초다.
 - 사용자는 선택한 최대 Duration 이전에는 자유롭게 녹화를 종료할 수 있다.
 - 촬영 시간이 선택한 최대 Duration에 도달하면 자동으로 녹화를 종료한다.
@@ -1318,6 +1323,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 정상적으로 추가된 Project-owned Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지한다.
 - 프로젝트에서 사용하는 하나의 최종 Clip 길이는 최대 5초다.
 - Project orientation은 9:16 Portrait와 16:9 Landscape를 지원하며 ADR-032에 따라 V1의 새 Capture는 9:16 Portrait만 사용한다.
+- Recording은 Project를 만들지 않으며 Camera Clip은 Photos Add 권한으로 Photos에 직접 저장된다(ADR-033).
+- Direct Capture 최소 길이는 1.0초이며 Microphone은 선택 권한이다(ADR-033).
+- V1은 편집 가능한 저장 Project를 하나만 유지하고 대체는 Safe Atomic Replacement를 따르며 Photos 원본을 삭제하지 않는다(ADR-033).
 - 하나의 프로젝트에서는 하나의 Orientation을 유지한다.
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다.
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
