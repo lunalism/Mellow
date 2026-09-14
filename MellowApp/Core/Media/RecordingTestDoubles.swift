@@ -1,4 +1,5 @@
 #if DEBUG
+import CoreGraphics
 import Foundation
 
 /// Deterministic stand-ins for the Phase 4 boundaries. Shared by unit tests and the opted-in
@@ -65,5 +66,33 @@ final class FakeCompletionHaptic: CompletionHapticPlaying {
 final class ImmediateBackgroundTaskRunner: BackgroundTaskRunning {
     private(set) var runs = 0
     func run(_ work: @MainActor () async -> Void) async { runs += 1; await work() }
+}
+
+@MainActor
+final class FakeRecordingThumbnailGenerator: RecordingThumbnailGenerating {
+    /// The image returned for the next request; nil simulates a generation failure.
+    var nextImage: CGImage?
+    private(set) var requestCount = 0
+    private(set) var requestedURLs: [URL] = []
+
+    init(nextImage: CGImage? = nil) { self.nextImage = nextImage }
+
+    func thumbnail(for url: URL) async -> CGImage? {
+        requestCount += 1
+        requestedURLs.append(url)
+        return nextImage
+    }
+
+    /// A deterministic 1×1 solid-colour CGImage for identity assertions in tests.
+    static func makeStubImage() -> CGImage {
+        let space = CGColorSpaceCreateDeviceRGB()
+        let context = CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        return context.makeImage()!
+    }
 }
 #endif

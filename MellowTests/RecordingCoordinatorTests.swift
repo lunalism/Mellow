@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import Mellow
 
@@ -9,6 +10,7 @@ final class RecordingCoordinatorTests: XCTestCase {
         let directory: URL
         let photos: FakePhotosLibrarySaver
         let inspector: FakeRecordingMediaInspector
+        let thumbnails: FakeRecordingThumbnailGenerator
         let haptics: FakeCompletionHaptic
         let background: ImmediateBackgroundTaskRunner
         let coordinator: RecordingCoordinator
@@ -19,7 +21,8 @@ final class RecordingCoordinatorTests: XCTestCase {
 
     private func makeHarness(
         photos: PhotosAddAuthorization = .authorized,
-        running: Bool = true
+        running: Bool = true,
+        thumbnail: CGImage? = nil
     ) async -> Harness {
         let service = FakeCameraCaptureService()
         if running {
@@ -30,12 +33,14 @@ final class RecordingCoordinatorTests: XCTestCase {
         let saver = FakePhotosLibrarySaver(authorization: photos)
         let inspector = FakeRecordingMediaInspector()
         inspector.durationProvider = { [service] in service.recordedDuration }
+        let thumbnails = FakeRecordingThumbnailGenerator(nextImage: thumbnail)
         let haptics = FakeCompletionHaptic()
         let background = ImmediateBackgroundTaskRunner()
         let coordinator = RecordingCoordinator(service: service, staging: staging, photos: saver, inspector: inspector,
-                                               haptics: haptics, backgroundTasks: background)
+                                               thumbnails: thumbnails, haptics: haptics, backgroundTasks: background)
         let harness = Harness(service: service, staging: staging, directory: directory, photos: saver, inspector: inspector,
-                              haptics: haptics, background: background, coordinator: coordinator, projects: InMemoryProjectRepository())
+                              thumbnails: thumbnails, haptics: haptics, background: background, coordinator: coordinator,
+                              projects: InMemoryProjectRepository())
         harnesses.append(harness)
         return harness
     }
@@ -304,5 +309,79 @@ final class RecordingCoordinatorTests: XCTestCase {
         await h.coordinator.requestStop(.userRequested)
         await settle(h.coordinator) { h.coordinator.phase == .idle }
         XCTAssertEqual(try repository.recentProjects().count, 0, "failures create no project either")
+    }
+
+    // MARK: Preview thumbnail (Phase 4 feedback)
+
+    /// Drives a full valid capture → stop → finalize/save cycle back to idle.
+    private func recordAndStop(_ h: Harness, duration: TimeInterval) async {
+        await startRecording(h)
+        h.service.recordedDurationOverride = duration
+        await h.coordinator.requestStop(.userRequested)
+        await settle(h.coordinator) { h.coordinator.phase == .idle }
+    }
+
+    // A. Successful valid recording generates a thumbnail and publishes it after Photos save.
+    func testSuccessfulRecordingPublishesGeneratedThumbnail() async {
+        let image = FakeRecordingThumbnailGenerator.makeStubImage()
+        let h = await makeHarness(thumbnail: image)
+        XCTAssertNil(h.coordinator.lastThumbnail)
+        await recordAndStop(h, duration: 2)
+        XCTAssertEqual(h.coordinator.completedSaves, 1)
+        XCTAssertEqual(h.thumbnails.requestCount, 1, "thumbnail generated once, from the staging clip")
+        XCTAssertTrue(h.coordinator.lastThumbnail === image, "the saved clip's frame becomes the tile")
+    }
+
+    // B. Thumbnail generation failure must not fail the recording; save + haptic still succeed.
+    func testThumbnailGenerationFailureDoesNotFailRecording() async {
+        let h = await makeHarness(thumbnail: nil) // generator returns nil → generation "failed"
+        await recordAndStop(h, duration: 2)
+        XCTAssertEqual(h.coordinator.completedSaves, 1, "save is authoritative and still succeeds")
+        XCTAssertEqual(h.haptics.completions, 1, "completion haptic still fires")
+        XCTAssertNil(h.coordinator.failure)
+        XCTAssertNil(h.coordinator.lastThumbnail, "no image to publish; previous (none) unchanged")
+    }
+
+    // C. A too-short recording after a prior success must not replace the previous thumbnail.
+    func testTooShortRecordingKeepsPreviousThumbnail() async {
+        let image = FakeRecordingThumbnailGenerator.makeStubImage()
+        let h = await makeHarness(thumbnail: image)
+        await recordAndStop(h, duration: 2)
+        XCTAssertTrue(h.coordinator.lastThumbnail === image)
+
+        await recordAndStop(h, duration: 0.5) // below the 1.0s minimum → discarded
+        XCTAssertEqual(h.coordinator.completedSaves, 1, "too-short clip is not saved")
+        XCTAssertEqual(h.thumbnails.requestCount, 1, "generation is never reached for a too-short clip")
+        XCTAssertTrue(h.coordinator.lastThumbnail === image, "previous thumbnail preserved")
+    }
+
+    // D. A Photos-save failure after generation must not replace the previous thumbnail.
+    func testPhotosSaveFailureKeepsPreviousThumbnail() async {
+        let first = FakeRecordingThumbnailGenerator.makeStubImage()
+        let h = await makeHarness(thumbnail: first)
+        await recordAndStop(h, duration: 2)
+        XCTAssertTrue(h.coordinator.lastThumbnail === first)
+
+        // Next capture generates a new frame but the Photos save fails.
+        h.thumbnails.nextImage = FakeRecordingThumbnailGenerator.makeStubImage()
+        h.photos.saveFails = true
+        await recordAndStop(h, duration: 2)
+        XCTAssertEqual(h.coordinator.failure, .photosSaveFailed, "existing save-failure behavior intact")
+        XCTAssertEqual(h.coordinator.completedSaves, 1, "failed save does not count")
+        XCTAssertTrue(h.coordinator.lastThumbnail === first, "previous thumbnail preserved on save failure")
+    }
+
+    // E. The next successful recording replaces the previous thumbnail with the newest frame.
+    func testNextSuccessfulRecordingReplacesThumbnail() async {
+        let first = FakeRecordingThumbnailGenerator.makeStubImage()
+        let h = await makeHarness(thumbnail: first)
+        await recordAndStop(h, duration: 2)
+        XCTAssertTrue(h.coordinator.lastThumbnail === first)
+
+        let second = FakeRecordingThumbnailGenerator.makeStubImage()
+        h.thumbnails.nextImage = second
+        await recordAndStop(h, duration: 2)
+        XCTAssertEqual(h.coordinator.completedSaves, 2)
+        XCTAssertTrue(h.coordinator.lastThumbnail === second, "newest frame replaces the previous one")
     }
 }

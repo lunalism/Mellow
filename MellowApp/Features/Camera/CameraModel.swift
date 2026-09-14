@@ -1,5 +1,6 @@
 import Observation
 import Foundation
+import CoreGraphics
 #if DEBUG
 import OSLog
 #endif
@@ -94,6 +95,9 @@ final class CameraModel {
     // MARK: - Recording (Phase 4)
 
     var isRecordingActive: Bool { recording.isActive }
+    /// Representative frame of the last successfully saved clip, for the preview tile (session-only,
+    /// Phase 4 feedback). Nil until a save succeeds this session.
+    var lastRecordingThumbnail: CGImage? { recording.lastThumbnail }
     /// Controls that could destabilise capture are locked for the whole capture lifecycle.
     var controlsLocked: Bool { recording.isActive }
     var isMicrophoneMuted: Bool { microphoneAuthorization != .authorized }

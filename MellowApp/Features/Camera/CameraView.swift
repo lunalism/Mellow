@@ -203,7 +203,7 @@ struct CameraView: View {
     @ViewBuilder private var controls: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(spacing: 20) {
-                CameraContentSlot(clipCount: context.clipCount)
+                CameraContentSlot(clipCount: context.clipCount, thumbnail: model.lastRecordingThumbnail)
                 HStack(spacing: 44) {
                     shutter
                     flip
@@ -219,7 +219,7 @@ struct CameraView: View {
     private var overlayControlsPortrait: some View {
         ZStack {
             HStack {
-                CameraContentSlot(clipCount: context.clipCount)
+                CameraContentSlot(clipCount: context.clipCount, thumbnail: model.lastRecordingThumbnail)
                 Spacer()
                 flip
             }

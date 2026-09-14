@@ -13,6 +13,7 @@ final class CameraModelTests: XCTestCase {
             staging: RecordingStagingStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("CameraModelTests-\(UUID().uuidString)")),
             photos: FakePhotosLibrarySaver(),
             inspector: FakeRecordingMediaInspector(),
+            thumbnails: FakeRecordingThumbnailGenerator(),
             haptics: FakeCompletionHaptic(),
             backgroundTasks: ImmediateBackgroundTaskRunner()
         )

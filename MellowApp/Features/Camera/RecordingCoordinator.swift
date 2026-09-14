@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 import UIKit
@@ -73,12 +74,16 @@ final class UIKitCompletionHaptic: CompletionHapticPlaying {
 final class UIApplicationBackgroundTaskRunner: BackgroundTaskRunning {
     func run(_ work: @MainActor () async -> Void) async {
         let application = UIApplication.shared
-        var identifier = UIBackgroundTaskIdentifier.invalid
+        // The expiration handler is @Sendable and captures this mutable identifier; both it and the
+        // mutations below run on the main thread (this type is @MainActor and UIKit invokes the
+        // handler on the main queue), so the capture is safe. `nonisolated(unsafe)` states exactly
+        // that, silencing the "mutated after capture" warning without a broader concurrency change.
+        nonisolated(unsafe) var identifier = UIBackgroundTaskIdentifier.invalid
         identifier = application.beginBackgroundTask(withName: "com.mellow.recording.finalize") {
-            application.endBackgroundTask(identifier)
+            if identifier != .invalid { application.endBackgroundTask(identifier); identifier = .invalid }
         }
         await work()
-        if identifier != .invalid { application.endBackgroundTask(identifier) }
+        if identifier != .invalid { application.endBackgroundTask(identifier); identifier = .invalid }
     }
 }
 
@@ -97,11 +102,15 @@ final class RecordingCoordinator {
     /// Successful Photos saves this session; used to prove capture never creates a project.
     private(set) var completedSaves = 0
     private(set) var lastStopReason: RecordingStopReason?
+    /// Representative frame of the most recent successfully saved clip (Phase 4 preview-tile feedback
+    /// only; session-only, never persisted). Replaced only on a save that actually succeeds.
+    private(set) var lastThumbnail: CGImage?
 
     @ObservationIgnored private let service: any CameraCaptureService
     @ObservationIgnored private let staging: any RecordingStagingStoring
     @ObservationIgnored private let photos: any PhotosLibrarySaving
     @ObservationIgnored private let inspector: any RecordingMediaInspecting
+    @ObservationIgnored private let thumbnails: any RecordingThumbnailGenerating
     @ObservationIgnored private let haptics: any CompletionHapticPlaying
     @ObservationIgnored private let backgroundTasks: any BackgroundTaskRunning
     @ObservationIgnored private var stopReason: RecordingStopReason?
@@ -116,6 +125,7 @@ final class RecordingCoordinator {
         staging: any RecordingStagingStoring,
         photos: any PhotosLibrarySaving,
         inspector: any RecordingMediaInspecting,
+        thumbnails: any RecordingThumbnailGenerating,
         haptics: any CompletionHapticPlaying,
         backgroundTasks: any BackgroundTaskRunning
     ) {
@@ -123,6 +133,7 @@ final class RecordingCoordinator {
         self.staging = staging
         self.photos = photos
         self.inspector = inspector
+        self.thumbnails = thumbnails
         self.haptics = haptics
         self.backgroundTasks = backgroundTasks
         service.recordingDidChange = { [weak self] event in self?.handle(event) }
@@ -214,10 +225,16 @@ final class RecordingCoordinator {
                 stopReason = nil
                 activeURL = nil
             }
+            MellowLog.recording.info("Recording finalized (fileUsable=\(fileUsable, privacy: .public))")
             guard fileUsable else { await discard(url, as: .captureFailed); return }
             let info = await inspector.inspect(url)
-            guard info.isPlayable, info.hasVideoTrack else { await discard(url, as: .captureFailed); return }
-            switch RecordingPolicy.judge(duration: info.duration, selectedMaximum: selectedMaximum) {
+            guard info.isPlayable, info.hasVideoTrack else {
+                MellowLog.recording.error("Validation failed: playable=\(info.isPlayable, privacy: .public) video=\(info.hasVideoTrack, privacy: .public)")
+                await discard(url, as: .captureFailed); return
+            }
+            let verdict = RecordingPolicy.judge(duration: info.duration, selectedMaximum: selectedMaximum)
+            MellowLog.recording.info("Validation \(String(describing: verdict), privacy: .public) duration=\(info.duration, format: .fixed(precision: 3), privacy: .public)s max=\(self.selectedMaximum, format: .fixed(precision: 1), privacy: .public)s")
+            switch verdict {
             case .tooShort:
                 await staging.remove(url)
                 phase = .idle
@@ -229,23 +246,38 @@ final class RecordingCoordinator {
             case .valid:
                 break
             }
+            // Best-effort thumbnail from the staging file BEFORE Photos save moves it out
+            // (shouldMoveFile). Held as a local pending value; only published if the save succeeds.
+            // A nil here (generation failure) must not affect the save or the previous thumbnail.
+            let pendingThumbnail = await thumbnails.thumbnail(for: url)
+            MellowLog.recording.info("Thumbnail generation \(pendingThumbnail == nil ? "failed" : "succeeded", privacy: .public)")
             phase = .savingToPhotos
             progress = 1
+            MellowLog.recording.info("Photos save started")
             do {
                 try await photos.save(videoAt: url)
                 await staging.remove(url)
                 completedSaves += 1
+                // Publish the thumbnail only now that the clip provably exists in Photos. If
+                // generation failed, the previous thumbnail is intentionally left in place.
+                if let pendingThumbnail { lastThumbnail = pendingThumbnail }
                 phase = .idle
                 progress = 0
+                MellowLog.recording.info("Photos save succeeded (completedSaves=\(self.completedSaves, privacy: .public))")
                 // The only completion haptic: success means the clip exists in Photos.
                 haptics.playCompletion()
             } catch let error as PhotosSaveError {
-                // Staging is retained as a recovery candidate.
+                // Staging is retained as a recovery candidate; previous thumbnail is left unchanged.
                 switch error {
-                case .notAuthorized(let status): fail(.photosAccess(status))
-                case .saveFailed: fail(.photosSaveFailed)
+                case .notAuthorized(let status):
+                    MellowLog.recording.error("Photos save failed: notAuthorized(\(status.rawValue, privacy: .public))")
+                    fail(.photosAccess(status))
+                case .saveFailed:
+                    MellowLog.recording.error("Photos save failed: saveFailed")
+                    fail(.photosSaveFailed)
                 }
             } catch {
+                MellowLog.recording.error("Photos save failed: unknown")
                 fail(.photosSaveFailed)
             }
         }

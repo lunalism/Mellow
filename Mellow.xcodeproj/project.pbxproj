@@ -51,6 +51,7 @@
 		00000000000000000000022F /* CameraControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012F /* CameraControls.swift */; };
 		000000000000000000000230 /* CameraModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* CameraModelTests.swift */; };
 		000000000000000000000231 /* RecordingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000131 /* RecordingPolicy.swift */; };
+		00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013E /* RecordingThumbnailGenerator.swift */; };
 		000000000000000000000232 /* RecordingMediaInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000132 /* RecordingMediaInspector.swift */; };
 		000000000000000000000233 /* RecordingRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000133 /* RecordingRecovery.swift */; };
 		000000000000000000000234 /* RecordingStagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000134 /* RecordingStagingStore.swift */; };
@@ -130,6 +131,7 @@
 		00000000000000000000012F /* CameraControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControls.swift; sourceTree = "<group>"; };
 		000000000000000000000130 /* CameraModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModelTests.swift; sourceTree = "<group>"; };
 		000000000000000000000131 /* RecordingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicy.swift; sourceTree = "<group>"; };
+		00000000000000000000013E /* RecordingThumbnailGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingThumbnailGenerator.swift; sourceTree = "<group>"; };
 		000000000000000000000132 /* RecordingMediaInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMediaInspector.swift; sourceTree = "<group>"; };
 		000000000000000000000133 /* RecordingRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecovery.swift; sourceTree = "<group>"; };
 		000000000000000000000134 /* RecordingStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStagingStore.swift; sourceTree = "<group>"; };
@@ -397,6 +399,7 @@
 				000000000000000000000133 /* RecordingRecovery.swift */,
 				000000000000000000000132 /* RecordingMediaInspector.swift */,
 				000000000000000000000131 /* RecordingPolicy.swift */,
+				00000000000000000000013E /* RecordingThumbnailGenerator.swift */,
 			);
 			path = Media;
 			sourceTree = "<group>";
@@ -593,6 +596,7 @@
 			files = (
 				00000000000000000000022F /* CameraControls.swift in Sources */,
 				000000000000000000000231 /* RecordingPolicy.swift in Sources */,
+				00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */,
 				000000000000000000000238 /* RecordingTestDoubles.swift in Sources */,
 				000000000000000000000232 /* RecordingMediaInspector.swift in Sources */,
 				000000000000000000000233 /* RecordingRecovery.swift in Sources */,

@@ -131,10 +131,14 @@ final class AppEnvironment {
         } else {
             inspector = AVAssetRecordingMediaInspector()
         }
+        // Fake mode returns no thumbnail, so the UI-test preview tile keeps its placeholder look.
+        let thumbnails: any RecordingThumbnailGenerating = fakeMode
+            ? FakeRecordingThumbnailGenerator() : AVAssetRecordingThumbnailGenerator()
         #else
         let microphone: any MicrophoneAuthorizationProviding = AVMicrophoneAuthorization()
         let photosSaver: any PhotosLibrarySaving = PHPhotosLibrarySaver()
         let inspector: any RecordingMediaInspecting = AVAssetRecordingMediaInspector()
+        let thumbnails: any RecordingThumbnailGenerating = AVAssetRecordingThumbnailGenerator()
         #endif
         self.microphone = microphone
         self.photosSaver = photosSaver
@@ -144,6 +148,7 @@ final class AppEnvironment {
             staging: stagingStore,
             photos: photosSaver,
             inspector: inspector,
+            thumbnails: thumbnails,
             haptics: UIKitCompletionHaptic(),
             backgroundTasks: UIApplicationBackgroundTaskRunner()
         )

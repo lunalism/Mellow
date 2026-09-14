@@ -212,17 +212,26 @@ struct CameraMicrophoneControl: View {
 /// placeholder later without changing this geometry.
 struct CameraContentSlot: View {
     let clipCount: Int
+    /// Last successful recording frame (Phase 4 feedback). When present it takes display priority
+    /// over the clip-count / film-icon placeholder. Purely visual — no Clip Review navigation.
+    var thumbnail: CGImage?
     @ScaledMetric(relativeTo: .caption) private var width = 38.0
     @ScaledMetric(relativeTo: .caption) private var height = 64.0
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 9, style: .continuous) }
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
+        shape
             .fill(Color.white.opacity(0.06))
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
-            )
             .overlay {
-                if clipCount > 0 {
+                if let thumbnail {
+                    // Aspect-fill into the tile, clipped to its rounded bounds; no stretching.
+                    Image(decorative: thumbnail, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: width, height: height)
+                        .clipShape(shape)
+                } else if clipCount > 0 {
                     Text("\(clipCount)")
                         .font(.caption.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(.white)
@@ -232,14 +241,23 @@ struct CameraContentSlot: View {
                         .foregroundStyle(.white.opacity(0.3))
                 }
             }
+            .overlay(
+                shape.strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            )
             .frame(width: width, height: height)
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
-            // No functional Clip Review destination exists until Phase 5.
+            // No functional Clip Review destination exists until Phase 5; the thumbnail is feedback
+            // only, so the tile is still not a navigation target.
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("projectContent")
-            .accessibilityLabel(clipCount == 0 ? "Project content, empty" : "Project content, \(clipCount) clips")
+            .accessibilityLabel(accessibilityLabelText)
             .accessibilityHint("Clip review is not available yet")
+    }
+
+    private var accessibilityLabelText: String {
+        if thumbnail != nil { return "Last recording preview" }
+        return clipCount == 0 ? "Project content, empty" : "Project content, \(clipCount) clips"
     }
 }
 
