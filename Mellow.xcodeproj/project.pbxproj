@@ -13,7 +13,6 @@
 		000000000000000000000204 /* MellowLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* MellowLog.swift */; };
 		000000000000000000000205 /* MellowDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000105 /* MellowDesignSystem.swift */; };
 		000000000000000000000206 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* Assets.xcassets */; };
-		000000000000000000000250 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000150 /* LaunchScreen.storyboard */; };
 		000000000000000000000207 /* MellowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000107 /* MellowTests.swift */; };
 		000000000000000000000208 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* XCTest.framework */; };
 		000000000000000000000209 /* MellowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* MellowUITests.swift */; };
@@ -50,20 +49,21 @@
 		00000000000000000000022D /* CameraOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012D /* CameraOrientation.swift */; };
 		00000000000000000000022E /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012E /* CameraPreviewView.swift */; };
 		00000000000000000000022F /* CameraControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012F /* CameraControls.swift */; };
+		000000000000000000000230 /* CameraModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* CameraModelTests.swift */; };
 		000000000000000000000231 /* RecordingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000131 /* RecordingPolicy.swift */; };
-		000000000000000000000238 /* RecordingTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000138 /* RecordingTestDoubles.swift */; };
 		000000000000000000000232 /* RecordingMediaInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000132 /* RecordingMediaInspector.swift */; };
 		000000000000000000000233 /* RecordingRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000133 /* RecordingRecovery.swift */; };
 		000000000000000000000234 /* RecordingStagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000134 /* RecordingStagingStore.swift */; };
 		000000000000000000000235 /* PhotosLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000135 /* PhotosLibrarySaver.swift */; };
 		000000000000000000000236 /* MicrophoneAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000136 /* MicrophoneAuthorization.swift */; };
 		000000000000000000000237 /* RecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000137 /* RecordingCoordinator.swift */; };
-		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
-		000000000000000000000230 /* CameraModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* CameraModelTests.swift */; };
+		000000000000000000000238 /* RecordingTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000138 /* RecordingTestDoubles.swift */; };
 		000000000000000000000239 /* RecordingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000139 /* RecordingCoordinatorTests.swift */; };
-		00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013D /* PermissionOnboardingModelTests.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
+		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
+		00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013D /* PermissionOnboardingModelTests.swift */; };
+		000000000000000000000250 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000150 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,7 +90,6 @@
 		000000000000000000000104 /* MellowLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowLog.swift; sourceTree = "<group>"; };
 		000000000000000000000105 /* MellowDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowDesignSystem.swift; sourceTree = "<group>"; };
 		000000000000000000000106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		000000000000000000000150 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		000000000000000000000107 /* MellowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowTests.swift; sourceTree = "<group>"; };
 		000000000000000000000108 /* MellowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MellowUITests.swift; sourceTree = "<group>"; };
 		000000000000000000000109 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
@@ -129,20 +128,21 @@
 		00000000000000000000012D /* CameraOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraOrientation.swift; sourceTree = "<group>"; };
 		00000000000000000000012E /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		00000000000000000000012F /* CameraControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControls.swift; sourceTree = "<group>"; };
+		000000000000000000000130 /* CameraModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModelTests.swift; sourceTree = "<group>"; };
 		000000000000000000000131 /* RecordingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicy.swift; sourceTree = "<group>"; };
-		000000000000000000000138 /* RecordingTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingTestDoubles.swift; sourceTree = "<group>"; };
 		000000000000000000000132 /* RecordingMediaInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMediaInspector.swift; sourceTree = "<group>"; };
 		000000000000000000000133 /* RecordingRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecovery.swift; sourceTree = "<group>"; };
 		000000000000000000000134 /* RecordingStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStagingStore.swift; sourceTree = "<group>"; };
 		000000000000000000000135 /* PhotosLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosLibrarySaver.swift; sourceTree = "<group>"; };
 		000000000000000000000136 /* MicrophoneAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneAuthorization.swift; sourceTree = "<group>"; };
 		000000000000000000000137 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
-		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
-		000000000000000000000130 /* CameraModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModelTests.swift; sourceTree = "<group>"; };
+		000000000000000000000138 /* RecordingTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingTestDoubles.swift; sourceTree = "<group>"; };
 		000000000000000000000139 /* RecordingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinatorTests.swift; sourceTree = "<group>"; };
-		00000000000000000000013D /* PermissionOnboardingModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModelTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
+		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
+		00000000000000000000013D /* PermissionOnboardingModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModelTests.swift; sourceTree = "<group>"; };
+		000000000000000000000150 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -709,6 +709,8 @@
 		000000000000000000000503 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T394S9X9HC;
@@ -730,6 +732,8 @@
 		000000000000000000000504 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T394S9X9HC;
