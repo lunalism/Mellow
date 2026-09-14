@@ -52,6 +52,10 @@
 		000000000000000000000230 /* CameraModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* CameraModelTests.swift */; };
 		000000000000000000000231 /* RecordingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000131 /* RecordingPolicy.swift */; };
 		00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013E /* RecordingThumbnailGenerator.swift */; };
+		00000000000000000000023F /* ProjectCompositionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013F /* ProjectCompositionCoordinator.swift */; };
+		000000000000000000000240 /* ProjectEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000140 /* ProjectEditorModel.swift */; };
+		000000000000000000000241 /* ProjectEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000141 /* ProjectEditorView.swift */; };
+		000000000000000000000242 /* ClipThumbnailStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000142 /* ClipThumbnailStrip.swift */; };
 		000000000000000000000232 /* RecordingMediaInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000132 /* RecordingMediaInspector.swift */; };
 		000000000000000000000233 /* RecordingRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000133 /* RecordingRecovery.swift */; };
 		000000000000000000000234 /* RecordingStagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000134 /* RecordingStagingStore.swift */; };
@@ -60,6 +64,8 @@
 		000000000000000000000237 /* RecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000137 /* RecordingCoordinator.swift */; };
 		000000000000000000000238 /* RecordingTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000138 /* RecordingTestDoubles.swift */; };
 		000000000000000000000239 /* RecordingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000139 /* RecordingCoordinatorTests.swift */; };
+		000000000000000000000243 /* ProjectCompositionCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000143 /* ProjectCompositionCoordinatorTests.swift */; };
+		000000000000000000000244 /* ProjectEditorModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000144 /* ProjectEditorModelTests.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -132,6 +138,10 @@
 		000000000000000000000130 /* CameraModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModelTests.swift; sourceTree = "<group>"; };
 		000000000000000000000131 /* RecordingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicy.swift; sourceTree = "<group>"; };
 		00000000000000000000013E /* RecordingThumbnailGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingThumbnailGenerator.swift; sourceTree = "<group>"; };
+		00000000000000000000013F /* ProjectCompositionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCompositionCoordinator.swift; sourceTree = "<group>"; };
+		000000000000000000000140 /* ProjectEditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorModel.swift; sourceTree = "<group>"; };
+		000000000000000000000141 /* ProjectEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorView.swift; sourceTree = "<group>"; };
+		000000000000000000000142 /* ClipThumbnailStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailStrip.swift; sourceTree = "<group>"; };
 		000000000000000000000132 /* RecordingMediaInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMediaInspector.swift; sourceTree = "<group>"; };
 		000000000000000000000133 /* RecordingRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecovery.swift; sourceTree = "<group>"; };
 		000000000000000000000134 /* RecordingStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStagingStore.swift; sourceTree = "<group>"; };
@@ -140,6 +150,8 @@
 		000000000000000000000137 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
 		000000000000000000000138 /* RecordingTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingTestDoubles.swift; sourceTree = "<group>"; };
 		000000000000000000000139 /* RecordingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinatorTests.swift; sourceTree = "<group>"; };
+		000000000000000000000143 /* ProjectCompositionCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCompositionCoordinatorTests.swift; sourceTree = "<group>"; };
+		000000000000000000000144 /* ProjectEditorModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorModelTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -213,6 +225,8 @@
 			children = (
 				000000000000000000000130 /* CameraModelTests.swift */,
 				000000000000000000000139 /* RecordingCoordinatorTests.swift */,
+				000000000000000000000143 /* ProjectCompositionCoordinatorTests.swift */,
+				000000000000000000000144 /* ProjectEditorModelTests.swift */,
 				00000000000000000000013D /* PermissionOnboardingModelTests.swift */,
 				00000000000000000000013A /* RecordingPolicyTests.swift */,
 				00000000000000000000013B /* RecordingRecoveryTests.swift */,
@@ -341,6 +355,9 @@
 		000000000000000000000310 /* ProjectEditor */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000140 /* ProjectEditorModel.swift */,
+				000000000000000000000141 /* ProjectEditorView.swift */,
+				000000000000000000000142 /* ClipThumbnailStrip.swift */,
 			);
 			path = ProjectEditor;
 			sourceTree = "<group>";
@@ -377,6 +394,7 @@
 				00000000000000000000031A /* Storage */,
 				00000000000000000000031B /* Thumbnails */,
 				00000000000000000000031E /* Logging */,
+				00000000000000000000031F /* Projects */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -445,6 +463,14 @@
 			children = (
 			);
 			path = Thumbnails;
+			sourceTree = "<group>";
+		};
+		00000000000000000000031F /* Projects */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000013F /* ProjectCompositionCoordinator.swift */,
+			);
+			path = Projects;
 			sourceTree = "<group>";
 		};
 		00000000000000000000031C /* DesignSystem */ = {
@@ -597,6 +623,10 @@
 				00000000000000000000022F /* CameraControls.swift in Sources */,
 				000000000000000000000231 /* RecordingPolicy.swift in Sources */,
 				00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */,
+				00000000000000000000023F /* ProjectCompositionCoordinator.swift in Sources */,
+				000000000000000000000240 /* ProjectEditorModel.swift in Sources */,
+				000000000000000000000241 /* ProjectEditorView.swift in Sources */,
+				000000000000000000000242 /* ClipThumbnailStrip.swift in Sources */,
 				000000000000000000000238 /* RecordingTestDoubles.swift in Sources */,
 				000000000000000000000232 /* RecordingMediaInspector.swift in Sources */,
 				000000000000000000000233 /* RecordingRecovery.swift in Sources */,
@@ -647,6 +677,8 @@
 			files = (
 				000000000000000000000230 /* CameraModelTests.swift in Sources */,
 				000000000000000000000239 /* RecordingCoordinatorTests.swift in Sources */,
+				000000000000000000000243 /* ProjectCompositionCoordinatorTests.swift in Sources */,
+				000000000000000000000244 /* ProjectEditorModelTests.swift in Sources */,
 				00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */,
 				00000000000000000000023A /* RecordingPolicyTests.swift in Sources */,
 				00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */,

@@ -51,6 +51,8 @@ struct HomeView: View {
                     if let project = model.openedProject, project.id == id {
                         CameraDestination(context: .project(project)).id(project.id)
                     }
+                case .projectEditor(let id):
+                    ProjectEditorDestination(projectID: id).id(id)
                 }
             }
         }

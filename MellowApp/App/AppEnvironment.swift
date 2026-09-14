@@ -16,6 +16,7 @@ final class AppEnvironment {
 
     let router: AppRouter
     let projectRepository: any ProjectRepository
+    let projectComposition: ProjectCompositionCoordinator
     let home: HomeModel
     let modelContainer: ModelContainer
     let cameraService: any CameraCaptureService
@@ -179,10 +180,12 @@ final class AppEnvironment {
             modelContext: modelContainer.mainContext
         )
         self.projectRepository = repository
+        self.projectComposition = ProjectCompositionCoordinator(repository: repository)
         self.home = HomeModel(repository: repository, router: router)
 
         #if DEBUG
         Self.seedUITestProjects(arguments: arguments, repository: repository)
+        Self.seedEditorProjectAndRouteIfNeeded(arguments: arguments, repository: repository, router: router)
         #endif
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
@@ -293,6 +296,41 @@ final class AppEnvironment {
         for orientation in orientations {
             guard let project = try? VlogProject(orientation: orientation) else { continue }
             try? repository.create(project)
+        }
+    }
+
+    /// STEP 4 deterministic editor routing (DEBUG/UI-tests only). Seeds one Portrait project with a
+    /// few placeholder clips and, when requested, opens it directly in the Project Editor. This
+    /// exposes the editor without changing production Recent-item navigation (which two completed
+    /// Phase 2/3 regression tests still depend on).
+    private static func seedEditorProjectAndRouteIfNeeded(
+        arguments: [String],
+        repository: any ProjectRepository,
+        router: AppRouter
+    ) {
+        guard arguments.contains("-uiTestSeedEditorProject") else { return }
+        // Start from a clean store so the seeded editor project is deterministic and independent of
+        // any leftover shared-container state from earlier tests.
+        if let existing = try? repository.recentProjects() {
+            for project in existing { try? repository.deleteProject(id: project.id) }
+        }
+        let projectID = UUID()
+        let durations: [MediaTime] = [.seconds(2), .seconds(3), .seconds(1)]
+        let clips: [VlogClip] = durations.enumerated().compactMap { index, duration in
+            guard let path = try? RelativeMediaPath("seed/editor-clip-\(index).mov") else { return nil }
+            return try? VlogClip(
+                projectID: projectID,
+                sourceKind: .recorded,
+                mediaRelativePath: path,
+                sourceDuration: duration,
+                trimDuration: duration,
+                sortOrder: index
+            )
+        }
+        guard let project = try? VlogProject(id: projectID, orientation: .portrait9x16, clips: clips) else { return }
+        try? repository.create(project)
+        if arguments.contains("-uiTestOpenEditor") {
+            router.path = [.projectEditor(projectID)]
         }
     }
     #endif

@@ -144,6 +144,44 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // Phase 5 STEP 4: existing-project Editor foundation, reached through deterministic test routing
+    // (production Recent-item navigation is intentionally unchanged in this slice).
+    @MainActor
+    func testProjectEditorOpensSeededProjectAndSelectsClips() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor"])
+        app.launch()
+
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["projectEditorPreview"].exists)
+        XCTAssertTrue(app.staticTexts["projectTotalDuration"].exists)
+
+        // Three ordered clip items appear.
+        let clip1 = app.buttons["editorClip-1"]
+        let clip2 = app.buttons["editorClip-2"]
+        let clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip1.waitForExistence(timeout: 2))
+        XCTAssertTrue(clip2.exists)
+        XCTAssertTrue(clip3.exists)
+
+        // First clip selected initially; selection is semantic (accessibility value), not colour-only.
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        XCTAssertEqual(clip2.value as? String, "Not selected")
+
+        // Selecting another clip changes selection.
+        clip2.tap()
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        XCTAssertEqual(clip1.value as? String, "Not selected")
+
+        try auditAndCapture(app, name: "Project Editor Shell")
+
+        // Back returns safely to the Camera root.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+
+        // Clean up the seeded project so it does not leak into other tests' shared container.
+        removeProjects(in: app)
+    }
+
     // MARK: - Portrait camera
 
     @MainActor
