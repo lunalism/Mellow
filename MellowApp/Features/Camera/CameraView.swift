@@ -55,8 +55,13 @@ struct UnsupportedCaptureView: View {
     var body: some View {
         VStack(spacing: 10) {
             Text("Landscape isn’t available yet").font(.headline).multilineTextAlignment(.center)
+            // Label-contrast colour with the smaller font carrying the secondary hierarchy — the
+            // same convention as MellowDesignSystem.secondaryText / RecentProjectRow — so the detail
+            // text clears the contrast audit with headroom instead of the marginal .secondary grey.
             Text("This vlog was made in landscape. Mellow currently records in portrait only.")
-                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(MellowDesignSystem.secondaryText)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
