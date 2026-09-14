@@ -1926,6 +1926,94 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 
 ---
 
+# ADR-034 — Phase 5 Clip Project Management Structural UX and Select-Clips Media Boundary
+
+**Date:** 2026-09-14
+**Status:** Accepted
+
+**Clarifies / Extends:** ADR-030의 Lightweight Editor / Ordered Thumbnail Strip 방향과 ADR-033의 Camera Projects Entry(`Select Clips` / `Load Last Saved`), Safe Atomic Replacement, Single Saved Project 및 Camera Compact Project-content Access를 Phase 5 구현 직전 Structural UX Gate 수준으로 구체화한다. ADR-021(Logical Deletion / Undo)과 ADR-026(Unavailable Clip / Replace)의 Accepted Semantics는 변경하지 않고 Presentation만 확정한다. 기존 ADR을 대체(Supersede)하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+STEP 0 Phase 5 Audit에서 두 가지가 확인되었다.
+
+1. ADR-033이 정한 Camera Projects Entry / Editor 구조의 정확한 Copy·Presentation이 Pending Structural UX Gate로 남아 있어 Phase 5 UI 구현을 시작할 수 없었다.
+2. Phase 5 `Select Clips`의 Project Composition과 Phase 6 Photos Video Import(긴 Source Segment Selection, HDR/Dolby Vision→SDR, 4K→1080p-class Normalization) 사이의 Media 소유 경계가 문서상 모호했다.
+
+이 ADR은 위 두 Gate를 사용자 승인으로 해결하되, Phase 6/7이 소유한 Import·Normalization·Trim·Framing 책임과 ADR-021/026의 Replacement Metadata Migration 세부는 Pending으로 유지한다.
+
+## Decision
+
+### 1. Projects Entry UX (V1)
+
+Camera `Projects`는 기존 Multi-project Recent Projects Browser 대신 Compact Native Bottom Sheet를 연다.
+
+- **저장 Project 없음:** 단일 Primary Action `Start New Project`(ADR-033 `Select Clips` 의미). 사용 가능한 Media가 Commit되기 전에는 빈 Project를 만들지 않는다.
+- **저장 Project 있음:** Primary `Continue Editing`(ADR-033 `Load Last Saved`, 가장 최근 Commit된 편집 가능 Project 열기), Secondary `Start New Project`(ADR-033 `Select Clips`, 대체 Project 생성 시작).
+- 기존 Project 대체 전에는 `Creating a new project will replace your last saved project.` 의미의 Native 확인(Cancel / Create New Project)을 표시한다.
+- 정확한 Localization Copy는 이후 Polish로 남기되 위 Semantic Hierarchy와 Interaction은 승인되었다.
+- 기존 `Recent Projects` Multi-project Grid는 V1 Primary Projects Entry가 아니며 재사용 가능한 Domain / Persistence 구조는 Post-V1 복원을 위해 보존한다. Domain을 Single-project Schema로 파괴적으로 Migration하지 않는다.
+
+### 2. Phase 5 / Phase 6 Select-Clips Media Boundary
+
+Phase 5는 **Phase-5-ready media**로 Project를 구성한다. Phase-5-ready media는 Phase 6 편집/Normalization 없이 그대로 Project에 들어갈 수 있는 요구사항을 이미 만족하는 Media를 의미한다(특히 Duration / Format이 이미 Mellow Project 요구사항을 만족하는 Clip).
+
+Phase 5가 할 수 있는 것: Project Bootstrap에 필요한 최소 System Selection Boundary 호출, 사용자 선택 Video 수신, 기본 Media 속성 검사, 이미 Usable한지 Validation, Usable Media를 App-managed Project Storage로 Materialize / Copy(ADR-020 Transactional Commit), Clip Metadata 생성, 단일 저장 Project 구성, 이전 저장 Project의 Safe Atomic Replacement. 이것은 Project Composition Bootstrap이며 완전한 Import 기능이 아니다.
+
+Phase 5가 구현하지 않는 것(Phase 6 / 7 소유 유지): Long-source Segment Selection, 임의 Source Trim / Re-trim, HDR / Dolby Vision → SDR 변환, 4K / High-resolution → 1080p-class Normalization, Frame-rate Normalization, Crop / Framing, 고급 Source Transform, 완전한 Photos Import 편집 UI.
+
+**Non-ready Media:** 선택 Media가 Phase 6 소유 기능을 필요로 하면 Phase 5는 조용히 자르거나 Transcode / Crop하거나 잘못된 Clip Metadata를 만들거나 Import가 성공한 것처럼 처리하지 않는다. Project는 지원되지 않는 Media로 부분 Commit되지 않는다. Phase 6 소유 Source에 대한 정확한 사용자-facing 처리는 소유 Flow가 준비된 후 구현하며, Phase 5 Test는 이를 Typed `requires import preparation` 결과로 표현할 수 있다. 임시 파괴적 동작을 만들지 않는다.
+
+이 경계는 F-MVP-018~F-MVP-022(Photos Import)를 Phase 5-complete로 재정의하지 않는다.
+
+### 3. Project Editor Structural UX (Shell only)
+
+경량 Editor를 유지하며 Professional NLE처럼 만들지 않는다.
+
+- **시각 Hierarchy:** (1) Navigation / Project-level Action, (2) Large Preview Surface, (3) Ordered Clip Thumbnail Strip, (4) Clip-level Action / Project Summary.
+- **Large Preview Surface:** Phase 5는 Surface / Shell만 만든다. 실제 Playback을 구현하지 않으며 선택 Clip의 Representative Still / Placeholder를 표시할 수 있다. 실제 Effective Edited-result Playback은 기존 이후 Preview Phase(Phase 8) 소유다. Media를 Raw로 재생하는 Shortcut을 두지 않는다.
+- **Ordered Thumbnail Strip:** Horizontal Ordered Strip, Clip당 한 항목, Thumbnail이 Primary Visual, Compact Duration Label, Single Tap 선택, 선택 Clip은 Color-only가 아닌 명확한 Selected State, Long Press + Drag Reorder, Accessibility 대안으로 Move Earlier / Move Later. Waveform, Track, Playhead Timeline, Keyframe, Layer, Multi-track 없음.
+- **Clip Actions:** Delete는 선택 Clip의 명시적 Action, Add Clips는 명시적 Project-level Action. Trim / Framing / Text Control은 아직 구현하지 않으며 비기능 Control을 노출하지 않되 이후 Tool 확장 여지는 남긴다.
+- **Project Total Duration:** Clip 조직 영역 근처에 조용한 보조 정보로 표시하며 Preview와 시각적으로 경쟁하지 않는다.
+- **Add Clips:** Project / Clip Strip에 연결된 명확한 `Add Clips` Action. Direct Camera 취득과 Photos 취득은 각각의 기존/이후 소유 Boundary(§2)를 통해 라우팅하며 Phase 6 Import 편집을 선행 구현하지 않는다.
+
+### 4. Delete / Undo Presentation
+
+가장 최근 Clip Delete Undo Opportunity에 Transient Bottom Snackbar / Toast를 사용한다. 표현은 `Clip deleted` + `Undo`.
+
+동작은 ADR-021 / F-MVP-025 Canonical: Delete 즉시 논리적 순서에서 제거, 가장 최근 Delete 한 건만 사용자-visible Undo, 새 Delete가 이전 Undo Opportunity 종료, Undo는 동일 Clip Identity / Media / Metadata 복원, Undo는 Unrelated Reorder를 되돌리지 않음, Process 종료 후 Undo 미복원, Physical Media 삭제는 안전 조건까지 지연. 정확한 Undo Window Duration은 Tuning으로 남긴다. Source-of-truth가 명시적으로 요구하지 않는 한 일반 Clip Delete 앞에 확인을 추가하지 않는다.
+
+### 5. Unavailable Clip Structure
+
+Unavailable Clip은 논리적 Strip 위치에 계속 보인다. Clear Placeholder Thumbnail, Color-only가 아닌 Unavailable State, 간결한 Unavailable 표시, 명시적 Replace, 명시적 Delete를 사용한다. 사라지거나 자동 삭제하거나 다른 Asset을 조용히 사용하거나 조용히 이동하거나 Healthy처럼 조용히 건너뛰지 않는다. 다른 Clip이 Unavailable해도 Healthy Clip은 선택 / Reorder 가능하다. Unavailable Clip 자체는 Video Preview가 없다. Replace / Delete Semantics는 ADR-026 / ADR-021을 따른다.
+
+### 6. Camera Bottom-left Content Slot (Phase 4 → Phase 5 전환)
+
+- **저장 Project 없음:** 현재 Phase 4 동작 유지 — Session-only `lastRecordingThumbnail`, Recording-success 시각 피드백, Project Identity 없음, Playable URL 없음, Non-navigable. Raw-video Playback으로 만들지 않는다.
+- **저장 Project 있음:** 동일 Compact 영역을 Project-aware Content Access로 승격 가능 — 현재 Project Representative Thumbnail 표시, 탭 시 해당 저장 Project의 Editor / Clip Management Surface 열기. 저장 Project가 있으면 Project Representative Thumbnail이 Session-only Latest-recording 피드백보다 Semantic 우선한다. 이는 Tile을 "Play last recording"으로 바꾸지 않는다. 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
+
+### 7. Representative Thumbnail Semantics (유지)
+
+Current Logical Clip Order → 첫 Healthy / Usable Clip → Representative Source. Reorder, Delete, Undo Restore, Successful Replacement, Availability Transition, Representative Media Identity Change 후 재평가한다. Usable Source가 없으면 Project Placeholder를 사용하고 Unrelated Stale Thumbnail을 재사용하지 않는다. Async Thumbnail 결과는 적용 전 Validity를 확인한다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Unavailable-Clip Replacement Metadata Migration: 기존 Clip ID 유지 vs 새 Clip ID, Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration 세부, 사용자-facing Reset 전달 — Replacement 구현 직전까지 Pending. 이는 Projects Entry / Editor Shell / 기본 Thumbnail / Selection / Reorder / Delete·Undo / Project-aware Camera Content Access를 Block하지 않고, Unavailable-media Replacement 구현 Slice만 Block한다.
+- 완전한 임의 Photos Import / Normalization(Phase 6), Trim / Framing(Phase 7), 실제 Effective-result Playback / Full Vlog Preview(Phase 8), Export(Phase 9).
+- Undo Window Duration, 정확한 Localization Copy, 정확한 Snackbar / Sheet Visual Tuning.
+
+## Consequences
+
+Phase 5는 Projects Entry Surface, Single Saved Project Lookup / Routing, Domain / Persistence Phase-5 Lifecycle State, Thumbnail Infrastructure, Editor Structural Shell, Selection, Reorder / Autosave, Delete / Most-recent Undo, Deferred Cleanup / Active Usage, Project Representative Thumbnail, Camera Content-slot → Project Access를 구현 가능(Definition of Ready)하다. 위 Still Pending 항목과 이후 소유 Phase의 책임은 유지된다.
+
+## Non-goals
+
+- 정확한 Localization Copy / Visual Tuning / Undo Window 값 확정.
+- Replacement Metadata Migration 정책 확정.
+- Phase 6 Import·Normalization, Phase 7 Trim / Framing, Phase 8 Preview, Phase 9 Export의 선행 구현.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
@@ -2028,7 +2116,11 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Recording 시작 후 Device 자세 변경 시 동작 — Resolved 2026-09-14 by ADR-033: Clip은 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다.
 - Recording Progress Ring의 정확한 색상 / 표현 — Pending, Phase 4 구현 / Physical Visual Review Polish이며 ADR 결정 대상이 아니다.
 - Imported Clip의 최소 길이 — Pending, Phase 6.
-- Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Pending, Phase 5 Structural UX Gate.
+- Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Bottom Sheet, 대체 확인 Cancel / Create New Project); 정확한 Localization Copy만 Polish로 Pending.
+- Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
+- Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
+- Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034: 저장 Project 없으면 Session-only 피드백 유지, 있으면 Project Representative Thumbnail + Editor 진입으로 승격(Raw Playback 아님).
+- Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Pending, Replacement 구현 직전(ADR-034가 다시 Open으로 만들지 않음).
 - Multi-project 복원 시점 — Pending, Post-V1 Product Decision.
 
 ### Portrait-Only V1 Transition

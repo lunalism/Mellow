@@ -1547,18 +1547,28 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 
 ## Decision Gate Before Implementation
 
-Clip Management 구현 전에 다음 Structural UX Pending을 사용자 승인으로 해결한다.
+아래 Structural UX Pending은 ADR-034로 사용자 승인 해결되었다(정확한 Localization Copy / Visual Tuning / Undo Window 값만 Polish로 남김).
 
-- ADR-030 Ordered Thumbnail Strip의 세부 Layout
-- 승인된 Single Tap Selection, Long Press + Drag Reorder와 Non-drag Accessibility 대안의 상세 표현
-- Clip Delete Action의 Control Placement
-- Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조
-- Project Duration과 Add Clip Action의 배치
-- Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조
+- ADR-030 Ordered Thumbnail Strip의 세부 Layout — Resolved by ADR-034: Horizontal Ordered Strip, Clip당 한 항목, Thumbnail Primary + Compact Duration Label.
+- 승인된 Single Tap Selection, Long Press + Drag Reorder와 Non-drag Accessibility 대안의 상세 표현 — Resolved by ADR-034: Single Tap 선택 + Color-only 아닌 Selected State, Long Press + Drag Reorder, Move Earlier / Move Later.
+- Clip Delete Action의 Control Placement — Resolved by ADR-034: 선택 Clip의 명시적 Action.
+- Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조 — Resolved by ADR-034: Transient Bottom Snackbar `Clip deleted` + `Undo`.
+- Project Duration과 Add Clip Action의 배치 — Resolved by ADR-034: Project Total Duration은 Clip 조직 영역 근처의 조용한 보조 정보, `Add Clips`는 명시적 Project-level Action.
+- Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034: 논리적 위치 유지 Placeholder + Color-only 아닌 Unavailable State + 명시적 Replace / Delete.
+
+또한 ADR-034는 다음을 확정한다.
+
+- Camera `Projects`는 Compact Native Bottom Sheet를 연다. 저장 Project 없으면 `Start New Project`, 있으면 Primary `Continue Editing` / Secondary `Start New Project`이며 대체 전 `Creating a new project will replace your last saved project.` 의미의 Cancel / Create New Project 확인을 표시한다.
+- Camera Bottom-left Content Slot은 저장 Project 없으면 Phase 4 Session-only 피드백을 유지하고, 저장 Project가 있으면 Project Representative Thumbnail 표시 + 탭 시 저장 Project Editor 진입으로 승격한다(Raw Playback 아님). 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
+- Large Preview는 Phase 5에서 Surface / Shell만 만들고 실제 Effective-result Playback은 Phase 8 소유다. Raw Media를 Shortcut으로 재생하지 않는다.
+
+### Select-Clips Media Boundary — ADR-034
+
+Phase 5 `Select Clips`(= `Start New Project`)는 Phase-5-ready media만 Bootstrap한다. Phase 5는 Project Bootstrap에 필요한 최소 System Selection Boundary 호출, 기본 Media 속성 검사, Usable 여부 Validation, Usable Media의 App-managed Materialize / Copy(ADR-020), Clip Metadata 생성, 단일 저장 Project 구성과 Safe Atomic Replacement를 소유한다. Long-source Segment Selection, 임의 Trim / Re-trim, HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization, Crop / Framing과 완전한 Import 편집 UI는 Phase 6 / 7 소유로 유지한다. Non-ready Media는 조용히 자르거나 Transcode / Crop하거나 잘못된 Clip Metadata를 만들거나 Import 성공으로 처리하지 않으며 부분 Commit 없이 Typed `requires import preparation` 결과로 표현한다. 이 경계는 F-MVP-018~F-MVP-022를 Phase 5-complete로 재정의하지 않는다.
 
 Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경하지 않으며 Delete 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원을 유지한다.
 
-정확한 Undo Presentation 선택은 Pending이며 이 Gate가 해결되기 전에는 해당 UI 구현을 시작하지 않는다.
+정확한 Undo Window Duration과 Localization Copy만 Tuning / Polish로 남으며 위 Structural UX Gate는 ADR-034로 해결되어 해당 UI 구현을 시작할 수 있다.
 
 Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다.
 

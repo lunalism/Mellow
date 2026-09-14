@@ -125,7 +125,7 @@ Mellow MVP의 기본 화면 구조는 다음과 같다.
   - 첫 실행: Permission Onboarding → Portrait Camera
   - 이후 실행: Portrait Camera
 - Portrait Camera (V1의 기본 Application Surface)
-  - Quiet Projects Access → Recent Projects → Existing Project
+  - Quiet Projects Access → Projects Bottom Sheet(ADR-034): 저장 Project 없으면 `Start New Project`, 있으면 `Continue Editing` / `Start New Project`. Multi-project Recent Grid는 V1 Primary Flow가 아니며 구조만 보존한다.
 
 Project 내부의 주요 흐름은 다음과 같다.
 
@@ -909,7 +909,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | Resolved 2026-09-13: Full-bleed Camera Preview, UI-only 1–5s Selector / 기본 3s, Flip / Compact Content, 조용한 Mismatch, Camera-only Permission 안내와 Rear 1.0×–2.0× Pinch / Transient Indicator. ADR-032로 Portrait-only V1, Splash 진입과 Camera Chrome Projects Access가 추가되고 Landscape Camera Layout / Control Rail은 V1 범위에서 제외 | Control의 비구조적인 시각 조정과 Portrait Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
-| Phase 5 — Clip Management | ADR-030 Ordered Thumbnail Strip Layout, Long Press + Drag / Accessible Reorder의 상세 표현, Delete Control Placement, Snackbar / Toast 등 Undo Presentation Surface, Duration / Add Clip 배치, Unavailable Clip의 Replace / Delete 접근 구조 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning |
+| Phase 5 — Clip Management | Resolved by ADR-034: Projects `Start New Project` / `Continue Editing` Bottom Sheet와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar, 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing / Text | 명시적 T Tool의 세부 UX와 Text 정책, Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |

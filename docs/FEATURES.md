@@ -558,6 +558,8 @@ Fit과 Background Blur는 MVP에서 제공하지 않는다.
 
 각 Clip을 Ordered Thumbnail Strip에서 시각적으로 구분하고 Single Tap으로 선택하여 관련 Clip Tools를 노출 / 활성화하며 일반 Tap으로 Text Entry를 열지 않는다.
 
+ADR-034에 따라 Phase 5 표현은 Horizontal Ordered Strip(Clip당 한 항목, Thumbnail Primary + Compact Duration Label, Color-only가 아닌 Selected State, Long Press + Drag / Move Earlier·Later Reorder)이며 Large Preview는 Shell만 제공하고 실제 Effective-result Playback은 Phase 8 소유다. Waveform / Track / Playhead Timeline / Keyframe / Layer / Multi-track은 두지 않는다.
+
 ### Candidate Information
 
 - Thumbnail
@@ -595,7 +597,7 @@ Replacement의 Clip Identity와 기존 Trim, Framing, Transform, Thumbnail Metad
 
 사용자는 필요하지 않은 Clip을 현재 Vlog 프로젝트에서 제거할 수 있어야 한다.
 
-Clip Delete Action 직후 해당 Clip을 UI에서 제거하고 짧은 Undo Opportunity를 제공한다.
+Clip Delete Action 직후 해당 Clip을 UI에서 제거하고 짧은 Undo Opportunity를 제공한다. ADR-034에 따라 Delete는 선택 Clip의 명시적 Action이며 Undo는 Transient Bottom Snackbar `Clip deleted` + `Undo`로 표시하고 일반 Clip Delete 앞에 별도 확인을 두지 않는다(Undo Window Duration은 Tuning).
 
 MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이다.
 

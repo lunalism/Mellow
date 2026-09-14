@@ -399,6 +399,10 @@ ADR-030의 Camera → Clip Review / Management → Editor → Export는 같은 P
 
 Camera의 Compact Project-content Access는 Project Review로 연결하는 UI 책임이며 Thumbnail 생성과 Persistence를 SwiftUI View에 직접 구현하지 않는다.
 
+ADR-034에 따라 Camera Bottom-left Content Slot은 저장 Project가 없으면 Phase 4의 Session-only Latest-recording 피드백(Project Identity / Playable URL 없음, Non-navigable)을 유지하고, 저장 Project가 있으면 Project Representative Thumbnail 표시와 저장 Project Editor 진입으로 승격한다. 이는 Raw Recording Playback이 아니며 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
+
+ADR-034에 따라 Phase 5 `Select Clips`는 Phase-5-ready media(Phase 6 편집 / Normalization 없이 Project 요구사항을 이미 만족하는 Media)만 App-managed Project Storage로 Materialize / Copy(ADR-020)하여 단일 저장 Project를 Bootstrap한다. Long-source Segment Selection, Trim / Re-trim, HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization과 Frame-rate Normalization은 Phase 6 / 7 소유이며, Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리한다.
+
 Ordered Strip의 Clip Selection은 명시적인 Clip Identity를 대상으로 하며 Reorder는 기존 Project Order / Persistence 경계를 사용하고 Preview / Export도 같은 순서를 반영한다.
 
 Editor의 큰 Preview와 가벼운 Tools는 기존 Feature / Composition 경계를 사용하며 별도 Dashboard, Multi-track Model이나 새로운 Architecture Layer를 이 결정으로 추가하지 않는다.
@@ -2263,7 +2267,7 @@ UI Test에서는 실제 Camera Hardware 대신 Test Double을 주입할 수 있�
 
 - Splash / First-Run Permission Onboarding
 - Portrait Camera Root
-- Camera Chrome Projects Access → Recent Projects
+- Camera Chrome Projects Access → Projects Bottom Sheet(ADR-034: 저장 Project 없음 `Start New Project`, 있음 `Continue Editing` / `Start New Project` + 대체 확인)
 - Mock Recorded Clip 추가
 - Mock Imported Clip 추가
 - Clip Reorder
