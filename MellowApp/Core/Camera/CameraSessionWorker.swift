@@ -4,16 +4,44 @@ import AVFoundation
 /// to queue. Only Sendable commands/snapshots cross it; the session is shared solely with
 /// the main-thread preview layer, which owns presentation rather than capture configuration.
 final class CameraSessionWorker: @unchecked Sendable {
-    enum Command: Sendable { case prepare, start, stop, switchCamera, zoom(Double) }
+    enum Command: Sendable {
+        case prepare, start, stop, switchCamera, zoom(Double)
+        case setAudio(Bool)
+        case startRecording(url: URL, maximumDuration: TimeInterval)
+        case stopRecording
+    }
     private let queue = DispatchQueue(label: "com.mellow.camera.session", qos: .userInitiated)
     private let session: AVCaptureSession
     private var input: AVCaptureDeviceInput?
+    private var audioInput: AVCaptureDeviceInput?
+    private var wantsAudio = false
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private lazy var recordingDelegate = RecordingDelegate(worker: self)
+    private var recordingRequested = false
+    private var stopSessionAfterRecording = false
     private var state = CameraSessionState()
     private var wantsRunning = false
     private var observers: [NSObjectProtocol] = []
     private var publish: (@Sendable (CameraSessionState) -> Void)?
+    private var publishRecording: (@Sendable (CameraRecordingEvent) -> Void)?
 
-    init(session: AVCaptureSession) { self.session = session }
+    init(session: AVCaptureSession) {
+        self.session = session
+        // ~1s fragments keep crash-left 1–5s staging files playable up to the last written
+        // second (best-effort recovery); the default 10s would leave them without a moov atom.
+        movieOutput.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
+    }
+
+    /// Media time written so far. AVFoundation documents this property as safe to read from any
+    /// thread, so progress can sample it without a queue hop.
+    var recordedDurationSeconds: TimeInterval {
+        let duration = movieOutput.recordedDuration
+        return duration.isNumeric ? duration.seconds : 0
+    }
+
+    func observeRecording(_ callback: @escaping @Sendable (CameraRecordingEvent) -> Void) {
+        queue.async { self.publishRecording = callback }
+    }
 
     deinit {
         observers.forEach(NotificationCenter.default.removeObserver)
@@ -23,6 +51,7 @@ final class CameraSessionWorker: @unchecked Sendable {
         queue.async {
             self.wantsRunning = false
             self.publish = nil
+            self.publishRecording = nil
             self.observers.forEach(NotificationCenter.default.removeObserver)
             self.observers = []
             if self.session.isRunning { self.session.stopRunning() }
@@ -59,15 +88,26 @@ final class CameraSessionWorker: @unchecked Sendable {
                     self.startIfPossible()
                 case .stop:
                     self.wantsRunning = false
-                    if self.session.isRunning { self.session.stopRunning() }
-                    if self.state.phase == .running { self.state.phase = .prepared }
+                    if self.isRecordingOrRequested {
+                        // Stopping the session mid-write truncates the file; finish the recording
+                        // first and stop the session from the didFinish callback.
+                        self.stopSessionAfterRecording = true
+                        self.movieOutput.stopRecording()
+                    } else {
+                        if self.session.isRunning { self.session.stopRunning() }
+                        if self.state.phase == .running { self.state.phase = .prepared }
+                    }
                 case .switchCamera:
-                    guard self.state.canSwitch, self.state.phase == .running else {
+                    guard self.state.canSwitch, self.state.phase == .running, !self.isRecordingOrRequested else {
                         continuation.resume(returning: self.snapshot()); return
                     }
                     self.configure(position: self.state.position == .rear ? .front : .rear)
                     self.startIfPossible()
                 case .zoom(let factor): self.applyZoom(factor)
+                case .setAudio(let enabled): self.setAudio(enabled)
+                case .startRecording(let url, let maximumDuration): self.startRecording(to: url, maximumDuration: maximumDuration)
+                case .stopRecording:
+                    if self.isRecordingOrRequested { self.movieOutput.stopRecording() }
                 }
                 continuation.resume(returning: self.snapshot())
             }
@@ -101,6 +141,11 @@ final class CameraSessionWorker: @unchecked Sendable {
             }
             session.sessionPreset = .hd1920x1080
             session.addInput(candidate)
+            audioInput = nil
+            if wantsAudio { attachAudioInputLocked() }
+            if !session.outputs.contains(movieOutput), session.canAddOutput(movieOutput) {
+                session.addOutput(movieOutput)
+            }
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
             guard device.activeFormat.videoSupportedFrameRateRanges.contains(where: { $0.minFrameRate <= 30 && $0.maxFrameRate >= 30 }),
@@ -118,6 +163,87 @@ final class CameraSessionWorker: @unchecked Sendable {
                                                       position: position == .rear ? .front : .back) != nil
             state.phase = .prepared
         } catch { fail(.configurationFailed) }
+    }
+
+    private var isRecordingOrRequested: Bool { recordingRequested || movieOutput.isRecording }
+
+    /// Must be called inside begin/commitConfiguration. Missing or unusable microphone leaves the
+    /// session video-only; no silent track is fabricated.
+    private func attachAudioInputLocked() {
+        guard let microphone = AVCaptureDevice.default(for: .audio),
+              let candidate = try? AVCaptureDeviceInput(device: microphone),
+              session.canAddInput(candidate) else {
+            state.audioEnabled = false; return
+        }
+        session.addInput(candidate)
+        audioInput = candidate
+        state.audioEnabled = true
+    }
+
+    private func setAudio(_ enabled: Bool) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        wantsAudio = enabled
+        // Never reconfigure inputs under an active recording; the coordinator only asks while idle.
+        guard !isRecordingOrRequested, input != nil, !isFailed else { return }
+        guard enabled != (audioInput != nil) else { state.audioEnabled = audioInput != nil; return }
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        if enabled {
+            attachAudioInputLocked()
+        } else if let audioInput {
+            session.removeInput(audioInput)
+            self.audioInput = nil
+            state.audioEnabled = false
+        }
+    }
+
+    private func startRecording(to url: URL, maximumDuration: TimeInterval) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        guard state.phase == .running, session.outputs.contains(movieOutput), !isRecordingOrRequested else { return }
+        if let connection = movieOutput.connection(with: .video) {
+            // Portrait is fixed once here for the clip's whole lifetime; later posture changes
+            // never touch the connection (ADR-033).
+            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = state.position == .front
+            }
+        }
+        movieOutput.maxRecordedDuration = CMTime(seconds: maximumDuration, preferredTimescale: 600)
+        recordingRequested = true
+        state.recordingRequested = true
+        movieOutput.startRecording(to: url, recordingDelegate: recordingDelegate)
+    }
+
+    fileprivate func recordingDidStart() {
+        queue.async {
+            self.state.isRecording = true
+            _ = self.snapshot()
+            self.publishRecording?(.started)
+        }
+    }
+
+    fileprivate func recordingDidFinish(url: URL, error: Error?) {
+        queue.async {
+            self.recordingRequested = false
+            self.state.recordingRequested = false
+            self.state.isRecording = false
+            var usable = error == nil
+            var reachedMaximum = false
+            var description: String?
+            if let error = error as NSError? {
+                reachedMaximum = error.domain == AVFoundationErrorDomain && error.code == AVError.maximumDurationReached.rawValue
+                usable = (error.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool) ?? false
+                description = usable ? nil : error.localizedDescription
+            }
+            if self.stopSessionAfterRecording {
+                self.stopSessionAfterRecording = false
+                if self.session.isRunning { self.session.stopRunning() }
+                if self.state.phase == .running { self.state.phase = .prepared }
+            }
+            _ = self.snapshot()
+            self.publishRecording?(.finished(url: url, fileUsable: usable, reachedMaximum: reachedMaximum, errorDescription: description))
+        }
     }
 
     private func startIfPossible() {
@@ -177,5 +303,17 @@ final class CameraSessionWorker: @unchecked Sendable {
         state.revision += 1
         publish?(state)
         return state
+    }
+}
+
+/// Thin AVFoundation delegate; every callback hops back onto the worker queue.
+private final class RecordingDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
+    private weak var worker: CameraSessionWorker?
+    init(worker: CameraSessionWorker) { self.worker = worker }
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        worker?.recordingDidStart()
+    }
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        worker?.recordingDidFinish(url: outputFileURL, error: error)
     }
 }

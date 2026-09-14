@@ -7,7 +7,18 @@ final class CameraModelTests: XCTestCase {
                       project: ProjectOrientation = .portrait9x16,
                       posture: CameraDeviceOrientation = .portrait) -> (CameraModel, FakeCameraOrientationSource) {
         let source = FakeCameraOrientationSource(posture)
-        return (CameraModel(projectOrientation: project, service: service ?? FakeCameraCaptureService(), orientation: source), source)
+        let camera = service ?? FakeCameraCaptureService()
+        let recording = RecordingCoordinator(
+            service: camera,
+            staging: RecordingStagingStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("CameraModelTests-\(UUID().uuidString)")),
+            photos: FakePhotosLibrarySaver(),
+            inspector: FakeRecordingMediaInspector(),
+            haptics: FakeCompletionHaptic(),
+            backgroundTasks: ImmediateBackgroundTaskRunner()
+        )
+        let model = CameraModel(projectOrientation: project, service: camera, orientation: source,
+                                recording: recording, microphone: FakeMicrophoneAuthorization())
+        return (model, source)
     }
 
     func testAuthorizationStatesAndOrdering() async {
@@ -21,7 +32,7 @@ final class CameraModelTests: XCTestCase {
                 XCTAssertEqual(service.calls, ["authorize", "stop"])
                 XCTAssertFalse(model.canFlip)
             } else {
-                XCTAssertEqual(service.calls, ["authorize", "prepare", "start"])
+                XCTAssertEqual(service.calls, ["authorize", "prepare", "audioOn", "start"])
                 XCTAssertEqual(model.readiness, .ready)
             }
             model.leave(); await model.waitForLifecycle()
@@ -37,7 +48,7 @@ final class CameraModelTests: XCTestCase {
         XCTAssertEqual(service.calls, ["authorize"])
         service.completeAuthorization(.authorized)
         await model.waitForLifecycle()
-        XCTAssertEqual(service.calls, ["authorize", "prepare", "start"])
+        XCTAssertEqual(service.calls, ["authorize", "prepare", "audioOn", "start"])
         XCTAssertEqual(model.readiness, .ready)
         model.leave(); await model.waitForLifecycle()
     }
@@ -63,7 +74,7 @@ final class CameraModelTests: XCTestCase {
         XCTAssertEqual(model.readiness, .inactive)
         model.setActive(true)
         await model.waitForLifecycle()
-        XCTAssertEqual(service.calls, ["stop", "authorize", "prepare", "start"])
+        XCTAssertEqual(service.calls, ["stop", "authorize", "prepare", "audioOn", "start"])
         XCTAssertEqual(model.readiness, .ready)
         model.setActive(false)
         await model.waitForLifecycle()

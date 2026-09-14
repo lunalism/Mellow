@@ -84,6 +84,22 @@ struct CameraView: View {
     }
 
     var body: some View {
+        surface
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.ignoresSafeArea())
+            .modifier(CameraChrome(isRoot: context.isRoot))
+            .overlay(alignment: .topTrailing) { projectsAccess }
+            .overlay(alignment: .topLeading) { microphoneAccess }
+            .overlay(alignment: .bottom) { transientCaption }
+            .overlay { recordingFailureOverlay }
+            .tint(.white).foregroundStyle(.white)
+            .onAppear { model.enter(active: scenePhase == .active) }
+            .onDisappear { model.leave() }
+            .onChange(of: scenePhase) { _, value in model.setActive(value == .active) }
+            .onChange(of: pinching) { _, value in if !value { pinchBase = nil } }
+    }
+
+    @ViewBuilder private var surface: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 GeometryReader { geometry in
@@ -117,36 +133,70 @@ struct CameraView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.ignoresSafeArea())
-        // The root capture surface is the application root: no Back, no title, preview dominant.
-        .toolbar(context.isRoot ? .hidden : .visible, for: .navigationBar)
-        .navigationTitle(context.isRoot ? "" : "Camera").navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .overlay(alignment: .topTrailing) { projectsAccess }
-        .tint(.white).foregroundStyle(.white)
-        .onAppear { model.enter(active: scenePhase == .active) }
-        .onDisappear { model.leave() }
-        .onChange(of: scenePhase) { _, value in model.setActive(value == .active) }
-        .onChange(of: pinching) { _, value in if !value { pinchBase = nil } }
     }
 
     /// Quiet secondary access; the removed format chooser previously owned this entry point.
     @ViewBuilder private var projectsAccess: some View {
         if context.isRoot, let showProjects {
             CameraProjectsButton(open: showProjects)
+                .disabled(model.controlsLocked)
+                .opacity(model.controlsLocked ? 0.35 : 1)
                 .padding(.top, 9)
                 .padding(.trailing, 14)
         }
     }
 
+    /// `mic.slash` appears only while audio is unavailable; it never gates video recording.
+    @ViewBuilder private var microphoneAccess: some View {
+        if model.isMicrophoneMuted {
+            CameraMicrophoneControl(authorization: model.microphoneAuthorization, enabled: !model.controlsLocked) {
+                Task {
+                    switch await model.microphoneTapped() {
+                    case .openSettings:
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    case .showRestricted:
+                        model.recording.show(.microphoneRestricted)
+                    case .none:
+                        break
+                    }
+                }
+            }
+            .padding(.top, 9)
+            .padding(.leading, 14)
+        }
+    }
+
+    /// Brief non-modal captions (too short, storage, microphone restricted) above the controls.
+    @ViewBuilder private var transientCaption: some View {
+        if let notice = model.recording.notice {
+            Text(notice.text)
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.6)).clipShape(Capsule())
+                .foregroundStyle(.white)
+                .padding(.bottom, 186)
+                .transition(.opacity)
+                .accessibilityIdentifier("recordingNotice")
+        }
+    }
+
     private var durationSelector: some View {
         CameraDurationSelector(selected: $model.selectedDuration)
+            .disabled(model.controlsLocked)
+            .opacity(model.controlsLocked ? 0.35 : 1)
     }
     private var flip: some View {
         CameraFlipButton(enabled: model.canFlip, position: model.sessionState.position) {
             Task { await model.flip() }
+        }
+    }
+    private var shutter: some View {
+        CameraShutter(
+            enabled: model.shutterEnabled,
+            isRecording: model.recording.isActive,
+            progress: model.recording.progress
+        ) {
+            Task { await model.shutterTapped() }
         }
     }
 
@@ -155,7 +205,7 @@ struct CameraView: View {
             VStack(spacing: 20) {
                 CameraContentSlot(clipCount: context.clipCount)
                 HStack(spacing: 44) {
-                    CameraShutter(enabled: model.readiness == .ready)
+                    shutter
                     flip
                 }
             }
@@ -173,7 +223,7 @@ struct CameraView: View {
                 Spacer()
                 flip
             }
-            CameraShutter(enabled: model.readiness == .ready)
+            shutter
         }
         .frame(maxWidth: .infinity)
     }
@@ -242,13 +292,28 @@ struct CameraView: View {
                 .accessibilityIdentifier("cameraMismatch")
         case .permissionPending, .preparing:
             ProgressView().tint(.white).accessibilityLabel("Preparing camera")
-        case .ready, .inactive: EmptyView()
+        case .recording, .ready, .inactive: EmptyView()
+        }
+    }
+
+    /// Recording failures are independent of preview readiness, so they live in their own overlay.
+    @ViewBuilder private var recordingFailureOverlay: some View {
+        if let failure = model.recording.failure {
+            message(title: failure.title, detail: failure.detail) {
+                if failure.offersSettings {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    }.accessibilityIdentifier("openSettings")
+                }
+                Button("OK") { model.recording.dismissFailure() }.accessibilityIdentifier("dismissRecordingFailure")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func message<Action: View>(title: String, detail: String, @ViewBuilder action: () -> Action) -> some View {
         VStack(spacing: 8) {
-            Text(title).font(.headline)
+            Text(title).font(.headline).accessibilityIdentifier("cameraMessageTitle")
             Text(detail).multilineTextAlignment(.center)
             action().buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black).frame(minHeight: 44)
         }.foregroundStyle(.white).padding(18).background(.black.opacity(0.84))
@@ -278,5 +343,17 @@ private struct CameraZoomAccessibility: ViewModifier {
                 @unknown default: break
                 }
             }
+    }
+}
+
+/// The root capture surface is the application root: no Back, no title, preview dominant.
+private struct CameraChrome: ViewModifier {
+    let isRoot: Bool
+    func body(content: Content) -> some View {
+        content
+            .toolbar(isRoot ? .hidden : .visible, for: .navigationBar)
+            .navigationTitle(isRoot ? "" : "Camera").navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }

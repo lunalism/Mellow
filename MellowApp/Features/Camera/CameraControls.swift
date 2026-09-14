@@ -113,22 +113,47 @@ struct CameraFlipButton: View {
 }
 
 /// Camera-style capture affordance: thin outer ring, a small gap, then a solid inner disc.
-/// Structural only in Phase 3 — it records nothing.
+/// While recording the ring becomes the progress surface (elapsed / selected maximum) in the
+/// approved warm gradient; geometry is unchanged from the Phase 3 baseline.
 struct CameraShutter: View {
     let enabled: Bool
+    var isRecording = false
+    /// Actual written media time / selected maximum, sampled from the capture pipeline.
+    var progress: Double = 0
+    var action: () -> Void = {}
     private let outerDiameter: CGFloat = 67
     private let ringWidth: CGFloat = 3.5
     private let innerDiameter: CGFloat = 55
+
+    static let progressGradient = AngularGradient(
+        colors: [
+            Color(red: 1, green: 0.843, blue: 0.780),   // #FFD7C7
+            Color(red: 1, green: 0.722, blue: 0.612),   // #FFB89C
+            Color(red: 1, green: 0.541, blue: 0.396),   // #FF8A65
+            Color(red: 1, green: 0.478, blue: 0.271),   // #FF7A45
+            Color(red: 1, green: 0.369, blue: 0.227)    // #FF5E3A
+        ],
+        center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)
+    )
+
     var body: some View {
-        Button {} label: {
+        Button(action: action) {
             ZStack {
                 Circle()
-                    .strokeBorder(Color.white.opacity(enabled ? 0.95 : 0.4), lineWidth: ringWidth)
+                    .strokeBorder(Color.white.opacity(isRecording ? 0.22 : (enabled ? 0.95 : 0.4)), lineWidth: ringWidth)
                     .frame(width: outerDiameter, height: outerDiameter)
+                if isRecording {
+                    Circle()
+                        .trim(from: 0, to: max(0.002, min(1, progress)))
+                        .stroke(Self.progressGradient, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: outerDiameter - ringWidth, height: outerDiameter - ringWidth)
+                        .accessibilityHidden(true)
+                }
                 Circle()
-                    .fill(Color.white.opacity(enabled ? 1 : 0.28))
+                    .fill(Color.white.opacity(enabled || isRecording ? 1 : 0.28))
                     .frame(width: innerDiameter, height: innerDiameter)
-                if !enabled {
+                if !enabled && !isRecording {
                     Image(systemName: "slash.circle")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.black.opacity(0.45))
@@ -137,8 +162,49 @@ struct CameraShutter: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain).disabled(!enabled)
-        .accessibilityIdentifier("cameraShutter").accessibilityLabel("Shutter")
-        .accessibilityHint("Recording is not available yet")
+        .accessibilityIdentifier("cameraShutter")
+        .accessibilityLabel(isRecording ? "Stop recording" : "Record")
+        .accessibilityValue(isRecording ? "\(Int((progress * 100).rounded())) percent" : "")
+        .accessibilityHint(isRecording ? "Stops the clip; clips shorter than one second are discarded" : "Records a clip up to the selected duration")
+    }
+}
+
+/// Quiet muted-microphone state in the upper-leading chrome. Shown only when audio is not
+/// available; tapping follows the authorization state and never blocks video recording.
+struct CameraMicrophoneControl: View {
+    let authorization: MicrophoneAuthorization
+    let enabled: Bool
+    let tap: () -> Void
+    var body: some View {
+        Button(action: tap) {
+            Image(systemName: "mic.slash")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.white.opacity(enabled ? 0.9 : 0.5))
+                .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(!enabled)
+        .accessibilityLabel("Microphone off")
+        .accessibilityValue(value)
+        .accessibilityHint(hint)
+        .accessibilityIdentifier("microphoneMuted")
+    }
+    private var value: String {
+        switch authorization {
+        case .notDetermined: return "Not yet allowed"
+        case .denied: return "Not allowed"
+        case .restricted: return "Unavailable"
+        case .authorized: return "On"
+        }
+    }
+    private var hint: String {
+        switch authorization {
+        case .notDetermined: return "Allows the microphone so clips include sound"
+        case .denied: return "Opens Settings to allow the microphone"
+        case .restricted: return "Clips are recorded without sound"
+        case .authorized: return ""
+        }
     }
 }
 

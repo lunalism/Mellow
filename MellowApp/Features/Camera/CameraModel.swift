@@ -24,6 +24,8 @@ extension CameraDuration {
 }
 enum CameraReadiness: Equatable {
     case permissionPending, denied, restricted, preparing, ready, mismatch, unavailable, interrupted, inactive
+    /// A capture is in flight (preparing → savingToPhotos). Posture is not re-evaluated until it ends.
+    case recording
     case failed(CameraFailure)
 }
 
@@ -42,7 +44,10 @@ final class CameraModel {
     var selectedDuration: CameraDuration = .three
     private(set) var visible = false
     private(set) var active = false
+    private(set) var microphoneAuthorization: MicrophoneAuthorization = .notDetermined
     @ObservationIgnored let service: any CameraCaptureService
+    @ObservationIgnored let recording: RecordingCoordinator
+    @ObservationIgnored private let microphone: any MicrophoneAuthorizationProviding
     @ObservationIgnored private let orientation: any CameraOrientationSource
     @ObservationIgnored private var lifecycle: Task<Void, Never>?
 
@@ -56,12 +61,21 @@ final class CameraModel {
     @ObservationIgnored private var startupInProgress = false
 #endif
 
-    init(projectOrientation: ProjectOrientation, service: any CameraCaptureService, orientation: any CameraOrientationSource) {
+    init(
+        projectOrientation: ProjectOrientation,
+        service: any CameraCaptureService,
+        orientation: any CameraOrientationSource,
+        recording: RecordingCoordinator,
+        microphone: any MicrophoneAuthorizationProviding
+    ) {
         self.projectOrientation = projectOrientation
         self.service = service
         self.orientation = orientation
+        self.recording = recording
+        self.microphone = microphone
         authorization = service.authorization
         sessionState = service.state
+        microphoneAuthorization = microphone.authorization
         service.stateDidChange = { [weak self] state in
 #if DEBUG
             if let self, self.sessionState.phase != state.phase {
@@ -70,9 +84,69 @@ final class CameraModel {
 #endif
             self?.sessionState = state
             self?.presentation.mirrored = state.position == .front
+            self?.reactToSessionChangeWhileRecording(state)
 #if DEBUG
             self?.handleStartupCompletion(state)
 #endif
+        }
+    }
+
+    // MARK: - Recording (Phase 4)
+
+    var isRecordingActive: Bool { recording.isActive }
+    /// Controls that could destabilise capture are locked for the whole capture lifecycle.
+    var controlsLocked: Bool { recording.isActive }
+    var isMicrophoneMuted: Bool { microphoneAuthorization != .authorized }
+    var shutterEnabled: Bool {
+        switch recording.phase {
+        case .idle: return readiness == .ready
+        case .recording: return true
+        case .preparing, .finishing, .savingToPhotos: return false
+        }
+    }
+
+    /// Shutter tap: start when idle, request an early stop while recording. No hold-to-record.
+    func shutterTapped() async {
+        switch recording.phase {
+        case .idle:
+            guard readiness == .ready else { return }
+            // Definite physical posture only; capturePosture's provisional Portrait is for preview.
+            await recording.record(maximum: selectedDuration, posture: deviceOrientation)
+        case .recording:
+            await recording.requestStop(.userRequested)
+        case .preparing, .finishing, .savingToPhotos:
+            break
+        }
+    }
+
+    /// Applies the current microphone authorization to the session while idle only.
+    func syncAudio() async {
+        microphoneAuthorization = microphone.authorization
+        guard !recording.isActive else { return }
+        await service.setAudioEnabled(microphoneAuthorization == .authorized)
+    }
+
+    /// `mic.slash` control: request when undetermined; denied/restricted are surfaced to the UI.
+    enum MicrophoneAction: Equatable { case none, openSettings, showRestricted }
+    func microphoneTapped() async -> MicrophoneAction {
+        guard !recording.isActive else { return .none }
+        switch microphone.authorization {
+        case .notDetermined:
+            microphoneAuthorization = await microphone.requestAccess()
+            await syncAudio()
+            return .none
+        case .denied: return .openSettings
+        case .restricted: return .showRestricted
+        case .authorized: return .none
+        }
+    }
+
+    private func reactToSessionChangeWhileRecording(_ state: CameraSessionState) {
+        guard recording.phase == .preparing || recording.phase == .recording else { return }
+        switch state.phase {
+        case .interrupted, .failed, .unavailable:
+            Task { await recording.requestStop(.captureInterrupted) }
+        default: break
         }
     }
 
@@ -84,6 +158,9 @@ final class CameraModel {
         case .restricted: return .restricted
         case .authorized: break
         }
+        // During a capture the clip's Portrait is already fixed; posture changes neither stop it
+        // nor surface "Rotate your iPhone" until the capture ends (ADR-033).
+        if recording.isActive { return .recording }
         switch sessionState.phase {
         case .idle, .preparing, .prepared: return .preparing
         case .failed(let failure): return .failed(failure)
@@ -99,7 +176,7 @@ final class CameraModel {
         if let stablePosture { return stablePosture }
         return interfaceOrientation.provisionalPosture
     }
-    var canFlip: Bool { visible && active && sessionState.isRunning && sessionState.canSwitch }
+    var canFlip: Bool { visible && active && sessionState.isRunning && sessionState.canSwitch && !recording.isActive }
     var canZoom: Bool { visible && active && sessionState.isRunning && sessionState.position == .rear }
     var isPortraitProject: Bool { projectOrientation == .portrait9x16 }
 
@@ -111,6 +188,7 @@ final class CameraModel {
         visible = false
         stopStartupMeasurementIfNeeded()
         orientation.stop()
+        if recording.isActive { Task { await recording.requestStop(.appInactive) } }
         reconcile()
     }
     func setActive(_ value: Bool) {
@@ -123,6 +201,8 @@ final class CameraModel {
         } else {
             stopStartupMeasurementIfNeeded()
             orientation.stop()
+            // Never record in the background: finalize now, save if ≥ 1.0s, else discard.
+            if recording.isActive { Task { await recording.requestStop(.appInactive) } }
         }
         reconcile()
     }
@@ -159,6 +239,8 @@ final class CameraModel {
             guard authorization == .authorized else { await service.stop(); return }
             await service.prepare()
             guard visible && active else { await service.stop(); return }
+            // Optional audio follows the current microphone authorization; idle-only by construction.
+            await syncAudio()
             // Preparation failure remains authoritative; orientation cannot overwrite it.
             guard service.state.phase == .prepared || service.state.phase == .running else { return }
             await service.start()

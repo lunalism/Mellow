@@ -1392,9 +1392,7 @@ Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration 
 
 Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의 Codec / HDR 정책을 추가하지 않고 공통 실패 처리 계약을 검증하며 실제 Import Normalization Pipeline은 Phase 6에서 검증한다.
 
-Project Delete와 Recording Finalization을 Staging 완료, Materialization 이후 및 Metadata Commit 직전 경계에서 경합시키는 Integration Test를 수행한다.
-
-Project가 Invalid Target으로 전환된 이후에는 Late Commit과 Project Resurrection이 없고 Active Operation과 Recovery에 필요한 Media가 조기 삭제되지 않는지 확인한다.
+ADR-033에 따라 Recording은 Project를 만들거나 참조하지 않으므로 Project Delete / Late Commit 경합은 Recording 경로에 적용하지 않는다. 이 계약은 Phase 5의 Project Media Materialization(Select Clips)과 Photos Import에서 검증한다.
 
 Recording Storage Preflight 부족 상태를 주입하여 Operation-owned Artifact, Recording, Progress와 선택한 최대 Duration Timer가 시작되지 않고 기존 Committed Clip과 Draft가 유지되는지 확인한다.
 
@@ -1407,7 +1405,7 @@ Staging Write, Finalization과 Metadata Persistence 경계에서 Runtime Disk Fu
 iPhone 12에서 다음을 반드시 검증한다.
 
 - Rear Camera 2초 Manual Stop
-- Rear Camera 9초 Manual Stop
+- Rear Camera 4초 Manual Stop
 - Rear / Front Camera의 1 / 2 / 3 / 4 / 5초 각 Preset Auto Stop과 Manual Early Stop
 - Front Camera Recording
 - Rear Camera 1× Recording
@@ -1419,16 +1417,13 @@ iPhone 12에서 다음을 반드시 검증한다.
 - Audio 정상 Recording
 - 연속 여러 Clip 촬영
 - Recording 후 즉시 다음 Recording
-- Portrait 9:16 Project
-- Landscape 16:9 Project
-- Portrait Project Orientation Mismatch에서 Recording Start 차단
-- Landscape Project Orientation Mismatch에서 Recording Start 차단
-- Landscape Left Recording
-- Landscape Right Recording
-- Recording 중 Device Rotation에도 현재 Recording과 Project Orientation 유지
+- Portrait 9:16 Capture (V1은 Portrait 전용, ADR-032 / ADR-033)
+- upright Portrait에서만 Recording Start 허용, Landscape / Face Up / Face Down / Unknown / Unstable 시작 차단
+- Portrait 시작 후 Landscape / Face Up으로 회전해도 Recording이 계속되고 Clip Orientation이 Portrait으로 유지됨
+- Recording 종료 직후 자세 재평가로 다음 Recording Readiness 복원
 - 1×이 아닌 Rear Zoom 상태에서 Recording 중 Device Rotation에도 Zoom 유지
-- Camera Permission Denied / Restricted에서 Recording 차단 및 Import 접근 가능
-- Microphone Permission Denied / Restricted에서 Recording 차단, 무음 Recording 미생성 및 Import 접근 가능
+- Camera 또는 Photos Add Permission Denied / Restricted에서 성공 Capture 차단(Settings Recovery) 및 Import 접근 가능
+- Microphone Permission Denied / Restricted에서 무음 Video Recording 허용, `mic.slash` 상태 표시 및 Import 접근 가능
 - Background Interruption
 - 승인된 5초 Recording의 실제 Storage Growth와 Preflight Estimate의 합리성 측정
 - Recording Storage Preflight 부족 시 Recording / Progress / 선택한 최대 Duration Timer 미시작과 기존 Clip / Draft 보존
@@ -1463,16 +1458,16 @@ Recording Control, 현재 시간 / Progress 표현과 저장 완료 Feedback에�
 - Recording 중 Camera Switch는 불가능하다.
 - Rear Zoom은 Recording 중에도 승인된 1× 이상 Range에서 동작하며 Recording / Clip / Timer / Project Orientation을 다시 시작하거나 변경하지 않는다.
 - Front Recording에는 Zoom이 없고 Direct-recorded 결과는 Front Preview의 Mirrored Appearance를 유지한다.
-- Camera 또는 Microphone Permission이 없거나 Orientation Eligibility가 충족되지 않으면 Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않고 Photos Import는 계속 사용할 수 있다.
-- Landscape Left / Right는 모두 Landscape Project에 유효하며 Mid-record Rotation은 현재 Recording이나 Project Orientation / Active Rear Zoom을 변경하지 않고 다음 Recording 전에 Orientation을 다시 검사한다.
+- Camera 또는 Photos Add Permission이 없거나 upright Portrait 자세가 아니면 Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않으며, Microphone 거부는 무음 Recording을 허용하고 Photos Import는 계속 사용할 수 있다.
+- Mid-record Rotation은 현재 Recording이나 Clip Orientation / Active Rear Zoom을 변경하지 않고 Recording 종료 후 자세를 다시 검사한다.
 - Interruption은 Successful Completion으로 표시하거나 Completion Haptic을 자동 발생시키지 않으며 결과 Media는 ADR-020 / ADR-021을 따른다.
 - 연속 Recording으로 App이 불안정해지지 않는다.
 - iPhone 12에서 실제 촬영이 정상 동작한다.
-- Committed Clip 조건을 모두 충족하기 전에는 Progress만 표시할 수 있으며 정상 Clip으로 노출하지 않는다.
+- Photos Save가 성공하기 전에는 성공 Capture로 표시하지 않으며 Progress만 표시할 수 있다.
 - Durable Operation Identity로 재실행 후 Media와 Commit 상태를 연결할 수 있다.
 - Metadata Save 직전 / 직후 실패 후에도 Valid Media가 잘못 정리되거나 Clip이 중복 등록되지 않는다.
 - 기본 Failure Boundary Integration Test가 통과하며 Cleanup 실패가 저장 완료된 Clip을 무효화하지 않는다.
-- Project Delete 이후 Recording Finalization이 Metadata를 Commit하거나 삭제된 Project를 재생성하지 않는다.
+- Recording은 성공 / 실패 어느 경우에도 VlogProject를 생성하거나 수정하지 않는다.
 - Recording 시작 전 Operation-aware Storage Preflight가 승인된 Estimate와 Safety Reserve를 적용하고 부족하면 Operation / Recording / Progress / 선택한 최대 Duration Timer를 시작하지 않는다.
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 기존 Media를 보호하며 Recovery Candidate를 보존한다.
 - Storage 부족 때문에 Capture Quality, Frame Rate, Audio나 최대 Recording Duration을 자동으로 낮추지 않는다.

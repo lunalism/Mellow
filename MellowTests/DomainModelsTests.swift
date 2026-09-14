@@ -2,14 +2,14 @@ import XCTest
 @testable import Mellow
 
 final class DomainModelsTests: XCTestCase {
-    func testTenSecondClipIsAccepted() throws {
-        let clip = try makeClip(duration: .seconds(10))
+    func testFiveSecondClipIsAccepted() throws {
+        let clip = try makeClip(duration: .seconds(5))
 
         XCTAssertEqual(clip.effectiveDuration, ClipPolicy.maximumDuration)
     }
 
-    func testClipLongerThanTenSecondsIsRejected() throws {
-        let duration = try MediaTime(value: 6_001, timescale: 600)
+    func testClipLongerThanFiveSecondsIsRejected() throws {
+        let duration = try MediaTime(value: 3_001, timescale: 600)
 
         XCTAssertThrowsError(try makeClip(duration: duration)) { error in
             XCTAssertEqual(error as? DomainValidationError, .clipDurationExceedsMaximum)
@@ -49,11 +49,11 @@ final class DomainModelsTests: XCTestCase {
             orientation: .portrait9x16,
             clips: [
                 try makeClip(projectID: projectID, duration: .seconds(3), sortOrder: 0),
-                try makeClip(projectID: projectID, duration: .seconds(7), sortOrder: 1)
+                try makeClip(projectID: projectID, duration: .seconds(5), sortOrder: 1)
             ]
         )
 
-        XCTAssertEqual(project.totalDuration, .seconds(10))
+        XCTAssertEqual(project.totalDuration, .seconds(8))
     }
 
     func testReorderChangesLogicalClipOrderAndReindexesSortOrder() throws {
@@ -112,7 +112,7 @@ final class DomainModelsTests: XCTestCase {
     private func makeClip(
         id: UUID = UUID(),
         projectID: UUID = UUID(),
-        duration: MediaTime = .seconds(10),
+        duration: MediaTime = .seconds(5),
         sortOrder: Int = 0
     ) throws -> VlogClip {
         try VlogClip(

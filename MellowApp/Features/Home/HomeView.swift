@@ -6,7 +6,6 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var isContinuingOnboarding = false
 
     private var recentProjects: some View {
         ScrollView {
@@ -37,13 +36,8 @@ struct HomeView: View {
         @Bindable var router = model.router
         NavigationStack(path: $router.path) {
             Group {
-                if environment.shouldShowPermissionOnboarding {
-                    PermissionOnboardingView(isWorking: isContinuingOnboarding) {
-                        guard !isContinuingOnboarding else { return }
-                        isContinuingOnboarding = true
-                        await environment.completePermissionOnboarding()
-                        isContinuingOnboarding = false
-                    }
+                if environment.shouldShowPermissionOnboarding, let onboarding = environment.permissionOnboarding {
+                    PermissionOnboardingView(model: onboarding)
                 } else {
                     // V1 root: a new Portrait capture surface that persists no project on launch.
                     CameraDestination(context: .newCapture, showProjects: model.showRecent)
@@ -95,100 +89,239 @@ struct HomeView: View {
     }
 }
 
+/// One progressive-reveal onboarding screen (ADR-033): Camera, then Microphone, then Photos, each
+/// granted individually; Start Mellow appears once all three are decided. The Mellow screen never
+/// navigates — only the iOS system sheet appears per row action.
 struct PermissionOnboardingView: View {
-    let isWorking: Bool
-    let continueAction: () async -> Void
-
-    @ScaledMetric(relativeTo: .title) private var titleSize = 32.0
+    @Bindable var model: PermissionOnboardingModel
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var logoSize = 56
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(spacing: 24) {
-                    Spacer(minLength: 0)
-                    Text("Before you start")
-                        .font(.system(size: titleSize, weight: .semibold, design: .default))
-                        .multilineTextAlignment(.center)
-                        .accessibilityIdentifier("permissionOnboardingTitle")
-                    Text("Mellow needs your permission to record clips on this device.")
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                    VStack(alignment: .leading, spacing: 14) {
-                        OnboardingPermissionRow(
-                            title: "Camera",
-                            subtitle: "Required for capturing moments",
-                            required: true
-                        )
-                        OnboardingPermissionRow(
-                            title: "Microphone",
-                            subtitle: "Used for video sound",
-                            required: false
-                        )
-                        OnboardingPermissionRow(
-                            title: "Photos",
-                            subtitle: "Used when adding existing videos",
-                            required: false
-                        )
-                        OnboardingPermissionRow(
-                            title: "Location",
-                            subtitle: "Optional metadata",
-                            required: false
-                        )
+                VStack(spacing: 22) {
+                    Spacer(minLength: 8)
+                    Image("MellowSplashLogo")
+                        .resizable().scaledToFit()
+                        .frame(width: logoSize, height: logoSize)
+                        .accessibilityHidden(true)
+                    VStack(spacing: 6) {
+                        Text("Before you start")
+                            .font(.title2.weight(.semibold))
+                            .accessibilityIdentifier("permissionOnboardingTitle")
+                        Text("A few permissions help Mellow capture and save moments.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(18)
 
-                    Button {
-                        Task { await continueAction() }
-                    } label: {
-                        if isWorking {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 48)
-                        } else {
-                            Text("Continue")
+                    VStack(spacing: 10) {
+                        row(.camera)
+                        if model.showsMicrophoneRow { row(.microphone).transition(reveal) }
+                        if model.showsPhotosRow { row(.photos).transition(reveal) }
+                    }
+                    .animation(revealAnimation, value: model.showsMicrophoneRow)
+                    .animation(revealAnimation, value: model.showsPhotosRow)
+
+                    if model.showsStart {
+                        Button { model.start() } label: {
+                            Text("Start Mellow")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 48)
+                                .frame(height: 52)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.primary)
+                        .accessibilityIdentifier("startMellow")
+                        .transition(reveal)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.primary)
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("permissionOnboardingContinue")
-
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 8)
                 }
-                .padding(24)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 24)
                 .frame(minHeight: geometry.size.height)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
+                .animation(revealAnimation, value: model.showsStart)
             }
         }
-        .background(MellowDesignSystem.brandBackground.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
+    }
+
+    private var revealAnimation: Animation? {
+        reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.22)
+    }
+    /// Calm reveal: fade with a small rise. Reduce Motion drops the offset to opacity-only.
+    private var reveal: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 7))
+    }
+
+    @ViewBuilder private func row(_ kind: OnboardingPermissionRow.Kind) -> some View {
+        OnboardingPermissionRow(kind: kind, model: model) { action in
+            switch action {
+            case .requestCamera: Task { await model.requestCamera() }
+            case .requestMicrophone: Task { await model.requestMicrophone() }
+            case .requestPhotos: Task { await model.requestPhotos() }
+            case .openSettings:
+                if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+            }
+        }
     }
 }
 
+/// A compact permission row: icon, title + one-line purpose + Required/Optional, and a small
+/// trailing action that reflects the authorization state.
 private struct OnboardingPermissionRow: View {
-    let title: String
-    let subtitle: String
-    let required: Bool
+    enum Kind { case camera, microphone, photos }
+    enum Action { case requestCamera, requestMicrophone, requestPhotos, openSettings }
+
+    let kind: Kind
+    @Bindable var model: PermissionOnboardingModel
+    let perform: (Action) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(title)
-                .font(.body.weight(.semibold))
-                .frame(width: 110, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(subtitle)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                if required {
-                    Text("Required")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon)
+                .font(.title3)
+                .frame(width: 28)
+                .foregroundStyle(.primary)
+                .accessibilityHidden(true)
+            // The text column (title / purpose / requirement) alone defines the card's height. The
+            // trailing status sits in a top-trailing overlay, top-aligned with the title so it reads
+            // as part of the title row, but OUT of the layout flow — so swapping the tall Allow button
+            // for the short Allowed label (or Settings / Muted / Unavailable) can never change the
+            // card's geometry. `titleTrailingInset` keeps the title clear of the status.
+            VStack(alignment: .leading, spacing: 1) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    // At accessibility sizes the status flows in the title row and is free to wrap;
+                    // the row grows naturally and the control stays near the top, on screen.
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(title).font(.body.weight(.semibold))
+                        Spacer(minLength: 8)
+                        trailing
+                    }
+                } else {
+                    // At standard sizes the title reserves trailing space and the status is placed by
+                    // the overlay below, out of the layout flow.
+                    Text(title).font(.body.weight(.semibold))
+                        .padding(.trailing, titleTrailingInset)
+                }
+                Text(purpose).font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Text(requirement).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topTrailing) {
+                // Standard sizes only: the status floats on the title row so exchanging the tall Allow
+                // button for the short Allowed label can never change the card height.
+                if !dynamicTypeSize.isAccessibilitySize {
+                    trailing
                 }
             }
-            Spacer(minLength: 0)
         }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("permissionRow-\(identifier)")
+    }
+
+    /// Space reserved on the title so it never runs beneath the trailing status overlay. Released at
+    /// accessibility sizes where the status wraps under its own layout rules.
+    private var titleTrailingInset: CGFloat { dynamicTypeSize.isAccessibilitySize ? 0 : 96 }
+
+    @ViewBuilder private var trailing: some View {
+        let inFlight = model.requesting == requestingRow
+        switch status {
+        case .authorized:
+            // Green stays a semantic confirmation accent on the checkmark only; the word uses
+            // `.primary` so it carries no extra colour weight and always meets text contrast.
+            Label {
+                Text("Allowed").foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            }
+            .labelStyle(.titleAndIcon)
+            .font(.subheadline.weight(.medium))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityIdentifier("permissionState-\(identifier)")
+        case .notDetermined:
+            Button("Allow") { perform(allowAction) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(inFlight)
+                .accessibilityIdentifier("permissionAllow-\(identifier)")
+        case .denied:
+            Button(kind == .microphone ? "Muted" : "Settings") { perform(.openSettings) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("permissionSettings-\(identifier)")
+        case .restricted:
+            Text(kind == .microphone ? "Muted" : "Unavailable")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .accessibilityIdentifier("permissionState-\(identifier)")
+        }
+    }
+
+    private enum Status { case notDetermined, authorized, denied, restricted }
+    private var status: Status {
+        switch kind {
+        case .camera:
+            switch model.camera {
+            case .notDetermined: return .notDetermined
+            case .authorized: return .authorized
+            case .denied: return .denied
+            case .restricted: return .restricted
+            }
+        case .microphone:
+            switch model.microphone {
+            case .notDetermined: return .notDetermined
+            case .authorized: return .authorized
+            case .denied: return .denied
+            case .restricted: return .restricted
+            }
+        case .photos:
+            switch model.photos {
+            case .notDetermined: return .notDetermined
+            case .authorized: return .authorized
+            case .denied: return .denied
+            case .restricted: return .restricted
+            }
+        }
+    }
+    private var requestingRow: PermissionOnboardingModel.Row {
+        switch kind { case .camera: return .camera; case .microphone: return .microphone; case .photos: return .photos }
+    }
+    private var allowAction: Action {
+        switch kind { case .camera: return .requestCamera; case .microphone: return .requestMicrophone; case .photos: return .requestPhotos }
+    }
+    private var icon: String {
+        switch kind {
+        case .camera: return "camera"
+        case .microphone: return status == .authorized ? "mic" : "mic.slash"
+        case .photos: return "photo.on.rectangle"
+        }
+    }
+    private var title: String {
+        switch kind { case .camera: return "Camera"; case .microphone: return "Microphone"; case .photos: return "Photos" }
+    }
+    private var purpose: String {
+        switch kind {
+        case .camera: return "Capture your moments"
+        case .microphone: return "Add sound to your clips"
+        case .photos: return "Save your clips"
+        }
+    }
+    private var requirement: String {
+        switch kind { case .camera: return "Required"; case .microphone: return "Optional"; case .photos: return "Required" }
+    }
+    private var identifier: String {
+        switch kind { case .camera: return "camera"; case .microphone: return "microphone"; case .photos: return "photos" }
     }
 }

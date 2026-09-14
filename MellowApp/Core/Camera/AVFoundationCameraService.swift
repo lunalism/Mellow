@@ -7,7 +7,9 @@ final class AVFoundationCameraService: CameraCaptureService {
         didSet { stateDidChange?(state) }
     }
     var stateDidChange: (@MainActor (CameraSessionState) -> Void)?
+    var recordingDidChange: (@MainActor (CameraRecordingEvent) -> Void)?
     var previewSession: AVCaptureSession? { state.deviceKind == nil ? nil : session }
+    var recordedDuration: TimeInterval { worker.recordedDurationSeconds }
     private let session: AVCaptureSession
     private let worker: CameraSessionWorker
     private var authorizationTask: Task<CameraAuthorization, Never>?
@@ -18,6 +20,9 @@ final class AVFoundationCameraService: CameraCaptureService {
         worker = CameraSessionWorker(session: session)
         worker.observe { [weak self] state in
             Task { @MainActor [weak self] in self?.accept(state) }
+        }
+        worker.observeRecording { [weak self] event in
+            Task { @MainActor [weak self] in self?.recordingDidChange?(event) }
         }
     }
 
@@ -58,6 +63,19 @@ final class AVFoundationCameraService: CameraCaptureService {
     func setZoom(_ factor: Double) async {
         guard state.position == .rear, state.isRunning else { return }
         accept(await worker.perform(.zoom(CameraZoomPolicy.clamp(factor))))
+    }
+    func setAudioEnabled(_ enabled: Bool) async {
+        guard authorization == .authorized else { return }
+        accept(await worker.perform(.setAudio(enabled)))
+    }
+    func startRecording(to url: URL, maximumDuration: TimeInterval) async -> Bool {
+        guard authorization == .authorized, state.isRunning, !state.recordingRequested else { return false }
+        let after = await worker.perform(.startRecording(url: url, maximumDuration: maximumDuration))
+        accept(after)
+        return after.recordingRequested
+    }
+    func requestStopRecording() async {
+        accept(await worker.perform(.stopRecording))
     }
     private func accept(_ update: CameraSessionState) {
         guard update.revision >= state.revision else { return }
