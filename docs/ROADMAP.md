@@ -1509,6 +1509,7 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 - 저장 Project가 있을 때의 대체 확인(`Creating a new project will replace your last saved project.`)과 Safe Atomic Replacement(A 보존 → B Workspace → Materialize → Persist → 검증 → 승격 → 그 뒤 A 제거).
 - Project 삭제 / 대체는 Mellow Editing Copy만 제거하며 Photos 원본을 절대 삭제하지 않는다.
 - Multi-project Recent Projects Grid / Browser는 V1 Primary Flow가 아니며 Post-V1 복원 결정 전까지 구조만 보존한다.
+- **Production Projects Wiring — 완료 2026-09-15 (Phase 5 STEP 7):** 일반 Camera `Projects` Control은 이제 Canonical `프로젝트` 화면(`.projectsEntry`)으로 진입하며 `새 프로젝트 시작`은 STEP 6의 실제 PhotosPicker Composition 경로를, `기존 프로젝트 불러오기`는 정확한 저장 Project UUID의 ProjectEditor를 연다. ADR-035 / ADR-036의 "DEBUG Routing으로만 도달" Transitional Staging은 종료되었다. 기존 Recent Browser(`.recent`)는 Canonical Camera 경로에서 더 이상 도달할 수 없고 Phase 2 / 3 회귀용 DEBUG 인자(`-uiTestLegacyRecentProjects`)로만 열리며 Post-V1 Multi-project 결정 전까지 구조만 보존한다.
 
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 

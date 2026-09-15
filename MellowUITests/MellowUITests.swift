@@ -8,6 +8,13 @@ final class MellowUITests: XCTestCase {
         return app
     }
 
+    /// Historical Phase 2/3 regressions (and cleanup through the Recent browser) keep the transitional
+    /// Camera → Recent path via a DEBUG-only argument; canonical production routing goes to `프로젝트`.
+    @MainActor
+    private func legacyRecentApp(_ arguments: [String] = []) -> XCUIApplication {
+        cameraTestApp(["-uiTestLegacyRecentProjects"] + arguments)
+    }
+
     // MARK: - Root flow
 
     @MainActor
@@ -64,7 +71,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testLaunchAloneDoesNotPersistEmptyProject() throws {
-        let app = cameraTestApp()
+        let app = legacyRecentApp()
         launchToCamera(app)
         removeProjects(in: app)
 
@@ -106,7 +113,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testProjectsNavigationAndExistingProjectBackSemantics() throws {
-        let app = cameraTestApp(["-uiTestSeedPortrait"])
+        let app = legacyRecentApp(["-uiTestSeedPortrait"])
         launchToCamera(app)
 
         openProjects(in: app)
@@ -125,7 +132,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testExistingLandscapeProjectIsRefusedWithoutMutation() throws {
-        let app = cameraTestApp(["-uiTestSeedLandscape"])
+        let app = legacyRecentApp(["-uiTestSeedLandscape"])
         launchToCamera(app)
         openProjects(in: app)
         XCTAssertEqual(projectButtons(in: app).count, 1)
@@ -148,7 +155,7 @@ final class MellowUITests: XCTestCase {
     // (production Recent-item navigation is intentionally unchanged in this slice).
     @MainActor
     func testProjectEditorOpensSeededProjectAndSelectsClips() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor"])
         app.launch()
 
         XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
@@ -187,7 +194,7 @@ final class MellowUITests: XCTestCase {
     // `Projects` still opens Recent Projects in this slice.
     @MainActor
     func testProjectsScreenWithoutSavedProjectDisablesLoadExisting() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry"])
         app.launch()
 
         // A pushed NavigationStack destination: navigation title + Back, no modal sheet.
@@ -230,7 +237,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testProjectsScreenLoadExistingOpensSavedProjectEditorDirectly() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
         app.launch()
 
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
@@ -271,7 +278,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testProjectsScreenReplacementConfirmationCancelAndConfirmDoNotMutate() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
         app.launch()
 
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
@@ -310,11 +317,78 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 7: production Camera → 프로젝트 routing (no DEBUG routing arguments)
+
+    @MainActor
+    func testCameraProjectsControlOpensCanonicalProjectsScreenWithoutCreatingProject() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry"])
+        app.launch() // clears the shared store, then we leave the DEBUG-pushed screen
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        let normal = cameraTestApp(["-uiTestSkipOnboarding"])
+        normal.launch()
+        XCTAssertTrue(normal.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        XCTAssertFalse(normal.navigationBars["프로젝트"].exists, "launch never pushes Projects by itself")
+
+        // Normal Projects control → canonical 프로젝트 screen, never the transitional Recent browser.
+        normal.buttons["projects"].tap()
+        XCTAssertTrue(normal.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertFalse(normal.navigationBars["Recent Projects"].exists)
+        XCTAssertEqual(normal.staticTexts["projectsEntryHeadline"].label, "아직 프로젝트가 없어요")
+        XCTAssertTrue(normal.buttons["startNewProject"].isEnabled)
+        XCTAssertFalse(normal.buttons["loadExistingProject"].isEnabled)
+        try auditAndCapture(normal, name: "Production Projects Entry")
+
+        // Back → the same Camera; opening Projects again still shows no Project (nothing was created).
+        normal.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(normal.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        normal.buttons["projects"].tap()
+        XCTAssertTrue(normal.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertFalse(normal.buttons["loadExistingProject"].isEnabled, "opening Projects creates nothing")
+        normal.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(normal.otherElements["cameraShell"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testCameraProjectsControlLoadsSavedProjectAndBackChainIsStable() throws {
+        // Seeded saved Project, then the normal (non-DEBUG-routed) launch.
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        app.buttons["projects"].tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "이어서 만들래요?")
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+
+        // Load Existing → exact seeded Project (3 clips); Back → 프로젝트 → Camera; saved state persists.
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled, "saved state refreshed on return")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["cameraShutter"].exists, "same Camera root after the round trip")
+
+        // Relaunch → Camera → Projects → still the saved state (canonical lookup, no cache).
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        app.buttons["projects"].tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
     // MARK: - Phase 5 STEP 6: Select Clips composition (deterministic fake selection, never the real picker)
 
     @MainActor
     func testSelectClipsFreshSuccessOpensNewProjectEditor() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready2"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready2"])
         app.launch()
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled)
@@ -340,7 +414,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testSelectClipsCancelStaysOnProjectsWithoutProject() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
         app.launch()
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
         app.buttons["startNewProject"].tap()
@@ -358,7 +432,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testSelectClipsRequiresPreparationShowsMessageWithoutProject() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=tooLong"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=tooLong"])
         app.launch()
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
         app.buttons["startNewProject"].tap()
@@ -381,7 +455,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testSelectClipsReplacementCancelKeepsProjectALoadable() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
         app.launch()
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
         app.buttons["startNewProject"].tap()
@@ -406,7 +480,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testSelectClipsReplacementSuccessPromotesBAndRetiresA() throws {
-        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready"])
         app.launch()
         XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
         app.buttons["startNewProject"].tap()
@@ -438,7 +512,7 @@ final class MellowUITests: XCTestCase {
     /// then removes it so the shared container stays clean for other tests.
     @MainActor
     private func assertPersistedProjectCountAfterRelaunch(_ expected: Int) {
-        let app = cameraTestApp(["-uiTestSkipOnboarding"])
+        let app = legacyRecentApp(["-uiTestSkipOnboarding"])
         app.launch()
         XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
         openProjects(in: app)
@@ -656,7 +730,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testShutterRecordsStopsAndResetsToIdle() throws {
-        let app = cameraTestApp()
+        let app = legacyRecentApp()
         launchToCamera(app)
         waitUntilRecordReady(app)
         waitUntilRecordReady(app)
@@ -850,7 +924,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testAccessibilityRecentAndDeleteConfirmation() throws {
-        let app = cameraTestApp(["-uiTestSeedPortrait"])
+        let app = legacyRecentApp(["-uiTestSeedPortrait"])
         launchToCamera(app)
         openProjects(in: app)
         XCTAssertTrue(projectButtons(in: app).firstMatch.isHittable)
@@ -872,7 +946,7 @@ final class MellowUITests: XCTestCase {
 
     @MainActor
     func testAccessibilityDynamicTypeRecent() throws {
-        let app = cameraTestApp([
+        let app = legacyRecentApp([
             "-uiTestSeedPortrait",
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
         ])

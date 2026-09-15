@@ -184,6 +184,8 @@ Onboarding은 첫 실행에서만 강하게 제시되며, 앱 전체에서 반�
 
 ## 7. Recent
 
+> **현재 상태(2026-09-15, Phase 5 STEP 7):** 이 화면은 Canonical Camera 경로에서 더 이상 진입하지 않는다(Camera `Projects` → `프로젝트`, §11 Projects Access 참조). 아래 내용은 Phase 2 당시 승인 기록이며 Multi-project Recent Browser 구조는 Post-V1 복원 결정 전까지 DEBUG 회귀 경로로만 보존한다.
+
 ADR-033에 따라 V1은 편집 가능한 저장 Project를 하나만 유지하며 Camera `Projects` Entry가 저장 Project가 없으면 `Select Clips`, 있으면 `Load Last Saved` / `Select Clips`를 제공한다. 아래 Multi-project Recent Grid는 ADR-028 당시의 승인 기록이며 V1 Primary Projects Flow가 아니고 Post-V1 복원 결정 전까지 구조만 보존한다.
 
 Recent Projects는 ADR-028에 따라 전용 화면의 두 열 Adaptive Thumbnail Grid로 표시하고 Accessibility Size에서는 한 열로 전환한다.

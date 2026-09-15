@@ -19,6 +19,10 @@ final class AppEnvironment {
     let projectComposition: ProjectCompositionCoordinator
     let projectMediaStore: any ProjectMediaStoring
     let projectStorageGate: any ProjectStorageGating
+    /// Production Select-Clips boundary (system Photos picker) hosted by the Projects screen.
+    let photosVideoSelector: PhotosVideoSelector
+    /// Production `프로젝트` screen state (ADR-036): canonical saved-Project lookup + Select Clips.
+    let projectsEntry: ProjectsEntryModel
     let home: HomeModel
     let modelContainer: ModelContainer
     let cameraService: any CameraCaptureService
@@ -44,6 +48,9 @@ final class AppEnvironment {
     /// STEP 6C manual physical-review route (`-uiTestProjectsEntryRealMedia`): the real production
     /// Photos picker bridge hosted by the DEBUG Projects screen. Nil on the deterministic route.
     private(set) var uiTestRealMediaSelector: PhotosVideoSelector?
+    /// `-uiTestLegacyRecentProjects`: routes the Camera `Projects` control to the transitional Recent
+    /// browser so historical Phase 2/3 regressions keep their exact semantics. Never Release.
+    var usesLegacyRecentProjects: Bool { arguments.contains("-uiTestLegacyRecentProjects") }
     #endif
 
     var shouldShowPermissionOnboarding: Bool { !permissionOnboardingCompleted }
@@ -216,6 +223,17 @@ final class AppEnvironment {
             storage: projectStorageGate
         )
         self.home = HomeModel(repository: repository, router: router)
+        let photosVideoSelector = PhotosVideoSelector()
+        self.photosVideoSelector = photosVideoSelector
+        // The Projects screen stays below the Editor so Back returns Editor → 프로젝트 → Camera.
+        self.projectsEntry = ProjectsEntryModel(
+            composition: projectComposition,
+            mediaStore: projectMediaStore,
+            mediaSelector: photosVideoSelector,
+            storageGate: projectStorageGate,
+            onContinueEditing: { projectID in router.path.append(.projectEditor(projectID)) },
+            onProjectCommitted: { projectID in router.path.append(.projectEditor(projectID)) }
+        )
 
         #if DEBUG
         Self.seedUITestProjects(arguments: arguments, repository: repository)

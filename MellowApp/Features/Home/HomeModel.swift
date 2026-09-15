@@ -29,6 +29,14 @@ final class HomeModel {
         }
     }
 
+    /// Canonical Camera `Projects` action (ADR-035/036): the dedicated `프로젝트` screen.
+    func showProjects() {
+        router.path = [.projectsEntry]
+    }
+
+    /// Transitional multi-project Recent browser. No longer reachable from the canonical Camera path;
+    /// retained for historical Phase 2/3 regressions (DEBUG `-uiTestLegacyRecentProjects`) until the
+    /// Post-V1 multi-project decision (ADR-033).
     func showRecent() {
         router.path = [.recent]
     }

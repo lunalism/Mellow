@@ -32,6 +32,15 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    /// Camera `Projects` → canonical `프로젝트` screen. The transitional Recent browser is reachable
+    /// only through the DEBUG `-uiTestLegacyRecentProjects` argument (historical regressions).
+    private var showProjects: () -> Void {
+        #if DEBUG
+        if environment.usesLegacyRecentProjects { return model.showRecent }
+        #endif
+        return model.showProjects
+    }
+
     var body: some View {
         @Bindable var router = model.router
         NavigationStack(path: $router.path) {
@@ -39,8 +48,9 @@ struct HomeView: View {
                 if environment.shouldShowPermissionOnboarding, let onboarding = environment.permissionOnboarding {
                     PermissionOnboardingView(model: onboarding)
                 } else {
-                    // V1 root: a new Portrait capture surface that persists no project on launch.
-                    CameraDestination(context: .newCapture, showProjects: model.showRecent)
+                    // V1 root: a new Portrait capture surface that persists no project on launch. Its
+                    // `Projects` control enters the canonical `프로젝트` screen (ADR-035/036).
+                    CameraDestination(context: .newCapture, showProjects: showProjects)
                 }
             }
             .navigationDestination(for: AppRouter.Route.self) { route in
@@ -52,18 +62,17 @@ struct HomeView: View {
                         CameraDestination(context: .project(project)).id(project.id)
                     }
                 case .projectsEntry:
-                    // ADR-035 dedicated `프로젝트` screen. STEP 5 transitional: reached only through
-                    // DEBUG routing (`-uiTestProjectsEntry`); production `Projects` still shows Recent
-                    // until `새 프로젝트 시작` has a real composition destination, so nothing pushes
-                    // this route in Release.
+                    // ADR-035 dedicated `프로젝트` screen with the production composition stack.
+                    // DEBUG harnesses substitute their own model (deterministic fake selection, or the
+                    // real-media physical-review route); production is unaffected by either.
                     #if DEBUG
                     if let entry = environment.uiTestProjectsEntry {
-                        // Deterministic route hosts no picker; the real-media review route hosts the
-                        // production `PhotosVideoSelector` exactly as Production will.
                         ProjectsEntryView(model: entry, photosSelector: environment.uiTestRealMediaSelector)
+                    } else {
+                        ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector)
                     }
                     #else
-                    EmptyView()
+                    ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector)
                     #endif
                 case .projectEditor(let id):
                     ProjectEditorDestination(projectID: id).id(id)
