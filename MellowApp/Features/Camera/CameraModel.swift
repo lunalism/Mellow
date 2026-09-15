@@ -190,7 +190,9 @@ final class CameraModel {
     }
     func leave() {
         visible = false
+        #if DEBUG
         stopStartupMeasurementIfNeeded()
+        #endif
         orientation.stop()
         if recording.isActive { Task { await recording.requestStop(.appInactive) } }
         reconcile()
@@ -203,7 +205,9 @@ final class CameraModel {
 #endif
             orientation.start { [weak self] in self?.receivePosture($0) }
         } else {
+            #if DEBUG
             stopStartupMeasurementIfNeeded()
+            #endif
             orientation.stop()
             // Never record in the background: finalize now, save if ≥ 1.0s, else discard.
             if recording.isActive { Task { await recording.requestStop(.appInactive) } }
