@@ -269,6 +269,91 @@ final class CameraModelTests: XCTestCase {
         XCTAssertEqual(CameraZoomPolicy.clamp(.nan), 1)
         model.leave(); await model.waitForLifecycle()
     }
+    // MARK: - Recording-start posture gate is the readiness posture (ADR-033)
+
+    private func ready(_ service: FakeCameraCaptureService, project: ProjectOrientation = .portrait9x16, posture: CameraDeviceOrientation = .portrait) async -> (CameraModel, FakeCameraOrientationSource) {
+        let (model, source) = make(service, project: project, posture: posture)
+        model.enter(active: true)
+        await model.waitForLifecycle()
+        return (model, source)
+    }
+
+    func testDefinitePortraitShutterStartsRecording() async {
+        let service = FakeCameraCaptureService()
+        let (model, _) = await ready(service)
+        XCTAssertEqual(model.capturePosture, .portrait)
+        XCTAssertTrue(model.shutterEnabled)
+        await model.shutterTapped()
+        XCTAssertEqual(service.calls.last, "startRecording", "an enabled shutter must reach the capture service")
+        XCTAssertTrue(model.isRecordingActive)
+        model.leave(); await model.waitForLifecycle()
+    }
+
+    func testTransientUnknownAfterReentryStillRecordsFromStablePortrait() async {
+        // B: raw orientation is indefinite but the last definite posture is upright Portrait.
+        let service = FakeCameraCaptureService()
+        let (model, source) = await ready(service)
+        for raw in [CameraDeviceOrientation.unknown, .unstable, .faceUp] {
+            source.send(raw)
+            XCTAssertEqual(model.deviceOrientation, raw)
+            XCTAssertEqual(model.capturePosture, .portrait, "\(raw) preserves stable Portrait")
+            XCTAssertTrue(model.shutterEnabled, "\(raw)")
+        }
+        await model.shutterTapped()
+        XCTAssertEqual(service.calls.last, "startRecording", "UI-approved posture must not be refused by the recording path")
+        XCTAssertTrue(model.isRecordingActive)
+        model.leave(); await model.waitForLifecycle()
+    }
+
+    func testUnknownWithoutPortraitFallbackNeverStarts() async {
+        // C: no stable posture and a Landscape interface → provisional Landscape → not ready, not started.
+        let service = FakeCameraCaptureService()
+        let (model, _) = await ready(service, posture: .unknown)
+        model.updateInterface(.landscapeLeft)
+        XCTAssertNil(model.stablePosture)
+        XCTAssertEqual(model.capturePosture, .landscapeRight)
+        XCTAssertEqual(model.readiness, .mismatch)
+        XCTAssertFalse(model.shutterEnabled)
+        await model.shutterTapped()
+        XCTAssertFalse(service.calls.contains("startRecording"))
+        XCTAssertFalse(model.isRecordingActive)
+        model.leave(); await model.waitForLifecycle()
+    }
+
+    func testLandscapePostureIsRefusedByReadinessAndRecordingAlike() async {
+        // D: a definite Landscape reading is a mismatch; even a forced tap never reaches the service.
+        let service = FakeCameraCaptureService()
+        let (model, source) = await ready(service)
+        source.send(.landscapeLeft)
+        XCTAssertEqual(model.readiness, .mismatch)
+        XCTAssertFalse(model.shutterEnabled)
+        await model.shutterTapped()
+        XCTAssertFalse(service.calls.contains("startRecording"))
+        model.leave(); await model.waitForLifecycle()
+    }
+
+    func testNavigationRoundTripWithStillPhoneRecordsWithoutWiggle() async {
+        // E: enter → Portrait ready → leave (orientation stops) → re-enter where UIKit reports
+        // `.unknown` until the next motion sample → shutter starts recording immediately.
+        let service = FakeCameraCaptureService()
+        let (model, source) = await ready(service)
+        XCTAssertEqual(model.readiness, .ready)
+        model.leave(); await model.waitForLifecycle()
+        XCTAssertFalse(service.state.isRunning)
+        source.send(.unknown) // what the restarted source delivers before any new sample
+        model.enter(active: true); await model.waitForLifecycle()
+        XCTAssertTrue(service.state.isRunning)
+        XCTAssertEqual(model.deviceOrientation, .unknown)
+        XCTAssertEqual(model.capturePosture, .portrait)
+        XCTAssertEqual(model.readiness, .ready)
+        XCTAssertTrue(model.shutterEnabled)
+        let callsBefore = service.calls.count
+        await model.shutterTapped()
+        XCTAssertEqual(service.calls.dropFirst(callsBefore).first, "startRecording", "no physical movement required after a round trip")
+        XCTAssertTrue(model.isRecordingActive)
+        model.leave(); await model.waitForLifecycle()
+    }
+
     func testDurationPickerStepsOneSecondAndClampsToRange() {
         XCTAssertEqual(CameraDuration.three.advanced(by: 1), .four)
         XCTAssertEqual(CameraDuration.three.advanced(by: -1), .two)
