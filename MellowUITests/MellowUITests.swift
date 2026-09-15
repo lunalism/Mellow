@@ -310,6 +310,142 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 6: Select Clips composition (deterministic fake selection, never the real picker)
+
+    @MainActor
+    func testSelectClipsFreshSuccessOpensNewProjectEditor() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready2"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled)
+
+        app.buttons["startNewProject"].tap()
+        // Two ready fixtures → one Portrait Project with two ordered clips, opened directly.
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["editorClip-2"].exists)
+        XCTAssertFalse(app.buttons["editorClip-3"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+
+        // Back → 프로젝트, where the new Project is now loadable; Back → Camera; exactly one Project exists.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "이어서 만들래요?")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        // The committed Project survives a relaunch (transitional Recent reflects persisted state).
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
+    @MainActor
+    func testSelectClipsCancelStaysOnProjectsWithoutProject() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        XCTAssertTrue(app.staticTexts["projectsEntryIntent"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 1), "cancel is silent")
+        XCTAssertTrue(app.navigationBars["프로젝트"].exists)
+        XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled, "still no saved Project")
+        XCTAssertTrue(app.buttons["startNewProject"].isEnabled, "retry possible")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertTrue(app.staticTexts["emptyRecent"].waitForExistence(timeout: 3))
+        backToCamera(in: app)
+    }
+
+    @MainActor
+    func testSelectClipsRequiresPreparationShowsMessageWithoutProject() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=tooLong"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+
+        let alert = app.alerts["영상이 너무 길어요"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
+        XCTAssertTrue(alert.staticTexts["현재는 5초 이하의 영상을 프로젝트에 추가할 수 있어요."].exists)
+        try auditAndCapture(app, name: "Select Clips Requires Preparation")
+        alert.buttons["확인"].tap()
+        XCTAssertFalse(alert.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.navigationBars["프로젝트"].exists)
+        XCTAssertTrue(app.buttons["startNewProject"].isEnabled, "retry possible")
+        XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled, "no Project created")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertTrue(app.staticTexts["emptyRecent"].waitForExistence(timeout: 3))
+        backToCamera(in: app)
+    }
+
+    @MainActor
+    func testSelectClipsReplacementCancelKeepsProjectALoadable() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=cancel"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let confirm = app.alerts["새 프로젝트를 시작할까요?"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        confirm.buttons["새 프로젝트 만들기"].tap()
+        // The (fake) picker is cancelled after the confirmation: A stays and stays loadable.
+        XCTAssertTrue(app.staticTexts["projectsEntryIntent"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2), "A (3 clips) opens unchanged")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 1)
+        removeProjects(in: app)
+    }
+
+    @MainActor
+    func testSelectClipsReplacementSuccessPromotesBAndRetiresA() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestMediaSelection=ready"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let confirm = app.alerts["새 프로젝트를 시작할까요?"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        confirm.buttons["새 프로젝트 만들기"].tap()
+
+        // B (one clip) is committed and opened; A (three clips) is no longer the saved Project.
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["editorClip-2"].exists)
+        XCTAssertFalse(app.buttons["editorClip-3"].exists, "this is B, not A")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["editorClip-3"].exists, "Load Existing now opens B")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        // Exactly one saved Project persists: A was retired only after B was committed.
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
+    /// Relaunches without any seeding / clearing argument and counts what the persisted store holds,
+    /// then removes it so the shared container stays clean for other tests.
+    @MainActor
+    private func assertPersistedProjectCountAfterRelaunch(_ expected: Int) {
+        let app = cameraTestApp(["-uiTestSkipOnboarding"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, expected)
+        removeProjects(in: app)
+    }
+
     /// ADR-036: the Projects screen carries no list, card or Project metadata.
     @MainActor
     private func assertNoProjectSummaryUI(in app: XCUIApplication) {

@@ -24,6 +24,9 @@ struct ProjectEditorDestination: View {
             do {
                 if let project = try environment.projectRepository.project(id: projectID) {
                     model = ProjectEditorModel(project: project)
+                    #if DEBUG
+                    MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
+                    #endif
                 } else {
                     unavailable = true
                 }

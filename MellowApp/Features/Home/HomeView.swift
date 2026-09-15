@@ -58,7 +58,9 @@ struct HomeView: View {
                     // this route in Release.
                     #if DEBUG
                     if let entry = environment.uiTestProjectsEntry {
-                        ProjectsEntryView(model: entry)
+                        // Deterministic route hosts no picker; the real-media review route hosts the
+                        // production `PhotosVideoSelector` exactly as Production will.
+                        ProjectsEntryView(model: entry, photosSelector: environment.uiTestRealMediaSelector)
                     }
                     #else
                     EmptyView()

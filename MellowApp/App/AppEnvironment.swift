@@ -17,6 +17,8 @@ final class AppEnvironment {
     let router: AppRouter
     let projectRepository: any ProjectRepository
     let projectComposition: ProjectCompositionCoordinator
+    let projectMediaStore: any ProjectMediaStoring
+    let projectStorageGate: any ProjectStorageGating
     let home: HomeModel
     let modelContainer: ModelContainer
     let cameraService: any CameraCaptureService
@@ -39,6 +41,9 @@ final class AppEnvironment {
     /// The last intent the Projects Entry delivered, exposed so a UI test can observe it without
     /// any Project being created or replaced.
     private(set) var uiTestProjectsEntryIntent: String?
+    /// STEP 6C manual physical-review route (`-uiTestProjectsEntryRealMedia`): the real production
+    /// Photos picker bridge hosted by the DEBUG Projects screen. Nil on the deterministic route.
+    private(set) var uiTestRealMediaSelector: PhotosVideoSelector?
     #endif
 
     var shouldShowPermissionOnboarding: Bool { !permissionOnboardingCompleted }
@@ -189,13 +194,34 @@ final class AppEnvironment {
             modelContext: modelContainer.mainContext
         )
         self.projectRepository = repository
-        self.projectComposition = ProjectCompositionCoordinator(repository: repository)
+        // Phase 5 Select-Clips composition (ADR-034 §2 / ADR-020 / ADR-024). The UI-test harness
+        // injects a fake gate so deterministic scenarios never depend on the simulator's disk.
+        let projectMediaStore = ProjectMediaStore()
+        self.projectMediaStore = projectMediaStore
+        let volumeGate = VolumeProjectStorageGate(
+            capacity: { await projectMediaStore.usableCapacityBytes() },
+            safetyReserveBytes: ProjectCompositionPolicy.materializationSafetyReserveBytes
+        )
+        #if DEBUG
+        let projectStorageGate: any ProjectStorageGating = arguments.contains("-uiTestProjectsEntry")
+            ? FakeProjectStorageGate(verdict: .sufficient) : volumeGate
+        #else
+        let projectStorageGate: any ProjectStorageGating = volumeGate
+        #endif
+        self.projectStorageGate = projectStorageGate
+        self.projectComposition = ProjectCompositionCoordinator(
+            repository: repository,
+            mediaStore: projectMediaStore,
+            validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
+            storage: projectStorageGate
+        )
         self.home = HomeModel(repository: repository, router: router)
 
         #if DEBUG
         Self.seedUITestProjects(arguments: arguments, repository: repository)
         Self.seedEditorProjectAndRouteIfNeeded(arguments: arguments, repository: repository, router: router)
         routeToUITestProjectsEntryIfNeeded()
+        routeToUITestProjectsEntryRealMediaIfNeeded()
         #endif
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
@@ -346,18 +372,26 @@ final class AppEnvironment {
     #endif
 
     #if DEBUG
-    /// STEP 5 deterministic Projects Entry routing (DEBUG/UI tests only), `-uiTestProjectsEntry`.
+    /// STEP 5/6 deterministic Projects Entry routing (DEBUG/UI tests only), `-uiTestProjectsEntry`.
     /// Pushes the dedicated ADR-035 `프로젝트` screen (`Camera → .projectsEntry`) without touching
     /// production `Projects` navigation. Alone it starts from an empty store (no saved Project);
-    /// combined with `-uiTestSeedEditorProject` the seeded project is the saved Project. Intents are
-    /// only recorded in `uiTestProjectsEntryIntent`; nothing is created, deleted or replaced.
+    /// combined with `-uiTestSeedEditorProject` the seeded project is the saved Project.
+    ///
+    /// Select Clips is driven by a deterministic fake selector chosen with `-uiTestMediaSelection`
+    /// (`cancel` | `ready` | `ready2` | `tooLong` | `corrupt` | `fail`; default `cancel`). Fixture
+    /// media is generated at launch under the temporary directory; the real Photos picker is never
+    /// automated. Intents are also recorded in `uiTestProjectsEntryIntent`.
     private func routeToUITestProjectsEntryIfNeeded() {
         guard arguments.contains("-uiTestProjectsEntry") else { return }
         if !arguments.contains("-uiTestSeedEditorProject"), let existing = try? projectRepository.recentProjects() {
             for project in existing { try? projectRepository.deleteProject(id: project.id) }
         }
+        let selector = FakeProjectMediaSelector(script: .cancel)
         uiTestProjectsEntry = ProjectsEntryModel(
             composition: projectComposition,
+            mediaStore: projectMediaStore,
+            mediaSelector: selector,
+            storageGate: projectStorageGate,
             onContinueEditing: { [weak self] projectID in
                 // The Projects screen stays below the Editor so Back returns to `프로젝트`.
                 self?.router.path.append(.projectEditor(projectID))
@@ -367,9 +401,65 @@ final class AppEnvironment {
                 case .fresh: self?.uiTestProjectsEntryIntent = "newProject-fresh"
                 case .replacingSaved(let id): self?.uiTestProjectsEntryIntent = "newProject-replace-\(id.uuidString)"
                 }
+            },
+            onProjectCommitted: { [weak self] projectID in
+                self?.router.path.append(.projectEditor(projectID))
             }
         )
         router.path = [.projectsEntry]
+        let arguments = self.arguments
+        selector.pendingScript = Task { await Self.makeUITestSelectionScript(arguments: arguments) }
+    }
+
+    /// STEP 6C manual physical-review route (DEBUG only), `-uiTestProjectsEntryRealMedia`. Pushes the
+    /// same `.projectsEntry` screen but with the REAL production Phase-5 dependencies: the system
+    /// Photos picker (`PhotosVideoSelector`), `VolumeProjectStorageGate` with the approved 100 MiB
+    /// reserve, `ProjectMediaStore`, the AVAsset validator, the composition coordinator and the
+    /// SwiftData repository. Nothing is seeded, faked or cleared; persistence is whatever the device
+    /// holds. Never used by automated UI tests; never compiled into Release.
+    private func routeToUITestProjectsEntryRealMediaIfNeeded() {
+        guard arguments.contains("-uiTestProjectsEntryRealMedia"), uiTestProjectsEntry == nil else { return }
+        let selector = PhotosVideoSelector()
+        uiTestRealMediaSelector = selector
+        uiTestProjectsEntry = ProjectsEntryModel(
+            composition: projectComposition,
+            mediaStore: projectMediaStore,
+            mediaSelector: selector,
+            storageGate: projectStorageGate,
+            onContinueEditing: { [weak self] projectID in
+                self?.router.path.append(.projectEditor(projectID))
+            },
+            onProjectCommitted: { [weak self] projectID in
+                self?.router.path.append(.projectEditor(projectID))
+            }
+        )
+        router.path = [.projectsEntry]
+    }
+
+    private static func makeUITestSelectionScript(arguments: [String]) async -> FakeProjectMediaSelector.Script {
+        let mode = arguments.first { $0.hasPrefix("-uiTestMediaSelection=") }?
+            .replacingOccurrences(of: "-uiTestMediaSelection=", with: "") ?? "cancel"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("UITestFixtures", isDirectory: true)
+        func fixture(_ name: String, seconds: Double) async -> URL? {
+            let url = directory.appendingPathComponent(name).appendingPathExtension("mov")
+            do { try await FixtureVideoWriter.write(to: url, seconds: seconds); return url } catch { return nil }
+        }
+        switch mode {
+        case "ready":
+            return await fixture("ready-a", seconds: 2).map { .fixtures([$0]) } ?? .fail
+        case "ready2":
+            if let a = await fixture("ready-a", seconds: 2), let b = await fixture("ready-b", seconds: 3) { return .fixtures([a, b]) }
+            return .fail
+        case "tooLong":
+            return await fixture("too-long", seconds: 7).map { .fixtures([$0]) } ?? .fail
+        case "corrupt":
+            let url = directory.appendingPathComponent("corrupt").appendingPathExtension("mov")
+            return (try? FixtureVideoWriter.writeCorrupt(to: url)) != nil ? .fixtures([url]) : .fail
+        case "fail":
+            return .fail
+        default:
+            return .cancel
+        }
     }
     #endif
 

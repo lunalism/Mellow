@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Phase 5 Projects screen (ADR-034 semantics, ADR-035 destination, ADR-036 two-action content;
@@ -12,6 +13,8 @@ import SwiftUI
 /// a user-visible dead end.
 struct ProjectsEntryView: View {
     @Bindable var model: ProjectsEntryModel
+    /// The production Select-Clips boundary the view hosts (`.photosPicker`); nil under a test fake.
+    var photosSelector: PhotosVideoSelector? = nil
     /// Optional representative image for the saved-Project state. Nothing supplies one yet (the
     /// Thumbnail slice will: canonical representative Project thumbnail → first usable clip thumbnail
     /// → placeholder); until then the screen deterministically shows the neutral placeholder.
@@ -43,9 +46,10 @@ struct ProjectsEntryView: View {
                         .accessibilityIdentifier("projectsEntrySupporting")
                         .padding(.bottom, 28)
                     ProjectsPrimaryButton("새 프로젝트 시작", action: model.requestNewProject)
+                        .disabled(model.isComposing)
                         .accessibilityHint(model.hasSavedProject
                             ? "마지막으로 저장한 프로젝트를 교체하기 전에 확인을 요청합니다"
-                            : "새 프로젝트를 시작합니다")
+                            : "영상을 골라 새 프로젝트를 시작합니다")
                         .accessibilityIdentifier("startNewProject")
                         .padding(.bottom, 6)
                     ProjectsSecondaryButton("기존 프로젝트 불러오기", action: model.continueEditing)
@@ -73,7 +77,45 @@ struct ProjectsEntryView: View {
         } message: {
             Text("새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다.")
         }
+        // One recoverable message for every non-success Select-Clips outcome (never for cancel).
+        .alert(
+            model.compositionMessage?.title ?? "",
+            isPresented: Binding(
+                get: { model.compositionMessage != nil },
+                set: { if !$0 { model.compositionMessage = nil } }
+            ),
+            presenting: model.compositionMessage
+        ) { _ in
+            Button("확인", role: .cancel) { model.compositionMessage = nil }
+        } message: { message in
+            Text(message.message)
+        }
+        .modifier(SelectClipsPickerHost(selector: photosSelector))
         .onAppear(perform: model.load)
+    }
+}
+
+/// Hosts the system Photos picker for the production selector. Videos only; no library read
+/// permission is requested (the picker runs out of process). Absent under test fakes.
+private struct SelectClipsPickerHost: ViewModifier {
+    let selector: PhotosVideoSelector?
+
+    func body(content: Content) -> some View {
+        if let selector {
+            @Bindable var selector = selector
+            content
+                .photosPicker(
+                    isPresented: $selector.isPresented,
+                    selection: $selector.items,
+                    matching: .videos,
+                    preferredItemEncoding: .current
+                )
+                .onChange(of: selector.isPresented) { _, presented in
+                    if !presented { selector.pickerDismissed() }
+                }
+        } else {
+            content
+        }
     }
 }
 

@@ -1568,6 +1568,20 @@ Phase 5 `Select Clips`(= `Start New Project`)는 Phase-5-ready media만 Bootstra
 
 Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경하지 않으며 Delete 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원을 유지한다.
 
+### Project Materialization Storage Technical Gate — Resolved 2026-09-15
+
+ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Reserve` 계약을 Phase-5-ready Select-Clips Bootstrap에 대해 다음과 같이 확정한다(사용자 승인).
+
+- **Safety Reserve: 100 MiB(104,857,600 bytes)** — `ProjectCompositionPolicy.materializationSafetyReserveBytes`. Phase-5 Project Bootstrap Materialization 전용이며 Phase 4 Recording Reserve(200 MiB), Phase 6 Import Reserve, Phase 9 Export Reserve나 App 전역 Threshold가 아니다. 다른 Operation에 조용히 재사용하지 않는다.
+- **실제 Lifecycle:**
+  1. **Provider / System 임시 표현** — System Photos Picker가 `ReceivedTransferredFile.file`로 넘기는 파일. System이 소유하며 그 Allocation은 Mellow가 통제하거나 보장하지 않고 Estimate에 포함하지 않는다. 이 URL은 Importing Closure 동안만 유효하므로 검사와 복사는 Closure 안에서 끝낸다.
+  2. **Pre-copy 검사(Primary Media Preflight)** — 첫 Mellow 소유 Full-size 복사 직전, 파일마다 순차적으로 `incoming file byte size(실제 stat) + 100 MiB`를 대상 Volume의 **현재** Usable Capacity와 비교한다(`ReceivedVideoFile.admit`). 다중 선택은 파일 N마다 다시 Capacity를 조회하므로 앞서 복사된 파일은 자연히 반영되고 이중 계산되지 않는다. 선택 총량을 미리 알 필요가 없으며 선택 개수 상한을 두지 않는다. 거부되면 그 파일을 복사하지 않고 전체 Composition을 거부하며 같은 Operation의 앞선 Disposable 복사본을 정리한다(All-or-nothing). Gate가 공급되지 않은 상태는 통과가 아니라 거부다.
+  3. **Mellow Transfer / Workspace Media** — 통과한 파일만 `tmp/ProjectMediaTransfer`로 복사한 뒤 같은 Volume Rename으로 `Application Support/Mellow/ProjectWorkspace/<op>/`에 Adopt한다.
+  4. **Committed Project Media** — Workspace → `Projects/<pid>/Media/<cid>.mov`는 같은 Volume Atomic Rename이며 Full-size 중복 복사가 없다. 따라서 Metadata Commit 직전의 최종 Guard는 추가 Peak Allocation 0 + Reserve만 검사하는 보조 Guard이며 유일한 Materialization Preflight가 아니다.
+  5. **Runtime 보호** — Preflight 통과는 Runtime Disk Full을 보장하지 않는다. 복사 / Adopt / Materialize / Persist의 Write 실패는 기존 ADR-020 처리(B 미보고, A 보존, 부분 임시 파일 정리, Photos 원본 미접촉)를 유지한다.
+- Phase 5에는 Transcode / Normalization / HDR→SDR / Resize / Intermediate Render / Export Artifact가 없으므로 임의 Overlap Multiplier(2× / 3×)를 두지 않는다. Phase 6 Import는 별도 Estimate / Overlap 정책을 소유한다.
+- Capacity 조회 실패(Usable 0)는 자동 통과가 아니라 Insufficient로 처리한다.
+
 정확한 Undo Window Duration과 Localization Copy만 Tuning / Polish로 남으며 위 Structural UX Gate는 ADR-034로 해결되어 해당 UI 구현을 시작할 수 있다.
 
 Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다.

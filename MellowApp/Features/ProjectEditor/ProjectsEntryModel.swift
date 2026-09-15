@@ -23,24 +23,72 @@ final class ProjectsEntryModel {
         case replacingSaved(UUID)
     }
 
+    /// Non-success outcome of a Select-Clips attempt, shown as a small recoverable alert. Nothing was
+    /// created and any saved Project is untouched; the user may dismiss and try again.
+    enum CompositionMessage: Equatable {
+        /// Valid media that is not Phase-5-ready; the copy is reason-specific and never names the
+        /// implementation (no roadmap phases, no HDR / transcoding / frame-rate terms).
+        case requiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
+        case invalidMedia
+        case insufficientStorage
+        case failed
+
+        var title: String {
+            switch self {
+            case .requiresImportPreparation(.tooLong): return "영상이 너무 길어요"
+            case .requiresImportPreparation(.orientation): return "세로 영상을 선택해주세요"
+            case .requiresImportPreparation: return "이 영상은 바로 사용할 수 없어요"
+            case .invalidMedia: return "영상을 열 수 없어요"
+            case .insufficientStorage: return "저장 공간이 부족해요"
+            case .failed: return "프로젝트를 만들지 못했어요"
+            }
+        }
+        var message: String {
+            switch self {
+            case .requiresImportPreparation(.tooLong): return "현재는 5초 이하의 영상을 프로젝트에 추가할 수 있어요."
+            case .requiresImportPreparation(.orientation): return "현재 프로젝트에서는 세로 영상을 바로 사용할 수 있어요."
+            case .requiresImportPreparation: return "다른 영상을 선택해주세요."
+            case .invalidMedia: return "선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요."
+            case .insufficientStorage: return "공간을 확보한 뒤 다시 시도해 주세요."
+            case .failed: return "잠시 후 다시 시도해 주세요. 저장된 프로젝트는 그대로 있어요."
+            }
+        }
+    }
+
     /// The current V1 saved Project's ID, or nil. Refreshed by `load()`; never mutated by intents.
     /// The screen shows no Project metadata (ADR-036), so the ID alone is the whole state.
     private(set) var savedProjectID: UUID?
     /// True while the ADR-034 replacement confirmation is on screen.
     var isReplacementConfirmationPresented = false
+    /// True from picker presentation until the composition outcome is known.
+    private(set) var isComposing = false
+    var compositionMessage: CompositionMessage?
 
     private let composition: ProjectCompositionCoordinator
+    private let mediaStore: any ProjectMediaStoring
+    private let mediaSelector: any ProjectMediaSelecting
+    /// Pre-copy admission gate handed to the selector (same policy instance the coordinator uses).
+    private let storageGate: any ProjectStorageGating
     private let onContinueEditing: (UUID) -> Void
     private let onNewProject: (NewProjectIntent) -> Void
+    private let onProjectCommitted: (UUID) -> Void
 
     init(
         composition: ProjectCompositionCoordinator,
+        mediaStore: any ProjectMediaStoring,
+        mediaSelector: any ProjectMediaSelecting,
+        storageGate: any ProjectStorageGating,
         onContinueEditing: @escaping (UUID) -> Void,
-        onNewProject: @escaping (NewProjectIntent) -> Void
+        onNewProject: @escaping (NewProjectIntent) -> Void = { _ in },
+        onProjectCommitted: @escaping (UUID) -> Void
     ) {
         self.composition = composition
+        self.mediaStore = mediaStore
+        self.mediaSelector = mediaSelector
+        self.storageGate = storageGate
         self.onContinueEditing = onContinueEditing
         self.onNewProject = onNewProject
+        self.onProjectCommitted = onProjectCommitted
     }
 
     var hasSavedProject: Bool { savedProjectID != nil }
@@ -50,6 +98,9 @@ final class ProjectsEntryModel {
     func load() {
         do {
             savedProjectID = try composition.lastSavedProject()?.id
+            #if DEBUG
+            MellowLog.app.info("Projects entry saved project: \(self.savedProjectID?.uuidString ?? "none", privacy: .public)")
+            #endif
         } catch {
             let details = error as NSError
             MellowLog.app.error("Projects entry lookup failed: domain=\(details.domain, privacy: .public), code=\(details.code)")
@@ -65,12 +116,14 @@ final class ProjectsEntryModel {
     }
 
     /// `새 프로젝트 시작`: with a saved Project this first asks for replacement confirmation;
-    /// without one the intent is delivered immediately.
+    /// without one the fresh Select-Clips flow starts immediately.
     func requestNewProject() {
+        guard !isComposing else { return }
         if hasSavedProject {
             isReplacementConfirmationPresented = true
         } else {
             onNewProject(.fresh)
+            Task { await runSelectClips(.fresh) }
         }
     }
 
@@ -79,14 +132,57 @@ final class ProjectsEntryModel {
         isReplacementConfirmationPresented = false
     }
 
-    /// `새 프로젝트 만들기`: closes the confirmation and delivers the confirmed intent. Persistence
-    /// is not modified here — replacement itself is the owner's later responsibility.
+    /// `새 프로젝트 만들기`: closes the confirmation, delivers the confirmed intent and starts the
+    /// Select-Clips flow. The saved Project is not touched here — Safe Atomic Replacement happens in
+    /// the coordinator only after the replacement Project is fully committed.
     func confirmReplacement() {
         isReplacementConfirmationPresented = false
-        guard let savedProjectID else {
-            onNewProject(.fresh)
+        let intent: NewProjectIntent = savedProjectID.map(NewProjectIntent.replacingSaved) ?? .fresh
+        onNewProject(intent)
+        Task { await runSelectClips(intent) }
+    }
+
+    /// Select Clips (ADR-033 / ADR-034 §2): workspace → system selection → all-or-nothing composition
+    /// → Editor. Picker cancel is a silent, normal result; every other non-success outcome shows one
+    /// recoverable message. App launch, opening this screen and presenting the picker never create a
+    /// Project.
+    func runSelectClips(_ intent: NewProjectIntent) async {
+        guard !isComposing else { return }
+        isComposing = true
+        defer { isComposing = false }
+        guard let workspace = try? await mediaStore.beginWorkspace() else {
+            compositionMessage = .failed
             return
         }
-        onNewProject(.replacingSaved(savedProjectID))
+        switch await mediaSelector.selectVideos(into: workspace, store: mediaStore, admission: storageGate) {
+        case .cancelled:
+            await mediaStore.discard(workspace)
+        case .insufficientStorage:
+            // Refused before any further copy; earlier adopted files of this operation go with the workspace.
+            await mediaStore.discard(workspace)
+            compositionMessage = .insufficientStorage
+        case .failed:
+            await mediaStore.discard(workspace)
+            compositionMessage = .failed
+        case .selected(let sources):
+            let coordinatorIntent: ProjectCompositionCoordinator.Intent
+            switch intent {
+            case .fresh: coordinatorIntent = .fresh
+            case .replacingSaved(let id): coordinatorIntent = .replacingSaved(id)
+            }
+            switch await composition.compose(coordinatorIntent, sources: sources, workspace: workspace) {
+            case .committed(let projectID):
+                load()
+                onProjectCommitted(projectID)
+            case .requiresImportPreparation(let reason):
+                compositionMessage = .requiresImportPreparation(reason)
+            case .invalidMedia:
+                compositionMessage = .invalidMedia
+            case .insufficientStorage:
+                compositionMessage = .insufficientStorage
+            case .failed:
+                compositionMessage = .failed
+            }
+        }
     }
 }

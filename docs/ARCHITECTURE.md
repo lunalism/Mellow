@@ -1855,6 +1855,8 @@ Deferred Cleanup과 실패한 Project Cleanup을 반복해도 다른 Draft를 �
 
 `StorageMonitor`는 ADR-024에 따라 Recording, Photos Import / Normalization과 Export 각각의 Operation-aware Storage Preflight를 지원한다.
 
+Phase 5 Select-Clips Project Bootstrap Materialization은 `VolumeProjectStorageGate`(Project Media Volume의 Usable Capacity 기준)를 사용하며 승인된 Safety Reserve는 100 MiB(104,857,600 bytes, `ProjectCompositionPolicy.materializationSafetyReserveBytes`)다. Primary Preflight는 첫 Mellow 소유 복사 직전 파일마다 `실제 incoming bytes + Reserve`를 현재 Capacity와 비교하고(System Provider 임시 표현은 계산하지 않음), 이후 Adopt / 승격이 같은 Volume Rename이므로 Commit 직전의 최종 Guard는 추가 Allocation 0 + Reserve만 검사한다(ROADMAP Phase 5 "Project Materialization Storage Technical Gate" 참조). 이 값은 Recording / Import / Export Reserve와 별개다.
+
 ### Core Requirement
 
 개념적인 Required Free Space는 다음과 같다.
