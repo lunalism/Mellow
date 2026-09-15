@@ -125,7 +125,7 @@ Mellow MVP의 기본 화면 구조는 다음과 같다.
   - 첫 실행: Permission Onboarding → Portrait Camera
   - 이후 실행: Portrait Camera
 - Portrait Camera (V1의 기본 Application Surface)
-  - Quiet Projects Access → Projects Bottom Sheet(ADR-034): 저장 Project 없으면 `Start New Project`, 있으면 `Continue Editing` / `Start New Project`. Multi-project Recent Grid는 V1 Primary Flow가 아니며 구조만 보존한다.
+  - Quiet Projects Access → 전용 Pushed Projects 화면 `프로젝트`(ADR-035 Destination, ADR-036 Content): 항상 두 개의 중앙 Action `새 프로젝트 시작`(Primary) / `기존 프로젝트 불러오기`(저장 Project 있을 때만 Enabled, ProjectEditor 직접 열기); 표준 Back으로 Camera 복귀. Recent Grid / Card / Metadata 없음; Multi-project Recent Grid는 V1 Primary Flow가 아니며 구조만 보존한다.
 
 Project 내부의 주요 흐름은 다음과 같다.
 
@@ -327,6 +327,19 @@ Projects는 조용한 Secondary Action으로 유지하고 Camera가 시각적으
 Camera에 Recent Grid를 직접 표시하지 않고 `Continue an existing project?` CTA도 사용하지 않으며 Multi-project Recent Browser는 V1 Primary Flow가 아니다.
 
 선호 배치는 Camera Chrome의 Upper Trailing이고 Accessibility Label은 `Projects`이며 정확한 SF Symbol, 크기, 간격과 Press 표현은 구현 Polish로 남긴다.
+
+#### Projects 화면 — Final Visual Baseline (ADR-036 Interaction, 승인 Mockup)
+
+Projects는 Native NavigationBar(중앙 Inline Title `프로젝트`, 시스템 Back)를 가진 전용 Pushed 화면이며 Project 관리 화면이 아니라 **단순한 결정 화면**이다. Navigation Bar 아래 남은 영역을 Content Canvas로 보고 하나의 Content Group을 **수평 + 수직 중앙**에 놓는다(Geometry-aware Layout, 고정 Top Offset / 절대 좌표 없음; Dynamic Type 초과 시 Clipping / Font 축소 대신 Scroll).
+
+**공통 구조(순서 고정):** ① 작은 상단 Visual(~80pt Rounded Square, Radius 20, 장식용 / Tap 불가 / VoiceOver 제외) ② 상태별 Headline(title2 Semibold) ③ 상태별 Supporting Copy(subheadline, `.label`) ④ Compact Primary `+ 새 프로젝트 시작` ⑤ Quiet Secondary `기존 프로젝트 불러오기`. Supporting Copy → Primary 간격이 Primary → Secondary 간격보다 크며 두 Action은 하나의 선택 단위로 읽힌다.
+
+- **저장 Project 없음:** Visual = 중립 Placeholder(`tertiarySystemFill` + `film` Symbol). Headline `아직 프로젝트가 없어요`. Supporting `촬영한 순간들을 골라 / 첫 번째 Vlog를 만들어보세요.`. Primary Enabled, Secondary **Disabled**(같은 위치, 감소된 강조, 사용할 수 없음 Accessibility State).
+- **저장 Project 있음:** Visual = Project Representative Visual Contract — 이후 Thumbnail Slice가 ① Canonical Representative Project Thumbnail ② 첫 Usable Clip Thumbnail ③ Placeholder 우선순위로 공급하며(Aspect Fill, Rounded Square Clip), 공급되기 전에는 결정적으로 Placeholder를 사용하고 Thumbnail이 존재한다고 주장하지 않는다. Headline `이어서 만들래요?`. Supporting `마지막으로 저장한 프로젝트가 있어요.`. Primary / Secondary 모두 Enabled; Secondary는 List / Card / 추가 확인 없이 ProjectEditor를 직접 연다.
+- **Primary Style:** Compact Rounded Rectangle(Radius 16, ~260pt 폭, ≥52pt, Capsule / Edge-to-edge 아님), Decorative `plus` Symbol + Label(Accessibility Label은 `새 프로젝트 시작`). Background는 Light / Dark 동일한 Mellow Signature Gradient(§30 Mellow Signature Colors, `#FF8A65 → #FF7A45 → #FF5E3A` Horizontal), Foreground는 `plus`와 Label 모두 Near-black Signature Foreground. Glow / Shadow / Border / Gradient Animation 없음 — 이 CTA가 Appearance를 가로지르는 Brand Anchor다.
+- **Secondary Style:** Border / Background 없는 중앙 Text Button(subheadline Semibold, `.primary`, ≥44pt Target). Disabled는 같은 자리에서 감소된 강조(Contrast Audit 통과 수준)로 남고 VoiceOver가 사용할 수 없음을 알린다. Destructive Styling은 대체 확인 Alert에만 있다.
+- **표시하지 않음:** `최근 프로젝트` / `마지막 프로젝트` Section, Project Card, Project 날짜 / 이름, Clip 수, 길이, `이어서 편집`, Recent List / Grid, Caption / Badge / Overlay, Illustration, Dashboard.
+- VoiceOver 순서: Navigation → Headline → Supporting → `새 프로젝트 시작` → `기존 프로젝트 불러오기`. 화면 Copy는 임시 Korean V1 Copy이며 Localization은 이후 Polish다.
 
 ### Primary Controls
 
@@ -760,6 +773,44 @@ Launch, Recent Projects와 Camera Placeholder의 전체 Page / Safe-area Backgro
 
 Card만 Neutral Adaptive Secondary Surface를 사용할 수 있으며 Primary Label의 Contrast를 검증한다.
 
+### Mellow Signature Colors
+
+Recording Progress Ring Visual 탐색에서 승인된 Warm Peach / Orange 계열을 Feature 전용 색상 아이디어에서 공유 **Mellow Signature Palette**로 승격한다. Swift Token은 `MellowDesignSystem.signature*`이며 Raw Hex를 View에 흩뿌리지 않는다.
+
+#### Foundation Palette
+
+| Token | Hex | Intended role |
+| --- | --- | --- |
+| Peach 50 | #FFD7C7 | soft tint / subtle supporting accent |
+| Peach 100 | #FFB89C | light warm accent |
+| Peach 300 | #FF8A65 | signature Peach / gradient start |
+| Orange 400 | #FF7A45 | primary warm accent / gradient midpoint |
+| Orange 500 | #FF5E3A | strong Orange / gradient end |
+
+이 단계에서 추가 Shade를 발명하지 않는다.
+
+#### Signature Gradient
+
+`Peach 300 → Orange 400 → Orange 500` = `#FF8A65 → #FF7A45 → #FF5E3A` (`MellowDesignSystem.signatureGradient`). 사각형 Primary Action에는 단순 Horizontal 진행을 사용하고, 특정 Component가 다른 Geometry를 요구할 때만 예외로 한다(Recording Ring은 Angular).
+
+의미: 따뜻하고 친근하며 현대적이고, 순간을 만들고 담는 행위와 연결되며, 순수 Red보다 경고감이 적다. **Positive Creation / Capture / Primary-action Energy**를 뜻하며 Mellow Brand Accent로 **선택적으로** 사용한다.
+
+#### Usage
+
+- Recording: Recording Progress Ring은 이 Signature 계열에 속한다(Ring은 Peach 50 → Orange 500 다섯 Stop Angular).
+- Projects: `새 프로젝트 시작` Primary CTA는 Signature Gradient를 사용한다.
+- 이후 명시적으로 승인된 Creation / Start Action에만 확장한다.
+- Secondary Action(`기존 프로젝트 불러오기` 등)은 Neutral을 유지한다.
+- Destructive(예: 대체 확인의 `새 프로젝트 만들기`)는 System Destructive / Red Semantics를 유지하며 Mellow Orange를 쓰지 않는다: Mellow Orange = 생성 / 긍정 Primary, System Red = 파괴적 결과.
+- Error / Warning / Disabled / 모든 Selectable Element에 Signature Color를 쓰지 않는다. Brand Color 과용을 피한다.
+
+#### Accessibility
+
+- Foreground는 Contrast에 따라 고른다. 승인된 Palette는 여러 Stop에서 White Text의 일반 Text Contrast가 부족하므로 Signature Gradient 위에는 기본적으로 White / Light Text를 두지 않고 Near-black Semantic Dark Foreground(`MellowDesignSystem.signatureForeground`, #1C1C1E)를 사용한다.
+- Brand Color가 가독성을 덮어쓰지 않는다. Audit을 통과시키기 위해 Palette 값을 바꾸지 않는다 — Palette는 Canonical이고 Foreground가 적응한다.
+- Light / Dark에서 같은 Gradient를 사용한다(Dark에서 반전 / White 대체 없음). 주변 System Surface만 Appearance에 적응한다.
+- Color만으로 상태를 전달하지 않는다.
+
 ---
 
 ## 31. Typography
@@ -909,7 +960,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | Resolved 2026-09-13: Full-bleed Camera Preview, UI-only 1–5s Selector / 기본 3s, Flip / Compact Content, 조용한 Mismatch, Camera-only Permission 안내와 Rear 1.0×–2.0× Pinch / Transient Indicator. ADR-032로 Portrait-only V1, Splash 진입과 Camera Chrome Projects Access가 추가되고 Landscape Camera Layout / Control Rail은 V1 범위에서 제외 | Control의 비구조적인 시각 조정과 Portrait Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
-| Phase 5 — Clip Management | Resolved by ADR-034: Projects `Start New Project` / `Continue Editing` Bottom Sheet와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar, 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
+| Phase 5 — Clip Management | Resolved by ADR-034 / ADR-035 / ADR-036: Projects 전용 Pushed 화면(ADR-035, Bottom Sheet 아님)에 항상 두 중앙 Action `Start New Project` / `Load Existing Project`(ADR-036, List / Card 없음)와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar, 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
 | Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing / Text | 명시적 T Tool의 세부 UX와 Text 정책, Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |

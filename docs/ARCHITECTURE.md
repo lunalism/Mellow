@@ -2267,7 +2267,7 @@ UI Test에서는 실제 Camera Hardware 대신 Test Double을 주입할 수 있�
 
 - Splash / First-Run Permission Onboarding
 - Portrait Camera Root
-- Camera Chrome Projects Access → Projects Bottom Sheet(ADR-034: 저장 Project 없음 `Start New Project`, 있음 `Continue Editing` / `Start New Project` + 대체 확인)
+- Camera Chrome Projects Access → 전용 Pushed Projects 화면 `.projectsEntry`(ADR-035 Destination / ADR-036 Content: 항상 `Start New Project` + `Load Existing Project`(저장 Project 있을 때만 Enabled, ProjectEditor 직접 열기) + 대체 확인, `Camera → 프로젝트 → ProjectEditor` Back Semantics)
 - Mock Recorded Clip 추가
 - Mock Imported Clip 추가
 - Clip Reorder

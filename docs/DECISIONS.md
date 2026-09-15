@@ -1930,6 +1930,7 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 
 **Date:** 2026-09-14
 **Status:** Accepted
+**Partial Supersession:** 이 ADR의 §1 Projects Entry Presentation(Compact Native Bottom Sheet)만 ADR-035에 의해 전용 Pushed Projects 화면으로 Superseded되었으며, §1의 Semantic Hierarchy(`Start New Project` / `Continue Editing` / 대체 확인)와 §2–§7은 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
 
 **Clarifies / Extends:** ADR-030의 Lightweight Editor / Ordered Thumbnail Strip 방향과 ADR-033의 Camera Projects Entry(`Select Clips` / `Load Last Saved`), Safe Atomic Replacement, Single Saved Project 및 Camera Compact Project-content Access를 Phase 5 구현 직전 Structural UX Gate 수준으로 구체화한다. ADR-021(Logical Deletion / Undo)과 ADR-026(Unavailable Clip / Replace)의 Accepted Semantics는 변경하지 않고 Presentation만 확정한다. 기존 ADR을 대체(Supersede)하지 않으며 역사적 기록을 다시 쓰지 않는다.
 
@@ -2011,6 +2012,108 @@ Phase 5는 Projects Entry Surface, Single Saved Project Lookup / Routing, Domain
 - 정확한 Localization Copy / Visual Tuning / Undo Window 값 확정.
 - Replacement Metadata Migration 정책 확정.
 - Phase 6 Import·Normalization, Phase 7 Trim / Framing, Phase 8 Preview, Phase 9 Export의 선행 구현.
+
+---
+
+# ADR-035 — Dedicated Projects Entry Screen
+
+**Date:** 2026-09-15
+**Status:** Accepted
+**Partial Supersession:** 이 ADR의 Projects 화면 **가시 Content / Action Hierarchy**(저장 Project 없음 → 단일 `새 프로젝트 시작`, 있음 → Primary `이어서 편집` / Secondary `새 프로젝트 시작`)만 ADR-036에 의해 항상 두 개의 중앙 Action(`새 프로젝트 시작` / `기존 프로젝트 불러오기`)으로 Superseded되었다. 전용 Pushed 화면, `.projectsEntry` Destination, Back 동작, 대체 확인, ProjectEditor Destination은 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
+
+**Partially Supersedes:** ADR-034 §1 Projects Entry UX의 **Presentation만**(Compact Native Bottom Sheet). ADR-034의 나머지 — Projects Entry Semantic Hierarchy, Select-Clips Media Boundary, Project Editor Structural UX, Delete / Undo, Unavailable Clip, Camera Content Slot, Representative Thumbnail, Replacement Metadata Migration Gate — 는 대체하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+Phase 5 STEP 5에서 ADR-034 §1의 Bottom Sheet Projects Entry를 구현하고(임시 Korean Copy `프로젝트` / `이어서 편집` / `새 프로젝트 시작` / 대체 확인) Simulator Visual Review를 진행했다. Review에서 다음이 확인되었다.
+
+- Surface에 Primary Choice가 한두 개뿐이라 Sheet의 대부분이 빈 세로 공간으로 남는다.
+- `Camera → Sheet → Replacement Alert`는 불필요한 Modal Stacking을 만든다.
+- Camera Upper-trailing Projects Icon은 임시 Modal Action Surface보다 Project Workspace로의 Navigation으로 읽힌다.
+- 전용 화면이 Hierarchy를 더 명확히 하고, Camera를 Dashboard로 만들지 않으면서도 이후 가벼운 Project 정보를 둘 여지를 준다.
+
+사용자는 Projects Action이 별도 화면으로 이동하는 구조를 명시적으로 선호했다.
+
+## Decision
+
+Camera Projects Access는 App NavigationStack 안의 전용 Projects Destination(`.projectsEntry`)으로 **Push Navigation**한다. Canonical V1 Projects Entry에 Bottom Sheet를 사용하지 않는다.
+
+Canonical 구조:
+
+`Camera` → Upper-trailing Projects Icon 탭 → Pushed `프로젝트` 화면(표준 Back → Camera)
+
+- **저장 편집 가능 Project 없음:** `새 프로젝트 시작`(단일 Primary Action). Media가 Commit되기 전에는 빈 Project를 만들지 않는다.
+- **저장 편집 가능 Project 있음:** Primary `이어서 편집`, Secondary `새 프로젝트 시작`.
+- **이어서 편집:** Projects 화면에서 `ProjectEditor(projectID)`로 Push한다. Projects 화면은 Stack 아래에 남아 Editor의 Back은 `프로젝트`로, 다시 Back은 Camera로 돌아간다(`Camera → 프로젝트 → ProjectEditor`). Editor는 Modal이 아니다.
+- **저장 Project가 있을 때 새 프로젝트 시작:** 전용 Projects 화면 위에 이미 승인된 Native 확인을 표시한다 — Title `새 프로젝트를 시작할까요?`, Message `새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다.`, Actions `취소` / `새 프로젝트 만들기`. 이로써 Modal Stacking은 `Camera → Projects 화면 → Alert` 한 단계가 된다.
+- 화면은 Navigation Title `프로젝트`, 표준 Back, Semantic Light / Dark System Background, 짧은 Decision Page 구조를 가지며 Dashboard / Recent Grid / Placeholder Card / Metadata를 두지 않는다.
+- 위 Korean Copy는 임시 V1 Copy이며 정확한 Localization은 이후 Polish다(ADR-034 Non-goal 유지).
+
+### 구현 단계(Transitional)
+
+`새 프로젝트 시작`이 실제 Composition Destination(Select-Clips Bootstrap)을 갖기 전까지 Production Camera Projects Icon은 기존 Transitional Recent Projects Path를 유지하고, 전용 Projects 화면은 DEBUG / UI-test Routing으로만 도달한다. Production 전환은 실제 New-project Composition Path와 함께 이루어진다. 이는 ADR-035의 Canonical 구조를 되돌리는 것이 아니라 Dead-end 없는 안전한 Staging이다.
+
+## Explicitly Unchanged
+
+이 ADR은 다음을 변경하지 않는다.
+
+- Single Saved Project Policy(ADR-033 / ADR-034)
+- Safe Atomic Replacement Semantics
+- Phase 5 / Phase 6 Select-Clips Media Boundary(ADR-034 §2)
+- Project Editor Layout / Semantics(ADR-034 §3)
+- Delete / Undo Semantics(ADR-021 / ADR-034 §4)
+- Representative Thumbnail Rules(ADR-034 §7)
+- Camera Bottom-left Content Slot Rules(ADR-034 §6)
+- Replacement Metadata Migration Gate(ADR-034 Still Pending)
+
+## Consequences
+
+- Phase 5 Projects Entry는 `AppRouter.Route.projectsEntry` Destination과 `ProjectsEntryView`로 구현하며 `.sheet` / Presentation Detent 기반 Projects Entry는 두지 않는다.
+- ADR-034 §1의 Sheet 표현을 인용하는 Current-normative 요약(DESIGN / ARCHITECTURE / ROADMAP)은 전용 화면 Navigation으로 갱신한다.
+
+## Non-goals
+
+- Select-Clips Bootstrap / PhotosPicker / Media Materialization / Replacement Transaction 구현.
+- Localization Architecture 도입.
+- Projects 화면에 Project 정보 / Thumbnail / Metadata 추가.
+
+---
+
+# ADR-036 — Centered Two-Action Projects Entry
+
+**Date:** 2026-09-15
+**Status:** Accepted
+
+**Partially Supersedes:** ADR-035의 Projects 화면 **가시 Content / Action Hierarchy만**. ADR-035는 전용 Pushed Projects 화면, `.projectsEntry` Navigation Destination, Back 동작, 대체 확인, ProjectEditor Destination에 대해 계속 Authoritative하다. ADR-034 §1의 Semantic(새 Project 시작 / 저장 Project 이어가기 / 대체 확인)은 유지되며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+ADR-035 이후 Phase 5 STEP 5 Visual Review에서 Projects 화면의 Content 개념이 두 차례 반복되었다: (1) 저장 Project 유무에 따라 단일 `새 프로젝트 시작` 또는 저장 Project Card + `이어서 편집`을 조건부로 보여주는 구성, (2) Empty-state 문구 + `최근 프로젝트` Section + 단일 Focal Project Card(Placeholder Thumbnail, Korean Display Name, Clip 수, 길이, Chevron) + `+ 새 프로젝트 시작`. 사용자는 Commit 전에 두 방향 모두 거부하고 V1 Projects 경험을 명시적으로 단순화했다.
+
+핵심 제품 아이디어: Projects 화면은 Project 관리 화면이 아니라 **단순한 결정 화면**이다 — 새 Project를 시작하거나, 이미 저장된 Project를 불러온다. V1은 편집 가능한 저장 Project를 최대 하나만 유지하므로 Recent List, Project Card, 날짜 / 길이 / Clip 수 요약, 별도의 Recent Browsing 단계가 필요 없다.
+
+## Decision
+
+V1 Projects 화면은 **항상** 중앙(수평 + 수직)에 두 개의 선택을 같은 순서로 표시한다.
+
+1. **`새 프로젝트 시작`** — Primary. 항상 Enabled. 저장 Project가 없으면 `.fresh` Intent를 보내고(STEP 5에서는 Project를 만들거나 PhotosPicker를 열지 않음), 저장 Project가 있으면 기존 승인된 대체 확인(`새 프로젝트를 시작할까요?` / `새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다.` / `취소` / `새 프로젝트 만들기`)을 먼저 표시한 뒤 확인 시 `.replacingSaved(savedProjectID)`를 보낸다.
+2. **`기존 프로젝트 불러오기`** — Secondary. 저장 편집 가능 Project가 있을 때만 Enabled이며, 탭 시 List / Card / 추가 확인 없이 가장 최근 저장 Project를 `ProjectEditor(projectID)`로 **직접** 연다(`프로젝트 → 기존 프로젝트 불러오기 → ProjectEditor`, Back은 `프로젝트` → Camera). 저장 Project가 없으면 **숨기지 않고** 같은 Geometry로 Disabled 상태(사용할 수 없음 Accessibility State, 탭 불가, 오류 없음)로 남는다.
+
+표시하지 않는 것: `최근 프로젝트` / `마지막 프로젝트` Section, Project Card, Thumbnail Placeholder, Project 날짜 / 이름, Clip 수, 길이, `이어서 편집`, Recent Grid / List, Empty-state Title / 설명 문구(`아직 프로젝트가 없어요` 등), 설명용 Metadata. 두 Button 구조 자체가 선택지를 설명한다.
+
+Presentation: Native NavigationStack(시스템 Back, 중앙 Inline Title `프로젝트`). Navigation Bar 아래 남은 영역을 Content Canvas로 보고 Action Group을 Geometry-aware Layout으로 그 안에 중앙 정렬한다(고정 Top Offset / 절대 좌표 없음). Dynamic Type로 Content가 넘치면 Clipping 대신 Scroll한다. 두 Action은 동일 Geometry(Rounded Rectangle, Radius 16, ~52pt, 중앙 Column 폭, Capsule / Edge-to-edge 아님)이며 Primary는 Semantic Strong Fill, Secondary는 Bordered + `.primary` Label, Disabled는 감소된 강조(Label / Border)이되 가독성을 유지한다.
+
+## Explicitly Unchanged
+
+Single Saved Project Policy, Safe Atomic Replacement, Phase 5 / Phase 6 Media Boundary, 대체 확인 Semantics, Project Editor Semantics, Camera Content-slot Semantics, Delete / Undo, Representative Thumbnail Rules, Replacement Metadata Migration Gate, ADR-035의 Navigation / Destination / Back 결정.
+
+## Transitional
+
+`새 프로젝트 시작`이 실제 Select-Clips Composition Destination을 갖기 전까지 Production Camera Projects Icon은 기존 Transitional Recent Projects Path를 유지하고 Projects 화면은 DEBUG / UI-test Routing으로만 도달한다(ADR-035와 동일).
+
+## Non-goals
+
+Select-Clips / PhotosPicker / Project 생성 / Replacement Transaction 구현, Localization Architecture, Projects 화면의 Project 정보 표시.
 
 ---
 
@@ -2116,7 +2219,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Recording 시작 후 Device 자세 변경 시 동작 — Resolved 2026-09-14 by ADR-033: Clip은 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다.
 - Recording Progress Ring의 정확한 색상 / 표현 — Pending, Phase 4 구현 / Physical Visual Review Polish이며 ADR 결정 대상이 아니다.
 - Imported Clip의 최소 길이 — Pending, Phase 6.
-- Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Bottom Sheet, 대체 확인 Cancel / Create New Project); 정확한 Localization Copy만 Polish로 Pending.
+- Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Hierarchy, 대체 확인 Cancel / Create New Project); Presentation은 ADR-035로 전용 Pushed `프로젝트` 화면(`Camera → 프로젝트 → ProjectEditor`)으로 확정, Bottom Sheet 아님; 화면 Content는 ADR-036으로 항상 두 개의 중앙 Action(`새 프로젝트 시작` / `기존 프로젝트 불러오기`, 후자는 저장 Project 있을 때만 Enabled, List / Card / Metadata 없음)으로 확정; 정확한 Localization Copy만 Polish로 Pending.
 - Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
 - Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034: 저장 Project 없으면 Session-only 피드백 유지, 있으면 Project Representative Thumbnail + Editor 진입으로 승격(Raw Playback 아님).

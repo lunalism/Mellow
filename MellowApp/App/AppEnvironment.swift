@@ -32,6 +32,15 @@ final class AppEnvironment {
     private let arguments: [String]
     private var prewarmTask: Task<Void, Never>?
 
+    #if DEBUG
+    /// STEP 5 deterministic Projects Entry model (DEBUG/UI tests only). Built only for
+    /// `-uiTestProjectsEntry`; production Camera `Projects` navigation is untouched by this.
+    private(set) var uiTestProjectsEntry: ProjectsEntryModel?
+    /// The last intent the Projects Entry delivered, exposed so a UI test can observe it without
+    /// any Project being created or replaced.
+    private(set) var uiTestProjectsEntryIntent: String?
+    #endif
+
     var shouldShowPermissionOnboarding: Bool { !permissionOnboardingCompleted }
 
     func makeCameraModel(orientation projectOrientation: ProjectOrientation) -> CameraModel {
@@ -186,6 +195,7 @@ final class AppEnvironment {
         #if DEBUG
         Self.seedUITestProjects(arguments: arguments, repository: repository)
         Self.seedEditorProjectAndRouteIfNeeded(arguments: arguments, repository: repository, router: router)
+        routeToUITestProjectsEntryIfNeeded()
         #endif
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
@@ -332,6 +342,34 @@ final class AppEnvironment {
         if arguments.contains("-uiTestOpenEditor") {
             router.path = [.projectEditor(projectID)]
         }
+    }
+    #endif
+
+    #if DEBUG
+    /// STEP 5 deterministic Projects Entry routing (DEBUG/UI tests only), `-uiTestProjectsEntry`.
+    /// Pushes the dedicated ADR-035 `프로젝트` screen (`Camera → .projectsEntry`) without touching
+    /// production `Projects` navigation. Alone it starts from an empty store (no saved Project);
+    /// combined with `-uiTestSeedEditorProject` the seeded project is the saved Project. Intents are
+    /// only recorded in `uiTestProjectsEntryIntent`; nothing is created, deleted or replaced.
+    private func routeToUITestProjectsEntryIfNeeded() {
+        guard arguments.contains("-uiTestProjectsEntry") else { return }
+        if !arguments.contains("-uiTestSeedEditorProject"), let existing = try? projectRepository.recentProjects() {
+            for project in existing { try? projectRepository.deleteProject(id: project.id) }
+        }
+        uiTestProjectsEntry = ProjectsEntryModel(
+            composition: projectComposition,
+            onContinueEditing: { [weak self] projectID in
+                // The Projects screen stays below the Editor so Back returns to `프로젝트`.
+                self?.router.path.append(.projectEditor(projectID))
+            },
+            onNewProject: { [weak self] intent in
+                switch intent {
+                case .fresh: self?.uiTestProjectsEntryIntent = "newProject-fresh"
+                case .replacingSaved(let id): self?.uiTestProjectsEntryIntent = "newProject-replace-\(id.uuidString)"
+                }
+            }
+        )
+        router.path = [.projectsEntry]
     }
     #endif
 

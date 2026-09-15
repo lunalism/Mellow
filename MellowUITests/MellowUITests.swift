@@ -182,6 +182,146 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
+    // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
+    // `Projects` still opens Recent Projects in this slice.
+    @MainActor
+    func testProjectsScreenWithoutSavedProjectDisablesLoadExisting() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry"])
+        app.launch()
+
+        // A pushed NavigationStack destination: navigation title + Back, no modal sheet.
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "projectsEntry").firstMatch.exists)
+        XCTAssertEqual(app.navigationBars["프로젝트"].buttons.count, 1, "standard Back only")
+        XCTAssertEqual(app.sheets.count, 0)
+
+        // Neutral placeholder visual + no-project copy above two centered choices; loading is
+        // visible but unavailable without a saved Project.
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "projectsEntryVisual-placeholder").firstMatch.exists)
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "아직 프로젝트가 없어요")
+        XCTAssertEqual(app.staticTexts["projectsEntrySupporting"].label, "촬영한 순간들을 골라\n첫 번째 Vlog를 만들어보세요.")
+        let startNew = app.buttons["startNewProject"]
+        let loadExisting = app.buttons["loadExistingProject"]
+        XCTAssertTrue(startNew.exists)
+        XCTAssertEqual(startNew.label, "새 프로젝트 시작")
+        XCTAssertTrue(startNew.isEnabled)
+        XCTAssertTrue(loadExisting.exists)
+        XCTAssertEqual(loadExisting.label, "기존 프로젝트 불러오기")
+        XCTAssertFalse(loadExisting.isEnabled, "no saved Project → 기존 프로젝트 불러오기 disabled")
+        assertNoProjectSummaryUI(in: app)
+        try auditAndCapture(app, name: "Projects Screen Final No Project")
+
+        // The intent is delivered to the DEBUG harness; no confirmation and no Project creation.
+        startNew.tap()
+        let intent = app.staticTexts["projectsEntryIntent"]
+        XCTAssertTrue(intent.waitForExistence(timeout: 3))
+        XCTAssertEqual(intent.label, "newProject-fresh")
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertTrue(app.navigationBars["프로젝트"].exists, "harness stays on the Projects screen")
+
+        // Back returns to the Camera root; Recent proves nothing was created.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertTrue(app.staticTexts["emptyRecent"].waitForExistence(timeout: 3), "no Project was created")
+        backToCamera(in: app)
+    }
+
+    @MainActor
+    func testProjectsScreenLoadExistingOpensSavedProjectEditorDirectly() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.sheets.count, 0)
+        // Saved-project visual slot (placeholder fallback until the Thumbnail slice) + saved copy.
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'projectsEntryVisual-'")).firstMatch.exists)
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "이어서 만들래요?")
+        XCTAssertEqual(app.staticTexts["projectsEntrySupporting"].label, "마지막으로 저장한 프로젝트가 있어요.")
+        let startNew = app.buttons["startNewProject"]
+        let loadExisting = app.buttons["loadExistingProject"]
+        XCTAssertTrue(startNew.exists)
+        XCTAssertEqual(startNew.label, "새 프로젝트 시작", "plus icon is decorative")
+        XCTAssertTrue(startNew.isEnabled)
+        XCTAssertTrue(loadExisting.exists)
+        XCTAssertEqual(loadExisting.label, "기존 프로젝트 불러오기")
+        XCTAssertTrue(loadExisting.isEnabled, "saved Project → 기존 프로젝트 불러오기 enabled")
+        assertNoProjectSummaryUI(in: app)
+        try auditAndCapture(app, name: "Projects Screen Final Saved Project")
+
+        // Loading pushes the exact saved (3-clip) Project Editor directly — no list or card between.
+        loadExisting.tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["projectEditorPreview"].exists)
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["editorClip-3"].exists)
+        XCTAssertFalse(app.otherElements["projectEditorUnavailable"].exists)
+
+        // Back once → 프로젝트 (the Projects screen stayed below the Editor); Back again → Camera.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 1, "loading deletes nothing")
+        removeProjects(in: app)
+    }
+
+    @MainActor
+    func testProjectsScreenReplacementConfirmationCancelAndConfirmDoNotMutate() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        let startNew = app.buttons["startNewProject"]
+        XCTAssertTrue(startNew.exists)
+        startNew.tap()
+
+        // Camera → Projects screen → alert: a single native confirmation, no sheet underneath.
+        let alert = app.alerts["새 프로젝트를 시작할까요?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        XCTAssertTrue(alert.staticTexts["새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다."].exists)
+        XCTAssertTrue(alert.buttons["취소"].exists)
+        XCTAssertTrue(alert.buttons["새 프로젝트 만들기"].exists)
+        try auditAndCapture(app, name: "Projects Screen Final Replacement Confirmation")
+
+        // Cancel: the confirmation closes, the Projects screen stays, nothing is delivered.
+        alert.buttons["취소"].tap()
+        XCTAssertFalse(alert.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.navigationBars["프로젝트"].exists)
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled, "saved Project still loadable")
+        XCTAssertFalse(app.staticTexts["projectsEntryIntent"].exists)
+
+        // Confirm: only the confirmed intent is delivered; the saved Project is untouched.
+        startNew.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        alert.buttons["새 프로젝트 만들기"].tap()
+        let intent = app.staticTexts["projectsEntryIntent"]
+        XCTAssertTrue(intent.waitForExistence(timeout: 3))
+        XCTAssertTrue(intent.label.hasPrefix("newProject-replace-"), "intent names the Project it would replace")
+        XCTAssertTrue(app.navigationBars["프로젝트"].exists)
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled, "saved Project still loadable after confirm")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        openProjects(in: app)
+        XCTAssertEqual(projectButtons(in: app).count, 1, "no replacement, no creation in STEP 5")
+        removeProjects(in: app)
+    }
+
+    /// ADR-036: the Projects screen carries no list, card or Project metadata.
+    @MainActor
+    private func assertNoProjectSummaryUI(in app: XCUIApplication) {
+        for text in ["최근 프로젝트", "마지막 프로젝트", "이어서 편집"] {
+            XCTAssertFalse(app.staticTexts[text].exists, "\(text) must not appear on the Projects screen")
+        }
+        XCTAssertFalse(app.buttons["recentProjectCard"].exists)
+        XCTAssertFalse(app.buttons["continueEditing"].exists)
+        let metadata = NSPredicate(format: "label CONTAINS '클립' OR label CONTAINS '초' OR label MATCHES '.*[0-9]+월 [0-9]+일.*'")
+        XCTAssertEqual(app.staticTexts.matching(metadata).count, 0, "no date / clip count / duration on the Projects screen")
+    }
+
     // MARK: - Portrait camera
 
     @MainActor

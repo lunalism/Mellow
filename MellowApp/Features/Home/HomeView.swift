@@ -51,12 +51,37 @@ struct HomeView: View {
                     if let project = model.openedProject, project.id == id {
                         CameraDestination(context: .project(project)).id(project.id)
                     }
+                case .projectsEntry:
+                    // ADR-035 dedicated `프로젝트` screen. STEP 5 transitional: reached only through
+                    // DEBUG routing (`-uiTestProjectsEntry`); production `Projects` still shows Recent
+                    // until `새 프로젝트 시작` has a real composition destination, so nothing pushes
+                    // this route in Release.
+                    #if DEBUG
+                    if let entry = environment.uiTestProjectsEntry {
+                        ProjectsEntryView(model: entry)
+                    }
+                    #else
+                    EmptyView()
+                    #endif
                 case .projectEditor(let id):
                     ProjectEditorDestination(projectID: id).id(id)
                 }
             }
         }
         .tint(.primary)
+        #if DEBUG
+        // Phase 5 STEP 5: the DEBUG Projects Entry harness surfaces the delivered intent so UI tests
+        // can observe it deterministically without any Project being created or replaced.
+        .overlay(alignment: .top) {
+            if let intent = environment.uiTestProjectsEntryIntent {
+                Text(intent)
+                    .font(.caption)
+                    .padding(6)
+                    .background(Color(.systemBackground))
+                    .accessibilityIdentifier("projectsEntryIntent")
+            }
+        }
+        #endif
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.loadRecent() }
         }

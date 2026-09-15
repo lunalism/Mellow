@@ -1558,7 +1558,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 
 또한 ADR-034는 다음을 확정한다.
 
-- Camera `Projects`는 Compact Native Bottom Sheet를 연다. 저장 Project 없으면 `Start New Project`, 있으면 Primary `Continue Editing` / Secondary `Start New Project`이며 대체 전 `Creating a new project will replace your last saved project.` 의미의 Cancel / Create New Project 확인을 표시한다.
+- Camera `Projects`는 전용 Pushed `프로젝트` 화면으로 이동한다(Presentation은 ADR-035가 ADR-034의 Bottom Sheet를 대체; `Camera → 프로젝트 → ProjectEditor`, 표준 Back). 화면 Content는 ADR-036에 따라 항상 두 개의 중앙 Action — Primary `Start New Project`(`새 프로젝트 시작`), Secondary `Load Existing Project`(`기존 프로젝트 불러오기`, 저장 Project 있을 때만 Enabled, ProjectEditor 직접 열기) — 이며 Recent List / Card / Metadata를 두지 않고, 저장 Project가 있을 때 `Start New Project`는 `Creating a new project will replace your last saved project.` 의미의 Cancel / Create New Project 확인을 Projects 화면 위 Native Alert로 표시한다.
 - Camera Bottom-left Content Slot은 저장 Project 없으면 Phase 4 Session-only 피드백을 유지하고, 저장 Project가 있으면 Project Representative Thumbnail 표시 + 탭 시 저장 Project Editor 진입으로 승격한다(Raw Playback 아님). 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
 - Large Preview는 Phase 5에서 Surface / Shell만 만들고 실제 Effective-result Playback은 Phase 8 소유다. Raw Media를 Shortcut으로 재생하지 않는다.
 
