@@ -114,8 +114,11 @@ final class CameraModel {
         switch recording.phase {
         case .idle:
             guard readiness == .ready else { return }
-            // Definite physical posture only; capturePosture's provisional Portrait is for preview.
-            await recording.record(maximum: selectedDuration, posture: deviceOrientation)
+            // One canonical posture decision (ADR-033): the same accepted `capturePosture` that made
+            // the shutter ready admits the recording. The raw device reading is transiently
+            // `.unknown` / `.unstable` after every orientation restart (navigation round trips), and
+            // forwarding it made an enabled shutter refuse silently until the phone moved.
+            await recording.record(maximum: selectedDuration, posture: capturePosture)
         case .recording:
             await recording.requestStop(.userRequested)
         case .preparing, .finishing, .savingToPhotos:
@@ -190,7 +193,9 @@ final class CameraModel {
     }
     func leave() {
         visible = false
+        #if DEBUG
         stopStartupMeasurementIfNeeded()
+        #endif
         orientation.stop()
         if recording.isActive { Task { await recording.requestStop(.appInactive) } }
         reconcile()
@@ -203,7 +208,9 @@ final class CameraModel {
 #endif
             orientation.start { [weak self] in self?.receivePosture($0) }
         } else {
+            #if DEBUG
             stopStartupMeasurementIfNeeded()
+            #endif
             orientation.stop()
             // Never record in the background: finalize now, save if ≥ 1.0s, else discard.
             if recording.isActive { Task { await recording.requestStop(.appInactive) } }
