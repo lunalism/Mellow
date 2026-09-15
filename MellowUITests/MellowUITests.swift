@@ -189,6 +189,187 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 8: immersive Editor + bottom timeline (deterministic fixture thumbnails)
+
+    /// Three thumbnail cells in a leading-aligned timeline inside the bottom dock, duration
+    /// overlays, quiet Total, tap Clip 2 → selected outline; dark workspace even in a Light app.
+    @MainActor
+    func testEditorTimelineShowsOrderedThumbnailsWithSelection() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["editorDock"].exists)
+
+        let clips = (1...3).map { app.buttons["editorClip-\($0)"] }
+        for clip in clips { XCTAssertTrue(clip.waitForExistence(timeout: 2)) }
+        XCTAssertFalse(app.buttons["editorClip-4"].exists)
+        for (index, clip) in clips.enumerated() {
+            expectLabel(clip, "Clip \(index + 1) of 3, \(["2.0s", "3.0s", "1.0s"][index])")
+            XCTAssertGreaterThanOrEqual(clip.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(clip.frame.height, 44)
+            XCTAssertEqual(clip.frame.width, 44, accuracy: 3, "compact 44×78 timeline cells")
+            XCTAssertEqual(clip.frame.height, 78, accuracy: 3)
+        }
+        // Leading-aligned logical order, never centred: the first cell sits in the left part of the
+        // dock right after the reserved add slot, and the group is left-heavy.
+        let dock = app.otherElements["editorDock"]
+        let preview = app.otherElements["projectEditorPreview"]
+        XCTAssertLessThan(clips[0].frame.minX, clips[1].frame.minX)
+        XCTAssertLessThan(clips[1].frame.minX, clips[2].frame.minX)
+        // DEBUG staging: the 40 pt Add reference precedes the strip (leading 10 + 40 + 8 = 58).
+        XCTAssertEqual(clips[0].frame.minX - dock.frame.minX, 58, accuracy: 4, "timeline starts right after the staged add slot")
+        XCTAssertGreaterThan(dock.frame.maxX - clips[2].frame.maxX, clips[0].frame.minX - dock.frame.minX,
+                             "a short project is leading-aligned, not centred")
+        // Compact dock (~100 pt) directly below the full-height preview canvas, near the bottom.
+        XCTAssertEqual(dock.frame.height, 100, accuracy: 6, "compact dock")
+        XCTAssertGreaterThanOrEqual(dock.frame.minY, preview.frame.maxY - 1)
+        XCTAssertLessThan(dock.frame.minY - preview.frame.maxY, 14, "preview and dock read as one editor")
+        XCTAssertGreaterThan(dock.frame.maxY, app.frame.height * 0.85)
+        // The preview canvas owns almost everything between the navigation bar and the dock.
+        XCTAssertGreaterThan(preview.frame.height, app.frame.height * 0.6)
+        XCTAssertGreaterThan(preview.frame.width, app.frame.width * 0.95, "no card inset")
+        XCTAssertFalse(app.staticTexts["Timeline"].exists, "no Timeline heading")
+        XCTAssertGreaterThan(app.staticTexts["projectTotalDuration"].frame.minX, dock.frame.midX, "quiet trailing total")
+        XCTAssertTrue(app.staticTexts["projectTotalDuration"].exists)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+
+        XCTAssertEqual(clips[0].value as? String, "Selected")
+        XCTAssertEqual(clips[1].value as? String, "Not selected")
+        try auditAndCapture(app, name: "editor-timeline-v4-selected-first")
+
+        clips[1].tap()
+        XCTAssertEqual(clips[1].value as? String, "Selected")
+        XCTAssertEqual(clips[0].value as? String, "Not selected")
+        XCTAssertEqual(clips[2].value as? String, "Not selected")
+        expectLabel(clips[0], "Clip 1 of 3, 2.0s")
+        expectLabel(clips[1], "Clip 2 of 3, 3.0s")
+        XCTAssertEqual(preview.label, "Preview, selected clip 2")
+        try auditAndCapture(app, name: "editor-timeline-v4-selected-second")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// One thumbnail failure → neutral placeholder stays in the same timeline slot, selection untouched.
+    @MainActor
+    func testEditorTimelineKeepsFailedThumbnailInPlace() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestThumbnailFailure=2"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, thumbnail unavailable")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertLessThan(clip1.frame.minX, clip2.frame.minX)
+        XCTAssertLessThan(clip2.frame.minX, clip3.frame.minX)
+        XCTAssertEqual(clip2.frame.width, clip1.frame.width, accuracy: 1, "same geometry as a healthy cell")
+        XCTAssertEqual(clip1.value as? String, "Selected", "a failed thumbnail never changes selection")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s", "the clip keeps its slot and its duration")
+        clip2.tap()
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        clip1.tap()
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        try auditAndCapture(app, name: "editor-timeline-v4-failure")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// Many clips: the timeline overflows and scrolls horizontally; order and selection survive.
+    @MainActor
+    func testEditorTimelineScrollsWithManyClips() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestSeedEditorClips=9"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let first = app.buttons["editorClip-1"], last = app.buttons["editorClip-9"]
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        expectLabel(first, "Clip 1 of 9, 2.0s")
+        XCTAssertEqual(first.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 18.0s")
+        try auditAndCapture(app, name: "editor-timeline-v4-many-clips")
+
+        // The last cell is off-screen until the timeline is scrolled; scrolling never reorders.
+        XCTAssertFalse(last.exists && last.isHittable)
+        var attempts = 0
+        while !(last.exists && last.isHittable), attempts < 4 { app.buttons["editorClip-3"].swipeLeft(); attempts += 1 }
+        XCTAssertTrue(last.isHittable)
+        last.tap()
+        XCTAssertEqual(last.value as? String, "Selected")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 9")
+        XCTAssertLessThan(app.buttons["editorClip-8"].frame.minX, last.frame.minX)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// Production-equivalent presentation (`-uiTestProductionTimeline` = Release, no staged Add
+    /// visual): the timeline starts at the dock's leading inset — no dead button, no empty slot.
+    @MainActor
+    func testEditorTimelineProductionHasNoLeadingAddSlot() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let dock = app.otherElements["editorDock"]
+        let clip1 = app.buttons["editorClip-1"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        XCTAssertEqual(clip1.frame.minX - dock.frame.minX, 10, accuracy: 4, "first clip sits at the dock's leading inset")
+        XCTAssertEqual(clip1.frame.width, 44, accuracy: 3)
+        XCTAssertEqual(dock.frame.height, 100, accuracy: 6, "dock geometry unchanged")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'add'")).count, 0, "no dead Add control")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        try auditAndCapture(app, name: "editor-timeline-v4-production-no-add-slot")
+
+        // Many-clip scrolling is unaffected by the missing slot.
+        app.terminate()
+        let many = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline", "-uiTestSeedEditorClips=9"])
+        many.launch()
+        XCTAssertTrue(many.buttons["editorClip-1"].waitForExistence(timeout: 5))
+        XCTAssertEqual(many.buttons["editorClip-1"].frame.minX - many.otherElements["editorDock"].frame.minX, 10, accuracy: 4)
+        let last = many.buttons["editorClip-9"]
+        var attempts = 0
+        while !(last.exists && last.isHittable), attempts < 4 { many.buttons["editorClip-3"].swipeLeft(); attempts += 1 }
+        XCTAssertTrue(last.isHittable)
+        last.tap()
+        XCTAssertEqual(last.value as? String, "Selected")
+
+        many.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(many.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: many)
+    }
+
+    /// The timeline stays a stable control surface at the largest accessibility size; audited.
+    @MainActor
+    func testEditorTimelineUsableUnderDynamicType() throws {
+        let app = legacyRecentApp([
+            "-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
+        ])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        XCTAssertTrue(clip1.isHittable)
+        XCTAssertTrue(clip2.isHittable)
+        XCTAssertGreaterThanOrEqual(clip1.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(clip1.frame.width, 44)
+        XCTAssertLessThan(clip1.frame.minX, clip2.frame.minX)
+        clip3.tap()
+        XCTAssertEqual(clip3.value as? String, "Selected")
+        XCTAssertTrue(app.staticTexts["projectTotalDuration"].exists)
+        try auditAndCapture(app, name: "editor-timeline-v4-xxxl")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
     // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
     // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
     // `Projects` still opens Recent Projects in this slice.
@@ -976,6 +1157,15 @@ final class MellowUITests: XCTestCase {
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: picker)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed,
                        "picker at \(String(describing: picker.value)) instead of \(expected). \(note)")
+    }
+
+    /// Thumbnail state is part of the cell label ("…, loading" / "…, thumbnail unavailable"), so
+    /// waiting for the exact label proves the asynchronous state settled.
+    @MainActor
+    private func expectLabel(_ element: XCUIElement, _ expected: String) {
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed,
+                       "label is \(element.label) instead of \(expected)")
     }
 
     /// Zoom is applied through an async hop, so the clamped value settles after the gesture ends.

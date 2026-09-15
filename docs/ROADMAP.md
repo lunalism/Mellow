@@ -1511,6 +1511,8 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 - Multi-project Recent Projects Grid / Browser는 V1 Primary Flow가 아니며 Post-V1 복원 결정 전까지 구조만 보존한다.
 - **Production Projects Wiring — 완료 2026-09-15 (Phase 5 STEP 7):** 일반 Camera `Projects` Control은 이제 Canonical `프로젝트` 화면(`.projectsEntry`)으로 진입하며 `새 프로젝트 시작`은 STEP 6의 실제 PhotosPicker Composition 경로를, `기존 프로젝트 불러오기`는 정확한 저장 Project UUID의 ProjectEditor를 연다. ADR-035 / ADR-036의 "DEBUG Routing으로만 도달" Transitional Staging은 종료되었다. 기존 Recent Browser(`.recent`)는 Canonical Camera 경로에서 더 이상 도달할 수 없고 Phase 2 / 3 회귀용 DEBUG 인자(`-uiTestLegacyRecentProjects`)로만 열리며 Post-V1 Multi-project 결정 전까지 구조만 보존한다.
 
+- **Editor Real Clip Thumbnails + Immersive Timeline — 완료 2026-09-15 (Phase 5 STEP 8, Physical PASS on LunaTestphone):** `ClipThumbnailService`(Project-owned Committed Media, `ProjectMediaStore` Read-only URL Resolver, `AVAssetImageGenerator`, Effective-range Midpoint Frame, Bounded Memory Cache, In-flight Coalescing)와 `ProjectEditorModel`의 Identity 기반 Stale-result Protection이 Ordered Timeline에 실제 Portrait Thumbnail을 공급한다(ARCHITECTURE 56절 "Phase 5 STEP 8 Implementation"). ProjectEditor는 DESIGN 19절의 V4.1 Baseline(Editor 전용 Dark Workspace, Full Flexible Preview Canvas, ≈100pt Bottom Timeline Dock, 44 × 78pt Cell, Signature Orange 2pt Selected Outline, Duration Tag, 중립 Failure Placeholder, Production Timeline은 Add Slot 없이 Clip 1부터 시작)을 사용한다. Reorder / Delete / Undo / Add Clip(ADR-037 PhotosPicker, 미구현) / Unavailable Replace / Representative Thumbnail Wiring / Camera Content-slot 승격 / Playback은 아직 시작하지 않았다.
+
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
 Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
@@ -1527,7 +1529,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 - Delete
 - Undo
 - Project Total Duration
-- Add More Clip
+- Add More Clip(PhotosPicker Append, ADR-037)
 - Project Autosave
 - Logical Deletion과 Deferred Physical Cleanup
 - Most-recent Undo와 Process Termination Reconciliation
@@ -1555,6 +1557,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 - Clip Delete Action의 Control Placement — Resolved by ADR-034: 선택 Clip의 명시적 Action.
 - Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조 — Resolved by ADR-034: Transient Bottom Snackbar `Clip deleted` + `Undo`.
 - Project Duration과 Add Clip Action의 배치 — Resolved by ADR-034: Project Total Duration은 Clip 조직 영역 근처의 조용한 보조 정보, `Add Clips`는 명시적 Project-level Action.
+- Add Clip의 Acquisition Source — Resolved by ADR-037: Editor `+`는 System PhotosPicker를 열어 Phase-5-ready Media를 현재 Project에 Append하며 Camera에 다시 진입하지 않는다.
 - Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034: 논리적 위치 유지 Placeholder + Color-only 아닌 Unavailable State + 명시적 Replace / Delete.
 
 또한 ADR-034는 다음을 확정한다.
@@ -1610,7 +1613,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 10. Undo Opportunity가 종료되면 Logical Deletion을 확정하되 Physical Media Cleanup은 Undo / Recovery / Active Usage / Late Commit 차단과 Safe Classification 조건을 모두 충족할 때까지 지연한다.
 11. App Process 종료 후에는 Undo Opportunity를 복원하지 않고 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation한다.
 12. Project Total Duration을 계산하여 표시한다.
-13. Add Clip Action으로 Camera에 다시 진입할 수 있게 한다.
+13. Add Clip Action(Editor Timeline Leading `+`)에서 System PhotosPicker를 열고 Phase-5-ready Media를 현재 Project 끝에 Picker 선택 순서로 안전하게 Append한다(ADR-037): 선택 항목 전부 Validate → Storage Admission → Materialize → Append → Persist → Read-back Verify, All-or-nothing, 대체 Project 생성 없음, Camera 재진입 없음, Non-ready Media는 기존 `requires import preparation` 처리. Control은 기능 구현 전 Production에 노출하지 않는다.
 14. Healthy Clip의 Individual Preview 요청이 대상 Clip Identity, Availability와 현재 Effective Edit State를 Shared Composition Flow에 전달할 수 있게 하되 Raw Asset Preview를 기본 경로로 만들거나 아직 존재하지 않는 Trim / Framing UI를 선행 구현하지 않는다.
 15. Undo는 기존 Clip Identity와 Media를 재사용하고 이전 Stable Anchor 뒤, 이전 Anchor가 없으면 다음 Anchor 앞, 둘 다 없으면 Clamp된 Original Index로 복원한다.
 16. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
@@ -1668,7 +1671,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 - 연속 Delete 이후 마지막 Clip에만 사용자-visible Undo 제공
 - Delete 후 다른 Clip Reorder와 Undo를 함께 수행해 복원 위치 확인
 - Pending Deletion 중 종료 후 Relaunch에서 삭제된 Clip이 다시 표시되지 않는지 확인
-- Add Clip 진입
+- Add Clip `+` → PhotosPicker → Phase-5-ready Append(현재 Project 유지, Cancel 시 무변경, Non-ready 시 무변경)
 - Unavailable Clip Representation과 Replace / Delete 접근
 - Replacement Failure 후 Placeholder 유지
 

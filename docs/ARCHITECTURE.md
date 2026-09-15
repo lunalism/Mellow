@@ -1529,6 +1529,20 @@ Late Thumbnail Result는 deleted Project / Clip을 다시 생성하거나 이전
 
 Thumbnail 생성이 Source Media를 Release하기 전에는 해당 File을 Physical Delete하지 않는다.
 
+### Phase 5 STEP 8 Implementation — Editor Clip Thumbnails
+
+`Core/Thumbnails/ClipThumbnailService.swift`가 위 계약의 첫 Production 구현이며 현재는 Project Editor Ordered Strip만 소비한다.
+
+- **Source:** Project-owned Committed Media만 사용한다. `VlogClip.mediaRelativePath`를 `ProjectMediaStore`의 Read-only `ProjectMediaURLResolving.committedMediaURL(for:)`로 해석하며, 이 Resolver는 Standardized URL이 Mellow Root 안에 있는지와 File 존재를 확인할 뿐 Directory 생성·이동·삭제를 하지 않는다. Photos / PHAsset, Camera Staging, `lastRecordingThumbnail`, Picker 임시 URL은 Editor Thumbnail Source가 아니다.
+- **Identity:** `ClipThumbnailRequest` = Project ID + Clip ID + `mediaRelativePath` + effective `trimStart` / `trimDuration` + Pixel Budget(`ClipThumbnailPixelSize`, Point 크기 × Display Scale). Array Index는 Identity가 아니다.
+- **Representative Frame:** 현재 Effective Clip Range의 중간(`trimStart + trimDuration / 2`, `ClipThumbnailFrameRule`). Trim UI가 생겨도 Source Time 0을 고정 요청하지 않는다.
+- **Generation:** `AVAssetImageGenerator` + `appliesPreferredTrackTransform`(Portrait Upright), `maximumSize` = Pixel Budget(Aspect 유지 Downscale, Crop / Framing Bake 없음). Main Actor 밖에서 실행된다.
+- **Cache / Coalescing:** Actor 내부의 Bounded MRU Memory Cache(기본 64 Entry)와 In-flight Task Map. 동일 Request의 동시 요청은 하나의 Generation을 공유하며, 한 Awaiter의 Cancellation은 다른 Awaiter나 공유 Task에 영향을 주지 않는다. Disk Thumbnail Cache, Persisted Thumbnail Path / Blob, Availability Field는 없다(Schema 변경 없음).
+- **Stale-result Protection:** `ProjectEditorModel.applyThumbnailResult(_:for:)`는 결과의 Request가 해당 Clip의 현재 Request(같은 Project, 같은 Clip Identity, 같은 Media / Trim / Pixel Identity)와 정확히 일치하고 Load가 아직 Active일 때만 발행한다. Late / Foreign Result는 폐기되며 다른 Clip의 State를 덮어쓰지 않는다. View가 사라지면 `.task` Cancellation으로 Load가 종료된다.
+- **Failure:** Missing / Unreadable / No Frame / Generation 실패는 Typed `ClipThumbnailError`이며 Presentation `.unavailable`(중립 Placeholder)로만 표현된다. Clip Metadata, 순서, 선택, Persistence는 변경하지 않는다. ADR-026의 사용자-facing Unavailable Replace / Delete는 아직 구현하지 않았다.
+- **Ownership:** Service = Resolution / Generation / Cache, `ProjectEditorModel` = Per-clip Presentation State + Request Identity + Selection(Canonical), View = Loading / Image / Placeholder Rendering. Project Representative Thumbnail과 Camera Content-slot 승격은 같은 Service를 재사용하되 아직 연결하지 않았다.
+- **Physical Evidence (2026-09-15, LunaTestphone iPhone 12):** 실제 저장 Project(2 Clip)에서 Project-owned Media Thumbnail이 즉시 표시되었고 Before / After Data-container Audit에서 SwiftData History(`ATRANSACTION` 9 → 9, `ACHANGE` 23 → 23)와 Project-owned Media가 변하지 않았다 — Thumbnail 생성과 Selection은 Read-only다.
+
 ---
 
 ## 57. Draft Autosave
@@ -1936,6 +1950,18 @@ Cleanup 실패는 재시도 가능해야 하며 Storage Pressure 때문에 Commi
 자동 Cleanup은 ADR-020 / ADR-021에 따라 Recovery가 필요하지 않고 Undo / Active Usage / 다른 Reference가 없다고 안전하게 확인된 Disposable Temporary Artifact 또는 Confirmed Orphan에만 적용한다.
 
 Recovery Classification을 생략하거나 불명확한 Media를 공간 확보 목적으로 삭제하지 않는다.
+
+---
+
+### Editor Add Clip Append Contract (ADR-037)
+
+Project Editor의 Add Clip(`+`)은 Project Composition(Select Clips)과 같은 Boundary를 재사용한다: `ProjectMediaSelecting`(System PhotosPicker, Broad Photos Read Permission 없음, Session-isolated Cancel), `Phase5ReadyMediaValidator`, `ProjectStorageGating`(Pre-copy Admission + 승인된 100 MiB Reserve), `ProjectMediaStore` Workspace / Materialization, ADR-020 Transactional Commit.
+
+Operation Semantics만 다르다: CREATE / REPLACE-project가 아니라 **APPEND-to-current-project**다. 새 Clip은 현재 Persisted Project의 논리적 마지막 Clip 뒤에 Picker 선택 순서로 `sortOrder`를 부여받으며 기존 Clip Identity / 순서 / Trim / Framing / Orientation은 변하지 않는다. 대체 Project, Safe Atomic Replacement, 두 번째 Current Project를 만들지 않는다.
+
+All-or-nothing: 선택 항목 중 하나라도 `invalid` 또는 `requiresImportPreparation`이면 Materialize / Persist 없이 현재 Project를 그대로 두고 Workspace를 폐기한다. Commit 순서는 Workspace → Validate All → Admission → Materialize → Appended Project State → Persist → Read-back Verify → Cleanup이며, Persist 실패 시 부분 Append된 논리 Project를 노출하지 않고 Materialize된 새 Copy만 정리한다. Photos 원본은 어떤 경로에서도 수정 / 삭제하지 않는다.
+
+Phase 6 소유 준비(Long-source Segment, 4K → 1080p, HDR → SDR, Frame-rate Normalization)는 이 계약에 포함되지 않으며 Camera Recording은 계속 Photos에만 저장되고 어떤 Project에도 자동으로 붙지 않는다.
 
 ---
 

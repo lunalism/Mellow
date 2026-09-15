@@ -19,6 +19,8 @@ final class AppEnvironment {
     let projectComposition: ProjectCompositionCoordinator
     let projectMediaStore: any ProjectMediaStoring
     let projectStorageGate: any ProjectStorageGating
+    /// Editor clip thumbnails (ARCHITECTURE §56): Project-owned committed media only, memory cache.
+    let clipThumbnails: any ClipThumbnailProviding
     /// Production Select-Clips boundary (system Photos picker) hosted by the Projects screen.
     let photosVideoSelector: PhotosVideoSelector
     /// Production `프로젝트` screen state (ADR-036): canonical saved-Project lookup + Select Clips.
@@ -237,9 +239,26 @@ final class AppEnvironment {
 
         #if DEBUG
         Self.seedUITestProjects(arguments: arguments, repository: repository)
-        Self.seedEditorProjectAndRouteIfNeeded(arguments: arguments, repository: repository, router: router)
+        let seededEditorClipIDs = Self.seedEditorProjectAndRouteIfNeeded(arguments: arguments, repository: repository, router: router)
+        // The seeded editor project has no media, so its thumbnails come from a deterministic fake
+        // (`-uiTestThumbnailFailure=<position>` scripts one placeholder). Every other route — including
+        // the STEP 6 fixture composition — uses the production service against real committed media.
+        if let seededEditorClipIDs {
+            var script: [UUID: FakeClipThumbnailProvider.Outcome] = [:]
+            for (index, id) in seededEditorClipIDs.enumerated() { script[id] = .image(seed: index) }
+            let failing = arguments.first { $0.hasPrefix("-uiTestThumbnailFailure=") }?
+                .replacingOccurrences(of: "-uiTestThumbnailFailure=", with: "")
+            if let failing, let position = Int(failing), seededEditorClipIDs.indices.contains(position - 1) {
+                script[seededEditorClipIDs[position - 1]] = .failure(.mediaMissing)
+            }
+            clipThumbnails = FakeClipThumbnailProvider(script: script)
+        } else {
+            clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
+        }
         routeToUITestProjectsEntryIfNeeded()
         routeToUITestProjectsEntryRealMediaIfNeeded()
+        #else
+        clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
         #endif
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
@@ -356,20 +375,27 @@ final class AppEnvironment {
     /// STEP 4 deterministic editor routing (DEBUG/UI-tests only). Seeds one Portrait project with a
     /// few placeholder clips and, when requested, opens it directly in the Project Editor. This
     /// exposes the editor without changing production Recent-item navigation (which two completed
-    /// Phase 2/3 regression tests still depend on).
+    /// Phase 2/3 regression tests still depend on). Returns the seeded clip ids in logical order, or
+    /// nil when nothing was seeded.
+    @discardableResult
     private static func seedEditorProjectAndRouteIfNeeded(
         arguments: [String],
         repository: any ProjectRepository,
         router: AppRouter
-    ) {
-        guard arguments.contains("-uiTestSeedEditorProject") else { return }
+    ) -> [UUID]? {
+        guard arguments.contains("-uiTestSeedEditorProject") else { return nil }
         // Start from a clean store so the seeded editor project is deterministic and independent of
         // any leftover shared-container state from earlier tests.
         if let existing = try? repository.recentProjects() {
             for project in existing { try? repository.deleteProject(id: project.id) }
         }
         let projectID = UUID()
-        let durations: [MediaTime] = [.seconds(2), .seconds(3), .seconds(1)]
+        // Default three clips; `-uiTestSeedEditorClips=N` seeds N (cycling the same durations) so the
+        // timeline's horizontal overflow can be exercised deterministically.
+        let baseDurations: [MediaTime] = [.seconds(2), .seconds(3), .seconds(1)]
+        let requestedCount = arguments.first { $0.hasPrefix("-uiTestSeedEditorClips=") }
+            .flatMap { Int($0.replacingOccurrences(of: "-uiTestSeedEditorClips=", with: "")) } ?? baseDurations.count
+        let durations = (0..<max(1, requestedCount)).map { baseDurations[$0 % baseDurations.count] }
         let clips: [VlogClip] = durations.enumerated().compactMap { index, duration in
             guard let path = try? RelativeMediaPath("seed/editor-clip-\(index).mov") else { return nil }
             return try? VlogClip(
@@ -381,11 +407,12 @@ final class AppEnvironment {
                 sortOrder: index
             )
         }
-        guard let project = try? VlogProject(id: projectID, orientation: .portrait9x16, clips: clips) else { return }
+        guard let project = try? VlogProject(id: projectID, orientation: .portrait9x16, clips: clips) else { return nil }
         try? repository.create(project)
         if arguments.contains("-uiTestOpenEditor") {
             router.path = [.projectEditor(projectID)]
         }
+        return project.clips.map(\.id)
     }
     #endif
 

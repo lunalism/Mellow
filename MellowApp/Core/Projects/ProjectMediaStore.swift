@@ -26,12 +26,23 @@ protocol ProjectMediaStoring: Sendable {
     func usableCapacityBytes() async -> Int64
 }
 
+/// Read-only resolution of a committed `RelativeMediaPath` to its local file URL, for consumers
+/// that only read Project-owned media (thumbnails now; preview / export later). It never creates,
+/// moves or deletes anything, and it never yields a URL outside the Mellow-owned root.
+protocol ProjectMediaURLResolving: Sendable {
+    /// Throws `ProjectMediaStoreError.mediaMissing` when no file exists at the path and
+    /// `.pathEscapesRoot` when the resolved location would leave the Mellow root.
+    func committedMediaURL(for path: RelativeMediaPath) async throws -> URL
+}
+
 enum ProjectMediaStoreError: Error, Equatable {
     case destinationAlreadyExists
     case sourceMissing
+    case mediaMissing
+    case pathEscapesRoot
 }
 
-actor ProjectMediaStore: ProjectMediaStoring {
+actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving {
     private let root: URL
     private let fileManager = FileManager.default
 
@@ -87,6 +98,19 @@ actor ProjectMediaStore: ProjectMediaStoring {
 
     func fileExists(_ path: RelativeMediaPath) async -> Bool {
         fileManager.fileExists(atPath: root.appendingPathComponent(path.value).path)
+    }
+
+    func committedMediaURL(for path: RelativeMediaPath) async throws -> URL {
+        // `RelativeMediaPath` already refuses absolute and `..` components; standardizing and
+        // re-checking containment keeps this read boundary safe even if that invariant ever slips.
+        let rootPath = root.standardizedFileURL.path
+        let url = root.appendingPathComponent(path.value).standardizedFileURL
+        guard url.path.hasPrefix(rootPath + "/") else { throw ProjectMediaStoreError.pathEscapesRoot }
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw ProjectMediaStoreError.mediaMissing
+        }
+        return url
     }
 
     func discard(_ workspace: ProjectMediaWorkspace) async {

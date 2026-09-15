@@ -23,7 +23,7 @@ struct ProjectEditorDestination: View {
             guard model == nil, !unavailable else { return }
             do {
                 if let project = try environment.projectRepository.project(id: projectID) {
-                    model = ProjectEditorModel(project: project)
+                    model = ProjectEditorModel(project: project, thumbnails: environment.clipThumbnails)
                     #if DEBUG
                     MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
                     #endif
@@ -37,35 +37,58 @@ struct ProjectEditorDestination: View {
     }
 }
 
-/// Phase 5 Project Editor shell (ADR-034): a large Preview surface, an ordered clip strip and a
-/// quiet project summary. Placeholders only — no playback, no reorder/delete, no edit tools. The
-/// shell deliberately shows no dead controls for deferred features.
+/// Phase 5 Project Editor (ADR-034): an immersive dark media workspace — a dominant Portrait Preview
+/// canvas above a persistent bottom editing dock with the ordered clip timeline. No playback, no
+/// reorder/delete, no edit tools; the shell deliberately shows no dead controls for deferred features.
 struct ProjectEditorView: View {
     @Bindable var model: ProjectEditorModel
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        VStack(spacing: 16) {
-            ProjectPreviewShell(
+        VStack(spacing: 8) {
+            ProjectPreviewCanvas(
                 orientation: model.project.orientation,
                 selectedClip: model.selectedClip,
                 selectedPosition: selectedPosition
             )
-            ClipThumbnailStrip(
+            EditorTimelineDock(
                 clips: model.orderedClips,
                 selectedClipID: model.selectedClipID,
-                select: model.select
+                totalDuration: model.totalDuration,
+                thumbnail: model.thumbnail(for:),
+                select: model.select,
+                showsStagedAddSlot: showsStagedAddSlot
             )
-            ProjectSummary(totalDuration: model.totalDuration)
-            Spacer(minLength: 0)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
         }
-        .padding()
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .padding(.top, 8)
+        .background(EditorWorkspace.canvas.ignoresSafeArea())
+        // Editor-only workspace appearance: the subtree and its navigation bar render dark whatever
+        // the app appearance is; nothing global changes (Projects / Camera are untouched).
+        .environment(\.colorScheme, .dark)
+        .toolbarBackground(EditorWorkspace.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        // Thumbnail work lives in the model / service, never in body evaluation. `.task` cancels the
+        // load when the screen leaves, so no generation outlives it.
+        .task(id: displayScale) { await model.loadThumbnails(displayScale: displayScale) }
         .navigationTitle("Project")
         .navigationBarTitleDisplayMode(.inline)
-        // `.contain` keeps the preview / strip / summary individually queryable under the container
+        // `.contain` keeps the preview / dock / timeline individually queryable under the container
         // identifier (a bare identifier would swallow them).
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("projectEditor")
+    }
+
+    /// DEBUG staging of the Add Clip reference visual; `-uiTestProductionTimeline` reproduces the
+    /// exact Release presentation (no slot) for tests and screenshots. Release is always false.
+    private var showsStagedAddSlot: Bool {
+        #if DEBUG
+        return !ProcessInfo.processInfo.arguments.contains("-uiTestProductionTimeline")
+        #else
+        return false
+        #endif
     }
 
     private var selectedPosition: Int? {
@@ -74,15 +97,17 @@ struct ProjectEditorView: View {
     }
 }
 
-/// Structural preview surface only. Shows the selected clip's identity as a placeholder; it never
-/// renders raw media and hosts no AVPlayer or playback control (real effective-result playback is
-/// Phase 8).
-struct ProjectPreviewShell: View {
+/// Full flexible Preview canvas: owns every point between the navigation bar and the timeline dock
+/// and is the same black as the workspace — no card, no visible boundary. Future Project media
+/// aspect-fits (9:16) inside `mediaArea`; future Text / Sticker tools overlay the canvas through the
+/// `ZStack` without taking layout space. STEP 8 shows only a faint glyph: no playback, no AVPlayer,
+/// no static thumbnail preview, no engineering copy. The selected clip is described for accessibility.
+struct ProjectPreviewCanvas: View {
     let orientation: ProjectOrientation
     let selectedClip: VlogClip?
     let selectedPosition: Int?
 
-    private var aspect: CGFloat {
+    private var mediaAspect: CGFloat {
         switch orientation {
         case .portrait9x16: return 9.0 / 16.0
         case .landscape16x9: return 16.0 / 9.0
@@ -90,41 +115,29 @@ struct ProjectPreviewShell: View {
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color(.secondarySystemBackground))
-            .aspectRatio(aspect, contentMode: .fit)
-            .frame(maxHeight: 340)
-            .overlay {
-                VStack(spacing: 8) {
-                    Image(systemName: "film").font(.largeTitle).foregroundStyle(.primary)
-                    Text(placeholderText).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+        ZStack {
+            EditorWorkspace.canvas
+            // Media area: where the Project's 9:16 content will aspect-fit later. Invisible now.
+            Color.clear
+                .aspectRatio(mediaAspect, contentMode: .fit)
+                .overlay {
+                    Image(systemName: "film")
+                        .font(.system(size: 30, weight: .regular))
+                        .foregroundStyle(Color(white: 0.28))
                 }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityIdentifier("projectEditorPreview")
-            .accessibilityLabel(accessibilityText)
+            // Overlay layer (top-leading / trailing tool placement) is reserved here; nothing is
+            // rendered until the owning Phase ships real controls — no dead buttons.
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("projectEditorPreview")
+        .accessibilityLabel(accessibilityText)
     }
 
-    private var placeholderText: String {
-        guard let selectedPosition else { return "No clip selected" }
-        return "Clip \(selectedPosition) preview"
-    }
     private var accessibilityText: String {
         guard let selectedPosition else { return "Preview, no clip selected" }
-        return "Preview of clip \(selectedPosition)"
-    }
-}
-
-/// Quiet supporting information; must not compete with the preview (ADR-034).
-struct ProjectSummary: View {
-    let totalDuration: MediaTime
-
-    var body: some View {
-        Text("Total \(ClipDurationText.string(totalDuration))")
-            .font(.footnote).monospacedDigit().foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("projectTotalDuration")
-            .accessibilityLabel("Total duration \(ClipDurationText.string(totalDuration))")
+        return "Preview, selected clip \(selectedPosition)"
     }
 }
 

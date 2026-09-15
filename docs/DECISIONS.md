@@ -1566,6 +1566,8 @@ Selector Placement / Camera Control Layout은 Phase 3 Structural UX Gate에서 �
 
 **Partial Supersession (ADR-033):** `Camera → Short Clip Capture → Clip Review / Management → Editor → Export`를 하나의 Persisted Project 안에서 연결한다는 전제 중 Capture 단계는 Project에 속하지 않는다. Camera Clip은 Photos에 저장되고 Project는 이후 `Select Clips`에서 만들어지며 Compact Project-content Access는 단일 저장 Project 진입으로 재해석한다. Lightweight Editor 구조는 유지한다.
 
+**Partial Supersession (ADR-037):** Lightweight Editor의 "Camera / Photos Library를 지원하는 Add Clip" 중 Editor Add Clip의 Acquisition Source는 System PhotosPicker로 확정되었으며 Editor `+`는 Camera를 열지 않는다. 아래 원문은 당시 기준의 기록이다.
+
 ## Context
 
 Mellow의 짧은 Clip을 Capture에서 Composition으로 빠르게 연결하고 단순한 배열과 명시적인 Control로 Editing 복잡성을 낮추기 위해 사용자가 구조를 승인했다.
@@ -1930,7 +1932,7 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 
 **Date:** 2026-09-14
 **Status:** Accepted
-**Partial Supersession:** 이 ADR의 §1 Projects Entry Presentation(Compact Native Bottom Sheet)만 ADR-035에 의해 전용 Pushed Projects 화면으로 Superseded되었으며, §1의 Semantic Hierarchy(`Start New Project` / `Continue Editing` / 대체 확인)와 §2–§7은 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
+**Partial Supersession:** 이 ADR의 §1 Projects Entry Presentation(Compact Native Bottom Sheet)만 ADR-035에 의해 전용 Pushed Projects 화면으로 Superseded되었으며, §3 `Add Clips`의 "Direct Camera 취득 / Photos 취득 각각 라우팅" 문구 중 Editor Add Clip의 Acquisition Source는 ADR-037에 의해 System PhotosPicker(현재 Project Append)로 확정되었다. §1의 Semantic Hierarchy(`Start New Project` / `Continue Editing` / 대체 확인)와 §2–§7의 나머지는 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
 
 **Clarifies / Extends:** ADR-030의 Lightweight Editor / Ordered Thumbnail Strip 방향과 ADR-033의 Camera Projects Entry(`Select Clips` / `Load Last Saved`), Safe Atomic Replacement, Single Saved Project 및 Camera Compact Project-content Access를 Phase 5 구현 직전 Structural UX Gate 수준으로 구체화한다. ADR-021(Logical Deletion / Undo)과 ADR-026(Unavailable Clip / Replace)의 Accepted Semantics는 변경하지 않고 Presentation만 확정한다. 기존 ADR을 대체(Supersede)하지 않으며 역사적 기록을 다시 쓰지 않는다.
 
@@ -2117,6 +2119,42 @@ Select-Clips / PhotosPicker / Project 생성 / Replacement Transaction 구현, L
 
 ---
 
+# ADR-037 — Project Editor Add Clip Uses PhotosPicker Acquisition
+
+**Date:** 2026-09-15
+**Status:** Accepted
+
+**Partially Supersedes:** ADR-030 Lightweight Editor의 "Camera / Photos Library를 지원하는 Add Clip"과 ADR-034 §3의 "Direct Camera 취득과 Photos 취득을 각각의 Boundary로 라우팅"하는 Add Clips 문구 중 **Editor Add Clip의 Acquisition Source만**. ROADMAP Phase 5의 "Add Clip Action으로 Camera에 다시 진입" 구현 과제를 대체한다. Lightweight Editor 구조, Ordered Timeline, Delete / Undo, Unavailable Replace, ADR-033의 Capture-first / Single-project 정책과 ADR-034 §2 Select-Clips Media Boundary는 변경하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. 기존 Phase 5 Roadmap은 이 Action을 "Camera 재진입"으로 정의했지만, ADR-033 이후 Camera는 Capture-first이며 Recording은 어떤 Project에도 속하지 않는다. Camera로 라우팅하면 "현재 열린 Project가 촬영 결과의 소유자"라는 암묵적 결합이 생기고, 이미 STEP 6가 구현한 PhotosPicker Composition Bootstrap(명시적 사용자 선택, Broad Photos Read Permission 없음, Media Inspection, Phase-5-ready Validation, Pre-copy Storage Admission, Project-owned Materialization, Photos 원본 보존, Cancel / Failure 안전성)과 다른 두 번째 Acquisition Model이 생긴다.
+
+## Decision
+
+- Editor `+`는 **"이 Project에 Clip 추가"**를 뜻하며 System PhotosPicker를 연다. Camera를 열지 않는다.
+- Flow: `ProjectEditor → + → PhotosPicker → 하나 이상 Video 선택 → 선택 항목 전부 Inspect / Validate → 모두 Phase-5-ready이면 Project-owned Copy Materialize → 현재 Project 끝에 Picker 선택 순서대로 Append → Persist / Autosave → Editor Timeline 갱신`. 하나라도 Ready가 아니면 **아무것도 Append하지 않고** 현재 Project는 변경되지 않는다(All-or-nothing).
+- Phase-5-ready 규칙은 ADR-034 §2 / STEP 6 계약을 그대로 재사용한다(0 < duration ≤ 5s, Portrait, ≤1080p-class, ≤30 fps, SDR, Audio 선택). Non-ready Media는 기존 `requires import preparation` UX를 받으며 조용한 Trim / Crop / Transcode / Normalize / HDR 변환 / Frame-rate 변경을 하지 않는다. Long-source Segment Selection, 4K → 1080p, HDR → SDR, Frame-rate Normalization, Import 편집 준비는 Phase 6 소유로 유지되며 Phase 5가 완전한 Photos Import를 구현했다고 주장하지 않는다.
+- Append는 현재 Persisted Project P에 대한 **APPEND** Operation이다: 대체 Project 생성, Safe Atomic Replacement, 또 다른 Current Project 생성, 기존 Clip 삭제, 순서 Reset, Orientation 변경을 하지 않는다. 새 Clip은 현재 논리적 마지막 Clip 뒤에 Picker 선택 순서로 붙는다(`A → B → C` + `D → E` = `A → B → C → D → E`).
+- Transaction 안전성은 STEP 6와 같은 원칙을 따른다: Workspace → Validate → Storage Admission → Materialize → Appended Project State 구성 → Persist → Read-back Verify → Cleanup. Commit 전 실패 시 P는 변경되지 않으며, Persistence 실패 시 부분 Append된 논리 Project를 노출하지 않고, Photos 원본은 건드리지 않는다.
+- Picker Cancel: Project Mutation 없음, 새 Clip 없음, Error 없음, 이전 Selection 재사용 없음, Media 잔여물 없음. STEP 6의 Real-picker Session Isolation 수정을 유지한다.
+- UI: 최종 Timeline은 `[ + ] [clip1][clip2][clip3] …`의 Leading Add Clip Control을 가진다. 이 Control은 기능이 구현된 뒤에만 Production에 나타나며 그 전에는 Dead Button도 빈 예약 Gap도 두지 않는다(STEP 8 V4.1 Production 표현 유지). 구현 시 같은 Timeline HStack 앞에 Prepend하며 Layout을 다시 설계하지 않는다.
+- Camera Ownership: Camera 동작은 변하지 않는다. 일반 Camera Recording은 Photos에 저장되고 어떤 Project에도 자동으로 붙지 않으며 현재 Project 소유자를 추론하지 않는다. 사용자는 `ProjectEditor + → PhotosPicker`로 Project Media를 명시적으로 고른다(Capture ≠ Project). Camera로 촬영한 순간도 Photos 저장 후 같은 경로로 Project에 추가한다.
+
+## Consequences
+
+- Phase 5 Add Clip은 STEP 6의 Selection / Validation / Admission / Materialization Boundary를 재사용하고 Operation Semantics만 CREATE / REPLACE에서 APPEND-to-current로 바뀐다(ARCHITECTURE 62절 "Editor Add Clip Append Contract").
+- ROADMAP Phase 5 구현 과제 13과 UI Test "Add Clip 진입" 문구를 PhotosPicker Append Semantics로 갱신한다.
+- DESIGN / PRODUCT의 "Add Clip은 Camera와 Photos Library를 지원" 문구는 Editor `+`의 Acquisition Source가 PhotosPicker임을 명시하도록 보완한다.
+
+## Non-goals
+
+- Add Clip 구현 자체(이 ADR은 문서 정렬이며 코드 변경이 없다).
+- Phase 6 Import / Normalization, Unavailable Replace Metadata Migration, Reorder / Delete / Undo 구현.
+- Camera Content-slot / Representative Thumbnail 변경.
+
+---
+
 ## 3. Pending Decisions
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
@@ -2222,6 +2260,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Hierarchy, 대체 확인 Cancel / Create New Project); Presentation은 ADR-035로 전용 Pushed `프로젝트` 화면(`Camera → 프로젝트 → ProjectEditor`)으로 확정, Bottom Sheet 아님; 화면 Content는 ADR-036으로 항상 두 개의 중앙 Action(`새 프로젝트 시작` / `기존 프로젝트 불러오기`, 후자는 저장 Project 있을 때만 Enabled, List / Card / Metadata 없음)으로 확정; 정확한 Localization Copy만 Polish로 Pending.
 - Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
+- Editor Add Clip의 Acquisition Source — Resolved 2026-09-15 by ADR-037: System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다.
 - Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034: 저장 Project 없으면 Session-only 피드백 유지, 있으면 Project Representative Thumbnail + Editor 진입으로 승격(Raw Playback 아님).
 - Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Pending, Replacement 구현 직전(ADR-034가 다시 Open으로 만들지 않음).
 - Multi-project 복원 시점 — Pending, Post-V1 Product Decision.

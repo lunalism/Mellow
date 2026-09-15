@@ -487,7 +487,7 @@ Clip Thumbnail의 Single Tap은 선택이며 Text Entry를 바로 열지 않는�
 
 Long Press + Drag로 순서를 바꾸고 Move Earlier / Move Later와 같은 Non-drag Accessibility 대안을 제공한다.
 
-Trim / Text / Delete는 명시적인 Clip Action이며 Add Clip은 Camera와 Photos Library를 지원하되 각 기능은 기존 Owning Phase에서 구현한다.
+Trim / Text / Delete는 명시적인 Clip Action이다. Add Clip은 ADR-037에 따라 System PhotosPicker를 열어 Phase-5-ready Media를 현재 Project 끝에 추가하며 Camera를 열지 않는다(Camera로 촬영한 Clip은 Photos 저장 후 같은 경로로 추가한다). 각 기능은 기존 Owning Phase에서 구현한다.
 
 Final Output의 정확한 Label과 동작은 Export Phase에서 결정하며 Toolbar Geometry를 이 결정에서 고정하지 않는다.
 
@@ -499,7 +499,7 @@ Final Output의 정확한 Label과 동작은 Export Phase에서 결정하며 Too
 - Clip 순서 변경
 - Clip 삭제
 - Clip Trim
-- 새 Clip 촬영
+- Clip 추가(PhotosPicker, ADR-037)
 - Video Import
 - 전체 Preview
 - Export
@@ -537,6 +537,8 @@ Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7
 Unavailable Clip은 숨기지 않고 기존 Timeline Position을 차지하며 Healthy Clip과 구분할 수 있고 Replace와 Delete Action에 접근할 수 있어야 한다.
 
 Unavailable 상태의 정확한 Icon, Thumbnail Placeholder, Label, Color, Button Layout, Modal 또는 Sheet와 Copy는 Phase 5 Structural UX Gate에서 결정한다.
+
+Phase 5 STEP 8 Editor Baseline(V4.1 Full-canvas Timeline, 승인 2026-09-15 — Simulator Visual Review + LunaTestphone Physical Review): ProjectEditor는 앱의 Light / Dark Appearance와 무관하게 Editor 전용 Dark Media Workspace(Black Canvas, Dark Elevated Dock, Light Foreground)를 사용한다 — Projects는 일반 App Surface, Editor는 집중형 작업 공간이며 Global Appearance는 바꾸지 않는다. 구성은 Native Navigation(`Back` / `Project`) → Navigation과 Dock 사이의 모든 Flexible 공간을 차지하는 Full Preview Canvas(Workspace와 같은 Black, Card / 가시 경계 없음, 좌우 Inset ≈ 4pt, 상하 Gap 8pt) → Compact Bottom Timeline Dock(≈100pt, 좌우 여백 10pt, Radius 20, Bottom Safe-area 위 6pt)이다. Canvas는 Overlay 가능한 ZStack이며 이후 Project Media는 Canvas 안에 9:16 `aspectRatio(.fit)`으로 놓이고, 이후 Text / Sticker 등 Editor Control은 Canvas 위에 Overlay로 얹혀 Preview 크기를 줄이지 않는다(이번 STEP에서는 어떤 Control도 렌더링하지 않으며 Text / Sticker 기능은 존재하지 않는다). STEP 8의 Canvas는 Placeholder Shell로 희미한 `film` Glyph만 보이고 Engineering Copy가 없으며 Accessibility는 `Preview, selected clip N`이다. Dock 안의 Clip Navigation은 Leading 정렬 Ordered Timeline / Filmstrip으로 좌 → 우 논리 순서를 유지하고 짧은 Project를 중앙 정렬하지 않으며 넘치면 Horizontal Scroll한다. Dock에는 Heading이 없고 `Total 7.0s`는 Dock 우상단의 Caption2 Secondary Metadata다. Cell은 44 × 78pt 9:16(Radius 7, 간격 4pt) Aspect Fill Thumbnail이고 Duration은 Cell 우하단의 작은 불투명 Near-black Tag(`3.0s`, Caption2 Monospaced, Decorative — Accessibility Label이 Duration을 말함)로 표시한다. 선택 Clip은 Mellow Signature Orange 500 Outline 2pt + Accessibility Selected State(Checkmark / Scale / Lift / Glow 없음, Geometry 고정), 비선택은 Quiet Hairline이다. Production Timeline은 Dock의 Leading Inset(10pt)에서 바로 시작하며 Dead Add Control이나 빈 Slot을 두지 않는다. 이후 Leading `+`(Add Clip, 40pt Circle)은 ADR-037에 따라 System PhotosPicker로 Media 선택을 열어 Phase-5-ready Clip을 현재 Project 끝에 추가하며, 기능이 구현된 뒤에만 Production에 나타나고 같은 Timeline HStack 앞에 Prepend된다(DEBUG Build만 `+` Reference Visual을 Staging하며 `-uiTestProductionTimeline`이 Release 표현을 재현한다). 이후 Reorder는 같은 Timeline에서 Long Press + Horizontal Drag로 구현하며 Clip Identity는 Stable Clip ID, Cell Geometry는 고정이다. Thumbnail 생성 실패 Cell은 같은 크기 / Radius / 위치에 Neutral Dark Surface + `film` Symbol + Duration Tag를 유지한다(ADR-026 Unavailable Replace / Delete UX는 별도 Slice).
 
 Healthy Clip의 Individual Clip Preview는 사용자가 현재 이 Clip이 실제 Vlog에서 어떻게 보일지 확인하는 경험이어야 하며 Raw Source를 단순 재생하는 별도 원본 확인 경험으로 표현하지 않는다.
 

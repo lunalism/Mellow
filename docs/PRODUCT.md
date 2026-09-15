@@ -316,7 +316,7 @@ Clip Thumbnail의 Single Tap은 선택이며 Text Entry를 바로 열지 않는�
 
 Long Press + Drag로 순서를 바꾸고 Move Earlier / Move Later와 같은 Non-drag Accessibility 대안을 제공한다.
 
-Trim / Text / Delete는 명시적인 Clip Action이며 Add Clip은 Camera와 Photos Library를 지원하되 각 기능은 기존 Owning Phase에서 구현한다.
+Trim / Text / Delete는 명시적인 Clip Action이다. Add Clip은 ADR-037에 따라 System PhotosPicker를 열어 Phase-5-ready Media를 현재 Project 끝에 추가하며 Camera를 열지 않는다(Camera로 촬영한 Clip은 Photos 저장 후 같은 경로로 추가한다). 각 기능은 기존 Owning Phase에서 구현한다.
 
 Final Output의 정확한 Label과 동작은 Export Phase에서 결정하며 Toolbar Geometry를 이 결정에서 고정하지 않는다.
 

@@ -583,6 +583,8 @@ Unavailable Clip은 자동으로 삭제하거나 숨기거나 Healthy Clip으로
 
 새로운 Clip은 Mellow Camera로 촬영하거나 Photos Library에서 Import할 수 있다.
 
+ADR-037에 따라 Editor의 Add Clip은 System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다. Mellow Camera로 촬영한 Clip은 Photos에 저장된 뒤 같은 경로로 추가한다.
+
 Unavailable Clip은 사용자가 기존 Media Acquisition Capability를 통해 Replace할 수 있으며 성공한 Replace는 Unrelated Clip Reorder 없이 기존 Logical Slot을 복구한다.
 
 Replace가 취소, Validation 실패, Storage 부족, Import 또는 Recording 실패, App Interruption으로 완료되지 않으면 기존 Unavailable Placeholder, Project와 다른 Clip을 유지한다.
