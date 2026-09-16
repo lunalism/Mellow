@@ -547,7 +547,7 @@ SwiftUI View 또는 Feature View Model에서 FileManager를 직접 사용하지 
 - Atomic File Move
 - Clip File 삭제(STEP 12A: `removeCommittedMedia` — Canonical Committed Path 완전 일치만, Idempotent, 잔존 시 Throw)
 - Project Media 삭제
-- Recovery Classification 이후 Confirmed Orphan 정리(STEP 12B, 미구현)
+- Recovery Classification 이후 Confirmed Orphan 정리(STEP 12B: `ProjectMediaLayout` 분류 + `enumerateProjectDirectories` / `enumerateCommittedMedia` / `enumerateWorkspaces` Shallow 열거 + `removeOrphanProjectDirectory` / `removeAbandonedWorkspace` — Canonical UUID 기반, Symlink 거부, Missing = 성공, 잔존 = Throw; `liveWorkspaceIDs` Registry)
 - Storage Availability 확인 지원
 
 `MediaStore`는 Actor 기반으로 구성하는 방향을 사용한다.
@@ -1679,6 +1679,20 @@ Replacement 중 Project Delete가 발생하면 ADR-021의 Invalid Commit Target,
 Replacement가 Same Clip Identity를 유지할지 또는 새 Clip Identity와 Slot Reference를 사용할지, 기존 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset과 사용자 Reset 안내는 구현 전에 명시적인 Technical / UX Gate에서 결정한다.
 
 이 Gate가 해결되기 전에는 Replacement Metadata Migration을 구현하지 않는다.
+
+### Phase 5 STEP 12B Implementation — Startup Orphan Media + Workspace Recovery (ADR-039 Implementation Note)
+
+`Core/Projects/ProjectStartupRecoveryCoordinator.swift`가 위 Reconciliation Contract 중 "Media + Missing Committed Metadata + No Recoverable Operation → Confirmed Orphan"과 "Confirmed Disposable Artifacts(버려진 Workspace)"의 첫 Production 구현이다. Phase-5 Composition / Add는 Durable Operation Identity를 갖지 않으므로(Repository Row 자체가 Commit) Recoverable Operation은 정의상 존재하지 않고, 남은 판정은 Committed Metadata 참조 여부와 Confirmed Ownership뿐이다.
+
+- **Trigger:** App 시작 Maintenance Task 하나(`AppEnvironment.scheduleStartupMaintenance`): Workspace Sweep → STEP 12A `reconcileAll()` → Orphan Recovery. Camera Prewarm / Staging Recovery와 독립이며 어떤 Editor 이벤트도 Scan을 촉발하지 않는다.
+- **Enumeration:** `Projects/`, `Projects/<P>/Media/`, `ProjectWorkspace/`의 직속 자식만(`contentsOfDirectory` + `attributesOfItem`으로 Type / Symlink 판정, Recursive Enumerator 없음). `CaptureStaging`, `tmp`, Documents, Photos, Container의 나머지는 열거하지 않는다.
+- **Classification(`ProjectMediaLayout`):** Canonical UUID Round-trip, 정확한 Component, 소문자 `mov`, 기대 Type, Non-symlink, Root Containment. 그 외는 `noncanonical(reason:)`로 보존 + Log.
+- **Orphan Media(존재하는 Project):** Gate 안에서 Live Session이면 Skip → Project 재로드 → `Media/` 직속 Canonical `<UUID>.mov` 각각에 대해 삭제 직전 재로드 후 `durableClips`의 ID 집합 / Path 집합 둘 다에 없을 때만 `removeCommittedMedia`(12A와 같은 Primitive, Metadata Finalize 없음). Pending Clip Media는 참조로 보존된다(12A 소유).
+- **Orphan Project Directory(Row 없음):** Canonical Directory + Non-symlink + Gate + 삭제 직전 `project(id:) == nil` 재확인 + Live Session 없음 → `removeOrphanProjectDirectory`로 **Directory 전체** 제거(ADR-039 Note 결정 A; Future Ledger Caveat 기록).
+- **Workspace:** `liveWorkspaceIDs`(Actor 내부, `beginWorkspace` 등록 / `discard` `defer` 해제)에 없는 Canonical `ProjectWorkspace/<UUID>/`만 `removeAbandonedWorkspace`로 제거, Age Threshold 없음. Live ID는 `noncanonical(reason: "live")`로 보고되어 어떤 Caller도 고려하지 않는다.
+- **Serialization:** 모든 Section이 `ProjectLifecycleOperationGate`를 잡는다(Editor Load / Composition과 FIFO). Editor Add는 Gate를 잡지 않지만 Live Session Skip이 보호한다.
+- **Failure / Idempotency / Crash:** 후보별 격리, Metadata 무변경, Missing = 성공, 두 번째 실행 무작업; Crash의 어떤 부분 상태도 다음 실행의 같은 Predicate로 수렴한다.
+- **Report / Log:** `ProjectStartupRecoveryReport`(Test / DEBUG), `MellowLog.app` `Recovery …` 이벤트(8-char Prefix, 절대 경로 없음).
 
 ### Idempotency and Uniqueness
 

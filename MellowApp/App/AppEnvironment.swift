@@ -21,6 +21,8 @@ final class AppEnvironment {
     let projectLifecycle: ProjectLifecycleOperationGate
     /// Deferred physical cleanup of known pending Clips (ADR-039): Editor exit + app startup only.
     let projectCleanup: ProjectMediaCleanupCoordinator
+    /// Startup-only orphan media / Project directory / workspace recovery (ADR-039 STEP 12B).
+    let projectRecovery: ProjectStartupRecoveryCoordinator
     let projectMediaStore: any ProjectMediaStoring
     let projectStorageGate: any ProjectStorageGating
     /// Editor clip thumbnails (ARCHITECTURE §56): Project-owned committed media only, memory cache.
@@ -63,6 +65,10 @@ final class AppEnvironment {
     /// `-uiTestCleanupDiagnostics`: cumulative cleanup counters surfaced as a tiny overlay so UI tests
     /// can observe that a pass completed (no production surface exists for cleanup, by design).
     private(set) var uiTestCleanupSummary: String?
+    /// `-uiTestCleanupDiagnostics`: STEP 12B counters + the post-maintenance existence of every
+    /// seeded recovery fixture (`-uiTestSeed…` arguments), so UI tests can assert removal /
+    /// preservation without touching the filesystem themselves.
+    private(set) var uiTestRecoverySummary: String?
     /// `-uiTestLegacyRecentProjects`: routes the Camera `Projects` control to the transitional Recent
     /// browser so historical Phase 2/3 regressions keep their exact semantics. Never Release.
     var usesLegacyRecentProjects: Bool { arguments.contains("-uiTestLegacyRecentProjects") }
@@ -265,7 +271,7 @@ final class AppEnvironment {
             let launchArguments = arguments
             fake.pendingScript = Task { await AppEnvironment.makeUITestSelectionScript(arguments: launchArguments, key: "-uiTestEditorAddSelection=") }
             self.editorPhotosSelector = nil
-            self.editorClipAcquisition = EditorClipAcquisition(
+            var acquisition = EditorClipAcquisition(
                 mediaStore: projectMediaStore, mediaSelector: fake,
                 storageGate: FakeProjectStorageGate(verdict: .sufficient),
                 appender: ProjectClipAppendCoordinator(
@@ -274,6 +280,12 @@ final class AppEnvironment {
                     storage: FakeProjectStorageGate(verdict: .sufficient)
                 )
             )
+            // `-uiTestCrashAfterAddMaterialize`: the STEP 12B crash window — the batch's files exist
+            // under the Project, no row references them yet, and the process dies before commit.
+            if arguments.contains("-uiTestCrashAfterAddMaterialize") {
+                acquisition.debugAfterMaterialize = { exit(0) }
+            }
+            self.editorClipAcquisition = acquisition
         } else {
             let editorSelector = PhotosVideoSelector()
             self.editorPhotosSelector = editorSelector
@@ -332,12 +344,19 @@ final class AppEnvironment {
         router.onProjectEditorRouteRemoved = { [projectCleanup] projectID in
             projectCleanup.scheduleReconcile(projectID: projectID)
         }
+        self.projectRecovery = ProjectStartupRecoveryCoordinator(
+            repository: projectRepository,
+            store: projectMediaStore,
+            lifecycle: projectLifecycle,
+            isEditorSessionLive: { [router] projectID in router.hasLiveProjectEditor(for: projectID) }
+        )
         #if DEBUG
         configureUITestCleanupSeams()
         routeToUITestProjectsEntryIfNeeded()
         routeToUITestProjectsEntryRealMediaIfNeeded()
+        seedUITestRecoveryFixturesIfNeeded()
         #endif
-        projectCleanup.scheduleReconcileAll()
+        scheduleStartupMaintenance()
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
 
@@ -351,6 +370,26 @@ final class AppEnvironment {
                 photosSaver: photosSaver,
                 onFinish: { [weak self] in self?.finishPermissionOnboarding() }
             )
+        }
+    }
+
+    /// ADR-039 startup maintenance, one deterministic flow, never awaited by the Camera:
+    /// abandoned-workspace sweep → STEP 12A known-pending cleanup → STEP 12B orphan recovery. Each
+    /// step takes the lifecycle gate in narrow sections, so an Editor load or a composition queued
+    /// meanwhile only waits for the section that is running. `CaptureStaging` is not part of this;
+    /// `runStagingRecovery` (Phase 4) owns it.
+    private func scheduleStartupMaintenance() {
+        let cleanup = projectCleanup, recovery = projectRecovery
+        Task { @MainActor [weak self] in
+            #if DEBUG
+            await self?.writeUITestRecoveryFixtures()
+            #endif
+            var report = await recovery.sweepAbandonedWorkspaces()
+            _ = await cleanup.reconcileAll()
+            report = report + (await recovery.recoverOrphans())
+            #if DEBUG
+            self?.publishUITestRecoverySummary(report)
+            #endif
         }
     }
 
@@ -588,6 +627,10 @@ final class AppEnvironment {
             .flatMap({ Int($0.replacingOccurrences(of: "-uiTestCleanupDelay=", with: "")) }), delay > 0 {
             projectCleanup.debugHold = { try? await Task.sleep(for: .milliseconds(delay)) }
         }
+        if let delay = arguments.first(where: { $0.hasPrefix("-uiTestRecoveryDelay=") })
+            .flatMap({ Int($0.replacingOccurrences(of: "-uiTestRecoveryDelay=", with: "")) }), delay > 0 {
+            projectRecovery.debugHold = { try? await Task.sleep(for: .milliseconds(delay)) }
+        }
         guard arguments.contains("-uiTestCleanupDiagnostics") else { return }
         var removed = 0, absent = 0, finalized = 0, deferred = 0, passes = 0
         uiTestCleanupSummary = "cleanup passes=0 removed=0 absent=0 finalized=0 deferred=0"
@@ -599,6 +642,66 @@ final class AppEnvironment {
             finalized += report.finalized.count
             deferred += report.deferred.count
             self?.uiTestCleanupSummary = "cleanup passes=\(passes) removed=\(removed) absent=\(absent) finalized=\(finalized) deferred=\(deferred)"
+        }
+    }
+
+    /// STEP 12B deterministic fixtures (DEBUG / UI tests only), all created under the Mellow root
+    /// BEFORE startup maintenance runs, so the very first launch pass has something to recover:
+    /// `-uiTestSeedOrphanMedia` (canonical unreferenced `<UUID>.mov` in the saved Project),
+    /// `-uiTestSeedOrphanProjectDir` (canonical `Projects/<UUID>/Media/<UUID>.mov` with no row),
+    /// `-uiTestSeedAbandonedWorkspace` (canonical `ProjectWorkspace/<UUID>/x.mov`),
+    /// `-uiTestSeedNoncanonicalFixtures` (`Projects/not-a-project/`, `Projects/<P>/Media/readme.txt`,
+    /// `Projects/<P>/Extras/note.txt`, `ProjectWorkspace/stale-op/`). `-uiTestRemoveNoncanonicalFixtures`
+    /// deletes exactly those noncanonical fixtures again (physical-device cleanup) — the only path
+    /// that ever removes them, since recovery must not.
+    private var uiTestRecoveryFixtures: [(label: String, relativePath: String)] = []
+
+    private func seedUITestRecoveryFixturesIfNeeded() {
+        let savedProjectID = (try? projectRepository.recentProjects().first?.id)
+        var fixtures: [(String, String)] = []
+        if arguments.contains("-uiTestSeedOrphanMedia"), let pid = savedProjectID {
+            fixtures.append(("orphanMedia", "Projects/\(pid.uuidString)/Media/\(UUID().uuidString).mov"))
+        }
+        if arguments.contains("-uiTestSeedOrphanProjectDir") {
+            fixtures.append(("orphanDir", "Projects/\(UUID().uuidString)/Media/\(UUID().uuidString).mov"))
+        }
+        if arguments.contains("-uiTestSeedAbandonedWorkspace") {
+            fixtures.append(("workspace", "ProjectWorkspace/\(UUID().uuidString)/\(UUID().uuidString).mov"))
+        }
+        let noncanonical: [(String, String)] = {
+            var list = [("nonUUIDDir", "Projects/not-a-project/orphan.mov"), ("staleWorkspace", "ProjectWorkspace/stale-op/x.mov")]
+            if let pid = savedProjectID {
+                list.append(("sidecar", "Projects/\(pid.uuidString)/Media/readme.txt"))
+                list.append(("extras", "Projects/\(pid.uuidString)/Extras/note.txt"))
+            }
+            return list
+        }()
+        if arguments.contains("-uiTestSeedNoncanonicalFixtures") { fixtures += noncanonical }
+        if arguments.contains("-uiTestRemoveNoncanonicalFixtures") {
+            let store = projectMediaStore as? ProjectMediaStore
+            Task { for (_, path) in noncanonical { await store?.debugRemoveFixture(relativePath: path) } }
+            return
+        }
+        uiTestRecoveryFixtures = fixtures
+    }
+
+    /// Writes the recorded fixtures; awaited by the startup maintenance Task before its first step.
+    private func writeUITestRecoveryFixtures() async {
+        guard let store = projectMediaStore as? ProjectMediaStore else { return }
+        for (_, path) in uiTestRecoveryFixtures { try? await store.debugWriteFixture(relativePath: path) }
+    }
+
+    private func publishUITestRecoverySummary(_ report: ProjectStartupRecoveryReport) {
+        guard arguments.contains("-uiTestCleanupDiagnostics") else { return }
+        let fixtures = uiTestRecoveryFixtures
+        guard let store = projectMediaStore as? ProjectMediaStore else { return }
+        Task { @MainActor [weak self] in
+            var parts = ["recovery ws=\(report.workspacesRemoved) dirs=\(report.orphanProjectDirsRemoved) media=\(report.orphanMediaRemoved) referenced=\(report.preservedReferenced) noncanonical=\(report.noncanonicalPreserved) failures=\(report.workspaceFailures + report.orphanProjectDirFailures + report.orphanMediaFailures)"]
+            for (label, path) in fixtures {
+                let exists = await store.debugFixtureExists(relativePath: path)
+                parts.append("\(label)=\(exists ? "present" : "absent")")
+            }
+            self?.uiTestRecoverySummary = parts.joined(separator: " ")
         }
     }
 

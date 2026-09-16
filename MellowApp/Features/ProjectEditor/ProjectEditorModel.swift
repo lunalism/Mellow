@@ -65,6 +65,11 @@ struct EditorClipAcquisition {
     let mediaSelector: any ProjectMediaSelecting
     let storageGate: any ProjectStorageGating
     let appender: ProjectClipAppendCoordinator
+    #if DEBUG
+    /// UI-test seam (`-uiTestCrashAfterAddMaterialize`): runs right after the batch is materialised
+    /// and before it is committed — the STEP 12B crash window. Nil in every production path.
+    var debugAfterMaterialize: (@MainActor () -> Void)? = nil
+    #endif
 }
 
 /// The persistent, editor-relevant state one edit changes (ADR-038): the durable clip sets and the
@@ -374,7 +379,11 @@ final class ProjectEditorModel {
         }
         let newClips: [VlogClip]
         switch await acquisition.appender.prepareClips(for: project, sources: sources) {
-        case .ready(let clips): newClips = clips
+        case .ready(let clips):
+            newClips = clips
+            #if DEBUG
+            acquisition.debugAfterMaterialize?()
+            #endif
         case .requiresImportPreparation(let reason): editorMessage = .addRequiresImportPreparation(reason); return 0
         case .invalidMedia: editorMessage = .addInvalidMedia; return 0
         case .insufficientStorage: editorMessage = .addInsufficientStorage; return 0

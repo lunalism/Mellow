@@ -1146,6 +1146,168 @@ final class MellowUITests: XCTestCase {
         leaveProjectsAndRemove(app)
     }
 
+    // MARK: - Phase 5 STEP 12B: startup orphan / workspace recovery (ADR-039)
+
+    /// Waits until the recovery diagnostics line contains every token (counters may include leftovers
+    /// of earlier tests, so the fixture-existence tokens are what is asserted).
+    @MainActor
+    private func waitForRecoverySummary(_ app: XCUIApplication, containing tokens: [String], timeout: TimeInterval = 10, _ note: String = "") {
+        let label = app.staticTexts["recoveryDiagnostics"]
+        let deadline = Date().addingTimeInterval(timeout)
+        var seen = "<none>"
+        repeat {
+            if label.exists { seen = label.label; if tokens.allSatisfy({ seen.contains($0) }) { return } }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+        XCTFail("\(note) expected tokens \(tokens), got '\(seen)'")
+    }
+
+    @MainActor
+    private func assertSeededEditorIntact(_ app: XCUIApplication) {
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(app.buttons["editorClip-1"], "Clip 1 of 3, 2.0s")
+        expectLabel(app.buttons["editorClip-3"], "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled)
+        leaveEditorToProjects(app)
+    }
+
+    /// A: a canonical `<UUID>.mov` in the saved Project's Media directory with no durable Clip is
+    /// removed at launch; the Project's active clips are untouched.
+    @MainActor
+    func testStartupRecoveryRemovesOrphanMediaAndKeepsProjectClips() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestSeedOrphanMedia"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(app, containing: ["media=1", "orphanMedia=absent", "failures=0"], "orphan media recovered")
+        assertSeededEditorIntact(app)
+        leaveProjectsAndRemove(app)
+    }
+
+    /// B + C: a canonical Project directory with no row and a canonical abandoned workspace are removed.
+    @MainActor
+    func testStartupRecoveryRemovesOrphanProjectDirectoryAndAbandonedWorkspace() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestSeedOrphanProjectDir", "-uiTestSeedAbandonedWorkspace"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(app, containing: ["orphanDir=absent", "workspace=absent", "failures=0"], "dir + workspace recovered")
+        XCTAssertTrue(app.staticTexts["recoveryDiagnostics"].label.contains("ws=1") || app.staticTexts["recoveryDiagnostics"].label.contains("ws=2"), "the seeded workspace counted")
+        assertSeededEditorIntact(app)
+        leaveProjectsAndRemove(app)
+    }
+
+    /// D: noncanonical objects (non-UUID Project dir, sidecar in Media/, unknown subdirectory, non-UUID
+    /// workspace entry) survive recovery; a DEBUG seam — never recovery — removes them afterwards.
+    @MainActor
+    func testStartupRecoveryPreservesNoncanonicalObjects() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestSeedNoncanonicalFixtures"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(app, containing: ["nonUUIDDir=present", "staleWorkspace=present", "sidecar=present", "extras=present", "failures=0"], "noncanonical preserved")
+        assertSeededEditorIntact(app)
+        app.terminate()
+        // Second launch: still preserved (idempotent), then the seam removes the fixtures.
+        let again = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics", "-uiTestSeedNoncanonicalFixtures"])
+        again.launch()
+        XCTAssertTrue(again.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(again, containing: ["nonUUIDDir=present", "staleWorkspace=present", "media=0", "failures=0"], "second pass idempotent")
+        again.terminate()
+        let cleanup = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestCleanupDiagnostics", "-uiTestRemoveNoncanonicalFixtures"])
+        cleanup.launch()
+        XCTAssertTrue(cleanup.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        cleanup.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(cleanup.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: cleanup)
+    }
+
+    /// E: a pending Clip left by the previous launch is STEP 12A's (finalized at startup) and is never
+    /// reported by STEP 12B; an orphan seeded next to it is.
+    @MainActor
+    func testStartupPendingClipIsOwnedByCleanupNotRecovery() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestCleanupDelay=60000"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["editorClip-2"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        leaveEditorToProjects(app)
+        app.terminate()
+
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics", "-uiTestSeedOrphanMedia"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(relaunched, "cleanup passes=1 removed=0 absent=1 finalized=1 deferred=0", "12A finalized the pending clip")
+        waitForRecoverySummary(relaunched, containing: ["media=1", "orphanMedia=absent", "failures=0"], "12B removed only the orphan")
+        openSavedProjectEditor(relaunched)
+        XCTAssertTrue(relaunched.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(relaunched.buttons["editorClip-3"].exists)
+        leaveEditorToProjects(relaunched)
+        leaveProjectsAndRemove(relaunched)
+    }
+
+    /// F: an Editor load attempted while startup recovery is (deliberately) still running shows the
+    /// loading state and opens only after the held section completes. Because the Editor route is
+    /// then live for that Project, its media scan is skipped (ADR-039 live-session rule) and the
+    /// orphan is recovered by the NEXT launch instead — never while an Editor could own the file.
+    @MainActor
+    func testEditorLoadWaitsForStartupRecoveryAndLiveProjectIsSkipped() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestSeedOrphanMedia", "-uiTestRecoveryDelay=6000"])
+        app.launch()
+        XCTAssertTrue(app.buttons["loadExistingProject"].waitForExistence(timeout: 5))
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["projectEditorLoading"].waitForExistence(timeout: 2), "load queued behind recovery")
+        XCTAssertFalse(app.otherElements["projectEditor"].exists)
+        XCTAssertFalse(app.staticTexts["recoveryDiagnostics"].exists, "recovery still running")
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 12))
+        waitForRecoverySummary(app, containing: ["media=0", "orphanMedia=present"], timeout: 3, "live Project skipped, file preserved")
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        leaveEditorToProjects(app)
+        app.terminate()
+
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(relaunched, containing: ["media=1", "failures=0"], "next launch recovers the orphan")
+        assertSeededEditorIntact(relaunched)
+        leaveProjectsAndRemove(relaunched)
+    }
+
+    /// G: the Camera is ready to record while startup recovery is still held open.
+    @MainActor
+    func testCameraIsReadyWhileStartupRecoveryRuns() throws {
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedAbandonedWorkspace", "-uiTestRecoveryDelay=6000", "-uiTestCleanupDiagnostics", "-uiTestLegacyRecentProjects"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        waitUntilRecordReady(app)
+        XCTAssertFalse(app.staticTexts["recoveryDiagnostics"].exists, "camera became ready before recovery finished")
+        waitForRecoverySummary(app, containing: ["workspace=absent"], timeout: 12, "recovery finished afterwards")
+        removeProjects(in: app)
+    }
+
+    /// Crash window (STEP 11 → 12B): Add materialises the batch and the process dies before commit;
+    /// the next launch removes the unreferenced file and the Project shows its original clips.
+    @MainActor
+    func testCrashAfterAddMaterializeIsRecoveredNextLaunch() throws {
+        let app = legacyRecentApp(addArguments("ready", extra: ["-uiTestCrashAfterAddMaterialize"]))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["addClips"].tap()
+        let died = XCTNSPredicateExpectation(predicate: NSPredicate(format: "state == %d", XCUIApplication.State.notRunning.rawValue), object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [died], timeout: 15), .completed, "the seam terminates the process after materialisation")
+
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForRecoverySummary(relaunched, containing: ["media=1", "failures=0"], "the never-committed file is an orphan")
+        assertSeededEditorIntact(relaunched)
+        leaveProjectsAndRemove(relaunched)
+    }
+
     /// Startup reconciliation: a pass that never finished in the previous process (held open, then
     /// the app was terminated) is completed by the next launch before the Project is opened.
     @MainActor

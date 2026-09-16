@@ -96,12 +96,18 @@ struct HomeView: View {
         // observe that a deferred pass completed; cleanup has no production surface by design.
         .overlay(alignment: .bottom) {
             if let summary = environment.uiTestCleanupSummary {
-                Text(summary)
-                    .font(.caption2)
-                    .padding(4)
-                    .background(Color(.systemBackground))
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("cleanupDiagnostics")
+                VStack(spacing: 2) {
+                    Text(summary)
+                        .accessibilityIdentifier("cleanupDiagnostics")
+                    if let recovery = environment.uiTestRecoverySummary {
+                        Text(recovery)
+                            .accessibilityIdentifier("recoveryDiagnostics")
+                    }
+                }
+                .font(.caption2)
+                .padding(4)
+                .background(Color(.systemBackground))
+                .allowsHitTesting(false)
             }
         }
         #endif
