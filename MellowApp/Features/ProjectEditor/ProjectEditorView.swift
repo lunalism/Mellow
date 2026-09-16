@@ -52,25 +52,35 @@ struct ProjectEditorView: View {
                 selectedClip: model.selectedClip,
                 selectedPosition: selectedPosition
             )
-            EditorTimelineDock(model: model, showsStagedAddSlot: showsStagedAddSlot)
+            EditorTimelineDock(model: model, deleteSelected: deleteSelectedClip, showsStagedAddSlot: showsStagedAddSlot)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
+        }
+        // Session Undo / Redo (ADR-038): always present top-trailing, enabled by history
+        // availability. The history lives in the model for this Editor session only.
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                EditorHistoryButton(symbol: "arrow.uturn.backward", label: "실행 취소", identifier: "editorUndo",
+                                    hint: model.undoTarget.map { "\($0.description) 실행 취소" }, isEnabled: model.canUndo, action: undo)
+                EditorHistoryButton(symbol: "arrow.uturn.forward", label: "다시 실행", identifier: "editorRedo",
+                                    hint: model.redoTarget.map { "\($0.description) 다시 실행" }, isEnabled: model.canRedo, action: redo)
+            }
         }
         .padding(.top, 8)
         .background(EditorWorkspace.canvas.ignoresSafeArea())
         // One subtle haptic per reorder-mode activation (long press succeeded); nothing on drop.
         .sensoryFeedback(.impact(weight: .light), trigger: model.reorderActivationCount)
-        // Recoverable autosave failure (the order was already rolled back); same alert style as
-        // the Projects screen. The user simply reorders again.
+        // Recoverable autosave failure (the state was already rolled back); same alert style as
+        // the Projects screen. The user simply tries again.
         .alert(
-            model.reorderMessage?.title ?? "",
+            model.editorMessage?.title ?? "",
             isPresented: Binding(
-                get: { model.reorderMessage != nil },
-                set: { if !$0 { model.reorderMessage = nil } }
+                get: { model.editorMessage != nil },
+                set: { if !$0 { model.editorMessage = nil } }
             ),
-            presenting: model.reorderMessage
+            presenting: model.editorMessage
         ) { _ in
-            Button("확인", role: .cancel) { model.reorderMessage = nil }
+            Button("확인", role: .cancel) { model.editorMessage = nil }
         } message: { message in
             Text(message.message)
         }
@@ -104,6 +114,46 @@ struct ProjectEditorView: View {
     private var selectedPosition: Int? {
         guard let id = model.selectedClipID else { return nil }
         return model.orderedClips.firstIndex { $0.id == id }.map { $0 + 1 }
+    }
+
+    private func deleteSelectedClip() {
+        guard model.deleteSelectedClip() else { return }
+        AccessibilityNotification.Announcement("클립을 삭제했어요. 실행 취소할 수 있어요.").post()
+    }
+
+    private func undo() {
+        let kind = model.undoTarget
+        guard model.undo() else { return }
+        AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 실행 취소했어요.").post()
+    }
+
+    private func redo() {
+        let kind = model.redoTarget
+        guard model.redo() else { return }
+        AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 다시 실행했어요.").post()
+    }
+}
+
+/// Navigation-bar Undo / Redo control: a plain system bar button (symbol only), structurally
+/// always present. iOS 26 lays SwiftUI toolbar items out as 36 pt glyph frames inside the 44 pt
+/// glass group with the bar's standard touch extension (the accessibility hit-region audit is the
+/// authority). Disabled state stays legible (system disabled tint on the dark bar) and is exposed
+/// to accessibility together with a hint naming the edit it targets.
+private struct EditorHistoryButton: View {
+    let symbol: String
+    let label: String
+    let identifier: String
+    let hint: String?
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(label, systemImage: symbol, action: action)
+            .labelStyle(.iconOnly)
+            .disabled(!isEnabled)
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel(label)
+        .accessibilityHint(hint ?? "")
     }
 }
 

@@ -599,11 +599,13 @@ Replacement의 Clip Identity와 기존 Trim, Framing, Transform, Thumbnail Metad
 
 사용자는 필요하지 않은 Clip을 현재 Vlog 프로젝트에서 제거할 수 있어야 한다.
 
-Clip Delete Action 직후 해당 Clip을 UI에서 제거하고 짧은 Undo Opportunity를 제공한다. ADR-034에 따라 Delete는 선택 Clip의 명시적 Action이며 Undo는 Transient Bottom Snackbar `Clip deleted` + `Undo`로 표시하고 일반 Clip Delete 앞에 별도 확인을 두지 않는다(Undo Window Duration은 Tuning).
+**ADR-038 (2026-09-16):** Undo는 Delete 전용 Snackbar가 아니라 Editor Navigation Bar 우상단의 상시 Undo / Redo Session History(시간순 LIFO, Reorder + Delete + 이후 편집, Session-local, Undo / Redo마다 Autosave, 새 편집은 Redo 폐기)로 제공한다. 아래 "가장 최근 Delete 한 건" / Snackbar / Undo Window 문구는 당시 기록이며 Superseded다.
 
-MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이다.
+Clip Delete Action 직후 해당 Clip을 UI에서 제거하고 Undo를 제공한다. ADR-034에 따라 Delete는 선택 Clip의 명시적 Action이며 일반 Clip Delete 앞에 별도 확인을 두지 않는다.
 
-새로운 Clip Delete가 발생하면 이전 Delete의 사용자-visible Undo Opportunity는 종료된다.
+(Superseded by ADR-038) MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이다.
+
+(Superseded by ADR-038) 새로운 Clip Delete가 발생하면 이전 Delete의 사용자-visible Undo Opportunity는 종료된다.
 
 Undo는 삭제했던 동일 Clip Identity와 기존 Media 및 해당 Clip의 Metadata를 복원하며 새로운 Duplicate Clip을 생성하지 않는다.
 
@@ -635,7 +637,7 @@ Unavailable Clip의 Delete도 이 Feature의 Logical Delete, Undo와 Active Medi
 | 양쪽 인접 Clip이 모두 남아 있거나 사용할 수 없는 상태에서 Undo | 둘 다 남아 있으면 이전 인접 Clip을 우선하고 둘 다 사용할 수 없으면 현재 삽입 범위로 Clamp한 Original Index를 사용한다. |
 | Unavailable Clip 삭제 | Unavailable이라는 이유로 Delete Confirmation 또는 Undo Semantics를 변경하지 않고 이 Feature의 Logical Delete와 Undo 계약을 적용한다. |
 
-정확한 Undo Window 시간, Snackbar / Toast 등의 UI 표현, Animation, Haptic과 Delete UI의 시각적 처리는 아직 확정하지 않는다.
+Undo 표현은 ADR-038(Navigation Bar 상시 Undo / Redo, Undo Window 없음)로 확정되었으며 Animation, Haptic과 Delete UI의 세부 시각 처리만 Tuning으로 남는다.
 
 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식 및 Coordinator / Lease / Reference Counter 구조는 이 기능 정의에서 확정하지 않는다.
 
@@ -1334,7 +1336,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다.
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
 - 개별 Clip 삭제는 즉시 UI에 반영하고 짧은 Undo Opportunity를 제공한다.
-- 사용자-visible Undo는 가장 최근 Clip Delete 한 건이며 새로운 Delete가 이전 Undo Opportunity를 종료한다.
+- 사용자-visible Undo / Redo는 ADR-038의 Editor Session History(시간순 LIFO)를 따른다.
 - Undo는 동일 Clip Identity와 기존 Media 및 해당 Clip의 Metadata를 복원하며 Duplicate Clip을 생성하지 않는다.
 - Undo Window 중 Process가 종료되면 다음 실행에 Undo Opportunity를 유지하지 않고 해당 Delete를 확정된 Logical Deletion으로 취급한다.
 - 재정렬 후 Undo는 현재 다른 Clip의 상대 순서와 Unrelated Reorder를 보존하며 F-MVP-025의 확정된 복원 위치 기준을 따른다.
@@ -1439,8 +1441,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Clip Management
 
-- 정확한 Undo Window 시간
-- Snackbar / Toast 등 Delete / Undo의 구체적인 UI 표현
+- (Resolved by ADR-038: Undo Window 불필요, Undo / Redo는 Navigation Bar 상시 Control) Delete / Undo의 세부 Visual Tuning
 - Delete / Undo Animation
 - Delete / Undo Haptic
 - Delete UI의 시각적 처리

@@ -504,6 +504,248 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 10: logical delete + session Undo / Redo history (ADR-038)
+
+    private static let editorArguments = ["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline"]
+
+    @MainActor
+    private func dragClip(_ app: XCUIApplication, from: Int, toBefore target: Int) {
+        let destination = app.buttons["editorClip-\(target)"].coordinate(withNormalizedOffset: CGVector(dx: -0.1, dy: 0.5))
+        app.buttons["editorClip-\(from)"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.7, thenDragTo: destination, withVelocity: .slow, thenHoldForDuration: 0.3)
+    }
+
+    /// A + B: the top-right Undo / Redo controls are always present and start disabled; a reorder
+    /// enables Undo, Undo restores the original order and enables Redo, Redo reapplies the reorder.
+    @MainActor
+    func testEditorUndoRedoControlsFollowReorderHistory() throws {
+        let app = legacyRecentApp(Self.editorArguments)
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"]
+        let clip1 = app.buttons["editorClip-1"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        XCTAssertTrue(undo.exists); XCTAssertTrue(redo.exists)
+        XCTAssertFalse(undo.isEnabled, "no history yet"); XCTAssertFalse(redo.isEnabled)
+        XCTAssertEqual(undo.label, "실행 취소"); XCTAssertEqual(redo.label, "다시 실행")
+        // Native iOS 26 bar items: XCUI reports the 36 pt glyph frame inside the 44 pt glass group;
+        // the bar supplies the standard touch band (the hit-region audit below is the authority).
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertGreaterThanOrEqual(undo.frame.height, 36); XCTAssertGreaterThanOrEqual(redo.frame.width, 36)
+        XCTAssertGreaterThanOrEqual(app.navigationBars.firstMatch.frame.height, 44)
+        XCTAssertEqual(undo.frame.midY, back.frame.midY, accuracy: 2, "vertically centred in the bar, level with Back")
+        XCTAssertEqual(redo.frame.midY, back.frame.midY, accuracy: 2)
+        let title = app.navigationBars.staticTexts["Project"]
+        XCTAssertTrue(title.exists)
+        XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 24, "centred title undisturbed")
+        XCTAssertGreaterThan(undo.frame.minX, title.frame.maxX, "controls trail the title")
+        XCTAssertLessThan(undo.frame.minX, redo.frame.minX)
+        XCTAssertEqual(app.otherElements["editorDock"].frame.height, 100, accuracy: 6, "dock geometry unchanged")
+        try auditAndCapture(app, name: "editor-history-idle")
+
+        dragClip(app, from: 3, toBefore: 1)                       // C A B
+        expectLabel(clip1, "Clip 1 of 3, 1.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+        try auditAndCapture(app, name: "editor-history-undo-enabled")
+
+        undo.tap()
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(clip3.value as? String, "Selected", "the reordered clip stays selected")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+        try auditAndCapture(app, name: "editor-history-redo-enabled")
+
+        redo.tap()
+        expectLabel(clip1, "Clip 1 of 3, 1.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// C: delete the selected clip → it disappears, Total drops, Undo enabled, NO snackbar; Undo
+    /// restores the same clip (re-selected), Redo deletes it again. G (in-process): leave and reopen
+    /// → controls disabled, persisted state (the deletion) remains; relaunch → same.
+    @MainActor
+    func testEditorDeleteUndoRedoAndHistoryResetsOnReopen() throws {
+        let app = legacyRecentApp(Self.editorArguments)
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        XCTAssertTrue(delete.isEnabled)
+        XCTAssertGreaterThanOrEqual(delete.frame.width, 44); XCTAssertGreaterThanOrEqual(delete.frame.height, 44)
+
+        clip2.tap()
+        delete.tap()
+        expectLabel(clip1, "Clip 1 of 2, 2.0s")
+        expectLabel(clip2, "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(clip3.exists)
+        XCTAssertEqual(clip2.value as? String, "Selected", "selection falls to the clip now at that position")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+        XCTAssertFalse(app.buttons["undoDeleteClip"].exists, "no snackbar")
+        XCTAssertFalse(app.staticTexts["deletedClipMessage"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists, "no confirmation dialog")
+        try auditAndCapture(app, name: "editor-delete-undo-enabled")
+
+        undo.tap()
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip2, "Clip 2 of 3, 3.0s")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(clip2.value as? String, "Selected", "undoing the Delete re-selects the restored clip")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+
+        redo.tap()
+        expectLabel(clip2, "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(clip3.exists)
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+
+        // G (same process): leave the Editor and reopen it through Load Existing Project.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        app.terminate()
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenEditorProject", "-uiTestProductionTimeline"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunched.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(relaunched.buttons["editorClip-1"], "Clip 1 of 2, 2.0s")
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(relaunched.buttons["editorClip-3"].exists, "the deletion persisted; the clip does not come back")
+        XCTAssertEqual(relaunched.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        XCTAssertFalse(relaunched.buttons["editorUndo"].isEnabled, "history is session-local")
+        XCTAssertFalse(relaunched.buttons["editorRedo"].isEnabled)
+        try auditAndCapture(relaunched, name: "editor-history-reopened")
+
+        relaunched.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(relaunched.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: relaunched)
+    }
+
+    /// D + E: reorder then delete → Undo reverses the Delete first, then the reorder (chronological);
+    /// after an Undo a new Delete clears Redo.
+    @MainActor
+    func testEditorHistoryIsChronologicalAndNewEditClearsRedo() throws {
+        let app = legacyRecentApp(Self.editorArguments)
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+
+        dragClip(app, from: 3, toBefore: 1)                       // C A B = 1.0 2.0 3.0
+        expectLabel(clip1, "Clip 1 of 3, 1.0s")
+        clip3.tap()
+        delete.tap()                                              // C A = 1.0 2.0
+        expectLabel(clip2, "Clip 2 of 2, 2.0s")
+        XCTAssertFalse(clip3.exists)
+
+        undo.tap()                                                // C A B
+        expectLabel(clip3, "Clip 3 of 3, 3.0s")
+        expectLabel(clip1, "Clip 1 of 3, 1.0s", "the reorder is still in place after undoing the Delete")
+        undo.tap()                                                // A B C
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+
+        redo.tap()                                                // C A B
+        expectLabel(clip1, "Clip 1 of 3, 1.0s")
+        redo.tap()                                                // C A
+        expectLabel(clip2, "Clip 2 of 2, 2.0s")
+        XCTAssertFalse(clip3.exists)
+        XCTAssertFalse(redo.isEnabled)
+
+        // E: Undo the Delete (Redo available), then a NEW Delete → Redo cleared.
+        undo.tap()                                                // C A B
+        expectLabel(clip3, "Clip 3 of 3, 3.0s")
+        XCTAssertTrue(redo.isEnabled)
+        clip1.tap()
+        delete.tap()                                              // A B = 2.0 3.0
+        expectLabel(clip1, "Clip 1 of 2, 2.0s")
+        expectLabel(clip2, "Clip 2 of 2, 3.0s")
+        XCTAssertFalse(redo.isEnabled, "the abandoned future is discarded")
+        XCTAssertTrue(undo.isEnabled)
+        try auditAndCapture(app, name: "editor-history-redo-cleared")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// F: delete the only clip → valid empty Editor (Total 0, no selection, Delete disabled), Undo
+    /// restores it (selected), Redo empties it again.
+    @MainActor
+    func testEditorDeleteOnlyClipThenUndoRedo() throws {
+        let app = legacyRecentApp(Self.editorArguments + ["-uiTestSeedEditorClips=1"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"]
+        XCTAssertTrue(clip1.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["editorClip-2"].exists)
+
+        delete.tap()
+        let empty = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip1)
+        XCTAssertEqual(XCTWaiter.wait(for: [empty], timeout: 3), .completed)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, no clip selected")
+        XCTAssertFalse(delete.isEnabled)
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+        XCTAssertTrue(app.otherElements["editorDock"].exists, "the empty Project is a normal Editor state")
+        XCTAssertFalse(app.otherElements["projectEditorUnavailable"].exists)
+        try auditAndCapture(app, name: "editor-delete-empty-history")
+
+        undo.tap()
+        expectLabel(clip1, "Clip 1 of 1, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 2.0s")
+        XCTAssertTrue(delete.isEnabled)
+        XCTAssertTrue(redo.isEnabled)
+
+        redo.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip1)], timeout: 3), .completed)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        XCTAssertTrue(undo.isEnabled)
+        undo.tap()
+        expectLabel(clip1, "Clip 1 of 1, 2.0s")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// Autosave fails → the clip is never hidden, selection and Total unchanged, no history, a
+    /// recoverable alert is shown.
+    @MainActor
+    func testEditorDeleteSaveFailureRollsBackWithoutHistory() throws {
+        let app = legacyRecentApp(Self.editorArguments + ["-uiTestEditorSaveFailure"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let clip2 = app.buttons["editorClip-2"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        clip2.tap()
+        app.buttons["deleteSelectedClip"].tap()
+
+        XCTAssertTrue(app.alerts["클립을 삭제하지 못했어요."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.alerts.staticTexts["다시 시도해주세요."].exists)
+        app.alerts.buttons["확인"].tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s")
+        XCTAssertTrue(app.buttons["editorClip-3"].exists, "nothing was hidden")
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "a failed edit is not history")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
     // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
     // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
     // `Projects` still opens Recent Projects in this slice.
@@ -1296,10 +1538,10 @@ final class MellowUITests: XCTestCase {
     /// Thumbnail state is part of the cell label ("…, loading" / "…, thumbnail unavailable"), so
     /// waiting for the exact label proves the asynchronous state settled.
     @MainActor
-    private func expectLabel(_ element: XCUIElement, _ expected: String) {
+    private func expectLabel(_ element: XCUIElement, _ expected: String, _ note: String = "") {
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed,
-                       "label is \(element.label) instead of \(expected)")
+                       "label is \(element.label) instead of \(expected) \(note)")
     }
 
     /// Zoom is applied through an async hop, so the clamped value settles after the gesture ends.

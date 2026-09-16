@@ -564,7 +564,7 @@ Replacement Media와 기존 Trim, Framing, Transform 또는 Thumbnail Metadata�
 
 필요하지 않은 개별 Clip을 삭제하면 즉시 UI에서 제거하고 짧은 Undo Opportunity를 제공한다.
 
-MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이며 새로운 Clip을 삭제하면 이전 삭제의 Undo Opportunity는 종료된다.
+**ADR-038 (2026-09-16):** Editor는 우상단 상시 Undo / Redo로 이번 Session의 편집(Reorder, Delete, 이후 편집)을 시간 역순으로 되돌리고 다시 적용한다. (Superseded) MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete Action 한 건이며 새로운 Clip을 삭제하면 이전 삭제의 Undo Opportunity는 종료된다.
 
 Undo는 삭제했던 동일한 Clip과 기존 영상을 복원하며 같은 Clip을 중복 생성하지 않는다.
 
@@ -574,7 +574,7 @@ Undo 전에 다른 Clip의 순서를 변경했더라도 그 순서 변경을 되
 
 삭제한 Clip은 현재 Project 상태와 다른 Clip의 상대 순서를 존중하면서 삭제 당시 위치에 최대한 가깝게 일관된 기준으로 복원한다.
 
-정확한 Undo Window 시간과 Delete / Undo의 구체적인 UI 표현은 아직 확정하지 않는다.
+Undo / Redo 표현은 ADR-038(Editor 우상단 상시 Undo / Redo, Undo Window 없음)로 확정되었으며 세부 Animation / Haptic만 Tuning으로 남는다.
 
 클립의 순서를 변경할 수 있다.
 
@@ -1180,7 +1180,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
 - MVP의 핵심 편집 기능은 Clip 관리, 순서 변경, Trim이다.
 - 개별 Clip 삭제는 즉시 UI에 반영하고 짧은 Undo Opportunity를 제공하며 프로젝트 전체 삭제에는 Confirmation이 필요하다.
-- 사용자에게 노출되는 Undo는 가장 최근 Clip Delete 한 건이며 새로운 Clip Delete는 이전 Undo Opportunity를 종료한다.
+- 사용자에게 노출되는 Undo / Redo는 Editor Session 편집 History(ADR-038)이며 Process 종료 후에는 유지하지 않는다.
 - Undo는 삭제했던 동일한 Clip과 기존 영상을 복원하며 Clip을 중복 생성하지 않는다.
 - Undo Window 중 App Process가 종료되면 다음 실행에서 Undo를 제공하지 않고 해당 Clip 삭제를 확정된 상태로 유지한다.
 - 재정렬 후 Undo는 다른 Clip의 순서 변경을 보존하며 현재 Project 상태를 존중하여 삭제 당시 위치에 최대한 가깝게 결정적으로 복원한다.
@@ -1239,8 +1239,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Replacement가 동일 Clip Identity를 유지할지 여부와 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset 및 사용자 Reset 안내 정책
 - Project Metadata Corruption의 정확한 Recovery Algorithm과 안전한 Failure State의 UI Copy
 - Representative Thumbnail의 정확한 frame timestamp, Placeholder Visual, Image Format / Dimensions, Cache Directory와 Eviction / Retry Policy
-- 정확한 Undo Window 시간
-- Clip Delete / Undo의 Snackbar / Toast 등 구체적인 UI 표현, Animation, Haptic 및 시각적 처리
+- (Resolved by ADR-038: Undo Window 불필요, 상시 Undo / Redo Control) Delete / Undo의 Animation, Haptic 및 세부 시각 처리
 - Media의 Physical Deletion과 Active Usage Tracking의 구체적인 구현 방식
 - Individual Clip Preview와 Full Vlog Preview의 정확한 Playback Controls, Scrubber, Navigation, Entry / Exit Transition 및 Fullscreen Behavior
 - Preview Composition Cache의 정확한 정책과 Optimization Strategy

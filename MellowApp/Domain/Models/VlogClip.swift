@@ -11,6 +11,10 @@ struct VlogClip: Identifiable, Equatable, Sendable {
     let trimDuration: MediaTime
     let framing: ClipFraming?
     let sortOrder: Int
+    /// Non-nil while the Clip is logically deleted (pending deletion). Active Clips carry nil.
+    /// Never set by editing; only `VlogProject.deleteClip` / `restoreDeletedClip` move a Clip
+    /// between the active timeline and the durable deleted set.
+    let deletion: ClipDeletionRecord?
 
     init(
         id: UUID = UUID(),
@@ -22,7 +26,8 @@ struct VlogClip: Identifiable, Equatable, Sendable {
         trimStart: MediaTime = .zero,
         trimDuration: MediaTime,
         framing: ClipFraming? = nil,
-        sortOrder: Int
+        sortOrder: Int,
+        deletion: ClipDeletionRecord? = nil
     ) throws {
         guard sourceDuration > .zero else {
             throw DomainValidationError.invalidClipDuration
@@ -48,13 +53,21 @@ struct VlogClip: Identifiable, Equatable, Sendable {
         self.trimDuration = trimDuration
         self.framing = framing
         self.sortOrder = sortOrder
+        self.deletion = deletion
     }
+
+    var isPendingDeletion: Bool { deletion != nil }
 
     var effectiveDuration: MediaTime {
         trimDuration
     }
 
     func assigningSortOrder(_ sortOrder: Int) throws -> VlogClip {
+        try assigning(sortOrder: sortOrder, deletion: deletion)
+    }
+
+    /// Same identity, media and edit metadata; only the ordering / deletion state changes.
+    func assigning(sortOrder: Int, deletion: ClipDeletionRecord?) throws -> VlogClip {
         try VlogClip(
             id: id,
             projectID: projectID,
@@ -65,7 +78,8 @@ struct VlogClip: Identifiable, Equatable, Sendable {
             trimStart: trimStart,
             trimDuration: trimDuration,
             framing: framing,
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            deletion: deletion
         )
     }
 }

@@ -309,7 +309,7 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.sortOrder), [0, 1, 2])
         XCTAssertNil(model.draggingClipID)
         XCTAssertNil(model.previewOrder)
-        XCTAssertNil(model.reorderMessage)
+        XCTAssertNil(model.editorMessage)
     }
 
     func testDropMovesFirstClipLast() throws {
@@ -372,7 +372,7 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertNil(model.previewOrder)
         XCTAssertEqual(repository.updateCount, 0)
         XCTAssertEqual(model.selectedClipID, c, "selection stays on the pressed clip")
-        XCTAssertNil(model.reorderMessage)
+        XCTAssertNil(model.editorMessage)
     }
 
     func testSuccessfulDropWritesExactlyOnce() throws {
@@ -400,20 +400,20 @@ final class ProjectEditorModelTests: XCTestCase {
 
         XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c], "the committed order is restored")
         XCTAssertEqual(model.project, before)
-        XCTAssertEqual(model.reorderMessage, .saveFailed)
-        XCTAssertEqual(model.reorderMessage?.title, "순서를 저장하지 못했어요.")
+        XCTAssertEqual(model.editorMessage, .reorderSaveFailed)
+        XCTAssertEqual(model.editorMessage?.title, "순서를 저장하지 못했어요.")
         XCTAssertEqual(model.selectedClipID, c, "selection is kept")
         XCTAssertEqual(try repository.project(id: model.project.id), before, "the store is untouched")
-        XCTAssertFalse(model.isCommittingReorder)
+        XCTAssertFalse(model.isCommittingMutation)
 
         // Recoverable: the user simply reorders again once the store cooperates.
         repository.updateFails = false
-        model.reorderMessage = nil
+        model.editorMessage = nil
         model.beginReorder(clipID: c)
         model.previewReorder(toIndex: 0)
         model.commitReorder()
         XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
-        XCTAssertNil(model.reorderMessage)
+        XCTAssertNil(model.editorMessage)
     }
 
     func testReadBackMismatchIsTreatedAsFailure() throws {
@@ -424,6 +424,7 @@ final class ProjectEditorModelTests: XCTestCase {
             func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
             func recentProjects() throws -> [VlogProject] { try inner.recentProjects() }
             func update(_ project: VlogProject) throws {}
+            func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {}
             func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
         }
         let repository = SwallowingRepository()
@@ -436,7 +437,7 @@ final class ProjectEditorModelTests: XCTestCase {
         model.commitReorder()
 
         XCTAssertEqual(model.project, project, "an unverified write is not shown as a success")
-        XCTAssertEqual(model.reorderMessage, .saveFailed)
+        XCTAssertEqual(model.editorMessage, .reorderSaveFailed)
     }
 
     func testSelectionFollowsDraggedClipIdentity() throws {
@@ -519,7 +520,7 @@ final class ProjectEditorModelTests: XCTestCase {
         let (a, b, c) = (ids[0], ids[1], ids[2])
         var nestedAccepted: Bool?
         repository.onUpdate = {
-            XCTAssertTrue(model.isCommittingReorder)
+            XCTAssertTrue(model.isCommittingMutation)
             // A second commit arriving while the first is being written must not race it.
             XCTAssertFalse(model.beginReorder(clipID: a), "no new lift while committing")
             nestedAccepted = model.moveClipLater(id: a) != nil
@@ -533,7 +534,7 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertEqual(repository.updateCount, 1, "exactly one write, no overlapping update")
         XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
         XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), [c, a, b])
-        XCTAssertFalse(model.isCommittingReorder)
+        XCTAssertFalse(model.isCommittingMutation)
     }
 
     func testBeginReorderIsRefusedForUnknownOrAlreadyLiftedClip() throws {
@@ -564,7 +565,7 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
         XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), [a, b, c])
         XCTAssertEqual(repository.updateCount, 2)
-        XCTAssertNil(model.reorderMessage)
+        XCTAssertNil(model.editorMessage)
     }
 
     func testMoveActionsRespectBoundaries() throws {
@@ -590,8 +591,419 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertNil(model.moveClipEarlier(id: ids[1]))
 
         XCTAssertEqual(model.orderedClips.map(\.id), ids)
-        XCTAssertEqual(model.reorderMessage, .saveFailed)
+        XCTAssertEqual(model.editorMessage, .reorderSaveFailed)
         XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), ids)
+    }
+
+    // MARK: - Delete + session Undo / Redo history (STEP 10, ADR-021 / ADR-038)
+
+    func testFreshEditorHasEmptyHistory() throws {
+        let (model, _, _) = try makeEditor()
+        XCTAssertFalse(model.canUndo)
+        XCTAssertFalse(model.canRedo)
+        XCTAssertTrue(model.undoStack.isEmpty)
+        XCTAssertTrue(model.redoStack.isEmpty)
+        XCTAssertNil(model.undoTarget)
+        XCTAssertNil(model.redoTarget)
+        XCTAssertFalse(model.undo())
+        XCTAssertFalse(model.redo())
+    }
+
+    func testSelectionOnlyChangeIsNotHistory() throws {
+        let (model, repository, ids) = try makeEditor()
+        model.select(ids[2])
+        model.select(ids[0])
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(repository.updateCount, 0)
+    }
+
+    func testReorderUndoRedoRoundTrip() throws {
+        let (model, repository, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        model.beginReorder(clipID: c); model.previewReorder(toIndex: 0); model.commitReorder()   // C A B
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
+        XCTAssertTrue(model.canUndo)
+        XCTAssertFalse(model.canRedo)
+        XCTAssertEqual(model.undoTarget, .reorder)
+        let updatedAtAfterEdit = model.project.updatedAt
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
+        XCTAssertEqual(model.orderedClips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(model.selectedClipID, c, "the reordered clip stays selected when still active")
+        XCTAssertFalse(model.canUndo)
+        XCTAssertTrue(model.canRedo)
+        XCTAssertEqual(model.redoTarget, .reorder)
+        XCTAssertGreaterThanOrEqual(model.project.updatedAt, updatedAtAfterEdit, "Undo is a new edit: recency never moves backwards")
+        XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), [a, b, c])
+
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
+        XCTAssertTrue(model.canUndo)
+        XCTAssertFalse(model.canRedo)
+        XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), [c, a, b])
+        XCTAssertEqual(repository.updateCount, 3, "edit, undo, redo — one write each")
+        XCTAssertEqual(model.project.id, ids.isEmpty ? UUID() : model.project.id)
+    }
+
+    func testSameIndexDropAndCancelledDragLeaveNoHistory() throws {
+        let (model, repository, ids) = try makeEditor()
+        model.beginReorder(clipID: ids[1]); model.previewReorder(toIndex: 1); model.commitReorder()
+        model.beginReorder(clipID: ids[2]); model.previewReorder(toIndex: 0); model.cancelReorder()
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(repository.updateCount, 0)
+    }
+
+    func testDeleteRemovesClipFromActiveTimelineKeepsItDurableAndEntersHistory() throws {
+        let (model, repository, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        let originalB = model.project.clips[1]
+
+        XCTAssertTrue(model.deleteClip(id: b))
+
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c])
+        XCTAssertEqual(model.orderedClips.map(\.sortOrder), [0, 1])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b], "durable pending deletion")
+        XCTAssertEqual(model.project.deletedClips[0].mediaRelativePath, originalB.mediaRelativePath)
+        XCTAssertTrue(model.canUndo)
+        XCTAssertEqual(model.undoTarget, .delete)
+        XCTAssertFalse(model.canRedo)
+        XCTAssertEqual(repository.updateCount, 1)
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id))
+        XCTAssertEqual(stored.clips.map(\.id), [a, c])
+        XCTAssertEqual(stored.deletedClips.map(\.id), [b])
+        XCTAssertNil(model.editorMessage)
+        XCTAssertFalse(model.deleteClip(id: b), "a pending-deleted clip cannot be deleted again")
+        XCTAssertFalse(model.beginReorder(clipID: b), "…or lifted for reorder")
+        model.select(b)
+        XCTAssertNotEqual(model.selectedClipID, b, "…or selected")
+    }
+
+    func testDeletingSelectedClipSelectsClipNowAtItsPositionElsePrevious() throws {
+        let (model, _, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        model.select(b)
+        XCTAssertTrue(model.deleteSelectedClip())
+        XCTAssertEqual(model.selectedClipID, c, "the clip that moved into B's position")
+        XCTAssertTrue(model.deleteSelectedClip())          // delete C (now last)
+        XCTAssertEqual(model.orderedClips.map(\.id), [a])
+        XCTAssertEqual(model.selectedClipID, a, "no clip at that position any more → previous")
+        XCTAssertEqual(model.undoStack.count, 2)
+    }
+
+    func testDeletingUnselectedClipKeepsSelection() throws {
+        let (model, _, ids) = try makeEditor()
+        model.select(ids[2])
+        XCTAssertTrue(model.deleteClip(id: ids[0]))
+        XCTAssertEqual(model.selectedClipID, ids[2])
+        XCTAssertEqual(model.orderedClips.map(\.id), [ids[1], ids[2]])
+    }
+
+    func testDeleteUndoRedoUndoKeepsExactClipIdentity() throws {
+        let (model, repository, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        let originalB = model.project.clips[1]
+        model.select(b)
+
+        model.deleteClip(id: b)                                  // A C + B pending
+        XCTAssertTrue(model.undo())                              // A B C
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
+        XCTAssertEqual(model.orderedClips[1], originalB, "same UUID, media, kind, durations, trim, framing, createdAt, no deletion")
+        XCTAssertTrue(model.project.deletedClips.isEmpty)
+        XCTAssertEqual(model.selectedClipID, b, "undoing the Delete re-selects the deleted clip")
+        XCTAssertEqual(model.totalDuration, .seconds(6))
+
+        XCTAssertTrue(model.redo())                              // A C + B pending again
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b])
+        XCTAssertEqual(model.project.deletedClips[0].id, originalB.id, "same UUID pending-deleted, no duplicate")
+        XCTAssertEqual(model.project.deletedClips[0].mediaRelativePath, originalB.mediaRelativePath)
+        XCTAssertEqual(model.selectedClipID, c, "selection matches the captured post-Delete state")
+        XCTAssertEqual(model.totalDuration, .seconds(3))
+        XCTAssertEqual(model.project.durableClips.count, 3, "never a fourth clip")
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips[1], originalB)
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id))
+        XCTAssertEqual(stored.clips, model.project.clips)
+        XCTAssertTrue(stored.deletedClips.isEmpty)
+        XCTAssertEqual(repository.updateCount, 4)
+    }
+
+    func testTwoDeletesUndoInReverseChronologicalOrderAndRedoForward() throws {
+        let (model, _, ids) = try makeEditor(clipSeconds: [1, 2, 3, 4])
+        let (a, b, c, d) = (ids[0], ids[1], ids[2], ids[3])
+        model.deleteClip(id: b)                                  // A C D
+        model.deleteClip(id: c)                                  // A D
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, d])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b, c])
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c, d], "the later Delete (C) is undone first")
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b])
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c, d])
+        XCTAssertTrue(model.project.deletedClips.isEmpty)
+        XCTAssertFalse(model.canUndo)
+
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c, d])
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, d])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b, c])
+        XCTAssertFalse(model.canRedo)
+    }
+
+    func testReorderThenDeleteUndoesDeleteFirstThenReorder() throws {
+        let (model, repository, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        model.beginReorder(clipID: c); model.previewReorder(toIndex: 0); model.commitReorder()   // C A B
+        model.deleteClip(id: b)                                                                    // C A
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a])
+        XCTAssertEqual(model.undoStack.map(\.kind), [.reorder, .delete])
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b], "Delete undone, reorder kept")
+        XCTAssertEqual(model.undoTarget, .reorder)
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c], "then the reorder")
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.redoStack.map(\.kind), [.delete, .reorder])
+
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a])
+        XCTAssertEqual(try repository.project(id: model.project.id)?.clips.map(\.id), [c, a])
+    }
+
+    func testGlobalUndoIsChronologicalNotAnchorSelective() throws {
+        // Delete B, reorder D front: one Undo reverts the reorder (A C D), not a selective restore (D A B C).
+        let (model, _, ids) = try makeEditor(clipSeconds: [1, 2, 3, 4])
+        let (a, b, c, d) = (ids[0], ids[1], ids[2], ids[3])
+        model.deleteClip(id: b)                                                                    // A C D
+        model.beginReorder(clipID: d); model.previewReorder(toIndex: 0); model.commitReorder()   // D A C
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c, d])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b], "B is still pending-deleted after one Undo")
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c, d])
+    }
+
+    func testNewEditAfterUndoClearsRedo() throws {
+        let (model, _, ids) = try makeEditor()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        model.beginReorder(clipID: c); model.previewReorder(toIndex: 0); model.commitReorder()   // C A B
+        XCTAssertTrue(model.undo())                                                                // A B C
+        XCTAssertTrue(model.canRedo)
+        XCTAssertTrue(model.deleteClip(id: b))                                                     // A C
+        XCTAssertFalse(model.canRedo, "the abandoned reorder future is discarded")
+        XCTAssertTrue(model.redoStack.isEmpty)
+        XCTAssertEqual(model.undoStack.map(\.kind), [.delete])
+        XCTAssertFalse(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c])
+    }
+
+    func testDeletingOnlyClipLeavesValidEmptyProjectAndUndoRedoRoundTrip() throws {
+        let (model, repository, ids) = try makeEditor(clipSeconds: [4])
+        XCTAssertTrue(model.deleteSelectedClip())
+        XCTAssertTrue(model.orderedClips.isEmpty)
+        XCTAssertNil(model.selectedClipID)
+        XCTAssertEqual(model.totalDuration, .zero)
+        XCTAssertTrue(model.canUndo)
+        XCTAssertFalse(model.canDeleteSelectedClip)
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id), "the project survives")
+        XCTAssertTrue(stored.clips.isEmpty)
+        XCTAssertEqual(stored.deletedClips.map(\.id), ids)
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), ids)
+        XCTAssertEqual(model.selectedClipID, ids[0], "selection restored with the edit")
+        XCTAssertEqual(model.totalDuration, .seconds(4))
+        XCTAssertTrue(model.redo())
+        XCTAssertTrue(model.orderedClips.isEmpty)
+        XCTAssertNil(model.selectedClipID)
+        XCTAssertEqual(model.totalDuration, .zero)
+    }
+
+    func testDeletePersistenceFailureRestoresTimelineSelectionTotalAndLeavesNoHistory() throws {
+        let (model, repository, ids) = try makeEditor()
+        let before = model.project
+        model.select(ids[1])
+        repository.updateFails = true
+
+        XCTAssertFalse(model.deleteSelectedClip())
+
+        XCTAssertEqual(model.project, before, "nothing hidden: the deletion was never durable")
+        XCTAssertEqual(model.orderedClips.map(\.id), ids)
+        XCTAssertEqual(model.selectedClipID, ids[1])
+        XCTAssertEqual(model.totalDuration, .seconds(6))
+        XCTAssertFalse(model.canUndo, "a failed edit is not history")
+        XCTAssertEqual(model.editorMessage, .deleteSaveFailed)
+        XCTAssertEqual(try repository.project(id: before.id), before)
+    }
+
+    func testFailedUndoAndRedoLeaveStateAndStacksUnchanged() throws {
+        let (model, repository, ids) = try makeEditor()
+        model.deleteClip(id: ids[1])
+        let deletedState = model.project
+        let stacks = (model.undoStack, model.redoStack)
+        repository.updateFails = true
+
+        XCTAssertFalse(model.undo())
+        XCTAssertEqual(model.project, deletedState)
+        XCTAssertEqual(model.undoStack, stacks.0)
+        XCTAssertEqual(model.redoStack, stacks.1)
+        XCTAssertEqual(model.editorMessage, .undoFailed)
+        XCTAssertEqual(model.editorMessage?.title, "실행 취소하지 못했어요.")
+        XCTAssertEqual(try repository.project(id: deletedState.id), deletedState)
+
+        repository.updateFails = false
+        model.editorMessage = nil
+        XCTAssertTrue(model.undo())
+        let restoredState = model.project
+        let stacks2 = (model.undoStack, model.redoStack)
+        repository.updateFails = true
+        XCTAssertFalse(model.redo())
+        XCTAssertEqual(model.project, restoredState)
+        XCTAssertEqual(model.undoStack, stacks2.0)
+        XCTAssertEqual(model.redoStack, stacks2.1)
+        XCTAssertEqual(model.editorMessage, .redoFailed)
+        XCTAssertEqual(model.editorMessage?.title, "다시 실행하지 못했어요.")
+        repository.updateFails = false
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), [ids[0], ids[2]])
+    }
+
+    func testTotalDurationFollowsActiveClipsThroughHistory() throws {
+        let (model, _, ids) = try makeEditor(clipSeconds: [2, 3, 1])
+        model.deleteClip(id: ids[1])
+        XCTAssertEqual(model.totalDuration, .seconds(3))
+        model.deleteClip(id: ids[0])
+        XCTAssertEqual(model.totalDuration, .seconds(1))
+        model.undo()
+        XCTAssertEqual(model.totalDuration, .seconds(3))
+        model.undo()
+        XCTAssertEqual(model.totalDuration, .seconds(6))
+        model.redo()
+        XCTAssertEqual(model.totalDuration, .seconds(3))
+    }
+
+    func testHistoryRestoreKeepsProjectIdentityAndMovesUpdatedAtForward() throws {
+        let (model, _, ids) = try makeEditor()
+        let identity = (model.project.id, model.project.createdAt, model.project.orientation)
+        model.deleteClip(id: ids[0])
+        let afterDelete = model.project.updatedAt
+        model.undo()
+        XCTAssertEqual(model.project.id, identity.0)
+        XCTAssertEqual(model.project.createdAt, identity.1)
+        XCTAssertEqual(model.project.orientation, identity.2)
+        XCTAssertGreaterThanOrEqual(model.project.updatedAt, afterDelete)
+        XCTAssertEqual(Set(model.project.durableClips.map(\.id)), Set(ids))
+    }
+
+    func testLateThumbnailResultCannotResurrectDeletedClipAndUndoReusesIdentity() async throws {
+        let provider = FakeClipThumbnailProvider(gated: true)
+        let (model, _, ids) = try makeEditor(provider: provider)
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        let load = Task { await model.loadThumbnails(displayScale: 2) }
+        await provider.waitForRequests(count: 3)
+        let requests = await provider.requests
+        let requestB = try XCTUnwrap(requests.first { $0.clipID == b })
+        await provider.complete(clipID: a, outcome: .image(seed: 1))
+        await waitUntil { self.isReady(model.thumbnail(for: a)) }
+        guard case .ready(let imageA) = model.thumbnail(for: a) else { return XCTFail("A ready") }
+
+        model.deleteClip(id: b)
+        XCTAssertNil(model.currentThumbnailRequest(for: b), "a pending-deleted clip has no current request")
+        model.applyThumbnailResult(.success(SyntheticThumbnailImage.make(seed: 9, size: CGSize(width: 4, height: 8))), for: requestB)
+        XCTAssertEqual(model.thumbnail(for: b), .loading, "late result for the deleted clip is dropped")
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c])
+
+        await provider.complete(clipID: b)
+        await provider.complete(clipID: c, outcome: .image(seed: 3))
+        await load.value
+        await model.loadThumbnails(displayScale: 2)
+        let after = await provider.requests
+        XCTAssertEqual(after.count, 3, "no request for the deleted clip")
+
+        model.undo()
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
+        XCTAssertEqual(model.currentThumbnailRequest(for: b), requestB, "identical request identity after Undo")
+        XCTAssertEqual(model.thumbnail(for: a), .ready(imageA), "A's image untouched by history")
+        model.redo()
+        XCTAssertNil(model.currentThumbnailRequest(for: b))
+    }
+
+    func testReorderHistoryNeverRegeneratesThumbnails() async throws {
+        let provider = FakeClipThumbnailProvider()
+        let (model, _, ids) = try makeEditor(provider: provider)
+        await model.loadThumbnails(displayScale: 2)
+        let requested = await provider.requests.count
+        model.beginReorder(clipID: ids[2]); model.previewReorder(toIndex: 0); model.commitReorder()
+        model.undo(); model.redo()
+        await model.loadThumbnails(displayScale: 2)
+        let after = await provider.requests.count
+        XCTAssertEqual(after, requested, "sortOrder is not part of the thumbnail identity")
+        XCTAssertTrue(ids.allSatisfy { isReady(model.thumbnail(for: $0)) })
+    }
+
+    func testReorderIgnoresPendingDeletedClipAndAutosaveKeepsPendingDeletions() throws {
+        let (model, repository, ids) = try makeEditor(clipSeconds: [1, 2, 3, 4])
+        let (a, b, c, d) = (ids[0], ids[1], ids[2], ids[3])
+        model.deleteClip(id: b)
+        model.deleteClip(id: c)
+        model.beginReorder(clipID: d)
+        XCTAssertEqual(model.previewOrder, [a, d], "drag slots contain active clips only")
+        model.previewReorder(toIndex: 0)
+        model.commitReorder()
+        XCTAssertEqual(model.orderedClips.map(\.id), [d, a])
+        XCTAssertEqual(model.orderedClips.map(\.sortOrder), [0, 1])
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id))
+        XCTAssertEqual(stored.deletedClips.map(\.id), [b, c], "multiple pending deletions survive normal autosave")
+        XCTAssertEqual(stored.durableClips.count, 4)
+    }
+
+    func testReopenedModelKeepsPersistedStateWithEmptyHistory() throws {
+        let (model, repository, ids) = try makeEditor()
+        model.deleteClip(id: ids[1])
+        model.beginReorder(clipID: ids[2]); model.previewReorder(toIndex: 0); model.commitReorder()
+        XCTAssertTrue(model.canUndo)
+        // Leaving the Editor / process termination: a new model is built from what the store holds.
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id))
+        let reopened = ProjectEditorModel(project: stored, repository: repository, thumbnails: FakeClipThumbnailProvider())
+        XCTAssertEqual(reopened.orderedClips.map(\.id), [ids[2], ids[0]], "persisted state retained")
+        XCTAssertEqual(reopened.project.deletedClips.map(\.id), [ids[1]], "B absent from the timeline but durable")
+        XCTAssertFalse(reopened.canUndo, "history is session-local")
+        XCTAssertFalse(reopened.canRedo)
+        XCTAssertFalse(reopened.undo())
+        XCTAssertEqual(reopened.totalDuration, .seconds(3))
+        XCTAssertEqual(repository.updateCount, 2, "no write on reopen, nothing finalized")
+    }
+
+    func testMutationsAreRefusedWhileDraggingOrCommitting() throws {
+        let (model, repository, ids) = try makeEditor()
+        model.deleteClip(id: ids[2])
+        model.beginReorder(clipID: ids[0])
+        XCTAssertFalse(model.canDeleteSelectedClip)
+        XCTAssertFalse(model.canUndo, "history controls disabled while a clip is lifted")
+        XCTAssertFalse(model.deleteSelectedClip())
+        XCTAssertFalse(model.undo())
+        model.cancelReorder()
+        XCTAssertTrue(model.canUndo)
+
+        var nested: [Bool] = []
+        repository.onUpdate = {
+            XCTAssertFalse(model.canUndo); XCTAssertFalse(model.canRedo)
+            nested.append(model.deleteClip(id: ids[0]))
+            nested.append(model.undo())
+            nested.append(model.redo())
+            nested.append(model.beginReorder(clipID: ids[0]))
+        }
+        XCTAssertTrue(model.deleteClip(id: ids[1]))
+        XCTAssertEqual(nested, [false, false, false, false], "no mutation may race an in-flight commit")
+        XCTAssertEqual(repository.updateCount, 2)
+        XCTAssertEqual(model.orderedClips.map(\.id), [ids[0]])
     }
 
     private func waitUntil(timeout: TimeInterval = 2, _ condition: @escaping @MainActor () -> Bool) async {

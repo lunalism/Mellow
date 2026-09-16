@@ -29,7 +29,20 @@ final class InMemoryProjectRepository: ProjectRepository {
             throw ProjectRepositoryError.projectOrientationImmutable
         }
 
+        let incoming = Set(project.durableClips.map(\.id))
+        guard existingProject.durableClips.allSatisfy({ incoming.contains($0.id) }) else {
+            throw ProjectRepositoryError.missingDurableClip
+        }
+
         projects[project.id] = project
+    }
+
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {
+        guard var project = projects[projectID] else {
+            throw ProjectRepositoryError.projectNotFound
+        }
+        do { try project.finalizeDeletedClip(id: clipID) } catch { throw ProjectRepositoryError.clipNotPendingDeletion }
+        projects[projectID] = project
     }
 
     func deleteProject(id: UUID) throws {

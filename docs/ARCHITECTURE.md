@@ -497,6 +497,8 @@ Feature Layer와 Persistence 사이에는 `ProjectRepository` Boundary를 사용
 - Framing 저장
 - Project 삭제
 
+Phase 5 STEP 10 Contract: `update(project)`는 Whole-Project Autosave이며 Active Clip과 Pending-deleted Clip을 합친 Durable Clip Set을 Identity로 Reconcile한다. Incoming Project에 Store의 Clip이 빠져 있으면 삭제하지 않고 `missingDurableClip`으로 거부한다 — 일반 Project Update는 절대 Clip Metadata를 물리적으로 지우지 않는다. 물리적 Metadata 제거는 오직 명시적 `finalizeDeletedClip(projectID:clipID:)`(Pending-deleted Clip에만 허용, Active Clip이면 `clipNotPendingDeletion`)로만 일어나며 STEP 10은 이 경계를 만들고 Test로 고정했을 뿐 호출하지 않는다.
+
 Production Implementation은 SwiftData 기반으로 구성한다.
 
 Test에서는 In-memory 또는 Mock Repository를 주입할 수 있어야 한다.
@@ -1724,6 +1726,8 @@ Pending Deletion은 정상 Project Clip 표시와 구별하고 재실행 시 삭
 
 Undo Window가 종료되었다는 사실만으로 Media File을 즉시 삭제하지 않는다.
 
+Phase 5 STEP 10 Implementation — Durable Logical Delete + Editor Session Undo / Redo (ADR-038): Domain은 Active Timeline과 Durable Set을 명시적으로 분리한다 — `VlogProject.clips`(Active, `sortOrder` 0…n-1, Pending-deleted 없음)와 `VlogProject.deletedClips`(Pending-deleted, `VlogClip.deletion: ClipDeletionRecord?` = `deletedAt` / `originalIndex` / `previousClipID` / `nextClipID`), `durableClips` = 둘의 합. `deleteClip(id:)`는 Anchor를 기록하고 Active를 재정규화하며, `restoreDeletedClip(id:)`는 `restorationIndex(for:in:)`(이전 Anchor가 Active면 그 뒤 → 다음 Anchor가 Active면 그 앞 → Original Index를 0…count로 Clamp)로 같은 Clip을 되돌린다; Deleted Clip의 `sortOrder`는 역사값이며 Canonical하지 않다. 영속화는 `PersistedVlogClip`의 Additive Optional Attribute 4개(`deletedAt`, `deletionOriginalIndex`, `deletionPreviousClipID`, `deletionNextClipID`; nil = Active)로 SwiftData Lightweight Migration을 그대로 통과한다(STEP 9 Store를 Simulator에서 재오픈 검증). `ProjectEditorModel`은 모든 Mutation(Reorder / Delete / Undo / Redo)을 하나의 동기 `commit` 경로(적용 → `update` → Read-back 비교 → 실패 시 이전 State / Selection 복귀 + Message)로 직렬화하고 **Session History**를 소유한다 — `undoStack` / `redoStack: [EditorHistoryEntry]`, Entry = `kind`(.reorder / .delete) + `before` / `after: EditorEditState`(Active Clip 집합, Pending-deleted Clip 집합, Selection — Thumbnail / Drag Preview / Message / Commit Flag / History 자체는 제외). 성공한 편집만 `commitEdit`로 Entry를 Push하고 Redo Stack을 비우며, `undo()` / `redo()`는 Entry의 before / after State를 현재 Project Identity(id / orientation / createdAt)에 새 `updatedAt`으로 재적용해 한 번 Autosave한다(실패 시 State / Stack 불변). History는 In-memory Session-local이며 저장하거나 Deletion Record에서 재구성하지 않는다; 재진입 Model은 빈 History로 시작한다. `VlogProject.restoreDeletedClip`의 Anchor 복원은 Editor 사용자 모델이 아니라 Domain-level Durable Recovery Primitive로 남는다. Process 종료 후 Pending Deletion은 확정 Logical Deletion으로 남는다(재표시 없음, 파괴 없음). Timer / Undo Window / Expiry Cleanup은 없다(ADR-038); Final Physical Cleanup은 별도 Slice다.
+
 ### Physical Media Delete Safety
 
 Physical Media Delete를 허용하기 전에 최소한 다음 조건을 모두 확인한다.
@@ -1746,6 +1750,8 @@ Cancellation 요청이나 UI에서 사라진 사실은 실제 Reference Release�
 삭제에 필요한 정보는 안전한 Cleanup과 재시도가 가능하도록 유지하며 동일 Artifact의 반복 Cleanup은 오류나 중복 상태를 만들지 않는다.
 
 ### Most-recent Undo Opportunity
+
+**Superseded by ADR-038:** 사용자-visible Undo는 Editor Session Undo / Redo History(시간순 LIFO)이며 "가장 최근 Delete 한 건" 제한과 Undo Window는 폐기되었다. Physical Cleanup 안전 조건과 Process Termination 계약은 유지된다. 아래 원문은 당시 기록이다.
 
 MVP에서는 한 시점에 사용자에게 노출되는 Undo Action은 가장 최근 Clip Delete 한 건이다.
 
@@ -2429,8 +2435,8 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - Recovery와 Reconciliation은 Idempotent하며 Operation / Clip Identity로 Duplicate Commit을 방지한다.
 - Logical Deletion과 Physical Deletion을 분리하고 Undo / Recovery / Active Usage가 남아 있으면 Physical Cleanup을 지연한다.
 - Project Delete는 먼저 영속적인 Invalid Commit Target을 확립하며 Late Async Result로 Project나 Clip을 되살리지 않는다.
-- MVP의 사용자-visible Undo는 가장 최근 Clip Delete 한 건이며 Process Termination 이후에는 유지하지 않는다.
-- Undo는 기존 Clip Identity와 Media를 재사용하고 Stable Anchor 및 Original Index로 복원 위치를 결정한다.
+- 사용자-visible Undo는 Editor Session Undo / Redo History(ADR-038, 시간순 LIFO, Reorder + Delete + 이후 편집)이며 Process Termination 이후에는 유지하지 않는다.
+- Undo는 기존 Clip Identity와 Media를 재사용한다; Anchor / Original Index 복원(`restoreDeletedClip`)은 Domain-level Durable Recovery Primitive로 남는다.
 - Export는 Immutable Project Snapshot을 사용하며 이후 일반 Clip Mutation이 진행 중인 Export 결과를 소급 변경하지 않는다.
 - Preview는 현재 Project State를 반영하며 Stale Composition을 Invalidate / Rebuild한다.
 - Third-party Dependency를 최소화한다.

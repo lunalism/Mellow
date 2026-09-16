@@ -2,9 +2,13 @@ import SwiftUI
 
 /// Bottom editing dock (ADR-034 §3 hierarchy: Preview → ordered strip → clip / project actions). A
 /// persistent dark surface holding the structural Add-Clip slot, the leading-aligned ordered clip
-/// timeline (tap to select, long press + horizontal drag to reorder) and the quiet Total metadata.
+/// timeline (tap to select, long press + horizontal drag to reorder) and, in its trailing column,
+/// the quiet Total metadata above the selected Clip's explicit Delete action (ADR-034 §3 level 4:
+/// Clip-level Action / Project Summary).
 struct EditorTimelineDock: View {
     let model: ProjectEditorModel
+    /// Explicit delete of the selected Clip; the dock only presents it.
+    var deleteSelected: () -> Void = {}
     /// DEBUG-only staging of the future Add Clip reference visual. Production never sets this: the
     /// timeline starts at the dock's leading inset with no dead control and no empty slot; a real
     /// Add Clip button is later prepended to the same HStack without changing the layout.
@@ -20,19 +24,49 @@ struct EditorTimelineDock: View {
                     .frame(height: ProjectEditorModel.thumbnailPointSize.height)
             }
             ClipThumbnailStrip(model: model)
-            Text("Total \(ClipDurationText.string(model.totalDuration))")
-                .font(.caption2).monospacedDigit().foregroundStyle(EditorWorkspace.secondaryText)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                .fixedSize()
-                .padding(.trailing, 10)
-                .accessibilityIdentifier("projectTotalDuration")
-                .accessibilityLabel("Total duration \(ClipDurationText.string(model.totalDuration))")
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("Total \(ClipDurationText.string(model.totalDuration))")
+                    .font(.caption2).monospacedDigit().foregroundStyle(EditorWorkspace.secondaryText)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .fixedSize()
+                    .accessibilityIdentifier("projectTotalDuration")
+                    .accessibilityLabel("Total duration \(ClipDurationText.string(model.totalDuration))")
+                Spacer(minLength: 0)
+                DeleteClipButton(isEnabled: model.canDeleteSelectedClip, action: deleteSelected)
+            }
+            .frame(height: ProjectEditorModel.thumbnailPointSize.height)
+            .padding(.trailing, 10)
         }
         .padding(.leading, 10)
         .padding(.vertical, 11)
         .background(EditorWorkspace.dock, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("editorDock")
+    }
+}
+
+/// Explicit Delete for the selected Clip (ADR-034 §3): a compact trash control, 44 pt target,
+/// bottom-trailing in the dock so it sits away from the drag surface and never on a thumbnail.
+/// Disabled (dimmed, `사용할 수 없음`) when nothing is selected or a drag / save is in flight. No
+/// confirmation — the session Undo (ADR-038, top-right) is the safety model (DESIGN §21).
+private struct DeleteClipButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "trash")
+                .font(.body.weight(.medium))
+                .foregroundStyle(isEnabled ? EditorWorkspace.primaryText : EditorWorkspace.hairline)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .accessibilityIdentifier("deleteSelectedClip")
+        .accessibilityLabel("클립 삭제")
+        .accessibilityHint("선택한 클립을 삭제해요. 실행 취소할 수 있어요.")
     }
 }
 

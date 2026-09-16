@@ -809,6 +809,8 @@ Delete / Undo의 Active-consumer Lifecycle을 포함한 B03은 Step 3에서 별�
 
 **Status:** Accepted
 
+**Partial Supersession (ADR-038):** "MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete 한 건"과 Anchor 기반 선택적 Undo 복원은 Editor Session Undo / Redo History(시간순 LIFO, Reorder + Delete, 이후 모든 편집)로 대체되었다. Logical / Physical Deletion 분리, Durable Pending Deletion, Physical Cleanup Safety, Process Termination 후 Undo 미복원, Late Result 차단은 그대로 유효하며 아래 원문은 당시 기록이다.
+
 **Partial Supersession:** ADR-033에 따라 Recording Finalization은 더 이상 Project를 Commit 대상으로 갖지 않으므로 Late Recording Commit 차단 계약은 Project Materialization / Import 경로에만 적용되며, Project 삭제 / 대체는 Photos 원본을 절대 삭제하지 않는다. 아래 원문은 당시 기준의 기록이다.
 
 ## Context
@@ -1982,6 +1984,8 @@ Phase 5가 구현하지 않는 것(Phase 6 / 7 소유 유지): Long-source Segme
 
 ### 4. Delete / Undo Presentation
 
+**Superseded by ADR-038 (2026-09-16):** Transient Bottom Snackbar와 "가장 최근 Delete 한 건" Undo, Undo Window Tuning은 Navigation Bar 우상단의 상시 Undo / Redo Session History로 대체되었다. Delete가 선택 Clip의 명시적 Action이고 확인 없이 즉시 적용된다는 점은 유지된다. 아래 원문은 당시 기록이다.
+
 가장 최근 Clip Delete Undo Opportunity에 Transient Bottom Snackbar / Toast를 사용한다. 표현은 `Clip deleted` + `Undo`.
 
 동작은 ADR-021 / F-MVP-025 Canonical: Delete 즉시 논리적 순서에서 제거, 가장 최근 Delete 한 건만 사용자-visible Undo, 새 Delete가 이전 Undo Opportunity 종료, Undo는 동일 Clip Identity / Media / Metadata 복원, Undo는 Unrelated Reorder를 되돌리지 않음, Process 종료 후 Undo 미복원, Physical Media 삭제는 안전 조건까지 지연. 정확한 Undo Window Duration은 Tuning으로 남긴다. Source-of-truth가 명시적으로 요구하지 않는 한 일반 Clip Delete 앞에 확인을 추가하지 않는다.
@@ -2286,3 +2290,38 @@ Accepted ADR의 내용이 변경되는 경우 기존 기록을 삭제하거나 �
 새 ADR에는 어떤 ADR을 대체하는지 명시한다.
 
 이를 통해 Mellow의 제품 및 기술 방향이 왜 변경되었는지 추적할 수 있도록 한다.
+
+---
+
+# ADR-038 — Editor Session Undo / Redo History
+
+**Date:** 2026-09-16
+**Status:** Accepted
+
+**Partially Supersedes:** ADR-021의 "MVP에서 사용자에게 노출되는 Undo는 가장 최근 Clip Delete 한 건이며 새로운 Delete가 이전 사용자-visible Undo Opportunity를 종료한다"와 "Undo 복원 위치는 삭제 당시 이전 / 다음 인접 Stable Clip Anchor … Original Index Clamp"의 **사용자-visible Undo 모델**, ADR-034 §4 Delete / Undo Presentation의 **Transient Bottom Snackbar `Clip deleted` + `Undo`**와 "정확한 Undo Window Duration은 Tuning으로 남긴다"는 Pending 항목, F-MVP-025 / PRODUCT / ROADMAP의 "가장 최근 Delete 한 건만 Undo" 문구. ADR-021의 Logical / Physical Deletion 분리, Durable Pending Deletion, Physical Cleanup Safety, Process Termination 후 Undo 미복원, Late Result 차단과 ADR-034 §3의 "Delete는 선택 Clip의 명시적 Action"은 그대로 유지한다. 역사적 기록은 다시 쓰지 않는다.
+
+## Context
+
+Phase 5 STEP 10 최초 구현은 Delete 전용 Bottom Snackbar와 "가장 최근 삭제 한 건"만 Undo하는 모델이었고, 정확한 Undo Window(자동 소멸 시간)는 승인되지 않은 Gate로 남아 있었다. 이 모델은 (1) Delete만 되돌릴 수 있어 이미 구현된 Reorder나 이후 Phase 7 / 8의 Trim / Framing / Text / Sticker 편집과 확장되지 않고, (2) "Delete만 선택적으로 되돌리고 이후 Reorder는 유지"하는 Anchor 복원이 일반적인 편집 History의 직관(시간 역순)과 충돌하며, (3) Timer 기반 Snackbar는 값 결정(3 / 5 / 6 / 10초)이 임의적이고 접근성상 놓치기 쉽다.
+
+## Decision
+
+- Mellow Editor V1은 **Navigation Bar 우상단의 상시 Undo / Redo Control**(`arrow.uturn.backward` / `arrow.uturn.forward`, Accessibility Label `실행 취소` / `다시 실행`)로 **Editor 편집 History**를 제공한다. 두 Control은 구조적으로 항상 존재하며 History 유무 / Commit 진행 / Drag 중 여부에 따라 Enabled / Disabled된다. `Back  Project  Undo Redo` 구조를 유지하고 Preview Canvas와 V4.1 Dock Geometry를 바꾸지 않는다.
+- History는 **시간순 LIFO**다. Undo는 가장 최근 성공한 편집을 되돌리고(Entry는 Redo Stack으로), Redo는 가장 최근 되돌린 편집을 다시 적용한다(Entry는 Undo Stack으로). Undo 뒤 **새로운 편집이 성공하면 Redo Stack 전체를 버린다**. Delete를 선택적으로 되돌리면서 이후 Reorder를 보존하는 동작은 더 이상 사용자 모델이 아니다(예: A B C D → Delete B → D를 앞으로 → Undo 한 번 = A C D, 두 번 = A B C D).
+- 참여 편집은 우선 **Clip Reorder**와 **Clip Delete**이며 이후 Add Clip / Trim / Framing / Text / Sticker 등 모든 Editor Mutation이 같은 History 모델을 사용한다. 선택만 바꾸는 Tap, Thumbnail 상태, Navigation, 실패한 저장은 History가 아니다.
+- **Undo와 Redo는 새로운 편집**이다: 각각 정확히 한 번 Autosave(Repository `update` + Read-back 검증)하며 실패 시 현재 State와 두 Stack을 그대로 두고 복구 가능한 Message(`실행 취소하지 못했어요.` / `다시 실행하지 못했어요.`)를 보인다. 복원은 현재 Project Identity(UUID / Orientation / createdAt)에 Clip 집합과 Selection을 다시 적용하며 `updatedAt`은 항상 앞으로만 간다.
+- History는 **Editor Session-local**이다. Editor를 열면 비어 있고, 떠나거나 Process가 종료되면 사라지며, SwiftData에 저장하거나 Deletion Record / Timestamp로 재구성하지 않는다. 재진입 시 Project는 마지막 Autosave 상태 그대로이고 Undo / Redo는 Disabled다.
+- History Entry는 편집 전후의 **영속 Editor State(Active Clip 집합, Pending-deleted Clip 집합, Selection)와 편집 종류**만 담는 값이다. Media / Image / Closure를 담지 않으므로 Session 동안 상한을 두지 않는다.
+- **Delete-only Snackbar, Timer 기반 Undo Window, "가장 최근 삭제 한 건" 제한은 폐기**한다. Delete는 여전히 확인 없이 즉시 적용되며 Undo가 안전 장치다.
+- **Durable Pending Deletion은 유지**한다: Delete는 Clip을 Active Timeline에서 제거하고 같은 Identity / Media / Metadata를 Pending-deleted로 영속화하며, Session History 안에서 Undo / Redo가 그 Clip을 같은 Identity로 오간다. `finalizeDeletedClip`(명시적 물리 Metadata 제거)은 Production에서 호출하지 않으며 Media 삭제 / Cleanup Scheduler / Timer는 없다. Session History에서 도달 가능한 Delete의 Media는 복구 가능해야 하고, Session이 끝난 뒤의 Pending Deletion만 이후 Cleanup Slice의 후보가 된다(ADR-021 안전 조건 유지).
+
+## Consequences
+
+- Reorder / Delete 및 이후 모든 편집이 하나의 예측 가능한 Undo / Redo 모델을 공유한다.
+- Undo Window 값 결정이 불필요해지고 접근성(VoiceOver / Switch Control)에서 Undo가 상시 발견 가능하다.
+- Delete-specific Anchor 복원(`VlogProject.restoreDeletedClip`)은 Editor 사용자 모델이 아니라 Domain-level Durable Recovery Primitive로만 남는다.
+- Editor는 Session 동안 편집 State Snapshot을 보관하지만 Metadata 값만이라 메모리 부담이 없다.
+
+## Non-goals
+
+- History 영속화, Cross-session Undo, Project 삭제 Undo, Physical Cleanup 정책, Add Clip / Trim / Framing / Text / Sticker 편집 자체.

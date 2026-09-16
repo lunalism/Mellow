@@ -9,4 +9,7 @@ enum DomainValidationError: Error, Equatable {
     case duplicateClipSortOrder
     case clipNotFound
     case invalidReorderIndex
+    case invalidDeletionRecord
+    case clipDeletionStateMismatch
+    case clipNotPendingDeletion
 }

@@ -87,6 +87,7 @@ final class FailableProjectRepository: ProjectRepository {
         if updateFails { throw Failure.injected }
         try inner.update(project)
     }
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws {
         if deleteFails { throw Failure.injected }
         deletedIDs.append(id)

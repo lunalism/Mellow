@@ -202,7 +202,15 @@ final class AppEnvironment {
         let repository = SwiftDataProjectRepository(
             modelContext: modelContainer.mainContext
         )
+        #if DEBUG
+        // `-uiTestEditorSaveFailure`: every whole-Project autosave (`update`) fails, so the Editor's
+        // rollback paths (reorder / delete / undo) can be exercised deterministically. Seeding and
+        // reads go through unchanged.
+        self.projectRepository = arguments.contains("-uiTestEditorSaveFailure")
+            ? UpdateFailingProjectRepository(inner: repository) : repository
+        #else
         self.projectRepository = repository
+        #endif
         // Phase 5 Select-Clips composition (ADR-034 §2 / ADR-020 / ADR-024). The UI-test harness
         // injects a fake gate so deterministic scenarios never depend on the simulator's disk.
         let projectMediaStore = ProjectMediaStore()
@@ -520,3 +528,19 @@ final class AppEnvironment {
         UserDefaults.standard.set(value, forKey: PermissionOnboardingStorage.key)
     }
 }
+
+#if DEBUG
+/// UI-test double: forwards everything except `update`, which always fails.
+@MainActor
+private final class UpdateFailingProjectRepository: ProjectRepository {
+    private let inner: any ProjectRepository
+    struct SaveFailure: Error {}
+    init(inner: any ProjectRepository) { self.inner = inner }
+    func create(_ project: VlogProject) throws { try inner.create(project) }
+    func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
+    func recentProjects() throws -> [VlogProject] { try inner.recentProjects() }
+    func update(_ project: VlogProject) throws { throw SaveFailure() }
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
+    func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+}
+#endif

@@ -40,6 +40,12 @@ final class PersistedVlogClip {
     var framingCenterY: Double?
     var framingScale: Double?
     var sortOrder: Int
+    // Logical deletion (ADR-021), additive optional attributes so stores written before Phase 5
+    // STEP 10 open unchanged: nil = active Clip. All four are set together by `apply`.
+    var deletedAt: Date?
+    var deletionOriginalIndex: Int?
+    var deletionPreviousClipID: UUID?
+    var deletionNextClipID: UUID?
     var project: PersistedVlogProject?
 
     init(
@@ -56,7 +62,11 @@ final class PersistedVlogClip {
         framingCenterX: Double?,
         framingCenterY: Double?,
         framingScale: Double?,
-        sortOrder: Int
+        sortOrder: Int,
+        deletedAt: Date? = nil,
+        deletionOriginalIndex: Int? = nil,
+        deletionPreviousClipID: UUID? = nil,
+        deletionNextClipID: UUID? = nil
     ) {
         self.id = id
         self.sourceKindRawValue = sourceKindRawValue
@@ -72,6 +82,10 @@ final class PersistedVlogClip {
         self.framingCenterY = framingCenterY
         self.framingScale = framingScale
         self.sortOrder = sortOrder
+        self.deletedAt = deletedAt
+        self.deletionOriginalIndex = deletionOriginalIndex
+        self.deletionPreviousClipID = deletionPreviousClipID
+        self.deletionNextClipID = deletionNextClipID
     }
 }
 
@@ -84,7 +98,7 @@ extension PersistedVlogProject {
             orientationRawValue: project.orientation.rawValue
         )
 
-        clips = project.clips.map(PersistedVlogClip.init(clip:))
+        clips = project.durableClips.map(PersistedVlogClip.init(clip:))
         clips.forEach { $0.project = self }
     }
 
@@ -98,12 +112,14 @@ extension PersistedVlogProject {
             throw ProjectRepositoryError.invalidPersistedMetadata
         }
 
+        let domainClips = try clips.map { try $0.domainValue(projectID: id) }
         return try VlogProject(
             id: id,
             createdAt: createdAt,
             updatedAt: updatedAt,
             orientation: orientation,
-            clips: try clips.map { try $0.domainValue(projectID: id) }
+            clips: domainClips.filter { !$0.isPendingDeletion },
+            deletedClips: domainClips.filter(\.isPendingDeletion)
         )
     }
 }
@@ -124,7 +140,11 @@ extension PersistedVlogClip {
             framingCenterX: clip.framing?.normalizedCenterX,
             framingCenterY: clip.framing?.normalizedCenterY,
             framingScale: clip.framing?.scale,
-            sortOrder: clip.sortOrder
+            sortOrder: clip.sortOrder,
+            deletedAt: clip.deletion?.deletedAt,
+            deletionOriginalIndex: clip.deletion?.originalIndex,
+            deletionPreviousClipID: clip.deletion?.previousClipID,
+            deletionNextClipID: clip.deletion?.nextClipID
         )
     }
 
@@ -142,6 +162,10 @@ extension PersistedVlogClip {
         framingCenterY = clip.framing?.normalizedCenterY
         framingScale = clip.framing?.scale
         sortOrder = clip.sortOrder
+        deletedAt = clip.deletion?.deletedAt
+        deletionOriginalIndex = clip.deletion?.originalIndex
+        deletionPreviousClipID = clip.deletion?.previousClipID
+        deletionNextClipID = clip.deletion?.nextClipID
     }
 
     func domainValue(projectID: UUID) throws -> VlogClip {
@@ -163,6 +187,23 @@ extension PersistedVlogClip {
             throw ProjectRepositoryError.invalidPersistedMetadata
         }
 
+        // A deletion record needs its timestamp and original index; a half-written record is
+        // treated as invalid metadata rather than silently resurrecting or dropping the Clip.
+        let deletion: ClipDeletionRecord?
+        switch (deletedAt, deletionOriginalIndex) {
+        case (nil, nil):
+            deletion = nil
+        case let (deletedAt?, originalIndex?):
+            deletion = try ClipDeletionRecord(
+                deletedAt: deletedAt,
+                originalIndex: originalIndex,
+                previousClipID: deletionPreviousClipID,
+                nextClipID: deletionNextClipID
+            )
+        default:
+            throw ProjectRepositoryError.invalidPersistedMetadata
+        }
+
         return try VlogClip(
             id: id,
             projectID: projectID,
@@ -173,7 +214,8 @@ extension PersistedVlogClip {
             trimStart: try MediaTime(value: trimStartValue, timescale: trimStartTimescale),
             trimDuration: try MediaTime(value: trimDurationValue, timescale: trimDurationTimescale),
             framing: framing,
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            deletion: deletion
         )
     }
 }

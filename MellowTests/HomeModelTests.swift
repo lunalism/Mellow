@@ -194,5 +194,6 @@ private final class FailingProjectRepository: ProjectRepository {
     func project(id: UUID) throws -> VlogProject? { try check(); return try underlying.project(id: id) }
     func recentProjects() throws -> [VlogProject] { try check(); return try underlying.recentProjects() }
     func update(_ project: VlogProject) throws { try check(); try underlying.update(project) }
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try check(); try underlying.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws { try check(); try underlying.deleteProject(id: id) }
 }

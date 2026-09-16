@@ -47,15 +47,17 @@ final class SwiftDataProjectRepository: ProjectRepository {
             throw ProjectRepositoryError.projectOrientationImmutable
         }
 
-        let incomingClipIDs = Set(project.clips.map(\.id))
-        persistedProject.clips
-            .filter { !incomingClipIDs.contains($0.id) }
-            .forEach(modelContext.delete)
+        // Never an implicit metadata deletion: every persisted Clip must still be present in the
+        // incoming durable set (active or pending-deleted). Physical removal is `finalizeDeletedClip`.
+        let incomingClipIDs = Set(project.durableClips.map(\.id))
+        guard persistedProject.clips.allSatisfy({ incomingClipIDs.contains($0.id) }) else {
+            throw ProjectRepositoryError.missingDurableClip
+        }
 
         let existingClipsByID = Dictionary(
             uniqueKeysWithValues: persistedProject.clips.map { ($0.id, $0) }
         )
-        let persistedClips = project.clips.map { clip in
+        let persistedClips = project.durableClips.map { clip in
             if let persistedClip = existingClipsByID[clip.id] {
                 persistedClip.apply(clip)
                 return persistedClip
@@ -66,6 +68,18 @@ final class SwiftDataProjectRepository: ProjectRepository {
         persistedProject.apply(project)
         persistedProject.clips = persistedClips
         persistedProject.clips.forEach { $0.project = persistedProject }
+        try saveOrRollback()
+    }
+
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {
+        guard let persistedProject = try persistedProject(id: projectID) else {
+            throw ProjectRepositoryError.projectNotFound
+        }
+        guard let persistedClip = persistedProject.clips.first(where: { $0.id == clipID }), persistedClip.deletedAt != nil else {
+            throw ProjectRepositoryError.clipNotPendingDeletion
+        }
+        persistedProject.clips.removeAll { $0.id == clipID }
+        modelContext.delete(persistedClip)
         try saveOrRollback()
     }
 

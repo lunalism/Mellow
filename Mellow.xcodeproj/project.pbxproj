@@ -86,6 +86,7 @@
 		000000000000000000000259 /* ClipThumbnailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000159 /* ClipThumbnailService.swift */; };
 		00000000000000000000025A /* ClipThumbnailTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015A /* ClipThumbnailTestDoubles.swift */; };
 		00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015B /* ClipThumbnailServiceTests.swift */; };
+		00000000000000000000025C /* ClipDeletionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015C /* ClipDeletionRecord.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -192,6 +193,7 @@
 		000000000000000000000159 /* ClipThumbnailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailService.swift; sourceTree = "<group>"; };
 		00000000000000000000015A /* ClipThumbnailTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailTestDoubles.swift; sourceTree = "<group>"; };
 		00000000000000000000015B /* ClipThumbnailServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailServiceTests.swift; sourceTree = "<group>"; };
+		00000000000000000000015C /* ClipDeletionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipDeletionRecord.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -326,6 +328,7 @@
 				000000000000000000000111 /* ClipFraming.swift */,
 				000000000000000000000112 /* VlogClip.swift */,
 				000000000000000000000113 /* VlogProject.swift */,
+				00000000000000000000015C /* ClipDeletionRecord.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -730,6 +733,7 @@
 				00000000000000000000020F /* ClipFraming.swift in Sources */,
 				000000000000000000000210 /* VlogClip.swift in Sources */,
 				000000000000000000000211 /* VlogProject.swift in Sources */,
+				00000000000000000000025C /* ClipDeletionRecord.swift in Sources */,
 				000000000000000000000212 /* ClipPolicy.swift in Sources */,
 				000000000000000000000213 /* ProjectDisplayNameFormatter.swift in Sources */,
 				000000000000000000000214 /* DomainValidationError.swift in Sources */,

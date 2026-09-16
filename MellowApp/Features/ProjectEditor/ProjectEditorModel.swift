@@ -20,26 +20,77 @@ enum ClipThumbnailPresentation: Equatable {
     }
 }
 
-/// Recoverable outcome of a reorder whose autosave did not land (ARCHITECTURE §57). The committed
-/// order was restored before this is shown; nothing else about the Project changed.
-enum ClipReorderMessage: Equatable {
-    case saveFailed
+/// Recoverable outcome of an Editor mutation whose autosave did not land (ARCHITECTURE §57). The
+/// committed state was restored before this is shown; nothing else about the Project changed.
+enum ProjectEditorMessage: Equatable {
+    case reorderSaveFailed
+    case deleteSaveFailed
+    case undoFailed
+    case redoFailed
 
-    var title: String { "순서를 저장하지 못했어요." }
+    var title: String {
+        switch self {
+        case .reorderSaveFailed: return "순서를 저장하지 못했어요."
+        case .deleteSaveFailed: return "클립을 삭제하지 못했어요."
+        case .undoFailed: return "실행 취소하지 못했어요."
+        case .redoFailed: return "다시 실행하지 못했어요."
+        }
+    }
     var message: String { "다시 시도해주세요." }
+}
+
+/// The persistent, editor-relevant state one edit changes (ADR-038): the durable clip sets and the
+/// selection. Deliberately excludes transient state (thumbnails, drag preview, messages, commit
+/// flags, the history itself) and the Project's identity / timestamps — a restore re-applies these
+/// sets to the *current* Project with a fresh `updatedAt`, never an old one.
+struct EditorEditState: Equatable, Sendable {
+    let clips: [VlogClip]
+    let deletedClips: [VlogClip]
+    let selectedClipID: UUID?
+
+    init(project: VlogProject, selectedClipID: UUID?) {
+        clips = project.clips
+        deletedClips = project.deletedClips
+        self.selectedClipID = selectedClipID
+    }
+}
+
+/// One successful, persisted Editor edit in the session history (ADR-038): the state before and
+/// after, plus what kind of edit it was (for the Undo / Redo hints). Value-only, metadata-only —
+/// no media bytes, no images, no closures — so an unbounded session history is cheap.
+struct EditorHistoryEntry: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case reorder
+        case delete
+
+        /// Short Korean description used in accessibility hints ("클립 삭제 실행 취소").
+        var description: String {
+            switch self {
+            case .reorder: return "클립 순서 변경"
+            case .delete: return "클립 삭제"
+            }
+        }
+    }
+
+    let kind: Kind
+    let before: EditorEditState
+    let after: EditorEditState
 }
 
 /// Presentation state for the Phase 5 Project Editor (ADR-034).
 ///
 /// Holds one loaded Project, its ordered clips, total duration, the selected clip and the per-clip
 /// thumbnail presentation. STEP 8 added asynchronous thumbnail loading with identity-based
-/// stale-result protection; STEP 9 adds clip reorder (long press + drag and the non-drag Move
-/// Earlier / Move Later actions) with autosave through the repository. There is still no delete,
-/// undo, add clip or playback — those belong to later slices.
+/// stale-result protection; STEP 9 added clip reorder (long press + drag and the non-drag Move
+/// Earlier / Move Later actions) with autosave; STEP 10 adds logical Clip delete (ADR-021, durable
+/// pending deletion) and the session-local Undo / Redo history (ADR-038). There is still no
+/// physical cleanup, add clip or playback.
 ///
-/// Reorder state is deliberately small and explicit: `project` is the committed order, `previewOrder`
+/// Reorder state is deliberately small and explicit: `project` is the committed state, `previewOrder`
 /// the temporary order shown while a drag is in flight, `draggingClipID` the lifted Clip. Nothing is
-/// written until the drop; cancel simply drops the preview.
+/// written until the drop; cancel simply drops the preview. Every mutation (reorder, delete, undo,
+/// redo) goes through one synchronous commit path: apply on a copy → write → read back → publish,
+/// or roll back and surface a recoverable message. Only a successful edit enters the history.
 @Observable
 @MainActor
 final class ProjectEditorModel {
@@ -64,13 +115,23 @@ final class ProjectEditorModel {
     /// Temporary logical order shown during the drag (Clip ids). Nil outside a drag. Never persisted
     /// as such — only the drop turns it into a committed order.
     private(set) var previewOrder: [UUID]?
-    /// True while a reorder is being written; a second commit is refused rather than raced.
-    private(set) var isCommittingReorder = false
+    /// True while a mutation (reorder / delete / undo) is being written; a second commit is refused
+    /// rather than raced.
+    private(set) var isCommittingMutation = false
     /// Incremented once per successful reorder-mode activation — the haptic trigger and the only
     /// observable of the activation event.
     private(set) var reorderActivationCount = 0
-    /// Recoverable autosave failure to present; the order has already been rolled back.
-    var reorderMessage: ClipReorderMessage?
+    /// Recoverable autosave failure to present; the committed state has already been rolled back.
+    var editorMessage: ProjectEditorMessage?
+
+    // MARK: Session history (ADR-038)
+
+    /// Chronological edit history of THIS Editor session: `undoStack.last` is the most recent
+    /// successful edit, `redoStack.last` the most recently undone one. In memory only — a new model
+    /// (reopened Editor, relaunch) starts empty while the durable Project stays as last autosaved.
+    /// Unbounded for the session: entries hold clip metadata values only (no media, no images).
+    private(set) var undoStack: [EditorHistoryEntry] = []
+    private(set) var redoStack: [EditorHistoryEntry] = []
 
     init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding) {
         self.project = project
@@ -90,6 +151,16 @@ final class ProjectEditorModel {
 
     /// Committed logical order, unaffected by any drag preview.
     var committedClips: [VlogClip] { project.clips }
+
+    var canUndo: Bool { !undoStack.isEmpty && !isCommittingMutation && draggingClipID == nil }
+    var canRedo: Bool { !redoStack.isEmpty && !isCommittingMutation && draggingClipID == nil }
+    /// The edit Undo would reverse / Redo would reapply (accessibility hints).
+    var undoTarget: EditorHistoryEntry.Kind? { undoStack.last?.kind }
+    var redoTarget: EditorHistoryEntry.Kind? { redoStack.last?.kind }
+
+    var canDeleteSelectedClip: Bool {
+        selectedClip != nil && draggingClipID == nil && !isCommittingMutation
+    }
 
     var totalDuration: MediaTime { project.totalDuration }
 
@@ -112,7 +183,7 @@ final class ProjectEditorModel {
     /// commit is in flight, or while another Clip is already lifted.
     @discardableResult
     func beginReorder(clipID: UUID) -> Bool {
-        guard draggingClipID == nil, !isCommittingReorder, project.clips.contains(where: { $0.id == clipID }) else { return false }
+        guard draggingClipID == nil, !isCommittingMutation, project.clips.contains(where: { $0.id == clipID }) else { return false }
         draggingClipID = clipID
         previewOrder = project.clips.map(\.id)
         selectedClipID = clipID
@@ -187,33 +258,121 @@ final class ProjectEditorModel {
     /// 4. On any failure or read-back mismatch: restore the previous committed order, keep the
     ///    selection, surface a recoverable message. Nothing partial is ever left behind.
     ///
-    /// Synchronous on the Main Actor, so two commits can never interleave; `isCommittingReorder`
+    /// Synchronous on the Main Actor, so two commits can never interleave; `isCommittingMutation`
     /// additionally refuses a re-entrant commit from inside the repository call.
     @discardableResult
     private func reorder(clipID: UUID, toIndex index: Int) -> Bool {
-        guard !isCommittingReorder else { return false }
+        guard !isCommittingMutation else { return false }
         var updated = project
         do { try updated.reorderClip(id: clipID, toIndex: index) } catch { return false }
         guard updated.clips.map(\.id) != project.clips.map(\.id) else { return false }
+        return commitEdit(.reorder, updated, selecting: clipID, failure: .reorderSaveFailed, label: "reorder")
+    }
 
+    // MARK: - Delete (STEP 10, ADR-021)
+
+    /// Logically deletes the selected Clip: it leaves the active timeline at once, the Total drops,
+    /// selection falls to the Clip now at its position (else the previous one, else none) and the
+    /// edit enters the session history. Metadata and media stay durable (pending deletion). Nothing
+    /// is hidden unless the pending-deletion state was written and read back.
+    @discardableResult
+    func deleteSelectedClip() -> Bool {
+        guard let clipID = selectedClipID else { return false }
+        return deleteClip(id: clipID)
+    }
+
+    @discardableResult
+    func deleteClip(id clipID: UUID) -> Bool {
+        guard !isCommittingMutation, draggingClipID == nil, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        var updated = project
+        do { try updated.deleteClip(id: clipID) } catch { return false }
+        let selection: UUID?
+        if selectedClipID == clipID {
+            selection = updated.clips.indices.contains(index) ? updated.clips[index].id : updated.clips.last?.id
+        } else {
+            selection = selectedClipID
+        }
+        return commitEdit(.delete, updated, selecting: selection, failure: .deleteSaveFailed, label: "delete")
+    }
+
+    // MARK: - Undo / Redo (ADR-038)
+
+    /// Reverses the most recent successful edit: its BEFORE state (clip sets + selection) is
+    /// re-applied to the current Project as a new autosave. On success the entry moves to the
+    /// Redo stack; on failure nothing changes (state, stacks) and a recoverable message is shown.
+    @discardableResult
+    func undo() -> Bool {
+        guard canUndo, let entry = undoStack.last else { return false }
+        guard commitHistory(entry.before, failure: .undoFailed, label: "undo") else { return false }
+        undoStack.removeLast()
+        redoStack.append(entry)
+        return true
+    }
+
+    /// Re-applies the most recently undone edit (its AFTER state) as a new autosave; the entry
+    /// moves back to the Undo stack. Failure leaves state and stacks untouched.
+    @discardableResult
+    func redo() -> Bool {
+        guard canRedo, let entry = redoStack.last else { return false }
+        guard commitHistory(entry.after, failure: .redoFailed, label: "redo") else { return false }
+        redoStack.removeLast()
+        undoStack.append(entry)
+        return true
+    }
+
+    /// A history-capable edit: commit, then (only on success) push one entry and discard any Redo
+    /// future — a new edit after Undo abandons the undone branch.
+    private func commitEdit(_ kind: EditorHistoryEntry.Kind, _ updated: VlogProject, selecting selection: UUID?, failure: ProjectEditorMessage, label: StaticString) -> Bool {
+        let before = EditorEditState(project: project, selectedClipID: selectedClipID)
+        guard commit(updated, selecting: selection, failure: failure, label: label) else { return false }
+        undoStack.append(EditorHistoryEntry(kind: kind, before: before, after: EditorEditState(project: project, selectedClipID: selectedClipID)))
+        redoStack.removeAll()
+        return true
+    }
+
+    /// Restores a captured state onto the CURRENT Project (same identity, orientation, createdAt;
+    /// fresh `updatedAt`) through the common commit path. A captured selection that is no longer
+    /// active falls back to the first active Clip.
+    private func commitHistory(_ state: EditorEditState, failure: ProjectEditorMessage, label: StaticString) -> Bool {
+        let restored: VlogProject
+        do {
+            restored = try VlogProject(
+                id: project.id, createdAt: project.createdAt, updatedAt: .now, orientation: project.orientation,
+                clips: state.clips, deletedClips: state.deletedClips
+            )
+        } catch {
+            editorMessage = failure
+            return false
+        }
+        let selection = state.selectedClipID.flatMap { id in restored.clips.contains { $0.id == id } ? id : nil } ?? restored.clips.first?.id
+        return commit(restored, selecting: selection, failure: failure, label: label)
+    }
+
+    /// The one autosave path for every Editor mutation: publish the new committed state, write it,
+    /// read it back and compare the durable clip sets; on any failure or mismatch restore the
+    /// previous state and selection and surface a recoverable message. Nothing partial is ever left.
+    private func commit(_ updated: VlogProject, selecting selection: UUID?, failure: ProjectEditorMessage, label: StaticString) -> Bool {
         let previous = project
-        isCommittingReorder = true
-        defer { isCommittingReorder = false }
+        let previousSelection = selectedClipID
+        isCommittingMutation = true
+        defer { isCommittingMutation = false }
         project = updated
-        selectedClipID = clipID
+        selectedClipID = selection
         do {
             try repository.update(updated)
-            guard let stored = try repository.project(id: updated.id), stored.clips == updated.clips else {
+            guard let stored = try repository.project(id: updated.id),
+                  stored.clips == updated.clips, stored.deletedClips == updated.deletedClips else {
                 throw ProjectRepositoryError.invalidPersistedMetadata
             }
             #if DEBUG
-            MellowLog.app.info("Project editor reorder saved \(updated.id.uuidString, privacy: .public) order=\(updated.clips.map(\.sortOrder).description, privacy: .public)")
+            MellowLog.app.info("Project editor \(label, privacy: .public) saved \(updated.id.uuidString, privacy: .public) active=\(updated.clips.count, privacy: .public) pendingDeleted=\(updated.deletedClips.count, privacy: .public)")
             #endif
             return true
         } catch {
             project = previous
-            MellowLog.app.error("Project editor reorder save failed \(updated.id.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
-            reorderMessage = .saveFailed
+            selectedClipID = previousSelection
+            MellowLog.app.error("Project editor \(label, privacy: .public) save failed \(updated.id.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
+            editorMessage = failure
             return false
         }
     }

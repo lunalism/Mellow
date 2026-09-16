@@ -1515,6 +1515,8 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 
 - **Clip Reorder + Persistence / Autosave — 구현 2026-09-16 (Phase 5 STEP 9, Physical Review Pending on LunaTestphone):** V4.1 Timeline의 Long Press(0.4초) + Horizontal Drag Reorder(Impact Haptic 1회, Lift 1.05, 이웃 Reflow, 32pt Edge Auto-scroll, Drop 시 1회 Commit)와 Non-drag Accessibility Action `앞으로 이동` / `뒤로 이동`이 `ProjectEditorModel`의 단일 Reorder 경로(`VlogProject.reorderClip` → `sortOrder` 0…n-1 정규화 → `ProjectRepository.update` → Read-back 검증 → Committed Order 발행)를 사용한다. Drag 중에는 Temporary Preview Order만 바뀌고 Repository는 Drop에서 한 번만 쓰이며, Cancel은 Committed Order 복귀 / 무기록, 저장 실패는 이전 순서 복귀 + `순서를 저장하지 못했어요.` Alert다. 같은 Clip 집합의 `update`는 Clip Row를 삭제 / 재생성하지 않음을 SwiftData Test로 증명했고, Reorder 결과는 Editor 재진입 / Process Relaunch / Container 재오픈 후 유지된다(Unit + UI Test). Delete / Undo / Add Clip / Playback은 여전히 시작하지 않았다.
 
+- **Logical Clip Delete + Editor Session Undo / Redo — 구현 2026-09-16 (Phase 5 STEP 10 revised per ADR-038, Physical Review Pending):** 선택 Clip의 명시적 Delete(Dock Trailing `trash`, 확인 없음) → 즉시 Active Timeline에서 제거 + Total 감소 + 결정적 Selection Fallback + Durable Pending Deletion Autosave. Undo / Redo는 Navigation Bar 우상단 상시 Control(`실행 취소` / `다시 실행`)의 시간순 LIFO Session History로 Reorder와 Delete를 되돌리고 다시 적용하며(각각 한 번 Autosave + Read-back, 새 편집은 Redo 폐기, 실패 시 State / Stack 불변), 이후 모든 Editor 편집이 같은 모델을 쓴다. Delete Undo / Redo는 같은 Clip UUID / Media / Metadata를 오가며 Duplicate를 만들지 않는다. Domain은 Active(`clips`) / Durable(`deletedClips`, `ClipDeletionRecord`)을 분리하고 `ProjectRepository.update`는 빠진 Clip을 암묵적으로 삭제하지 않으며(`missingDurableClip` 거부) 물리적 Metadata 제거는 명시적 `finalizeDeletedClip`만 가능하다(호출하지 않음). SwiftData Additive Optional Field 4개, Lightweight Migration 검증. Delete-only Snackbar / "가장 최근 삭제 한 건" / Undo Window Timer는 ADR-038로 폐기되었고 Undo Window Gate는 더 이상 존재하지 않는다. **Final Physical Cleanup(Session 종료 후 Pending Deletion의 ADR-021 안전 조건 기반 정리)은 별도 Slice로 남는다.**
+
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
 Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
@@ -1534,7 +1536,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 - Add More Clip(PhotosPicker Append, ADR-037)
 - Project Autosave
 - Logical Deletion과 Deferred Physical Cleanup
-- Most-recent Undo와 Process Termination Reconciliation
+- Editor Session Undo / Redo History(ADR-038)와 Process Termination Reconciliation
 - Thumbnail Late Result Validity
 - Representative Thumbnail Source Re-evaluation
 - Unavailable Clip Representation과 User-controlled Replace
@@ -1552,12 +1554,12 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 
 ## Decision Gate Before Implementation
 
-아래 Structural UX Pending은 ADR-034로 사용자 승인 해결되었다(정확한 Localization Copy / Visual Tuning / Undo Window 값만 Polish로 남김).
+아래 Structural UX Pending은 ADR-034로 사용자 승인 해결되었다(정확한 Localization Copy / Visual Tuning만 Polish로 남김; Undo Presentation은 ADR-038로 갱신).
 
 - ADR-030 Ordered Thumbnail Strip의 세부 Layout — Resolved by ADR-034: Horizontal Ordered Strip, Clip당 한 항목, Thumbnail Primary + Compact Duration Label.
 - 승인된 Single Tap Selection, Long Press + Drag Reorder와 Non-drag Accessibility 대안의 상세 표현 — Resolved by ADR-034: Single Tap 선택 + Color-only 아닌 Selected State, Long Press + Drag Reorder, Move Earlier / Move Later.
 - Clip Delete Action의 Control Placement — Resolved by ADR-034: 선택 Clip의 명시적 Action.
-- Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조 — Resolved by ADR-034: Transient Bottom Snackbar `Clip deleted` + `Undo`.
+- Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조 — Resolved by ADR-034(Transient Bottom Snackbar), **Superseded by ADR-038: Navigation Bar 우상단 상시 Undo / Redo Session History**.
 - Project Duration과 Add Clip Action의 배치 — Resolved by ADR-034: Project Total Duration은 Clip 조직 영역 근처의 조용한 보조 정보, `Add Clips`는 명시적 Project-level Action.
 - Add Clip의 Acquisition Source — Resolved by ADR-037: Editor `+`는 System PhotosPicker를 열어 Phase-5-ready Media를 현재 Project에 Append하며 Camera에 다시 진입하지 않는다.
 - Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034: 논리적 위치 유지 Placeholder + Color-only 아닌 Unavailable State + 명시적 Replace / Delete.
@@ -1572,7 +1574,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 
 Phase 5 `Select Clips`(= `Start New Project`)는 Phase-5-ready media만 Bootstrap한다. Phase 5는 Project Bootstrap에 필요한 최소 System Selection Boundary 호출, 기본 Media 속성 검사, Usable 여부 Validation, Usable Media의 App-managed Materialize / Copy(ADR-020), Clip Metadata 생성, 단일 저장 Project 구성과 Safe Atomic Replacement를 소유한다. Long-source Segment Selection, 임의 Trim / Re-trim, HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization, Crop / Framing과 완전한 Import 편집 UI는 Phase 6 / 7 소유로 유지한다. Non-ready Media는 조용히 자르거나 Transcode / Crop하거나 잘못된 Clip Metadata를 만들거나 Import 성공으로 처리하지 않으며 부분 Commit 없이 Typed `requires import preparation` 결과로 표현한다. 이 경계는 F-MVP-018~F-MVP-022를 Phase 5-complete로 재정의하지 않는다.
 
-Presentation 선택은 ADR-021과 F-MVP-025의 Accepted Undo semantics를 변경하지 않으며 Delete 즉시 UI 제거, 가장 최근 삭제 한 건의 Undo, 새 Delete 시 이전 Opportunity 종료, Process 종료 후 Undo 미유지와 동일 Clip Identity / Media 복원을 유지한다.
+Presentation은 ADR-038에 따라 Delete 즉시 UI 제거, 시간순 Session Undo / Redo, Process 종료 후 History 미유지와 동일 Clip Identity / Media 복원을 유지한다("가장 최근 삭제 한 건" 제한은 폐기).
 
 ### Project Materialization Storage Technical Gate — Resolved 2026-09-15
 
@@ -1588,7 +1590,7 @@ ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Res
 - Phase 5에는 Transcode / Normalization / HDR→SDR / Resize / Intermediate Render / Export Artifact가 없으므로 임의 Overlap Multiplier(2× / 3×)를 두지 않는다. Phase 6 Import는 별도 Estimate / Overlap 정책을 소유한다.
 - Capacity 조회 실패(Usable 0)는 자동 통과가 아니라 Insufficient로 처리한다.
 
-정확한 Undo Window Duration과 Localization Copy만 Tuning / Polish로 남으며 위 Structural UX Gate는 ADR-034로 해결되어 해당 UI 구현을 시작할 수 있다.
+Localization Copy만 Tuning / Polish로 남으며(Undo Window Duration은 ADR-038로 불필요) 위 Structural UX Gate는 ADR-034 / ADR-038로 해결되어 해당 UI 구현을 시작할 수 있다.
 
 Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다.
 
@@ -1609,11 +1611,11 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 4. Clip Duration을 표시한다.
 5. Clip Reorder Interaction을 구현한다. — 구현 2026-09-16 (STEP 9, Physical Review Pending)
 6. Reorder 결과를 Persistence에 저장한다. — 구현 2026-09-16 (STEP 9, Autosave + Read-back 검증, Physical Review Pending)
-7. Clip Delete를 Logical Deletion으로 적용하여 UI에서 즉시 제거한다.
-8. Pending Deletion을 영속적으로 추적하고 Undo에 필요한 기존 Clip Identity, Media, Metadata, Original Index와 Stable Neighbor Anchor를 보존한다.
-9. 가장 최근 Clip Delete 한 건의 사용자-visible Undo를 제공하며 새로운 Delete가 이전 Undo Opportunity를 종료하도록 한다.
-10. Undo Opportunity가 종료되면 Logical Deletion을 확정하되 Physical Media Cleanup은 Undo / Recovery / Active Usage / Late Commit 차단과 Safe Classification 조건을 모두 충족할 때까지 지연한다.
-11. App Process 종료 후에는 Undo Opportunity를 복원하지 않고 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation한다.
+7. Clip Delete를 Logical Deletion으로 적용하여 UI에서 즉시 제거한다. — 구현 2026-09-16 (STEP 10, Physical Review Pending)
+8. Pending Deletion을 영속적으로 추적하고 Undo에 필요한 기존 Clip Identity, Media, Metadata, Original Index와 Stable Neighbor Anchor를 보존한다. — 구현 2026-09-16 (STEP 10)
+9. Editor Session Undo / Redo History(ADR-038, 시간순 LIFO, Reorder + Delete)를 제공한다. — 구현 2026-09-16 (STEP 10 revised; "가장 최근 Delete 한 건" 모델 폐기)
+10. Session History가 끝난 Pending Deletion의 Physical Media Cleanup은 Undo / Recovery / Active Usage / Late Commit 차단과 Safe Classification 조건을 모두 충족할 때까지 지연한다. — 미구현: 별도 Slice (`finalizeDeletedClip` 경계만 존재, Timer 없음)
+11. App Process 종료 후에는 Undo Opportunity를 복원하지 않고 Pending Deletion을 Logical Deletion 확정 상태로 Reconciliation한다. — 구현 2026-09-16 (STEP 10: 재실행 시 Undo 미제공, Clip 재표시 없음, 파괴 없음)
 12. Project Total Duration을 계산하여 표시한다.
 13. Add Clip Action(Editor Timeline Leading `+`)에서 System PhotosPicker를 열고 Phase-5-ready Media를 현재 Project 끝에 Picker 선택 순서로 안전하게 Append한다(ADR-037): 선택 항목 전부 Validate → Storage Admission → Materialize → Append → Persist → Read-back Verify, All-or-nothing, 대체 Project 생성 없음, Camera 재진입 없음, Non-ready Media는 기존 `requires import preparation` 처리. Control은 기능 구현 전 Production에 노출하지 않는다.
 14. Healthy Clip의 Individual Preview 요청이 대상 Clip Identity, Availability와 현재 Effective Edit State를 Shared Composition Flow에 전달할 수 있게 하되 Raw Asset Preview를 기본 경로로 만들거나 아직 존재하지 않는 Trim / Framing UI를 선행 구현하지 않는다.
@@ -1630,7 +1632,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 25. Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 successful Replacement 뒤에만 Representative Source를 다시 평가한다.
 26. Representative Source가 Delete 또는 Unavailable Transition으로 바뀌면 old cached Thumbnail을 current Representative로 계속 신뢰하지 않고 다음 Healthy / Usable Clip 또는 Placeholder를 사용하게 한다.
 
-정확한 Undo Window Duration은 DESIGN Tuning으로 남기며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
+Undo Window Duration은 ADR-038로 불필요해졌으며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 
 아직 구현하지 않은 Preview / Export Consumer는 Test Double로 기본 Usage / Release 계약을 검증하고 실제 Production Service 검증은 Phase 8 / 9에서 수행한다.
 
@@ -1640,7 +1642,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 - Delete
 - Undo
 - Pending Deletion Cleanup
-- 연속 Delete에서 가장 최근 Undo만 유효한지 확인
+- 연속 Delete에서 Undo가 시간 역순으로 되돌리고 Redo가 다시 적용하는지 확인(ADR-038)
 - Undo의 Clip Identity / Media 재사용과 Duplicate Clip 방지
 - Reorder 이후 이전 Anchor 우선, 다음 Anchor 대체 및 Original Index Clamp
 - 양쪽 Anchor가 재정렬되거나 사라진 경우의 결정적 복원과 다른 Clip 상대 순서 보존
@@ -1658,7 +1660,7 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 
 ## Integration Tests
 
-- Undo Window 종료 후에도 Active Consumer가 참조하는 Media는 보존되고 Release 이후 안전하게 Cleanup되는지 확인
+- Session History 종료 후에도 Active Consumer가 참조하는 Media는 보존되고 Release 이후 안전하게 Cleanup되는지 확인
 - Pending Deletion 중 Process Termination 후 Relaunch에서 Undo와 Clip이 자동 복원되지 않는지 확인
 - 동일 Deletion / Cleanup의 반복 Reconciliation과 이미 정리된 Artifact 처리
 - Undo와 Cleanup 경합에서 Physical Delete 이후 Undo 성공이 발생하지 않는지 확인
@@ -1696,7 +1698,7 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 - 여러 Clip의 순서를 변경할 수 있다.
 - 삭제 후 Undo가 정상 동작한다.
 - Undo는 같은 Clip Identity와 Media를 복원하며 현재 다른 Clip의 Reorder를 보존한다.
-- 새로운 Delete는 이전 사용자-visible Undo를 종료하고 가장 최근 Delete만 Undo할 수 있다.
+- Undo / Redo는 Editor Session의 시간순 편집 History를 따르며 새 편집은 Redo를 폐기한다(ADR-038).
 - Process Termination 이후 Undo Opportunity를 복원하거나 삭제된 Clip을 다시 표시하지 않는다.
 - Undo Opportunity 종료만으로 Local Media를 삭제하지 않으며 Physical Delete 안전 조건이 모두 충족된 이후 정리한다.
 - Active Usage가 있는 Media는 Release 전까지 유지되고 Stale Thumbnail Result는 삭제된 Clip이나 Project를 되살리지 않는다.
@@ -1716,7 +1718,7 @@ Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에서 3.11절의 Touch
 
 촬영한 Clip만으로 Project 구조를 안정적으로 관리할 수 있어야 한다.
 
-Logical Deletion, Most-recent Undo, 결정적 복원, Unavailable Clip Replacement와 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
+Logical Deletion, Session Undo / Redo History, 결정적 복원, Unavailable Clip Replacement와 Deferred Cleanup의 Unit / Integration / UI Test 및 iPhone 12 검증이 완료되어야 한다.
 
 해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
@@ -2658,7 +2660,7 @@ Project-level Metadata Recovery Algorithm과 Exact Corrupted-project Failure Sta
 - 대용량 Draft
 - Photos 원본 삭제 이후 Imported Clip 확인
 - Recording / Import 저장 경계별 강제 종료와 반복 Relaunch 후 Clip 중복 및 정상 Media 유실 여부
-- Undo Window 중 강제 종료와 Project Delete Cleanup 실패 후 반복 Relaunch
+- Editor Session History 중 강제 종료와 Project Delete Cleanup 실패 후 반복 Relaunch
 - 반복 Low-storage Launch와 기존 Draft / Committed Media 보존
 - Preflight 이후 Storage 변화 및 Runtime Disk Full 반복 후 공간 확보와 Retry
 - Failed Cleanup / Stale Disposable / Confirmed Orphan Reconciliation과 Multiple Draft Isolation
@@ -3340,7 +3342,7 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현�
 - Replacement Clip Identity 또는 Slot Reference Model
 - Replacement의 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset과 Reset Communication
 
-ADR-021 / F-MVP-025의 Accepted Undo semantics와 정확한 Undo Window Duration의 Pending 상태를 유지한다.
+ADR-021 / F-MVP-025의 Undo semantics는 ADR-038(Session Undo / Redo History)로 갱신되었으며 Undo Window Duration 결정은 더 이상 필요하지 않다.
 
 ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상태이며 이 Gate에서 Replace 가능 여부, Placeholder 보존, 기존 Timeline Position 또는 Silent Skip 금지를 다시 Open으로 만들지 않는다.
 

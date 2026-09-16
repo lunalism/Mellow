@@ -226,6 +226,122 @@ final class ProjectRepositoryTests: XCTestCase {
         XCTAssertEqual(rowsAfter.sorted { $0.sortOrder < $1.sortOrder }.map(\.id), [clips[2].id, clips[0].id, clips[1].id])
     }
 
+    // MARK: - Logical deletion persistence (Phase 5 STEP 10)
+
+    private func makeThreeClipProject() throws -> (VlogProject, [UUID]) {
+        let id = UUID()
+        let clips = try (0..<3).map { try makeClip(projectID: id, sortOrder: $0) }
+        return (try VlogProject(id: id, orientation: .portrait9x16, clips: clips), clips.map(\.id))
+    }
+
+    func testUpdateRefusesProjectThatOmitsDurableClipInsteadOfDeletingIt() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let swiftData = try makeSwiftDataEnvironment(storeURL: store.url)
+        for repository in [InMemoryProjectRepository() as any ProjectRepository, swiftData.repository] {
+            let (project, ids) = try makeThreeClipProject()
+            try repository.create(project)
+            // The forbidden pattern: drop a clip from the active set and autosave.
+            let truncated = try VlogProject(id: project.id, createdAt: project.createdAt, updatedAt: project.updatedAt, orientation: .portrait9x16, clips: Array(project.clips[0...1]))
+            XCTAssertThrowsError(try repository.update(truncated)) { XCTAssertEqual($0 as? ProjectRepositoryError, .missingDurableClip) }
+            XCTAssertEqual(try repository.project(id: project.id)?.clips.map(\.id), ids, "nothing was deleted")
+        }
+    }
+
+    func testSwiftDataLogicalDeleteSurvivesReopenAndUndoRestoresSameClip() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        var (project, ids) = try makeThreeClipProject()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        let originalB = project.clips[1]
+
+        do {
+            let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+            try environment.repository.create(project)
+            try project.deleteClip(id: b, deletedAt: Date(timeIntervalSince1970: 500))
+            try environment.repository.update(project)
+            let rows = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+            XCTAssertEqual(rows.count, 3, "the deleted clip's row is retained")
+            XCTAssertEqual(rows.first { $0.id == b }?.deletedAt, Date(timeIntervalSince1970: 500))
+        }
+
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        var reloaded = try XCTUnwrap(try reopened.repository.project(id: project.id))
+        XCTAssertEqual(reloaded.clips.map(\.id), [a, c], "the deleted clip does not reappear")
+        XCTAssertEqual(reloaded.clips.map(\.sortOrder), [0, 1])
+        XCTAssertEqual(reloaded.deletedClips.map(\.id), [b], "…but stays durable")
+        let record = try XCTUnwrap(reloaded.deletedClips[0].deletion)
+        XCTAssertEqual(record.originalIndex, 1)
+        XCTAssertEqual(record.previousClipID, a)
+        XCTAssertEqual(record.nextClipID, c)
+        XCTAssertEqual(reloaded.deletedClips[0].mediaRelativePath, originalB.mediaRelativePath)
+
+        // An unrelated autosave (reorder) keeps the pending-deleted clip durable.
+        try reloaded.reorderClip(id: c, toIndex: 0)
+        try reopened.repository.update(reloaded)
+        XCTAssertEqual(try reopened.repository.project(id: project.id)?.deletedClips.map(\.id), [b])
+
+        // Undo through the restoration anchors, then reopen once more.
+        try reloaded.restoreDeletedClip(id: b)
+        try reopened.repository.update(reloaded)
+        let finalEnvironment = try makeSwiftDataEnvironment(storeURL: store.url)
+        let final = try XCTUnwrap(try finalEnvironment.repository.project(id: project.id))
+        XCTAssertEqual(final.clips.map(\.id), [c, a, b], "restored after its previous anchor A")
+        XCTAssertEqual(final.clips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertTrue(final.deletedClips.isEmpty)
+        let restored = try XCTUnwrap(final.clips.first { $0.id == b })
+        XCTAssertEqual(restored.mediaRelativePath, originalB.mediaRelativePath)
+        XCTAssertEqual(restored.trimDuration, originalB.trimDuration)
+        XCTAssertEqual(restored.sourceDuration, originalB.sourceDuration)
+        XCTAssertNil(restored.deletion)
+        XCTAssertEqual(try finalEnvironment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 3, "no row was ever deleted or duplicated")
+    }
+
+    func testSwiftDataFinalizeRemovesOnlyPendingDeletedClipRow() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        var (project, ids) = try makeThreeClipProject()
+        try environment.repository.create(project)
+
+        XCTAssertThrowsError(try environment.repository.finalizeDeletedClip(projectID: project.id, clipID: ids[0])) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .clipNotPendingDeletion)
+        }
+        try project.deleteClip(id: ids[0])
+        try environment.repository.update(project)
+        try environment.repository.finalizeDeletedClip(projectID: project.id, clipID: ids[0])
+
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        let reloaded = try XCTUnwrap(try reopened.repository.project(id: project.id))
+        XCTAssertEqual(reloaded.clips.map(\.id), [ids[1], ids[2]])
+        XCTAssertTrue(reloaded.deletedClips.isEmpty)
+        XCTAssertEqual(try reopened.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 2)
+        XCTAssertThrowsError(try reopened.repository.finalizeDeletedClip(projectID: project.id, clipID: ids[0]))
+        XCTAssertThrowsError(try reopened.repository.finalizeDeletedClip(projectID: UUID(), clipID: ids[1])) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .projectNotFound)
+        }
+    }
+
+    /// Rows written before STEP 10 carry nil in every deletion attribute; they must load as active
+    /// clips, and a half-written record must be rejected rather than resurrect or drop a clip.
+    func testSwiftDataRowsWithoutDeletionAttributesLoadAsActiveClips() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        let (project, ids) = try makeThreeClipProject()
+        try environment.repository.create(project)
+        let rows = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertTrue(rows.allSatisfy { $0.deletedAt == nil && $0.deletionOriginalIndex == nil && $0.deletionPreviousClipID == nil && $0.deletionNextClipID == nil })
+        XCTAssertEqual(try environment.repository.project(id: project.id)?.clips.map(\.id), ids)
+
+        rows.first { $0.id == ids[1] }?.deletedAt = .now   // timestamp without an original index
+        try environment.container.mainContext.save()
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        XCTAssertThrowsError(try reopened.repository.project(id: project.id)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .invalidPersistedMetadata)
+        }
+    }
+
     private func makeSwiftDataEnvironment(storeURL: URL) throws -> SwiftDataRepositoryEnvironment {
         let container = try MellowModelContainer.makePersistentContainer(storeURL: storeURL)
         return SwiftDataRepositoryEnvironment(container: container)

@@ -324,6 +324,7 @@ final class ProjectsEntryModelTests: XCTestCase {
         func project(id: UUID) throws -> VlogProject? { nil }
         func recentProjects() throws -> [VlogProject] { throw LookupError.failed }
         func update(_ project: VlogProject) throws {}
+        func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {}
         func deleteProject(id: UUID) throws {}
     }
 }
