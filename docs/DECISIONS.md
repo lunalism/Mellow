@@ -2128,6 +2128,8 @@ Select-Clips / PhotosPicker / Project 생성 / Replacement Transaction 구현, L
 **Date:** 2026-09-15
 **Status:** Accepted
 
+**Implementation Note (Phase 5 STEP 11, 2026-09-16):** Editor `+`(`클립 추가`)는 Editor 전용 `PhotosVideoSelector` Session(Projects 화면의 Picker Host와 분리) → 기존 Pre-copy Admission / `Phase5ReadyMediaValidator` / `ProjectMediaStore` Workspace → `ProjectClipAppendCoordinator`(Validate ALL → Materialize ALL into `Projects/<현재 pid>/Media/`) → `VlogProject.appendClips`(마지막 Active Clip 뒤, Picker 순서, sortOrder 0…n-1) → `ProjectEditorModel.commitEdit(.add)`(한 번 Autosave + Read-back)로 구현되었다. 한 Picker Session의 Multi-select는 하나의 Atomic Edit이자 하나의 History Entry이며 첫 번째 새 Clip이 선택된다. Cancel / Non-ready / Transfer / Materialize / Persist 실패는 모두 All-or-nothing으로 현재 Project · History · Selection · 기존 Media를 그대로 두고 이 Operation이 만든 파일만 제거한다. Undo / Redo는 ADR-038을 따른다.
+
 **Partially Supersedes:** ADR-030 Lightweight Editor의 "Camera / Photos Library를 지원하는 Add Clip"과 ADR-034 §3의 "Direct Camera 취득과 Photos 취득을 각각의 Boundary로 라우팅"하는 Add Clips 문구 중 **Editor Add Clip의 Acquisition Source만**. ROADMAP Phase 5의 "Add Clip Action으로 Camera에 다시 진입" 구현 과제를 대체한다. Lightweight Editor 구조, Ordered Timeline, Delete / Undo, Unavailable Replace, ADR-033의 Capture-first / Single-project 정책과 ADR-034 §2 Select-Clips Media Boundary는 변경하지 않으며 역사적 기록을 다시 쓰지 않는다.
 
 ## Context
@@ -2313,7 +2315,8 @@ Phase 5 STEP 10 최초 구현은 Delete 전용 Bottom Snackbar와 "가장 최근
 - History는 **Editor Session-local**이다. Editor를 열면 비어 있고, 떠나거나 Process가 종료되면 사라지며, SwiftData에 저장하거나 Deletion Record / Timestamp로 재구성하지 않는다. 재진입 시 Project는 마지막 Autosave 상태 그대로이고 Undo / Redo는 Disabled다.
 - History Entry는 편집 전후의 **영속 Editor State(Active Clip 집합, Pending-deleted Clip 집합, Selection)와 편집 종류**만 담는 값이다. Media / Image / Closure를 담지 않으므로 Session 동안 상한을 두지 않는다.
 - **Delete-only Snackbar, Timer 기반 Undo Window, "가장 최근 삭제 한 건" 제한은 폐기**한다. Delete는 여전히 확인 없이 즉시 적용되며 Undo가 안전 장치다.
-- **Durable Pending Deletion은 유지**한다: Delete는 Clip을 Active Timeline에서 제거하고 같은 Identity / Media / Metadata를 Pending-deleted로 영속화하며, Session History 안에서 Undo / Redo가 그 Clip을 같은 Identity로 오간다. `finalizeDeletedClip`(명시적 물리 Metadata 제거)은 Production에서 호출하지 않으며 Media 삭제 / Cleanup Scheduler / Timer는 없다. Session History에서 도달 가능한 Delete의 Media는 복구 가능해야 하고, Session이 끝난 뒤의 Pending Deletion만 이후 Cleanup Slice의 후보가 된다(ADR-021 안전 조건 유지).
+- **Durable Pending Deletion은 유지**한다: Delete는 Clip을 Active Timeline에서 제거하고 같은 Identity / Media / Metadata를 Pending-deleted로 영속화하며, Session History 안에서 Undo / Redo가 그 Clip을 같은 Identity로 오간다.
+- **Add Clips(ADR-037)도 History-capable Mutation이다(STEP 11):** 한 Picker Batch = 한 History Entry(`.add`). Add를 Undo하면 새 Clip은 Active Timeline에서 빠지되 물리 삭제되지 않고 같은 Pending-deleted(Inactive, Durable) 상태로 남아 Redo가 같은 UUID / Media Path / 파일 / Metadata를 되살린다(재복사 / 재선택 / 새 UUID 없음). History 복원은 현재 Project가 소유하지만 대상 State가 모르는 Clip을 절대 잊지 않고 Pending-deleted로 유지한다(Repository Omission Guard 유지). Undo Add 뒤 새 편집이나 Session 종료로 Redo가 사라진 Clip은 Durable Pending으로 남아 이후 Physical Cleanup Slice의 대상이 된다. `finalizeDeletedClip`(명시적 물리 Metadata 제거)은 Production에서 호출하지 않으며 Media 삭제 / Cleanup Scheduler / Timer는 없다. Session History에서 도달 가능한 Delete의 Media는 복구 가능해야 하고, Session이 끝난 뒤의 Pending Deletion만 이후 Cleanup Slice의 후보가 된다(ADR-021 안전 조건 유지).
 
 ## Consequences
 

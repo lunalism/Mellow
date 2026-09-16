@@ -12,7 +12,7 @@ struct ProjectEditorDestination: View {
     var body: some View {
         Group {
             if let model {
-                ProjectEditorView(model: model)
+                ProjectEditorView(model: model, photosSelector: environment.editorPhotosSelector)
             } else if unavailable {
                 ProjectEditorUnavailableView()
             } else {
@@ -23,7 +23,12 @@ struct ProjectEditorDestination: View {
             guard model == nil, !unavailable else { return }
             do {
                 if let project = try environment.projectRepository.project(id: projectID) {
-                    model = ProjectEditorModel(project: project, repository: environment.projectRepository, thumbnails: environment.clipThumbnails)
+                    model = ProjectEditorModel(
+                        project: project,
+                        repository: environment.projectRepository,
+                        thumbnails: environment.clipThumbnails,
+                        acquisition: environment.editorClipAcquisition
+                    )
                     #if DEBUG
                     MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
                     #endif
@@ -43,6 +48,8 @@ struct ProjectEditorDestination: View {
 /// playback, no delete, no edit tools; the shell deliberately shows no dead controls for deferred features.
 struct ProjectEditorView: View {
     @Bindable var model: ProjectEditorModel
+    /// The production Add Clips boundary the view hosts (`.photosPicker`); nil under a test fake.
+    var photosSelector: PhotosVideoSelector? = nil
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
@@ -52,7 +59,7 @@ struct ProjectEditorView: View {
                 selectedClip: model.selectedClip,
                 selectedPosition: selectedPosition
             )
-            EditorTimelineDock(model: model, deleteSelected: deleteSelectedClip, showsStagedAddSlot: showsStagedAddSlot)
+            EditorTimelineDock(model: model, deleteSelected: deleteSelectedClip, addClips: addClips)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
         }
@@ -92,28 +99,31 @@ struct ProjectEditorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         // Thumbnail work lives in the model / service, never in body evaluation. `.task` cancels the
         // load when the screen leaves, so no generation outlives it.
-        .task(id: displayScale) { await model.loadThumbnails(displayScale: displayScale) }
+        // Re-run whenever the active clip set changes (Add / Delete / Undo / Redo): only clips that
+        // are not ready are requested, so this is a no-op for a reorder or a pure selection change.
+        .task(id: ThumbnailLoadKey(scale: displayScale, clipIDs: model.committedClips.map(\.id))) {
+            await model.loadThumbnails(displayScale: displayScale)
+        }
         .navigationTitle("Project")
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(EditorPhotosPickerHost(selector: photosSelector))
         // `.contain` keeps the preview / dock / timeline individually queryable under the container
         // identifier (a bare identifier would swallow them).
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("projectEditor")
     }
 
-    /// DEBUG staging of the Add Clip reference visual; `-uiTestProductionTimeline` reproduces the
-    /// exact Release presentation (no slot) for tests and screenshots. Release is always false.
-    private var showsStagedAddSlot: Bool {
-        #if DEBUG
-        return !ProcessInfo.processInfo.arguments.contains("-uiTestProductionTimeline")
-        #else
-        return false
-        #endif
-    }
-
     private var selectedPosition: Int? {
         guard let id = model.selectedClipID else { return nil }
         return model.orderedClips.firstIndex { $0.id == id }.map { $0 + 1 }
+    }
+
+    private func addClips() {
+        guard model.canAddClips else { return }
+        Task {
+            let added = await model.addClips()
+            if added > 0 { AccessibilityNotification.Announcement("클립 \(added)개를 추가했어요.").post() }
+        }
     }
 
     private func deleteSelectedClip() {
@@ -131,6 +141,37 @@ struct ProjectEditorView: View {
         let kind = model.redoTarget
         guard model.redo() else { return }
         AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 다시 실행했어요.").post()
+    }
+}
+
+/// Identity of one thumbnail load: the display scale and the active clip set.
+private struct ThumbnailLoadKey: Hashable {
+    let scale: CGFloat
+    let clipIDs: [UUID]
+}
+
+/// Hosts the system Photos picker for the Editor's production selector (ADR-037): videos only, no
+/// library read permission (the picker runs out of process). Absent under test fakes. Its own
+/// selector instance, so the Projects screen's picker host below in the stack never competes.
+private struct EditorPhotosPickerHost: ViewModifier {
+    let selector: PhotosVideoSelector?
+
+    func body(content: Content) -> some View {
+        if let selector {
+            @Bindable var selector = selector
+            content
+                .photosPicker(
+                    isPresented: $selector.isPresented,
+                    selection: $selector.items,
+                    matching: .videos,
+                    preferredItemEncoding: .current
+                )
+                .onChange(of: selector.isPresented) { _, presented in
+                    if !presented { selector.pickerDismissed() }
+                }
+        } else {
+            content
+        }
     }
 }
 

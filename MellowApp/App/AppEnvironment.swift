@@ -23,6 +23,12 @@ final class AppEnvironment {
     let clipThumbnails: any ClipThumbnailProviding
     /// Production Select-Clips boundary (system Photos picker) hosted by the Projects screen.
     let photosVideoSelector: PhotosVideoSelector
+    /// Production Add-Clips picker hosted by the Editor (ADR-037); its own instance so the Projects
+    /// screen's picker host below in the navigation stack never competes for presentation. Nil when
+    /// a DEBUG fake drives the Editor's acquisition.
+    let editorPhotosSelector: PhotosVideoSelector?
+    /// The Editor's Add Clips boundary: same store / gate / validator chain as Select Clips.
+    let editorClipAcquisition: EditorClipAcquisition
     /// Production `프로젝트` screen state (ADR-036): canonical saved-Project lookup + Select Clips.
     let projectsEntry: ProjectsEntryModel
     let home: HomeModel
@@ -235,6 +241,39 @@ final class AppEnvironment {
         self.home = HomeModel(repository: repository, router: router)
         let photosVideoSelector = PhotosVideoSelector()
         self.photosVideoSelector = photosVideoSelector
+        let appender = ProjectClipAppendCoordinator(
+            mediaStore: projectMediaStore,
+            validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
+            storage: projectStorageGate
+        )
+        #if DEBUG
+        // `-uiTestEditorAddSelection=<cancel|ready|ready2|tooLong|corrupt|fail>`: a deterministic fake
+        // selector (fixture media generated after launch) and a sufficient storage gate drive the
+        // Editor's "+" so the real Photos picker is never automated. Production is untouched.
+        if arguments.contains(where: { $0.hasPrefix("-uiTestEditorAddSelection=") }) {
+            let fake = FakeProjectMediaSelector(script: .cancel)
+            let launchArguments = arguments
+            fake.pendingScript = Task { await AppEnvironment.makeUITestSelectionScript(arguments: launchArguments, key: "-uiTestEditorAddSelection=") }
+            self.editorPhotosSelector = nil
+            self.editorClipAcquisition = EditorClipAcquisition(
+                mediaStore: projectMediaStore, mediaSelector: fake,
+                storageGate: FakeProjectStorageGate(verdict: .sufficient),
+                appender: ProjectClipAppendCoordinator(
+                    mediaStore: projectMediaStore,
+                    validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
+                    storage: FakeProjectStorageGate(verdict: .sufficient)
+                )
+            )
+        } else {
+            let editorSelector = PhotosVideoSelector()
+            self.editorPhotosSelector = editorSelector
+            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender)
+        }
+        #else
+        let editorSelector = PhotosVideoSelector()
+        self.editorPhotosSelector = editorSelector
+        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender)
+        #endif
         // The Projects screen stays below the Editor so Back returns Editor → 프로젝트 → Camera.
         self.projectsEntry = ProjectsEntryModel(
             composition: projectComposition,
@@ -497,9 +536,9 @@ final class AppEnvironment {
         router.path = [.projectsEntry]
     }
 
-    private static func makeUITestSelectionScript(arguments: [String]) async -> FakeProjectMediaSelector.Script {
-        let mode = arguments.first { $0.hasPrefix("-uiTestMediaSelection=") }?
-            .replacingOccurrences(of: "-uiTestMediaSelection=", with: "") ?? "cancel"
+    private static func makeUITestSelectionScript(arguments: [String], key: String = "-uiTestMediaSelection=") async -> FakeProjectMediaSelector.Script {
+        let mode = arguments.first { $0.hasPrefix(key) }?
+            .replacingOccurrences(of: key, with: "") ?? "cancel"
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("UITestFixtures", isDirectory: true)
         func fixture(_ name: String, seconds: Double) async -> URL? {
             let url = directory.appendingPathComponent(name).appendingPathExtension("mov")

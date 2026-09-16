@@ -24,7 +24,8 @@ final class ProjectsEntryModel {
     }
 
     /// Non-success outcome of a Select-Clips attempt, shown as a small recoverable alert. Nothing was
-    /// created and any saved Project is untouched; the user may dismiss and try again.
+    /// created and any saved Project is untouched; the user may dismiss and try again. Media
+    /// validation copy comes from `ProjectMediaValidationCopy` (shared with the Editor's Add Clips).
     enum CompositionMessage: Equatable {
         /// Valid media that is not Phase-5-ready; the copy is reason-specific and never names the
         /// implementation (no roadmap phases, no HDR / transcoding / frame-rate terms).
@@ -35,21 +36,17 @@ final class ProjectsEntryModel {
 
         var title: String {
             switch self {
-            case .requiresImportPreparation(.tooLong): return "영상이 너무 길어요"
-            case .requiresImportPreparation(.orientation): return "세로 영상을 선택해주세요"
-            case .requiresImportPreparation: return "이 영상은 바로 사용할 수 없어요"
-            case .invalidMedia: return "영상을 열 수 없어요"
-            case .insufficientStorage: return "저장 공간이 부족해요"
+            case .requiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationTitle(reason)
+            case .invalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
+            case .insufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
             case .failed: return "프로젝트를 만들지 못했어요"
             }
         }
         var message: String {
             switch self {
-            case .requiresImportPreparation(.tooLong): return "현재는 5초 이하의 영상을 프로젝트에 추가할 수 있어요."
-            case .requiresImportPreparation(.orientation): return "현재 프로젝트에서는 세로 영상을 바로 사용할 수 있어요."
-            case .requiresImportPreparation: return "다른 영상을 선택해주세요."
-            case .invalidMedia: return "선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요."
-            case .insufficientStorage: return "공간을 확보한 뒤 다시 시도해 주세요."
+            case .requiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationMessage(reason)
+            case .invalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
+            case .insufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
             case .failed: return "잠시 후 다시 시도해 주세요. 저장된 프로젝트는 그대로 있어요."
             }
         }
@@ -185,4 +182,33 @@ final class ProjectsEntryModel {
             }
         }
     }
+}
+
+/// The one user-facing copy for Phase-5 media validation outcomes, shared by Select Clips (Projects
+/// screen) and Add Clips (Editor). Reason-specific, never naming the implementation (no roadmap
+/// phases, no HDR / transcoding / frame-rate terms). The 5-second Clip maximum is a Mellow product
+/// rule, so its copy states the rule plainly rather than as a temporary limitation; the other
+/// preparation reasons stay phrased as "not usable right now" because later import phases may
+/// prepare such media.
+enum ProjectMediaValidationCopy {
+    static func preparationTitle(_ reason: Phase5ReadyVerdict.PreparationReason) -> String {
+        switch reason {
+        case .tooLong: return "영상이 너무 길어요"
+        case .orientation: return "세로 영상을 선택해주세요"
+        case .highDynamicRange, .resolution, .frameRate: return "이 영상은 바로 사용할 수 없어요"
+        }
+    }
+
+    static func preparationMessage(_ reason: Phase5ReadyVerdict.PreparationReason) -> String {
+        switch reason {
+        case .tooLong: return "5초 이하의 영상을 선택해주세요."
+        case .orientation: return "현재 프로젝트에서는 세로 영상을 바로 사용할 수 있어요."
+        case .highDynamicRange, .resolution, .frameRate: return "다른 영상을 선택해주세요."
+        }
+    }
+
+    static let invalidMediaTitle = "영상을 열 수 없어요"
+    static let invalidMediaMessage = "선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요."
+    static let insufficientStorageTitle = "저장 공간이 부족해요"
+    static let insufficientStorageMessage = "공간을 확보한 뒤 다시 시도해 주세요."
 }

@@ -1,26 +1,24 @@
 import SwiftUI
 
 /// Bottom editing dock (ADR-034 §3 hierarchy: Preview → ordered strip → clip / project actions). A
-/// persistent dark surface holding the structural Add-Clip slot, the leading-aligned ordered clip
-/// timeline (tap to select, long press + horizontal drag to reorder) and, in its trailing column,
-/// the quiet Total metadata above the selected Clip's explicit Delete action (ADR-034 §3 level 4:
-/// Clip-level Action / Project Summary).
+/// persistent dark surface holding the leading Add Clips action (ADR-037, PhotosPicker append), the
+/// leading-aligned ordered clip timeline (tap to select, long press + horizontal drag to reorder)
+/// and, in its trailing column, the quiet Total metadata above the selected Clip's explicit Delete
+/// action (ADR-034 §3 level 4: Clip-level Action / Project Summary).
 struct EditorTimelineDock: View {
     let model: ProjectEditorModel
     /// Explicit delete of the selected Clip; the dock only presents it.
     var deleteSelected: () -> Void = {}
-    /// DEBUG-only staging of the future Add Clip reference visual. Production never sets this: the
-    /// timeline starts at the dock's leading inset with no dead control and no empty slot; a real
-    /// Add Clip button is later prepended to the same HStack without changing the layout.
-    var showsStagedAddSlot = false
+    /// Add Clips ("+"); the dock only presents it. Shown whenever the model has an acquisition boundary.
+    var addClips: () -> Void = {}
 
     /// Compact dock (≈100 pt from the fixed cell geometry): add slot + clip row vertically centred,
     /// Total as quiet caption metadata in the top-trailing corner, in its own column so it never
     /// overlaps scrolled cells. No header row.
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            if showsStagedAddSlot {
-                StagedAddClipSlot()
+            if model.supportsAddingClips {
+                AddClipsButton(isEnabled: model.canAddClips, isBusy: model.isAddingClips, action: addClips)
                     .frame(height: ProjectEditorModel.thumbnailPointSize.height)
             }
             ClipThumbnailStrip(model: model)
@@ -70,21 +68,36 @@ private struct DeleteClipButton: View {
     }
 }
 
-/// DEBUG-only reference visual for the future Phase 5 `Add Clips` action (ADR-034 §3): 40 pt circle,
-/// non-interactive, hidden from accessibility. Never compiled into Release.
-private struct StagedAddClipSlot: View {
+/// Production Add Clips action (ADR-034 §3 / ADR-037): the approved 40 pt circle at the timeline's
+/// leading edge inside a 44 pt target, opening the system PhotosPicker to append to THIS Project.
+/// Disabled (dimmed, `사용할 수 없음`) while a batch is in flight, a save is committing or a clip is
+/// lifted, so a second picker can never be presented over a running Add.
+private struct AddClipsButton: View {
+    let isEnabled: Bool
+    let isBusy: Bool
+    let action: () -> Void
+
     var body: some View {
-        #if DEBUG
-        ZStack {
-            Circle().fill(EditorWorkspace.control)
-            Image(systemName: "plus").font(.body.weight(.medium)).foregroundStyle(EditorWorkspace.primaryText)
+        Button(action: action) {
+            ZStack {
+                Circle().fill(EditorWorkspace.control)
+                if isBusy {
+                    ProgressView().controlSize(.small).tint(EditorWorkspace.secondaryText)
+                } else {
+                    Image(systemName: "plus").font(.body.weight(.medium))
+                        .foregroundStyle(isEnabled ? EditorWorkspace.primaryText : EditorWorkspace.hairline)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .frame(width: 40, height: 40)
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .dynamicTypeSize(...DynamicTypeSize.large)
-        .accessibilityHidden(true)
-        #else
-        EmptyView()
-        #endif
+        .accessibilityIdentifier("addClips")
+        .accessibilityLabel("클립 추가")
+        .accessibilityHint("사진 보관함에서 프로젝트에 클립을 추가합니다.")
     }
 }
 

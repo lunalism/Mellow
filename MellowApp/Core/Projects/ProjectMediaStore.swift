@@ -23,6 +23,9 @@ protocol ProjectMediaStoring: Sendable {
     func discard(_ workspace: ProjectMediaWorkspace) async
     /// Idempotent: removes every app-owned copy of the Project. Never Photos.
     func removeProjectMedia(projectID: UUID) async
+    /// Idempotent: removes ONE app-owned copy (a file this operation created and never committed).
+    /// Never Photos; never anything outside the Mellow root.
+    func removeMedia(_ path: RelativeMediaPath) async
     func usableCapacityBytes() async -> Int64
 }
 
@@ -122,6 +125,12 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving {
         let directory = projectsDirectory.appendingPathComponent(projectID.uuidString, isDirectory: true)
         guard fileManager.fileExists(atPath: directory.path) else { return }
         try? fileManager.removeItem(at: directory)
+    }
+
+    func removeMedia(_ path: RelativeMediaPath) async {
+        let url = root.appendingPathComponent(path.value).standardizedFileURL
+        guard url.path.hasPrefix(root.standardizedFileURL.path + "/"), fileManager.fileExists(atPath: url.path) else { return }
+        try? fileManager.removeItem(at: url)
     }
 
     func usableCapacityBytes() async -> Int64 {

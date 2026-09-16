@@ -307,10 +307,11 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
-    /// Production-equivalent presentation (`-uiTestProductionTimeline` = Release, no staged Add
-    /// visual): the timeline starts at the dock's leading inset — no dead button, no empty slot.
+    /// Production presentation: since STEP 11 (ADR-037) the leading `+` is the real Add Clips action
+    /// (44 pt target around the approved 40 pt circle, label `클립 추가`) and the timeline starts right
+    /// after it — never a dead control, never an empty slot.
     @MainActor
-    func testEditorTimelineProductionHasNoLeadingAddSlot() throws {
+    func testEditorTimelineProductionHasLeadingAddClipsAction() throws {
         let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline"])
         app.launch()
         XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
@@ -318,19 +319,24 @@ final class MellowUITests: XCTestCase {
         let clip1 = app.buttons["editorClip-1"]
         XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
         expectLabel(clip1, "Clip 1 of 3, 2.0s")
-        XCTAssertEqual(clip1.frame.minX - dock.frame.minX, 10, accuracy: 4, "first clip sits at the dock's leading inset")
+        let add = app.buttons["addClips"]
+        XCTAssertTrue(add.exists); XCTAssertTrue(add.isEnabled)
+        XCTAssertEqual(add.label, "클립 추가")
+        XCTAssertGreaterThanOrEqual(add.frame.width, 44); XCTAssertGreaterThanOrEqual(add.frame.height, 44)
+        XCTAssertEqual(add.frame.minX - dock.frame.minX, 10, accuracy: 4, "the Add action sits at the dock's leading inset")
+        XCTAssertLessThan(add.frame.maxX, clip1.frame.minX)
+        XCTAssertEqual(clip1.frame.minX - dock.frame.minX, 58, accuracy: 6, "timeline starts right after the 40 pt action")
         XCTAssertEqual(clip1.frame.width, 44, accuracy: 3)
         XCTAssertEqual(dock.frame.height, 100, accuracy: 6, "dock geometry unchanged")
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'add'")).count, 0, "no dead Add control")
         XCTAssertEqual(clip1.value as? String, "Selected")
-        try auditAndCapture(app, name: "editor-timeline-v4-production-no-add-slot")
+        try auditAndCapture(app, name: "editor-timeline-v4-production-add-action")
 
-        // Many-clip scrolling is unaffected by the missing slot.
+        // Many-clip scrolling is unaffected by the action.
         app.terminate()
         let many = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline", "-uiTestSeedEditorClips=9"])
         many.launch()
         XCTAssertTrue(many.buttons["editorClip-1"].waitForExistence(timeout: 5))
-        XCTAssertEqual(many.buttons["editorClip-1"].frame.minX - many.otherElements["editorDock"].frame.minX, 10, accuracy: 4)
+        XCTAssertEqual(many.buttons["editorClip-1"].frame.minX - many.otherElements["editorDock"].frame.minX, 58, accuracy: 6)
         let last = many.buttons["editorClip-9"]
         var attempts = 0
         while !(last.exists && last.isHittable), attempts < 4 { many.buttons["editorClip-3"].swipeLeft(); attempts += 1 }
@@ -746,6 +752,247 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 11: Add Clips (ADR-037) + history
+
+    private func addArguments(_ mode: String, extra: [String] = []) -> [String] {
+        Self.editorArguments + ["-uiTestEditorAddSelection=\(mode)"] + extra
+    }
+
+    /// A + B: `+` appends the fixture clip (2.0s) after the seeded A B C, selects it, updates Total and
+    /// enables Undo; Undo removes it (Redo enabled), Redo brings the same clip back.
+    @MainActor
+    func testEditorAddClipThenUndoRedo() throws {
+        let app = legacyRecentApp(addArguments("ready"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let add = app.buttons["addClips"], undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"]
+        let clip1 = app.buttons["editorClip-1"], clip3 = app.buttons["editorClip-3"], clip4 = app.buttons["editorClip-4"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        XCTAssertTrue(add.isEnabled); XCTAssertFalse(undo.isEnabled)
+        clip1.tap()
+
+        add.tap()
+        XCTAssertTrue(clip4.waitForExistence(timeout: 10), "fixture media is generated, validated and materialised")
+        expectLabel(clip4, "Clip 4 of 4, 2.0s")
+        expectLabel(clip1, "Clip 1 of 4, 2.0s")
+        expectLabel(clip3, "Clip 3 of 4, 1.0s")
+        XCTAssertEqual(clip4.value as? String, "Selected", "first added clip is selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 8.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled); XCTAssertTrue(add.isEnabled)
+        try auditAndCapture(app, name: "editor-add-clip-appended")
+
+        undo.tap()
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 3), .completed)
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected", "pre-Add selection restored")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+
+        redo.tap()
+        XCTAssertTrue(clip4.waitForExistence(timeout: 3))
+        expectLabel(clip4, "Clip 4 of 4, 2.0s")
+        XCTAssertEqual(clip4.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 8.0s")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// C: a multi-select batch (2.0s + 3.0s) is one edit — one Undo removes both, one Redo returns both
+    /// in picker order. I: after Undo Add, a new Delete disables Redo. H: reopen → the undone clips stay
+    /// absent, controls disabled, Project state persisted.
+    @MainActor
+    func testEditorAddTwoClipsIsOneHistoryEntryAndUndoneAddStaysAbsentAfterReopen() throws {
+        let app = legacyRecentApp(addArguments("ready2"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let add = app.buttons["addClips"], undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip4 = app.buttons["editorClip-4"], clip5 = app.buttons["editorClip-5"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+
+        add.tap()
+        XCTAssertTrue(clip5.waitForExistence(timeout: 10))
+        expectLabel(clip4, "Clip 4 of 5, 2.0s")
+        expectLabel(clip5, "Clip 5 of 5, 3.0s")
+        XCTAssertEqual(clip4.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 11.0s")
+
+        undo.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)], timeout: 3), .completed, "one Undo removes both")
+        XCTAssertFalse(clip5.exists)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertTrue(redo.isEnabled)
+        redo.tap()
+        XCTAssertTrue(clip5.waitForExistence(timeout: 3), "one Redo returns both")
+        expectLabel(clip4, "Clip 4 of 5, 2.0s")
+        expectLabel(clip5, "Clip 5 of 5, 3.0s")
+
+        // I: Undo the Add again, then a NEW edit (Delete) → Redo disabled; the added clips stay absent.
+        undo.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip5)], timeout: 3), .completed)
+        XCTAssertTrue(redo.isEnabled)
+        app.buttons["editorClip-2"].tap()
+        delete.tap()
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(redo.isEnabled, "abandoned Add future discarded")
+        XCTAssertFalse(clip4.exists)
+        try auditAndCapture(app, name: "editor-add-redo-cleared")
+
+        // H: relaunch → persisted state (A C), added clips absent, history empty.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        app.terminate()
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenEditorProject", "-uiTestProductionTimeline"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunched.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(relaunched.buttons["editorClip-1"], "Clip 1 of 2, 2.0s")
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(relaunched.buttons["editorClip-3"].exists, "undone-Add clips do not reappear")
+        XCTAssertEqual(relaunched.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        XCTAssertFalse(relaunched.buttons["editorUndo"].isEnabled); XCTAssertFalse(relaunched.buttons["editorRedo"].isEnabled)
+        XCTAssertTrue(relaunched.buttons["addClips"].isEnabled)
+
+        relaunched.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(relaunched.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: relaunched)
+    }
+
+    /// D + E: picker cancel changes nothing; a non-ready (too long) selection shows the typed message
+    /// and leaves the Project, selection and history untouched.
+    @MainActor
+    func testEditorAddCancelAndNonReadySelectionChangeNothing() throws {
+        let cancel = legacyRecentApp(addArguments("cancel"))
+        cancel.launch()
+        XCTAssertTrue(cancel.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(cancel.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        cancel.buttons["editorClip-2"].tap()
+        cancel.buttons["addClips"].tap()
+        XCTAssertFalse(cancel.buttons["editorClip-4"].waitForExistence(timeout: 2))
+        XCTAssertEqual(cancel.buttons["editorClip-2"].value as? String, "Selected", "selection unchanged")
+        XCTAssertEqual(cancel.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(cancel.buttons["editorUndo"].isEnabled, "no history")
+        XCTAssertFalse(cancel.alerts.firstMatch.exists, "cancel is silent")
+        XCTAssertTrue(cancel.buttons["addClips"].isEnabled, "ready for the next attempt")
+        cancel.terminate()
+
+        let tooLong = legacyRecentApp(addArguments("tooLong"))
+        tooLong.launch()
+        XCTAssertTrue(tooLong.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(tooLong.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        tooLong.buttons["addClips"].tap()
+        XCTAssertTrue(tooLong.alerts["영상이 너무 길어요"].waitForExistence(timeout: 10))
+        XCTAssertTrue(tooLong.alerts.staticTexts["5초 이하의 영상을 선택해주세요."].exists)
+        tooLong.alerts.buttons["확인"].tap()
+        XCTAssertFalse(tooLong.buttons["editorClip-4"].exists)
+        XCTAssertEqual(tooLong.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(tooLong.buttons["editorUndo"].isEnabled)
+        try auditAndCapture(tooLong, name: "editor-add-not-ready")
+
+        tooLong.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(tooLong.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: tooLong)
+    }
+
+    /// F + G: Add then Reorder, and Add then Delete — Undo ×2 / Redo ×2 follow chronological order.
+    @MainActor
+    func testEditorAddWithReorderAndDeleteIsChronological() throws {
+        let app = legacyRecentApp(addArguments("ready"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let add = app.buttons["addClips"], undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"], clip4 = app.buttons["editorClip-4"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+
+        // F: Add D (2.0s) → drag D before A → C? no: D A B C.
+        add.tap()
+        XCTAssertTrue(clip4.waitForExistence(timeout: 10))
+        dragClip(app, from: 4, toBefore: 1)                        // D A B C
+        expectLabel(clip1, "Clip 1 of 4, 2.0s")
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 4, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        undo.tap()                                                  // A B C D
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 4, 3.0s")
+        expectLabel(clip4, "Clip 4 of 4, 2.0s")
+        undo.tap()                                                  // A B C
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)], timeout: 3), .completed)
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+        redo.tap()                                                  // A B C D
+        XCTAssertTrue(clip4.waitForExistence(timeout: 3))
+        expectLabel(clip4, "Clip 4 of 4, 2.0s")
+        redo.tap()                                                  // D A B C
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 4, 2.0s")
+        XCTAssertFalse(redo.isEnabled)
+        // Back to A B C for part G.
+        undo.tap(); undo.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)], timeout: 3), .completed)
+        XCTAssertFalse(undo.isEnabled)
+
+        // G: Add D again (new batch), then Delete A → Undo restores A first, then removes D.
+        add.tap()
+        XCTAssertTrue(clip4.waitForExistence(timeout: 10))
+        XCTAssertFalse(redo.isEnabled, "a new Add clears the Redo future")
+        clip1.tap()
+        delete.tap()                                                // B C D
+        expectLabel(clip1, "Clip 1 of 3, 3.0s")
+        expectLabel(app.buttons["editorClip-3"], "Clip 3 of 3, 2.0s")
+        undo.tap()                                                  // A B C D
+        expectLabel(clip1, "Clip 1 of 4, 2.0s")
+        expectLabel(clip4, "Clip 4 of 4, 2.0s")
+        undo.tap()                                                  // A B C
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)], timeout: 3), .completed)
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        redo.tap()                                                  // A B C D
+        XCTAssertTrue(clip4.waitForExistence(timeout: 3))
+        redo.tap()                                                  // B C D
+        expectLabel(clip1, "Clip 1 of 3, 3.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        try auditAndCapture(app, name: "editor-add-chronological")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// J: an empty Project (only clip deleted) accepts Add; Undo returns to empty, Redo brings the clip back.
+    @MainActor
+    func testEditorAddIntoEmptyProjectThenUndoRedo() throws {
+        let app = legacyRecentApp(addArguments("ready", extra: ["-uiTestSeedEditorClips=1"]))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let add = app.buttons["addClips"], undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"]
+        XCTAssertTrue(clip1.waitForExistence(timeout: 2))
+        delete.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip1)], timeout: 3), .completed)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        XCTAssertTrue(add.isEnabled, "an empty Project still accepts clips")
+
+        add.tap()
+        XCTAssertTrue(clip1.waitForExistence(timeout: 10))
+        expectLabel(clip1, "Clip 1 of 1, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 2.0s")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 1")
+        try auditAndCapture(app, name: "editor-add-into-empty")
+
+        undo.tap()                                                  // empty again (the added clip)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip1)], timeout: 3), .completed)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, no clip selected")
+        redo.tap()
+        XCTAssertTrue(clip1.waitForExistence(timeout: 3))
+        expectLabel(clip1, "Clip 1 of 1, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
     // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
     // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
     // `Projects` still opens Recent Projects in this slice.
@@ -996,7 +1243,7 @@ final class MellowUITests: XCTestCase {
 
         let alert = app.alerts["영상이 너무 길어요"]
         XCTAssertTrue(alert.waitForExistence(timeout: 20))
-        XCTAssertTrue(alert.staticTexts["현재는 5초 이하의 영상을 프로젝트에 추가할 수 있어요."].exists)
+        XCTAssertTrue(alert.staticTexts["5초 이하의 영상을 선택해주세요."].exists)
         try auditAndCapture(app, name: "Select Clips Requires Preparation")
         alert.buttons["확인"].tap()
         XCTAssertFalse(alert.waitForExistence(timeout: 1))

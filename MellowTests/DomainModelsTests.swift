@@ -250,6 +250,34 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertThrowsError(try ClipDeletionRecord(deletedAt: .now, originalIndex: -1, previousClipID: nil, nextClipID: nil))
     }
 
+    // MARK: - Append (Phase 5 STEP 11, ADR-037)
+
+    func testAppendClipsAddsAfterLastActiveInOrderAndLeavesPendingUntouched() throws {
+        var (project, ids) = try makeFourClipProject()
+        try project.deleteClip(id: ids[3])                                          // A B C, D pending
+        let x = try makeClip(id: UUID(), projectID: project.id, duration: .seconds(1), sortOrder: 99)
+        let y = try makeClip(id: UUID(), projectID: project.id, duration: .seconds(2), sortOrder: 0)
+        let stamp = Date(timeIntervalSince1970: 9_000)
+
+        try project.appendClips([x, y], appendedAt: stamp)
+
+        XCTAssertEqual(project.clips.map(\.id), [ids[0], ids[1], ids[2], x.id, y.id])
+        XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2, 3, 4], "renormalised regardless of incoming sortOrder")
+        XCTAssertEqual(project.deletedClips.map(\.id), [ids[3]], "pending-deleted clips untouched")
+        XCTAssertEqual(project.totalDuration, .seconds(1 + 2 + 3 + 1 + 2))
+        XCTAssertEqual(project.updatedAt, stamp)
+        XCTAssertEqual(project.clips[3].mediaRelativePath, x.mediaRelativePath)
+
+        // All-or-nothing validation.
+        let foreign = try makeClip(id: UUID(), projectID: UUID(), sortOrder: 0)
+        XCTAssertThrowsError(try project.appendClips([foreign])) { XCTAssertEqual($0 as? DomainValidationError, .clipProjectMismatch) }
+        XCTAssertThrowsError(try project.appendClips([x]), "duplicate identity") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+        XCTAssertThrowsError(try project.appendClips([ids[3]].compactMap { id in project.deletedClips.first { $0.id == id } }), "already durable") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+        XCTAssertEqual(project.clips.count, 5, "rejected batches mutate nothing")
+        try project.appendClips([])
+        XCTAssertEqual(project.updatedAt, stamp, "empty batch is a no-op")
+    }
+
     func testDisplayNameUsesCreatedAtWithLocaleAwareFormatting() throws {
         let createdAt = Date(timeIntervalSince1970: 1_704_164_240)
         let laterDate = createdAt.addingTimeInterval(60 * 60)

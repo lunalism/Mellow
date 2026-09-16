@@ -85,6 +85,28 @@ struct VlogProject: Identifiable, Equatable, Sendable {
         self.updatedAt = updatedAt
     }
 
+    // MARK: - Append (ADR-037)
+
+    /// Appends already-materialised Clips after the last active Clip, in the given order, with
+    /// `sortOrder` renormalised 0…n-1. Pending-deleted Clips are untouched. All-or-nothing: any
+    /// invalid Clip (foreign Project, duplicate identity, deletion state) rejects the whole batch.
+    mutating func appendClips(_ newClips: [VlogClip], appendedAt: Date = .now) throws {
+        guard !newClips.isEmpty else { return }
+        guard newClips.allSatisfy({ $0.projectID == id }) else {
+            throw DomainValidationError.clipProjectMismatch
+        }
+        guard newClips.allSatisfy({ !$0.isPendingDeletion }) else {
+            throw DomainValidationError.clipDeletionStateMismatch
+        }
+        let known = Set(durableClips.map(\.id))
+        let incoming = newClips.map(\.id)
+        guard Set(incoming).count == incoming.count, incoming.allSatisfy({ !known.contains($0) }) else {
+            throw DomainValidationError.clipDeletionStateMismatch
+        }
+        clips = try (clips + newClips).enumerated().map { try $1.assigningSortOrder($0) }
+        updatedAt = appendedAt
+    }
+
     // MARK: - Logical deletion (ADR-021)
 
     /// Logically deletes an active Clip: it leaves the timeline at once (remaining `sortOrder`

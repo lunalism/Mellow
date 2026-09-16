@@ -342,6 +342,55 @@ final class ProjectRepositoryTests: XCTestCase {
         }
     }
 
+    // MARK: - Add + undone-Add durability (Phase 5 STEP 11)
+
+    /// Add appends rows in place; Undo Add keeps the new row as pending-deleted (never removed);
+    /// the state survives reopen and unrelated autosave; Redo restores the same row identity.
+    func testSwiftDataAppendThenUndoneAddKeepsRowsAcrossReopen() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        var (project, ids) = try makeThreeClipProject()
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(project)
+        let rowsBefore = Set(try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).map(\.persistentModelID))
+
+        let added = try makeClip(projectID: project.id, sortOrder: 0)
+        try project.appendClips([added])
+        try environment.repository.update(project)
+        let rowsAfterAdd = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertEqual(rowsAfterAdd.count, 4)
+        XCTAssertTrue(rowsBefore.isSubset(of: Set(rowsAfterAdd.map(\.persistentModelID))), "existing rows retained in place")
+        let addedRow = try XCTUnwrap(rowsAfterAdd.first { $0.id == added.id })
+
+        // Undo Add = the added clip becomes pending-deleted (durable), never omitted.
+        try project.deleteClip(id: added.id)
+        try environment.repository.update(project)
+        XCTAssertEqual(try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 4, "no row deleted")
+        XCTAssertNotNil(addedRow.deletedAt)
+
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        var reloaded = try XCTUnwrap(try reopened.repository.project(id: project.id))
+        XCTAssertEqual(reloaded.clips.map(\.id), ids)
+        XCTAssertEqual(reloaded.deletedClips.map(\.id), [added.id], "undone-Add clip survives reopen as pending")
+        XCTAssertEqual(reloaded.deletedClips[0].mediaRelativePath, added.mediaRelativePath)
+
+        // Unrelated autosave keeps it; the omission guard still holds.
+        try reloaded.reorderClip(id: ids[2], toIndex: 0)
+        try reopened.repository.update(reloaded)
+        XCTAssertEqual(try reopened.repository.project(id: project.id)?.deletedClips.map(\.id), [added.id])
+        let truncated = try VlogProject(id: project.id, createdAt: project.createdAt, orientation: .portrait9x16, clips: reloaded.clips)
+        XCTAssertThrowsError(try reopened.repository.update(truncated)) { XCTAssertEqual($0 as? ProjectRepositoryError, .missingDurableClip) }
+
+        // Redo Add = restore the same row to active.
+        try reloaded.restoreDeletedClip(id: added.id)
+        try reopened.repository.update(reloaded)
+        let again = try makeSwiftDataEnvironment(storeURL: store.url)
+        let final = try XCTUnwrap(try again.repository.project(id: project.id))
+        XCTAssertEqual(final.clips.map(\.id), [ids[2], added.id, ids[0], ids[1]], "domain anchor restore: after its previous anchor C, wherever C now is")
+        XCTAssertTrue(final.deletedClips.isEmpty)
+        XCTAssertEqual(try again.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 4, "never a fifth row")
+    }
+
     private func makeSwiftDataEnvironment(storeURL: URL) throws -> SwiftDataRepositoryEnvironment {
         let container = try MellowModelContainer.makePersistentContainer(storeURL: storeURL)
         return SwiftDataRepositoryEnvironment(container: container)

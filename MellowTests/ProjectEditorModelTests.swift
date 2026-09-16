@@ -1006,6 +1006,465 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertEqual(model.orderedClips.map(\.id), [ids[0]])
     }
 
+    // MARK: - Add Clips (STEP 11, ADR-037) + history
+
+    /// Real store under a temporary root, fake selector fed with real fixture media, real validator.
+    private struct AddHarness {
+        let root: URL
+        let store: ProjectMediaStore
+        let selector: FakeProjectMediaSelector
+        let acquisition: EditorClipAcquisition
+        func cleanup() { try? FileManager.default.removeItem(at: root) }
+    }
+
+    private func makeAddHarness(script: FakeProjectMediaSelector.Script, storage: ProjectStorageVerdict = .sufficient, inspector: (any ProjectMediaInspecting)? = nil) -> AddHarness {
+        let root = TestSupport.temporaryRoot("editor-add")
+        let store = ProjectMediaStore(root: root)
+        let selector = FakeProjectMediaSelector(script: script)
+        let appender = ProjectClipAppendCoordinator(
+            mediaStore: store,
+            validator: Phase5ReadyMediaValidator(inspector: inspector ?? AVAssetProjectMediaInspector()),
+            storage: FakeProjectStorageGate(verdict: storage)
+        )
+        return AddHarness(root: root, store: store, selector: selector, acquisition: EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: storage), appender: appender))
+    }
+
+    private func makeAddEditor(clipSeconds: [Int64] = [2, 3], harness: AddHarness, provider: FakeClipThumbnailProvider = FakeClipThumbnailProvider()) throws -> (ProjectEditorModel, FailableProjectRepository, [UUID]) {
+        let repository = FailableProjectRepository()
+        let project = try makeProject(clipSeconds: clipSeconds)
+        try repository.create(project)
+        let model = ProjectEditorModel(project: project, repository: repository, thumbnails: provider, acquisition: harness.acquisition)
+        return (model, repository, project.clips.map(\.id))
+    }
+
+    private func seconds(_ time: MediaTime) -> Double { Double(time.value) / Double(time.timescale) }
+
+    private func mediaFiles(_ root: URL, projectID: UUID) -> [String] {
+        let directory = root.appendingPathComponent("Projects/\(projectID.uuidString)/Media")
+        return ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []).sorted()
+    }
+
+    func testAddSingleClipAppendsSelectsAndEntersHistoryWithOneWrite() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        let before = model.project
+
+        XCTAssertTrue(model.canAddClips)
+        let added = await model.addClips()
+
+        XCTAssertEqual(added, 1)
+        XCTAssertEqual(model.orderedClips.count, 3)
+        XCTAssertEqual(Array(model.orderedClips.prefix(2).map(\.id)), ids, "existing clips untouched, in place")
+        XCTAssertEqual(model.orderedClips.map(\.sortOrder), [0, 1, 2])
+        let c = model.orderedClips[2]
+        XCTAssertEqual(c.projectID, before.id)
+        XCTAssertEqual(c.sourceKind, .imported)
+        XCTAssertEqual(seconds(c.trimDuration), 2, accuracy: 0.001)
+        XCTAssertEqual(c.mediaRelativePath.value, "Projects/\(before.id.uuidString)/Media/\(c.id.uuidString).mov")
+        let exists1 = await harness.store.fileExists(c.mediaRelativePath)
+        XCTAssertTrue(exists1, "Project-owned copy exists")
+        XCTAssertEqual(model.selectedClipID, c.id, "first newly added clip is selected")
+        XCTAssertEqual(seconds(model.totalDuration), 7, accuracy: 0.001)
+        XCTAssertEqual(repository.updateCount, 1)
+        XCTAssertEqual(model.undoStack.map(\.kind), [.add])
+        XCTAssertTrue(model.redoStack.isEmpty)
+        XCTAssertEqual(model.undoTarget, .add)
+        XCTAssertEqual(model.project.id, before.id); XCTAssertEqual(model.project.createdAt, before.createdAt)
+        XCTAssertEqual(model.project.orientation, before.orientation)
+        XCTAssertTrue(model.project.deletedClips.isEmpty)
+        XCTAssertEqual(try repository.project(id: before.id)?.clips.map(\.id), model.orderedClips.map(\.id))
+        XCTAssertFalse(model.isAddingClips)
+        XCTAssertNil(model.editorMessage)
+        XCTAssertEqual(harness.selector.selectionCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.root.appendingPathComponent("ProjectWorkspace").path) && !((try? FileManager.default.contentsOfDirectory(atPath: harness.root.appendingPathComponent("ProjectWorkspace").path))?.isEmpty ?? true), "workspace discarded")
+    }
+
+    func testAddMultipleClipsPreservesPickerOrderAsOneEdit() async throws {
+        let a = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "add-a")
+        let b = try await TestMediaFixtures.shared.portrait(seconds: 3, name: "add-b")
+        let harness = makeAddHarness(script: .fixtures([a, b]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+
+        let added1 = await model.addClips()
+        XCTAssertEqual(added1, 2)
+        XCTAssertEqual(model.orderedClips.count, 4)
+        XCTAssertEqual(seconds(model.orderedClips[2].trimDuration), 2, accuracy: 0.001, "picker order: a then b")
+        XCTAssertEqual(seconds(model.orderedClips[3].trimDuration), 3, accuracy: 0.001)
+        XCTAssertEqual(model.orderedClips.map(\.sortOrder), [0, 1, 2, 3])
+        XCTAssertEqual(model.selectedClipID, model.orderedClips[2].id)
+        XCTAssertEqual(seconds(model.totalDuration), 10, accuracy: 0.001)
+        XCTAssertEqual(repository.updateCount, 1, "one batch = one write")
+        XCTAssertEqual(model.undoStack.count, 1, "one batch = one history entry")
+        XCTAssertEqual(Array(model.orderedClips.prefix(2).map(\.id)), ids)
+    }
+
+    func testPickerCancelChangesNothing() async throws {
+        let harness = makeAddHarness(script: .cancel)
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        model.select(ids[1])
+        let before = model.project
+
+        let added2 = await model.addClips()
+        XCTAssertEqual(added2, 0)
+        XCTAssertEqual(model.project, before)
+        XCTAssertEqual(model.selectedClipID, ids[1])
+        XCTAssertEqual(repository.updateCount, 0)
+        XCTAssertFalse(model.canUndo)
+        XCTAssertNil(model.editorMessage, "cancel is silent")
+        XCTAssertTrue(mediaFiles(harness.root, projectID: before.id).isEmpty, "no Project-owned media")
+        XCTAssertFalse(model.isAddingClips)
+    }
+
+    func testOneNonReadyItemRejectsWholeBatch() async throws {
+        let ready = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "add-ready")
+        let tooLong = try await TestMediaFixtures.shared.portrait(seconds: 7, name: "add-long")
+        let harness = makeAddHarness(script: .fixtures([ready, tooLong]))
+        defer { harness.cleanup() }
+        let (model, repository, _) = try makeAddEditor(harness: harness)
+        let before = model.project
+
+        let added3 = await model.addClips()
+        XCTAssertEqual(added3, 0)
+        XCTAssertEqual(model.project, before, "all-or-nothing")
+        XCTAssertEqual(repository.updateCount, 0)
+        XCTAssertFalse(model.canUndo)
+        XCTAssertEqual(model.editorMessage, .addRequiresImportPreparation(.tooLong))
+        XCTAssertTrue(mediaFiles(harness.root, projectID: before.id).isEmpty, "nothing materialised")
+    }
+
+    func testTransferFailureAndInvalidMediaLeaveProjectUnchanged() async throws {
+        let failing = makeAddHarness(script: .fail)
+        defer { failing.cleanup() }
+        let (model, repository, _) = try makeAddEditor(harness: failing)
+        let before = model.project
+        let added4 = await model.addClips()
+        XCTAssertEqual(added4, 0)
+        XCTAssertEqual(model.project, before)
+        XCTAssertEqual(model.editorMessage, .addFailed)
+        XCTAssertEqual(repository.updateCount, 0)
+
+        let corrupt = makeAddHarness(script: .fixtures([try await TestMediaFixtures.shared.corrupt()]))
+        defer { corrupt.cleanup() }
+        let (model2, repository2, _) = try makeAddEditor(harness: corrupt)
+        let added5 = await model2.addClips()
+        XCTAssertEqual(added5, 0)
+        XCTAssertEqual(model2.editorMessage, .addInvalidMedia)
+        XCTAssertEqual(repository2.updateCount, 0)
+        XCTAssertFalse(model2.canUndo)
+        XCTAssertTrue(mediaFiles(corrupt.root, projectID: model2.project.id).isEmpty)
+    }
+
+    func testInsufficientStorageRejectsBatch() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]), storage: .insufficient(requiredBytes: 1, usableBytes: 0))
+        defer { harness.cleanup() }
+        let (model, repository, _) = try makeAddEditor(harness: harness)
+        let added6 = await model.addClips()
+        XCTAssertEqual(added6, 0)
+        XCTAssertEqual(model.editorMessage, .addInsufficientStorage)
+        XCTAssertEqual(repository.updateCount, 0)
+        XCTAssertTrue(mediaFiles(harness.root, projectID: model.project.id).isEmpty)
+    }
+
+    func testPersistenceFailureRollsBackAndRemovesOnlyTheNewMedia() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        // A pre-existing Project-owned file that must survive the failed Add untouched.
+        let existingPath = try RelativeMediaPath("Projects/\(model.project.id.uuidString)/Media/existing.mov")
+        let existingURL = await harness.store.url(for: existingPath)
+        try FileManager.default.createDirectory(at: existingURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: existingURL)
+        model.select(ids[1])
+        let before = model.project
+        repository.updateFails = true
+
+        let added7 = await model.addClips()
+        XCTAssertEqual(added7, 0)
+
+        XCTAssertEqual(model.project, before)
+        XCTAssertEqual(model.selectedClipID, ids[1])
+        XCTAssertFalse(model.canUndo, "no history entry")
+        XCTAssertEqual(model.editorMessage, .addFailed)
+        XCTAssertEqual(try repository.project(id: before.id), before)
+        XCTAssertEqual(mediaFiles(harness.root, projectID: before.id), ["existing.mov"], "the new file was removed, the existing one kept")
+    }
+
+    func testAddIsRefusedWhileDraggingOrCommitting() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        model.beginReorder(clipID: ids[0])
+        XCTAssertFalse(model.canAddClips)
+        let added8 = await model.addClips()
+        XCTAssertEqual(added8, 0)
+        XCTAssertEqual(harness.selector.selectionCount, 0, "picker never presented")
+        model.cancelReorder()
+        XCTAssertTrue(model.canAddClips)
+        XCTAssertEqual(repository.updateCount, 0)
+        let noAcquisition = ProjectEditorModel(project: model.project, repository: repository, thumbnails: FakeClipThumbnailProvider())
+        XCTAssertFalse(noAcquisition.supportsAddingClips)
+        let added9 = await noAcquisition.addClips()
+        XCTAssertEqual(added9, 0)
+    }
+
+    func testMutationsAreRefusedWhileAddIsInFlight() async throws {
+        // A selector that reports the model's state while the picker is "open".
+        @MainActor final class ProbingSelector: ProjectMediaSelecting {
+            var probe: (() -> Void)?
+            func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating) async -> ProjectMediaSelectionOutcome {
+                probe?(); return .cancelled
+            }
+        }
+        let root = TestSupport.temporaryRoot("editor-add-probe"); defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectMediaStore(root: root)
+        let selector = ProbingSelector()
+        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(), appender: ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())), storage: FakeProjectStorageGate()))
+        let repository = FailableProjectRepository()
+        let project = try makeProject(clipSeconds: [2, 3])
+        try repository.create(project)
+        let model = ProjectEditorModel(project: project, repository: repository, thumbnails: FakeClipThumbnailProvider(), acquisition: acquisition)
+        model.deleteClip(id: project.clips[1].id)
+        var observed: [Bool] = []
+        selector.probe = {
+            observed = [model.isAddingClips, model.canUndo, model.canRedo, model.canDeleteSelectedClip, model.canAddClips,
+                        model.deleteSelectedClip(), model.undo(), model.beginReorder(clipID: project.clips[0].id)]
+        }
+        let added10 = await model.addClips()
+        XCTAssertEqual(added10, 0)
+        XCTAssertEqual(observed, [true, false, false, false, false, false, false, false], "nothing may race the Add batch")
+        XCTAssertFalse(model.isAddingClips)
+        XCTAssertTrue(model.canUndo)
+        XCTAssertEqual(repository.updateCount, 1)
+    }
+
+    func testUndoAddKeepsClipDurableInactiveAndRedoRestoresSameClip() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        model.select(ids[1])
+        let added11 = await model.addClips()
+        XCTAssertEqual(added11, 1)
+        let c = model.orderedClips[2]
+        let projectID = model.project.id
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), ids)
+        XCTAssertEqual(seconds(model.totalDuration), 5, accuracy: 0.001)
+        XCTAssertEqual(model.selectedClipID, ids[1], "pre-Add selection restored")
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [c.id], "C stays durable, inactive")
+        XCTAssertEqual(model.project.deletedClips[0].mediaRelativePath, c.mediaRelativePath)
+        XCTAssertEqual(model.project.deletedClips[0].deletion?.originalIndex, 2)
+        XCTAssertEqual(model.project.deletedClips[0].deletion?.previousClipID, ids[1])
+        let exists2 = await harness.store.fileExists(c.mediaRelativePath)
+        XCTAssertTrue(exists2, "media never deleted on Undo")
+        XCTAssertEqual(mediaFiles(harness.root, projectID: projectID), ["\(c.id.uuidString).mov"])
+        let stored = try XCTUnwrap(try repository.project(id: projectID))
+        XCTAssertEqual(stored.clips.map(\.id), ids)
+        XCTAssertEqual(stored.deletedClips.map(\.id), [c.id])
+        XCTAssertEqual(repository.updateCount, 2)
+        XCTAssertTrue(model.canRedo); XCTAssertEqual(model.redoTarget, .add)
+
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), ids + [c.id], "same UUID back")
+        XCTAssertEqual(model.orderedClips[2], c, "same path, kind, durations, trim, framing, createdAt; no deletion state")
+        XCTAssertTrue(model.project.deletedClips.isEmpty, "pending state cleared")
+        XCTAssertEqual(model.selectedClipID, c.id, "post-Add selection restored")
+        XCTAssertEqual(seconds(model.totalDuration), 7, accuracy: 0.001)
+        XCTAssertEqual(harness.selector.selectionCount, 1, "no picker, no transfer on Redo")
+        XCTAssertEqual(mediaFiles(harness.root, projectID: projectID), ["\(c.id.uuidString).mov"], "no recopy")
+        XCTAssertEqual(repository.updateCount, 3)
+        XCTAssertEqual(model.project.durableClips.count, 3)
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [c.id])
+        XCTAssertEqual(model.project.deletedClips[0].mediaRelativePath, c.mediaRelativePath)
+    }
+
+    func testUndoRedoOfMultiSelectAddMovesWholeBatch() async throws {
+        let a = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "batch-a")
+        let b = try await TestMediaFixtures.shared.portrait(seconds: 3, name: "batch-b")
+        let harness = makeAddHarness(script: .fixtures([a, b]))
+        defer { harness.cleanup() }
+        let (model, _, ids) = try makeAddEditor(harness: harness)
+        let added12 = await model.addClips()
+        XCTAssertEqual(added12, 2)
+        let added = Array(model.orderedClips.suffix(2))
+
+        XCTAssertTrue(model.undo())
+        XCTAssertEqual(model.orderedClips.map(\.id), ids, "both removed together")
+        XCTAssertEqual(Set(model.project.deletedClips.map(\.id)), Set(added.map(\.id)))
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.orderedClips.map(\.id), ids + added.map(\.id), "both return together, in order")
+        XCTAssertEqual(Array(model.orderedClips.suffix(2)), added)
+        XCTAssertTrue(model.project.deletedClips.isEmpty)
+    }
+
+    func testNewEditAfterUndoAddClearsRedoAndKeepsClipPending() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        let added13 = await model.addClips()
+        XCTAssertEqual(added13, 1)
+        let c = model.orderedClips[2]
+        XCTAssertTrue(model.undo())
+        XCTAssertTrue(model.canRedo)
+
+        model.beginReorder(clipID: ids[1]); model.previewReorder(toIndex: 0); model.commitReorder()   // B A
+        XCTAssertFalse(model.canRedo, "abandoned Add future discarded")
+        XCTAssertEqual(model.orderedClips.map(\.id), [ids[1], ids[0]])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [c.id], "C stays durable pending")
+        let exists3 = await harness.store.fileExists(c.mediaRelativePath)
+        XCTAssertTrue(exists3)
+        XCTAssertEqual(try repository.project(id: model.project.id)?.deletedClips.map(\.id), [c.id])
+        XCTAssertTrue(model.undo())   // undo reorder → A B, C still pending
+        XCTAssertEqual(model.orderedClips.map(\.id), ids)
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [c.id])
+    }
+
+    func testAddThenReorderUndoesChronologically() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, _, ids) = try makeAddEditor(harness: harness)
+        let (a, b) = (ids[0], ids[1])
+        let added14 = await model.addClips()
+        XCTAssertEqual(added14, 1)
+        let c = model.orderedClips[2].id
+        model.beginReorder(clipID: c); model.previewReorder(toIndex: 0); model.commitReorder()   // C A B
+        XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
+
+        XCTAssertTrue(model.undo()); XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
+        XCTAssertTrue(model.undo()); XCTAssertEqual(model.orderedClips.map(\.id), [a, b])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [c])
+        XCTAssertTrue(model.redo()); XCTAssertEqual(model.orderedClips.map(\.id), [a, b, c])
+        XCTAssertTrue(model.project.deletedClips.isEmpty)
+        XCTAssertTrue(model.redo()); XCTAssertEqual(model.orderedClips.map(\.id), [c, a, b])
+    }
+
+    func testDeleteThenAddAndAddThenDeleteUndoRedoChronologically() async throws {
+        let a1 = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "chron-a")
+        let b1 = try await TestMediaFixtures.shared.portrait(seconds: 3, name: "chron-b")
+        let harness = makeAddHarness(script: .fixtures([a1, b1]))
+        defer { harness.cleanup() }
+        let (model, _, ids) = try makeAddEditor(harness: harness)
+        let (a, b) = (ids[0], ids[1])
+        model.deleteClip(id: b)                                   // A
+        let added15 = await model.addClips()
+        XCTAssertEqual(added15, 2)                 // A C D
+        let (c, d) = (model.orderedClips[1].id, model.orderedClips[2].id)
+        XCTAssertEqual(model.orderedClips.map(\.id), [a, c, d])
+
+        XCTAssertTrue(model.undo()); XCTAssertEqual(model.orderedClips.map(\.id), [a])
+        XCTAssertEqual(Set(model.project.deletedClips.map(\.id)), Set([b, c, d]))
+        XCTAssertTrue(model.undo()); XCTAssertEqual(model.orderedClips.map(\.id), [a, b])
+        XCTAssertEqual(Set(model.project.deletedClips.map(\.id)), Set([c, d]), "undone-Add clips stay durable")
+        XCTAssertTrue(model.redo()); XCTAssertEqual(model.orderedClips.map(\.id), [a])
+        XCTAssertTrue(model.redo()); XCTAssertEqual(model.orderedClips.map(\.id), [a, c, d])
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [b])
+        XCTAssertEqual(model.orderedClips[1].id, c); XCTAssertEqual(model.orderedClips[2].id, d)
+
+        // Inverse: Add then Delete A → Undo Delete first, then Undo Add.
+        harness.selector.script = .fixtures([a1])
+        let (model2, _, ids2) = try makeAddEditor(harness: harness)
+        let added16 = await model2.addClips()
+        XCTAssertEqual(added16, 1)
+        let e = model2.orderedClips[2].id
+        model2.deleteClip(id: ids2[0])                            // B E
+        XCTAssertEqual(model2.orderedClips.map(\.id), [ids2[1], e])
+        XCTAssertTrue(model2.undo()); XCTAssertEqual(model2.orderedClips.map(\.id), [ids2[0], ids2[1], e])
+        XCTAssertTrue(model2.undo()); XCTAssertEqual(model2.orderedClips.map(\.id), ids2)
+        XCTAssertEqual(model2.project.deletedClips.map(\.id), [e])
+        XCTAssertTrue(model2.redo()); XCTAssertEqual(model2.orderedClips.map(\.id), ids2 + [e])
+        XCTAssertTrue(model2.redo()); XCTAssertEqual(model2.orderedClips.map(\.id), [ids2[1], e])
+    }
+
+    func testFailedUndoOrRedoOfAddLeavesStateAndStacksUnchanged() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, _) = try makeAddEditor(harness: harness)
+        let added17 = await model.addClips()
+        XCTAssertEqual(added17, 1)
+        let afterAdd = model.project, stacks = (model.undoStack, model.redoStack)
+        repository.updateFails = true
+        XCTAssertFalse(model.undo())
+        XCTAssertEqual(model.project, afterAdd); XCTAssertEqual(model.undoStack, stacks.0); XCTAssertEqual(model.redoStack, stacks.1)
+        XCTAssertEqual(model.editorMessage, .undoFailed)
+        repository.updateFails = false; model.editorMessage = nil
+        XCTAssertTrue(model.undo())
+        let afterUndo = model.project, stacks2 = (model.undoStack, model.redoStack)
+        repository.updateFails = true
+        XCTAssertFalse(model.redo())
+        XCTAssertEqual(model.project, afterUndo); XCTAssertEqual(model.undoStack, stacks2.0); XCTAssertEqual(model.redoStack, stacks2.1)
+        XCTAssertEqual(model.editorMessage, .redoFailed)
+        XCTAssertEqual(mediaFiles(harness.root, projectID: model.project.id).count, 1, "media untouched throughout")
+    }
+
+    func testReopenAfterUndoAddKeepsClipAbsentDurableAndHistoryEmpty() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let (model, repository, ids) = try makeAddEditor(harness: harness)
+        let added18 = await model.addClips()
+        XCTAssertEqual(added18, 1)
+        let c = model.orderedClips[2]
+        XCTAssertTrue(model.undo())
+
+        let stored = try XCTUnwrap(try repository.project(id: model.project.id))
+        let reopened = ProjectEditorModel(project: stored, repository: repository, thumbnails: FakeClipThumbnailProvider(), acquisition: harness.acquisition)
+        XCTAssertEqual(reopened.orderedClips.map(\.id), ids, "added clip absent")
+        XCTAssertFalse(reopened.canUndo); XCTAssertFalse(reopened.canRedo)
+        XCTAssertEqual(reopened.project.deletedClips.map(\.id), [c.id], "still durable, pending cleanup")
+        let exists4 = await harness.store.fileExists(c.mediaRelativePath)
+        XCTAssertTrue(exists4, "media retained")
+        XCTAssertEqual(seconds(reopened.totalDuration), 5, accuracy: 0.001)
+    }
+
+    func testAddIntoEmptyProjectAndThumbnailsForNewClipsOnly() async throws {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let harness = makeAddHarness(script: .fixtures([fixture]))
+        defer { harness.cleanup() }
+        let provider = FakeClipThumbnailProvider()
+        let repository = FailableProjectRepository()
+        let empty = try VlogProject(orientation: .portrait9x16)
+        try repository.create(empty)
+        let model = ProjectEditorModel(project: empty, repository: repository, thumbnails: provider, acquisition: harness.acquisition)
+        XCTAssertNil(model.selectedClipID)
+        await model.loadThumbnails(displayScale: 2)
+        let initialRequests = await provider.requests
+        XCTAssertEqual(initialRequests.count, 0)
+
+        let added19 = await model.addClips()
+        XCTAssertEqual(added19, 1)
+        let c = model.orderedClips[0]
+        XCTAssertEqual(model.selectedClipID, c.id)
+        XCTAssertEqual(seconds(model.totalDuration), 2, accuracy: 0.001)
+        await model.loadThumbnails(displayScale: 2)
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.clipID), [c.id], "only the new clip is requested")
+        let requestC = requests[0]
+
+        XCTAssertTrue(model.undo())
+        XCTAssertTrue(model.orderedClips.isEmpty)
+        XCTAssertNil(model.selectedClipID, "no previous selection → nil")
+        XCTAssertNil(model.currentThumbnailRequest(for: c.id))
+        model.applyThumbnailResult(.success(SyntheticThumbnailImage.make(seed: 1, size: CGSize(width: 4, height: 8))), for: requestC)
+        XCTAssertTrue(model.redo())
+        XCTAssertEqual(model.currentThumbnailRequest(for: c.id), requestC, "same identity → cache reuse")
+        await model.loadThumbnails(displayScale: 2)
+        let finalRequests = await provider.requests
+        XCTAssertEqual(finalRequests.count, 1, "no regeneration after Redo")
+    }
+
     private func waitUntil(timeout: TimeInterval = 2, _ condition: @escaping @MainActor () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline { try? await Task.sleep(for: .milliseconds(5)) }

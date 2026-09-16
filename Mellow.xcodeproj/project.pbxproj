@@ -87,6 +87,7 @@
 		00000000000000000000025A /* ClipThumbnailTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015A /* ClipThumbnailTestDoubles.swift */; };
 		00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015B /* ClipThumbnailServiceTests.swift */; };
 		00000000000000000000025C /* ClipDeletionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015C /* ClipDeletionRecord.swift */; };
+		00000000000000000000025D /* ProjectClipAppendCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015D /* ProjectClipAppendCoordinator.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -194,6 +195,7 @@
 		00000000000000000000015A /* ClipThumbnailTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailTestDoubles.swift; sourceTree = "<group>"; };
 		00000000000000000000015B /* ClipThumbnailServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailServiceTests.swift; sourceTree = "<group>"; };
 		00000000000000000000015C /* ClipDeletionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipDeletionRecord.swift; sourceTree = "<group>"; };
+		00000000000000000000015D /* ProjectClipAppendCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectClipAppendCoordinator.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -526,6 +528,7 @@
 			isa = PBXGroup;
 			children = (
 				00000000000000000000013F /* ProjectCompositionCoordinator.swift */,
+				00000000000000000000015D /* ProjectClipAppendCoordinator.swift */,
 				00000000000000000000014A /* ProjectMediaStore.swift */,
 				00000000000000000000014B /* Phase5ReadyMediaValidator.swift */,
 				00000000000000000000014C /* ProjectStorageGate.swift */,
@@ -687,6 +690,7 @@
 				000000000000000000000231 /* RecordingPolicy.swift in Sources */,
 				00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */,
 				00000000000000000000023F /* ProjectCompositionCoordinator.swift in Sources */,
+				00000000000000000000025D /* ProjectClipAppendCoordinator.swift in Sources */,
 				00000000000000000000024A /* ProjectMediaStore.swift in Sources */,
 				00000000000000000000024B /* Phase5ReadyMediaValidator.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,

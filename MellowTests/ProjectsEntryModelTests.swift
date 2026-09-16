@@ -215,7 +215,13 @@ final class ProjectsEntryModelTests: XCTestCase {
     func testPreparationReasonsMapToUserFacingCopyWithoutImplementationTerms() {
         typealias Message = ProjectsEntryModel.CompositionMessage
         XCTAssertEqual(Message.requiresImportPreparation(.tooLong).title, "영상이 너무 길어요")
-        XCTAssertEqual(Message.requiresImportPreparation(.tooLong).message, "현재는 5초 이하의 영상을 프로젝트에 추가할 수 있어요.")
+        XCTAssertEqual(Message.requiresImportPreparation(.tooLong).message, "5초 이하의 영상을 선택해주세요.")
+        // The Editor's Add Clips shares the exact same copy through the canonical mapping.
+        XCTAssertEqual(ProjectEditorMessage.addRequiresImportPreparation(.tooLong).title, "영상이 너무 길어요")
+        XCTAssertEqual(ProjectEditorMessage.addRequiresImportPreparation(.tooLong).message, "5초 이하의 영상을 선택해주세요.")
+        XCTAssertEqual(ProjectEditorMessage.addRequiresImportPreparation(.orientation).message, Message.requiresImportPreparation(.orientation).message)
+        XCTAssertEqual(ProjectEditorMessage.addInvalidMedia.title, Message.invalidMedia.title)
+        XCTAssertEqual(ProjectEditorMessage.addInsufficientStorage.message, Message.insufficientStorage.message)
         XCTAssertEqual(Message.requiresImportPreparation(.orientation).title, "세로 영상을 선택해주세요")
         XCTAssertEqual(Message.requiresImportPreparation(.orientation).message, "현재 프로젝트에서는 세로 영상을 바로 사용할 수 있어요.")
         for reason in [Phase5ReadyVerdict.PreparationReason.highDynamicRange, .resolution, .frameRate] {

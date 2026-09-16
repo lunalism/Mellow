@@ -48,6 +48,88 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         return (project, path)
     }
 
+    // MARK: - Append coordinator (Phase 5 STEP 11, ADR-037)
+
+    private func appender(storage: ProjectStorageVerdict = .sufficient, inspector: any ProjectMediaInspecting = AVAssetProjectMediaInspector()) -> ProjectClipAppendCoordinator {
+        ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: inspector), storage: FakeProjectStorageGate(verdict: storage))
+    }
+
+    private func mediaDirectoryContents(_ projectID: UUID) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("Projects/\(projectID.uuidString)/Media").path)) ?? []).sorted()
+    }
+
+    func testAppendMaterialisesIntoCurrentProjectDirectoryInPickerOrder() async throws {
+        let repository = InMemoryProjectRepository()
+        let (project, existingPath) = try await seedSavedProject(in: repository)
+        let a = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "append-a")
+        let b = try await TestMediaFixtures.shared.portrait(seconds: 3, name: "append-b")
+        let workspace = try await store.beginWorkspace()
+        let sources = try await sources([a, b], in: workspace)
+
+        let outcome = await appender().prepareClips(for: project, sources: sources)
+        guard case .ready(let clips) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(clips.count, 2)
+        XCTAssertEqual(clips.map(\.projectID), [project.id, project.id])
+        XCTAssertEqual(clips.map(\.sourceKind), [.imported, .imported])
+        XCTAssertEqual(Double(clips[0].sourceDuration.value) / Double(clips[0].sourceDuration.timescale), 2, accuracy: 0.001)
+        XCTAssertEqual(Double(clips[1].sourceDuration.value) / Double(clips[1].sourceDuration.timescale), 3, accuracy: 0.001)
+        for clip in clips {
+            XCTAssertEqual(clip.mediaRelativePath.value, "Projects/\(project.id.uuidString)/Media/\(clip.id.uuidString).mov")
+            let exists = await store.fileExists(clip.mediaRelativePath)
+            XCTAssertTrue(exists)
+        }
+        let existingStillThere = await store.fileExists(existingPath)
+        XCTAssertTrue(existingStillThere, "pre-existing media untouched")
+        XCTAssertEqual(mediaDirectoryContents(project.id).count, 3)
+        XCTAssertEqual(try repository.project(id: project.id)?.clips.count, 1, "the coordinator never persists")
+        await store.discard(workspace)
+    }
+
+    func testAppendRejectsWholeBatchOnFirstNonReadyOrInvalidSource() async throws {
+        let repository = InMemoryProjectRepository()
+        let (project, _) = try await seedSavedProject(in: repository)
+        let ready = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "append-ready")
+        let tooLong = try await TestMediaFixtures.shared.portrait(seconds: 7, name: "append-long")
+        var workspace = try await store.beginWorkspace()
+        var outcome = await appender().prepareClips(for: project, sources: try await sources([ready, tooLong], in: workspace))
+        XCTAssertEqual(outcome, .requiresImportPreparation(.tooLong))
+        XCTAssertEqual(mediaDirectoryContents(project.id).count, 1, "nothing materialised for a rejected batch")
+        await store.discard(workspace)
+
+        workspace = try await store.beginWorkspace()
+        outcome = await appender().prepareClips(for: project, sources: try await sources([try TestMediaFixtures.shared.corrupt()], in: workspace))
+        XCTAssertEqual(outcome, .invalidMedia(.unreadable))
+        await store.discard(workspace)
+
+        workspace = try await store.beginWorkspace()
+        outcome = await appender(storage: .insufficient(requiredBytes: 1, usableBytes: 0)).prepareClips(for: project, sources: try await sources([ready], in: workspace))
+        XCTAssertEqual(outcome, .insufficientStorage)
+        XCTAssertEqual(mediaDirectoryContents(project.id).count, 1)
+        await store.discard(workspace)
+
+        let emptyOutcome = await appender().prepareClips(for: project, sources: [])
+        XCTAssertEqual(emptyOutcome, .failed)
+    }
+
+    func testAppendMaterializationFailureRemovesOnlyThisOperationsFiles() async throws {
+        let repository = InMemoryProjectRepository()
+        let (project, existingPath) = try await seedSavedProject(in: repository)
+        let a = try await TestMediaFixtures.shared.portrait(seconds: 2, name: "append-fail-a")
+        let workspace = try await store.beginWorkspace()
+        var sources = try await sources([a, a], in: workspace)
+        // Second source vanishes before materialisation → the first, already materialised, is rolled back.
+        try FileManager.default.removeItem(at: sources[1].url)
+        sources[1] = SelectedVideoSource(url: sources[1].url, byteCount: 0)
+
+        // Validation is stubbed as ready so the failure is materialisation itself, not validation.
+        let outcome = await appender(inspector: FakeProjectMediaInspector(.ready())).prepareClips(for: project, sources: sources)
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(mediaDirectoryContents(project.id).count, 1, "only the pre-existing file remains")
+        let existingStillThere = await store.fileExists(existingPath)
+        XCTAssertTrue(existingStillThere)
+        await store.discard(workspace)
+    }
+
     // MARK: - Lookup (STEP 4, unchanged)
 
     func testNoProjectsReturnsNil() throws {

@@ -27,6 +27,11 @@ enum ProjectEditorMessage: Equatable {
     case deleteSaveFailed
     case undoFailed
     case redoFailed
+    /// Add Clips (ADR-037): the same typed outcomes and copy as Select Clips, one message per batch.
+    case addRequiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
+    case addInvalidMedia
+    case addInsufficientStorage
+    case addFailed
 
     var title: String {
         switch self {
@@ -34,9 +39,32 @@ enum ProjectEditorMessage: Equatable {
         case .deleteSaveFailed: return "클립을 삭제하지 못했어요."
         case .undoFailed: return "실행 취소하지 못했어요."
         case .redoFailed: return "다시 실행하지 못했어요."
+        case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationTitle(reason)
+        case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
+        case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
+        case .addFailed: return "클립을 추가하지 못했어요."
         }
     }
-    var message: String { "다시 시도해주세요." }
+    var message: String {
+        switch self {
+        case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationMessage(reason)
+        case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
+        case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
+        case .addFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
+        default: return "다시 시도해주세요."
+        }
+    }
+}
+
+/// The acquisition boundary the Editor's Add Clips uses (ADR-037): the same selector / store /
+/// gate / validator chain as Select Clips, scoped to appending to the loaded Project. Absent (nil)
+/// only in unit tests that never add.
+@MainActor
+struct EditorClipAcquisition {
+    let mediaStore: any ProjectMediaStoring
+    let mediaSelector: any ProjectMediaSelecting
+    let storageGate: any ProjectStorageGating
+    let appender: ProjectClipAppendCoordinator
 }
 
 /// The persistent, editor-relevant state one edit changes (ADR-038): the durable clip sets and the
@@ -62,12 +90,14 @@ struct EditorHistoryEntry: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case reorder
         case delete
+        case add
 
         /// Short Korean description used in accessibility hints ("클립 삭제 실행 취소").
         var description: String {
             switch self {
             case .reorder: return "클립 순서 변경"
             case .delete: return "클립 삭제"
+            case .add: return "클립 추가"
             }
         }
     }
@@ -102,6 +132,7 @@ final class ProjectEditorModel {
     private(set) var project: VlogProject
     @ObservationIgnored private let repository: any ProjectRepository
     @ObservationIgnored private let thumbnails: any ClipThumbnailProviding
+    @ObservationIgnored private let acquisition: EditorClipAcquisition?
     private(set) var selectedClipID: UUID?
     private(set) var thumbnailStates: [UUID: ClipThumbnailPresentation] = [:]
     /// Display scale of the active load; part of every current request identity. Nil while no load
@@ -133,10 +164,15 @@ final class ProjectEditorModel {
     private(set) var undoStack: [EditorHistoryEntry] = []
     private(set) var redoStack: [EditorHistoryEntry] = []
 
-    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding) {
+    /// True from "+" until the Add batch resolves (picker open, transferring, validating,
+    /// materialising, committing). Every other mutation is refused meanwhile.
+    private(set) var isAddingClips = false
+
+    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil) {
         self.project = project
         self.repository = repository
         self.thumbnails = thumbnails
+        self.acquisition = acquisition
         // Default selection: the first clip when the project has clips, otherwise none.
         self.selectedClipID = project.clips.first?.id
     }
@@ -152,14 +188,20 @@ final class ProjectEditorModel {
     /// Committed logical order, unaffected by any drag preview.
     var committedClips: [VlogClip] { project.clips }
 
-    var canUndo: Bool { !undoStack.isEmpty && !isCommittingMutation && draggingClipID == nil }
-    var canRedo: Bool { !redoStack.isEmpty && !isCommittingMutation && draggingClipID == nil }
+    /// No mutation may start while another (including an Add batch) is in flight or a clip is lifted.
+    private var isMutationBlocked: Bool { isCommittingMutation || isAddingClips || draggingClipID != nil }
+
+    var canUndo: Bool { !undoStack.isEmpty && !isMutationBlocked }
+    var canRedo: Bool { !redoStack.isEmpty && !isMutationBlocked }
+    /// "+" is a production control whenever an acquisition boundary exists (always in the app).
+    var supportsAddingClips: Bool { acquisition != nil }
+    var canAddClips: Bool { supportsAddingClips && !isMutationBlocked }
     /// The edit Undo would reverse / Redo would reapply (accessibility hints).
     var undoTarget: EditorHistoryEntry.Kind? { undoStack.last?.kind }
     var redoTarget: EditorHistoryEntry.Kind? { redoStack.last?.kind }
 
     var canDeleteSelectedClip: Bool {
-        selectedClip != nil && draggingClipID == nil && !isCommittingMutation
+        selectedClip != nil && !isMutationBlocked
     }
 
     var totalDuration: MediaTime { project.totalDuration }
@@ -183,7 +225,7 @@ final class ProjectEditorModel {
     /// commit is in flight, or while another Clip is already lifted.
     @discardableResult
     func beginReorder(clipID: UUID) -> Bool {
-        guard draggingClipID == nil, !isCommittingMutation, project.clips.contains(where: { $0.id == clipID }) else { return false }
+        guard !isMutationBlocked, project.clips.contains(where: { $0.id == clipID }) else { return false }
         draggingClipID = clipID
         previewOrder = project.clips.map(\.id)
         selectedClipID = clipID
@@ -262,7 +304,7 @@ final class ProjectEditorModel {
     /// additionally refuses a re-entrant commit from inside the repository call.
     @discardableResult
     private func reorder(clipID: UUID, toIndex index: Int) -> Bool {
-        guard !isCommittingMutation else { return false }
+        guard !isMutationBlocked else { return false }
         var updated = project
         do { try updated.reorderClip(id: clipID, toIndex: index) } catch { return false }
         guard updated.clips.map(\.id) != project.clips.map(\.id) else { return false }
@@ -283,7 +325,7 @@ final class ProjectEditorModel {
 
     @discardableResult
     func deleteClip(id clipID: UUID) -> Bool {
-        guard !isCommittingMutation, draggingClipID == nil, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        guard !isMutationBlocked, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
         var updated = project
         do { try updated.deleteClip(id: clipID) } catch { return false }
         let selection: UUID?
@@ -293,6 +335,63 @@ final class ProjectEditorModel {
             selection = selectedClipID
         }
         return commitEdit(.delete, updated, selecting: selection, failure: .deleteSaveFailed, label: "delete")
+    }
+
+    // MARK: - Add Clips (ADR-037)
+
+    /// "+": system picker → transfer → validate ALL → materialise ALL into this Project's media
+    /// directory → append after the last active Clip in picker order → one autosave + read-back →
+    /// ONE history entry → first added Clip selected. Cancel and every failure leave the Project,
+    /// history, selection and existing media untouched; files this operation created are removed
+    /// again. Returns the number of Clips added (0 on cancel / failure).
+    @discardableResult
+    func addClips() async -> Int {
+        guard let acquisition, canAddClips else { return 0 }
+        isAddingClips = true
+        defer { isAddingClips = false }
+        guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
+            editorMessage = .addFailed
+            return 0
+        }
+        let added = await addClips(using: acquisition, workspace: workspace)
+        await acquisition.mediaStore.discard(workspace)
+        return added
+    }
+
+    private func addClips(using acquisition: EditorClipAcquisition, workspace: ProjectMediaWorkspace) async -> Int {
+        let sources: [SelectedVideoSource]
+        switch await acquisition.mediaSelector.selectVideos(into: workspace, store: acquisition.mediaStore, admission: acquisition.storageGate) {
+        case .cancelled:
+            return 0
+        case .insufficientStorage:
+            editorMessage = .addInsufficientStorage
+            return 0
+        case .failed:
+            editorMessage = .addFailed
+            return 0
+        case .selected(let selected):
+            sources = selected
+        }
+        let newClips: [VlogClip]
+        switch await acquisition.appender.prepareClips(for: project, sources: sources) {
+        case .ready(let clips): newClips = clips
+        case .requiresImportPreparation(let reason): editorMessage = .addRequiresImportPreparation(reason); return 0
+        case .invalidMedia: editorMessage = .addInvalidMedia; return 0
+        case .insufficientStorage: editorMessage = .addInsufficientStorage; return 0
+        case .failed: editorMessage = .addFailed; return 0
+        }
+        var updated = project
+        do { try updated.appendClips(newClips) } catch {
+            await acquisition.appender.discard(newClips)
+            editorMessage = .addFailed
+            return 0
+        }
+        guard commitEdit(.add, updated, selecting: newClips.first?.id, failure: .addFailed, label: "add") else {
+            // Never committed and referenced by nothing durable: safe to remove these files now.
+            await acquisition.appender.discard(newClips)
+            return 0
+        }
+        return newClips.count
     }
 
     // MARK: - Undo / Redo (ADR-038)
@@ -333,12 +432,25 @@ final class ProjectEditorModel {
     /// Restores a captured state onto the CURRENT Project (same identity, orientation, createdAt;
     /// fresh `updatedAt`) through the common commit path. A captured selection that is no longer
     /// active falls back to the first active Clip.
+    ///
+    /// History never forgets durable media: a Clip the current Project owns but the target state
+    /// does not know (it was added by an edit that is now being undone) is kept as a pending-
+    /// deleted, inactive Clip with its position recorded (ADR-037 / ADR-038) — recoverable by Redo,
+    /// visible to the future cleanup slice, never an orphaned file, never physically removed here.
     private func commitHistory(_ state: EditorEditState, failure: ProjectEditorMessage, label: StaticString) -> Bool {
         let restored: VlogProject
         do {
+            let known = Set(state.clips.map(\.id) + state.deletedClips.map(\.id))
+            let unknown = project.durableClips.filter { !known.contains($0.id) }.map(\.id)
+            var retained: [VlogClip] = []
+            if !unknown.isEmpty {
+                var working = project
+                for id in unknown where working.clips.contains(where: { $0.id == id }) { try working.deleteClip(id: id) }
+                retained = working.deletedClips.filter { unknown.contains($0.id) }
+            }
             restored = try VlogProject(
                 id: project.id, createdAt: project.createdAt, updatedAt: .now, orientation: project.orientation,
-                clips: state.clips, deletedClips: state.deletedClips
+                clips: state.clips, deletedClips: state.deletedClips + retained
             )
         } catch {
             editorMessage = failure
