@@ -24,7 +24,7 @@ final class SavedProjectIdentityTests: XCTestCase {
     }
 
     private func coordinator(_ repository: any ProjectRepository) -> ProjectCompositionCoordinator {
-        ProjectCompositionCoordinator(repository: repository, mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: FakeProjectStorageGate(verdict: .sufficient))
+        ProjectCompositionCoordinator(repository: repository, mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: FakeProjectStorageGate(verdict: .sufficient), lifecycle: ProjectLifecycleOperationGate())
     }
 
     private func model(_ repository: any ProjectRepository, selector: FakeProjectMediaSelector, opened: @escaping (UUID) -> Void) -> ProjectsEntryModel {

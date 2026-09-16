@@ -30,7 +30,8 @@ final class ProjectsEntryModelTests: XCTestCase {
                 repository: repository,
                 mediaStore: store,
                 validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
-                storage: gate
+                storage: gate,
+                lifecycle: ProjectLifecycleOperationGate()
             ),
             mediaStore: store,
             mediaSelector: selector,

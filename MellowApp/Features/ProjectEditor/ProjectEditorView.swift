@@ -3,6 +3,11 @@ import SwiftUI
 /// Loads the requested Project once and presents the editor, or a minimal recoverable unavailable
 /// state if it no longer exists. Mirrors `CameraDestination`'s load-once pattern so the model is
 /// never rebuilt during SwiftUI body evaluation.
+///
+/// The load waits its turn in the shared lifecycle gate (ADR-039): a pending-Clip cleanup pass for
+/// this Project that is still removing files or finalizing rows finishes first, so the Editor never
+/// starts from an intermediate snapshot that a later autosave would write back. The route is already
+/// on the stack while this waits, so no NEW pass can start for the Project meanwhile.
 struct ProjectEditorDestination: View {
     let projectID: UUID
     @Environment(AppEnvironment.self) private var environment
@@ -16,13 +21,17 @@ struct ProjectEditorDestination: View {
             } else if unavailable {
                 ProjectEditorUnavailableView()
             } else {
-                ProgressView().accessibilityLabel("Loading project")
+                ProgressView().accessibilityLabel("Loading project").accessibilityIdentifier("projectEditorLoading")
             }
         }
         .task(id: projectID) {
             guard model == nil, !unavailable else { return }
             do {
-                if let project = try environment.projectRepository.project(id: projectID) {
+                let loaded = try await environment.projectLifecycle.withExclusiveAccess {
+                    try environment.projectRepository.project(id: projectID)
+                }
+                guard !Task.isCancelled else { return }
+                if let project = loaded {
                     model = ProjectEditorModel(
                         project: project,
                         repository: environment.projectRepository,

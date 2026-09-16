@@ -151,8 +151,10 @@ extension ProjectCompositionCoordinator {
             repository: repository,
             mediaStore: ProjectMediaStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("ReadOnly-\(UUID().uuidString)")),
             validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())),
-            storage: FakeProjectStorageGate(verdict: .sufficient)
+            storage: FakeProjectStorageGate(verdict: .sufficient),
+            lifecycle: ProjectLifecycleOperationGate()
         )
     }
 }
+
 #endif

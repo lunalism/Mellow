@@ -88,6 +88,9 @@
 		00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015B /* ClipThumbnailServiceTests.swift */; };
 		00000000000000000000025C /* ClipDeletionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015C /* ClipDeletionRecord.swift */; };
 		00000000000000000000025D /* ProjectClipAppendCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015D /* ProjectClipAppendCoordinator.swift */; };
+		00000000000000000000025E /* ProjectLifecycleOperationGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015E /* ProjectLifecycleOperationGate.swift */; };
+		00000000000000000000025F /* ProjectMediaCleanupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015F /* ProjectMediaCleanupCoordinator.swift */; };
+		000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -196,6 +199,9 @@
 		00000000000000000000015B /* ClipThumbnailServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnailServiceTests.swift; sourceTree = "<group>"; };
 		00000000000000000000015C /* ClipDeletionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipDeletionRecord.swift; sourceTree = "<group>"; };
 		00000000000000000000015D /* ProjectClipAppendCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectClipAppendCoordinator.swift; sourceTree = "<group>"; };
+		00000000000000000000015E /* ProjectLifecycleOperationGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectLifecycleOperationGate.swift; sourceTree = "<group>"; };
+		00000000000000000000015F /* ProjectMediaCleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaCleanupCoordinator.swift; sourceTree = "<group>"; };
+		000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaCleanupCoordinatorTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -281,6 +287,7 @@
 				000000000000000000000157 /* SavedProjectIdentityTests.swift */,
 				000000000000000000000158 /* PhotosVideoSelectorTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
+				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				00000000000000000000013D /* PermissionOnboardingModelTests.swift */,
 				00000000000000000000013A /* RecordingPolicyTests.swift */,
 				00000000000000000000013B /* RecordingRecoveryTests.swift */,
@@ -529,6 +536,8 @@
 			children = (
 				00000000000000000000013F /* ProjectCompositionCoordinator.swift */,
 				00000000000000000000015D /* ProjectClipAppendCoordinator.swift */,
+				00000000000000000000015E /* ProjectLifecycleOperationGate.swift */,
+				00000000000000000000015F /* ProjectMediaCleanupCoordinator.swift */,
 				00000000000000000000014A /* ProjectMediaStore.swift */,
 				00000000000000000000014B /* Phase5ReadyMediaValidator.swift */,
 				00000000000000000000014C /* ProjectStorageGate.swift */,
@@ -691,6 +700,8 @@
 				00000000000000000000023E /* RecordingThumbnailGenerator.swift in Sources */,
 				00000000000000000000023F /* ProjectCompositionCoordinator.swift in Sources */,
 				00000000000000000000025D /* ProjectClipAppendCoordinator.swift in Sources */,
+				00000000000000000000025E /* ProjectLifecycleOperationGate.swift in Sources */,
+				00000000000000000000025F /* ProjectMediaCleanupCoordinator.swift in Sources */,
 				00000000000000000000024A /* ProjectMediaStore.swift in Sources */,
 				00000000000000000000024B /* Phase5ReadyMediaValidator.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,
@@ -767,6 +778,7 @@
 				000000000000000000000257 /* SavedProjectIdentityTests.swift in Sources */,
 				000000000000000000000258 /* PhotosVideoSelectorTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
+				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */,
 				00000000000000000000023A /* RecordingPolicyTests.swift in Sources */,
 				00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */,

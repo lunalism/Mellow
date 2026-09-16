@@ -26,7 +26,8 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
             repository: repository,
             mediaStore: store,
             validator: Phase5ReadyMediaValidator(inspector: inspector),
-            storage: FakeProjectStorageGate(verdict: storage)
+            storage: FakeProjectStorageGate(verdict: storage),
+            lifecycle: ProjectLifecycleOperationGate()
         )
     }
 
@@ -289,7 +290,7 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         let reserve = ProjectCompositionPolicy.materializationSafetyReserveBytes
 
         let exactlyReserve = VolumeProjectStorageGate(capacity: { reserve }, safetyReserveBytes: reserve)
-        let passing = ProjectCompositionCoordinator(repository: repository, mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: exactlyReserve)
+        let passing = ProjectCompositionCoordinator(repository: repository, mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: exactlyReserve, lifecycle: ProjectLifecycleOperationGate())
         guard case .committed = await passing.compose(.fresh, sources: selected, workspace: workspace) else {
             return XCTFail("usable == reserve must pass: adopted bytes are not re-counted")
         }
@@ -297,7 +298,7 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         let oneShort = VolumeProjectStorageGate(capacity: { reserve - 1 }, safetyReserveBytes: reserve)
         let workspace2 = try await store.beginWorkspace()
         let selected2 = try await sources([try await TestMediaFixtures.shared.portrait(seconds: 2)], in: workspace2)
-        let refusing = ProjectCompositionCoordinator(repository: InMemoryProjectRepository(), mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: oneShort)
+        let refusing = ProjectCompositionCoordinator(repository: InMemoryProjectRepository(), mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: oneShort, lifecycle: ProjectLifecycleOperationGate())
         let outcome = await refusing.compose(.fresh, sources: selected2, workspace: workspace2)
         XCTAssertEqual(outcome, .insufficientStorage)
     }

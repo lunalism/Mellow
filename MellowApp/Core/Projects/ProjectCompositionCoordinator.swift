@@ -14,17 +14,22 @@ final class ProjectCompositionCoordinator {
     private let mediaStore: any ProjectMediaStoring
     private let validator: Phase5ReadyMediaValidator
     private let storage: any ProjectStorageGating
+    /// Shared with pending-Clip cleanup and the Editor load (ADR-039): composition / replacement
+    /// mutates Project files and metadata, so it may never overlap a cleanup pass.
+    private let lifecycle: ProjectLifecycleOperationGate
 
     init(
         repository: any ProjectRepository,
         mediaStore: any ProjectMediaStoring,
         validator: Phase5ReadyMediaValidator,
-        storage: any ProjectStorageGating
+        storage: any ProjectStorageGating,
+        lifecycle: ProjectLifecycleOperationGate
     ) {
         self.repository = repository
         self.mediaStore = mediaStore
         self.validator = validator
         self.storage = storage
+        self.lifecycle = lifecycle
     }
 
     /// The current V1 editable saved Project: the most-recent committed Project by the repository's
@@ -58,8 +63,15 @@ final class ProjectCompositionCoordinator {
     /// the previous Project → discard workspace. All-or-nothing: a Project is never committed with a
     /// subset of the selected sources. On every non-committed outcome the previous saved Project (if
     /// any) is untouched and the workspace is discarded.
+    ///
+    /// The whole validate → materialize → persist → promote → retire-A section runs inside the shared
+    /// lifecycle gate, so a pending-Clip cleanup pass (which may be retiring A's own pending Clips or
+    /// finalizing rows) can never interleave with the replacement. Selection / transfer happened
+    /// before this call and is not gated. Safe Atomic Replacement itself is unchanged.
     func compose(_ intent: Intent, sources: [SelectedVideoSource], workspace: ProjectMediaWorkspace) async -> Outcome {
-        let outcome = await composeInternal(intent, sources: sources, workspace: workspace)
+        let outcome = await lifecycle.withExclusiveAccess {
+            await composeInternal(intent, sources: sources, workspace: workspace)
+        }
         await mediaStore.discard(workspace)
         return outcome
     }

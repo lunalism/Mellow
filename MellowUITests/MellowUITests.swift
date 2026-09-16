@@ -993,6 +993,189 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 12A: deferred pending-Clip cleanup (ADR-039)
+
+    /// Seeded 3-clip Project, entered through the 프로젝트 screen so the Editor can be left and reopened
+    /// in-process; `-uiTestCleanupDiagnostics` exposes cumulative pass counters (no production UI).
+    private static let cleanupArguments = ["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics"]
+
+    @MainActor
+    private func waitForCleanupSummary(_ app: XCUIApplication, _ expected: String, timeout: TimeInterval = 8, _ note: String = "") {
+        let label = app.staticTexts["cleanupDiagnostics"]
+        let deadline = Date().addingTimeInterval(timeout)
+        var seen = "<none>"
+        repeat {
+            if label.exists { seen = label.label; if seen == expected { return } }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+        XCTFail("\(note) expected '\(expected)', got '\(seen)'")
+    }
+
+    /// Asserts the counters do NOT change for `seconds` (no pass may run while the Editor is live).
+    @MainActor
+    private func assertCleanupSummaryStays(_ app: XCUIApplication, _ expected: String, seconds: TimeInterval = 1.5, _ note: String = "") {
+        let label = app.staticTexts["cleanupDiagnostics"]
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            XCTAssertEqual(label.label, expected, note)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        } while Date() < deadline
+    }
+
+    @MainActor
+    private func openSavedProjectEditor(_ app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["loadExistingProject"].waitForExistence(timeout: 5))
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    private func leaveEditorToProjects(_ app: XCUIApplication, within timeout: TimeInterval = 3) {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: timeout), "Back completes without waiting on cleanup")
+    }
+
+    @MainActor
+    private func leaveProjectsAndRemove(_ app: XCUIApplication) {
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// A: Delete → Back → reopen. While the Editor is live nothing is cleaned; leaving it runs one pass
+    /// (seeded clip: pending row + no file → metadata finalized); the reopened Editor shows the final
+    /// state with history disabled.
+    @MainActor
+    func testEditorDeleteThenBackFinalizesPendingClipAndReopenIsFinal() throws {
+        let app = legacyRecentApp(Self.cleanupArguments)
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "startup pass: nothing pending")
+
+        openSavedProjectEditor(app)
+        let clip2 = app.buttons["editorClip-2"], delete = app.buttons["deleteSelectedClip"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        clip2.tap()
+        delete.tap()
+        expectLabel(clip2, "Clip 2 of 2, 1.0s")
+        XCTAssertTrue(app.buttons["editorUndo"].isEnabled)
+        assertCleanupSummaryStays(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "no pass while the Editor is live")
+
+        leaveEditorToProjects(app)
+        waitForCleanupSummary(app, "cleanup passes=2 removed=0 absent=1 finalized=1 deferred=0", "Editor-exit pass finalized the pending clip")
+
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(app.buttons["editorClip-1"], "Clip 1 of 2, 2.0s")
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(app.buttons["editorClip-3"].exists, "the deleted clip stays gone")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled); XCTAssertFalse(app.buttons["editorRedo"].isEnabled)
+        try auditAndCapture(app, name: "cleanup-reopened-after-delete")
+
+        leaveEditorToProjects(app)
+        waitForCleanupSummary(app, "cleanup passes=3 removed=0 absent=1 finalized=1 deferred=0", "rerun is idempotent (cumulative counters unchanged)")
+        leaveProjectsAndRemove(app)
+    }
+
+    /// B: Add (real Project-owned file) → Undo → Back → reopen. The undone Add's file is removed and
+    /// its row finalized only after the Editor is left; the reopened Editor has the original clips and
+    /// an empty history.
+    @MainActor
+    func testEditorUndoneAddThenBackRemovesFileAndFinalizes() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestEditorAddSelection=ready"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0")
+
+        openSavedProjectEditor(app)
+        let add = app.buttons["addClips"], undo = app.buttons["editorUndo"], clip4 = app.buttons["editorClip-4"]
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        add.tap()
+        XCTAssertTrue(clip4.waitForExistence(timeout: 10), "fixture media materialised as a Project-owned copy")
+        undo.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: clip4)], timeout: 3), .completed)
+        XCTAssertTrue(app.buttons["editorRedo"].isEnabled, "Redo available: file must stay")
+        assertCleanupSummaryStays(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "no pass while the Editor is live")
+
+        leaveEditorToProjects(app)
+        waitForCleanupSummary(app, "cleanup passes=2 removed=1 absent=0 finalized=1 deferred=0", "the undone Add's file was removed, then its row finalized")
+
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(app.buttons["editorClip-3"], "Clip 3 of 3, 1.0s")
+        XCTAssertFalse(clip4.exists)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(undo.isEnabled); XCTAssertFalse(app.buttons["editorRedo"].isEnabled)
+        XCTAssertTrue(add.isEnabled)
+
+        leaveEditorToProjects(app)
+        leaveProjectsAndRemove(app)
+    }
+
+    /// C + D: with cleanup deliberately paused inside its critical section, Back is still immediate,
+    /// and a reopen attempted during the pause shows the loading state until the pass finishes, then
+    /// loads the final Project (never an intermediate snapshot).
+    @MainActor
+    func testEditorBackIsImmediateAndReopenWaitsForPausedCleanup() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestCleanupDelay=6000"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0")
+
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["editorClip-2"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+
+        leaveEditorToProjects(app, within: 1.5)                 // C: Back never waits on the pass
+        app.buttons["loadExistingProject"].tap()                  // D: reopen during the pause
+        let loading = app.descendants(matching: .any)["projectEditorLoading"]
+        XCTAssertTrue(loading.waitForExistence(timeout: 2), "the Editor load waits behind the running cleanup")
+        XCTAssertFalse(app.otherElements["projectEditor"].exists)
+        XCTAssertEqual(app.staticTexts["cleanupDiagnostics"].label, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "still held while the load waits")
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 12))
+        waitForCleanupSummary(app, "cleanup passes=2 removed=0 absent=1 finalized=1 deferred=0", timeout: 2, "the pass completed before the Editor loaded")
+        XCTAssertTrue(app.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(app.buttons["editorClip-3"].exists)
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled)
+
+        leaveEditorToProjects(app)
+        leaveProjectsAndRemove(app)
+    }
+
+    /// Startup reconciliation: a pass that never finished in the previous process (held open, then
+    /// the app was terminated) is completed by the next launch before the Project is opened.
+    @MainActor
+    func testStartupReconciliationFinalizesPendingClipLeftByPreviousLaunch() throws {
+        let app = legacyRecentApp(Self.cleanupArguments + ["-uiTestCleanupDelay=60000"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        openSavedProjectEditor(app)
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["editorClip-2"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        leaveEditorToProjects(app)
+        assertCleanupSummaryStays(app, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "the exit pass is still held")
+        app.terminate()                                            // pending row survives the process
+
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenProjectsEntry", "-uiTestProductionTimeline", "-uiTestCleanupDiagnostics"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(relaunched, "cleanup passes=1 removed=0 absent=1 finalized=1 deferred=0", "startup pass finalized the leftover")
+        openSavedProjectEditor(relaunched)
+        XCTAssertTrue(relaunched.buttons["editorClip-2"].waitForExistence(timeout: 2))
+        expectLabel(relaunched.buttons["editorClip-1"], "Clip 1 of 2, 2.0s")
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(relaunched.buttons["editorClip-3"].exists)
+        XCTAssertFalse(relaunched.buttons["editorUndo"].isEnabled)
+        leaveEditorToProjects(relaunched)
+        leaveProjectsAndRemove(relaunched)
+    }
+
     // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
     // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
     // `Projects` still opens Recent Projects in this slice.

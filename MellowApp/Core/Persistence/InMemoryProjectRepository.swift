@@ -37,6 +37,7 @@ final class InMemoryProjectRepository: ProjectRepository {
         projects[project.id] = project
     }
 
+    /// Maintenance, not an edit: the Project's `updatedAt` is unchanged (same as SwiftData).
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {
         guard var project = projects[projectID] else {
             throw ProjectRepositoryError.projectNotFound

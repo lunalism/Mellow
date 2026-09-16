@@ -38,16 +38,38 @@ protocol ProjectMediaURLResolving: Sendable {
     func committedMediaURL(for path: RelativeMediaPath) async throws -> URL
 }
 
+/// The one filesystem surface physical cleanup (STEP 12A) may use: removal of exactly one canonical
+/// committed copy plus the existence check that verifies it. Nothing here can reach a workspace,
+/// capture staging, Photos or anything outside the Mellow root.
+protocol ProjectMediaCleanupStoring: Sendable {
+    /// Removes the committed copy at `path`, which MUST equal
+    /// `Projects/<projectID>/Media/<clipID>.mov` (`ProjectMediaStoreError.pathNotCanonical` otherwise).
+    /// Idempotent: an already-absent file is success. Throws `removalFailed` when the file still
+    /// exists afterwards, so a caller can never finalize metadata over a surviving file.
+    func removeCommittedMedia(_ path: RelativeMediaPath, projectID: UUID, clipID: UUID) async throws
+    func fileExists(_ path: RelativeMediaPath) async -> Bool
+}
+
 enum ProjectMediaStoreError: Error, Equatable {
     case destinationAlreadyExists
     case sourceMissing
     case mediaMissing
     case pathEscapesRoot
+    /// Cleanup was handed a path that is not the canonical committed copy of that Project / Clip.
+    case pathNotCanonical
+    /// The committed copy still exists after a removal attempt.
+    case removalFailed
 }
 
-actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving {
+actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectMediaCleanupStoring {
     private let root: URL
     private let fileManager = FileManager.default
+
+    /// The canonical committed location of one Clip's Project-owned copy, relative to the Mellow root.
+    /// Materialization writes exactly here and cleanup accepts exactly this (nothing else).
+    static func committedMediaPath(projectID: UUID, clipID: UUID) throws -> RelativeMediaPath {
+        try RelativeMediaPath("Projects/\(projectID.uuidString)/Media/\(clipID.uuidString).mov")
+    }
 
     /// `root` defaults to `Application Support/Mellow`; tests inject a temporary root.
     init(root: URL? = nil) {
@@ -86,7 +108,7 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving {
 
     func materialize(_ url: URL, projectID: UUID, clipID: UUID) async throws -> RelativeMediaPath {
         guard fileManager.fileExists(atPath: url.path) else { throw ProjectMediaStoreError.sourceMissing }
-        let relative = try RelativeMediaPath("Projects/\(projectID.uuidString)/Media/\(clipID.uuidString).mov")
+        let relative = try Self.committedMediaPath(projectID: projectID, clipID: clipID)
         let destination = root.appendingPathComponent(relative.value)
         guard !fileManager.fileExists(atPath: destination.path) else { throw ProjectMediaStoreError.destinationAlreadyExists }
         try ensureDirectory(destination.deletingLastPathComponent())
@@ -131,6 +153,24 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving {
         let url = root.appendingPathComponent(path.value).standardizedFileURL
         guard url.path.hasPrefix(root.standardizedFileURL.path + "/"), fileManager.fileExists(atPath: url.path) else { return }
         try? fileManager.removeItem(at: url)
+    }
+
+    func removeCommittedMedia(_ path: RelativeMediaPath, projectID: UUID, clipID: UUID) async throws {
+        // Ownership is proven by exact equality with the canonical layout, not by prefix matching:
+        // a workspace file, another Clip's copy, another Project's directory or a traversal attempt
+        // all fail here before any filesystem call.
+        guard path == (try Self.committedMediaPath(projectID: projectID, clipID: clipID)) else {
+            throw ProjectMediaStoreError.pathNotCanonical
+        }
+        let url = root.appendingPathComponent(path.value).standardizedFileURL
+        guard url.path.hasPrefix(root.standardizedFileURL.path + "/") else { throw ProjectMediaStoreError.pathEscapesRoot }
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            try fileManager.removeItem(at: url)
+        } catch {
+            if fileManager.fileExists(atPath: url.path) { throw ProjectMediaStoreError.removalFailed }
+        }
+        guard !fileManager.fileExists(atPath: url.path) else { throw ProjectMediaStoreError.removalFailed }
     }
 
     func usableCapacityBytes() async -> Int64 {

@@ -158,12 +158,13 @@ struct VlogProject: Identifiable, Equatable, Sendable {
     }
 
     /// Explicit physical-cleanup boundary (metadata side): forgets a pending-deleted Clip's record.
-    /// Only the future cleanup slice calls this, and only once every ADR-021 safety condition holds.
-    mutating func finalizeDeletedClip(id clipID: UUID, finalizedAt: Date = .now) throws {
+    /// Only `ProjectMediaCleanupCoordinator` calls this (ADR-039), after the media file is confirmed
+    /// absent. Cleanup is maintenance, not a user edit: `updatedAt` is deliberately NOT touched, so
+    /// Recent / saved-Project recency ordering never moves because of it.
+    mutating func finalizeDeletedClip(id clipID: UUID) throws {
         guard let index = deletedClips.firstIndex(where: { $0.id == clipID }) else {
             throw DomainValidationError.clipNotPendingDeletion
         }
         deletedClips.remove(at: index)
-        updatedAt = finalizedAt
     }
 }

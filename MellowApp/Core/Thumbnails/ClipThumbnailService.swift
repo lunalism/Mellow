@@ -150,7 +150,7 @@ struct BoundedThumbnailCache {
 /// `ProjectMediaURLResolving` boundary, generates off the Main Actor, caches results in memory and
 /// coalesces concurrent identical requests into one generation. Thumbnails are cache data — nothing
 /// here writes to disk or touches Project metadata, Photos, or capture staging.
-actor ClipThumbnailService: ClipThumbnailProviding {
+actor ClipThumbnailService: ClipThumbnailProviding, ProjectMediaConsumerGating {
     private let resolver: any ProjectMediaURLResolving
     private let generator: any ClipThumbnailGenerating
     private var cache: BoundedThumbnailCache
@@ -168,6 +168,25 @@ actor ClipThumbnailService: ClipThumbnailProviding {
 
     var cachedCount: Int { cache.count }
     var inFlightCount: Int { inFlight.count }
+
+    /// Media-consumer gate for physical cleanup (ADR-039 / ARCHITECTURE §56 "Thumbnail 생성이 Source
+    /// Media를 Release하기 전에는 해당 File을 Physical Delete하지 않는다"). Resolves `true` once no
+    /// in-flight generation reads any of `paths`; `false` when one is still busy after `timeout`,
+    /// in which case the caller must leave the file alone and retry at a later boundary. It only
+    /// observes the existing in-flight map — it never reorders, cancels or starts generation, and a
+    /// ready cached thumbnail is not an active consumer (no cache purge). The wait is bounded on
+    /// purpose: a stuck decode must never hang cleanup.
+    func awaitIdle(for paths: Set<RelativeMediaPath>, timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while inFlight.keys.contains(where: { paths.contains($0.mediaRelativePath) }) {
+            guard clock.now < deadline, !Task.isCancelled else { return false }
+            try? await clock.sleep(for: Self.idlePollInterval)
+        }
+        return true
+    }
+
+    private static let idlePollInterval: Duration = .milliseconds(20)
 
     func thumbnail(for request: ClipThumbnailRequest) async throws -> CGImage {
         if let cached = cache.image(for: request) { return cached }

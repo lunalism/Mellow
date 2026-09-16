@@ -71,6 +71,7 @@ final class SwiftDataProjectRepository: ProjectRepository {
         try saveOrRollback()
     }
 
+    /// Maintenance, not an edit: only the Clip row goes; the Project row (incl. `updatedAt`) is untouched.
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {
         guard let persistedProject = try persistedProject(id: projectID) else {
             throw ProjectRepositoryError.projectNotFound

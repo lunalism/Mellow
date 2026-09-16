@@ -17,6 +17,10 @@ final class AppEnvironment {
     let router: AppRouter
     let projectRepository: any ProjectRepository
     let projectComposition: ProjectCompositionCoordinator
+    /// ADR-039 shared critical section: cleanup ↔ composition / replacement ↔ Editor Project load.
+    let projectLifecycle: ProjectLifecycleOperationGate
+    /// Deferred physical cleanup of known pending Clips (ADR-039): Editor exit + app startup only.
+    let projectCleanup: ProjectMediaCleanupCoordinator
     let projectMediaStore: any ProjectMediaStoring
     let projectStorageGate: any ProjectStorageGating
     /// Editor clip thumbnails (ARCHITECTURE §56): Project-owned committed media only, memory cache.
@@ -56,6 +60,9 @@ final class AppEnvironment {
     /// STEP 6C manual physical-review route (`-uiTestProjectsEntryRealMedia`): the real production
     /// Photos picker bridge hosted by the DEBUG Projects screen. Nil on the deterministic route.
     private(set) var uiTestRealMediaSelector: PhotosVideoSelector?
+    /// `-uiTestCleanupDiagnostics`: cumulative cleanup counters surfaced as a tiny overlay so UI tests
+    /// can observe that a pass completed (no production surface exists for cleanup, by design).
+    private(set) var uiTestCleanupSummary: String?
     /// `-uiTestLegacyRecentProjects`: routes the Camera `Projects` control to the transitional Recent
     /// browser so historical Phase 2/3 regressions keep their exact semantics. Never Release.
     var usesLegacyRecentProjects: Bool { arguments.contains("-uiTestLegacyRecentProjects") }
@@ -232,11 +239,14 @@ final class AppEnvironment {
         let projectStorageGate: any ProjectStorageGating = volumeGate
         #endif
         self.projectStorageGate = projectStorageGate
+        let projectLifecycle = ProjectLifecycleOperationGate()
+        self.projectLifecycle = projectLifecycle
         self.projectComposition = ProjectCompositionCoordinator(
             repository: repository,
             mediaStore: projectMediaStore,
             validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
-            storage: projectStorageGate
+            storage: projectStorageGate,
+            lifecycle: projectLifecycle
         )
         self.home = HomeModel(repository: repository, router: router)
         let photosVideoSelector = PhotosVideoSelector()
@@ -302,11 +312,32 @@ final class AppEnvironment {
         } else {
             clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
         }
-        routeToUITestProjectsEntryIfNeeded()
-        routeToUITestProjectsEntryRealMediaIfNeeded()
         #else
         clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
         #endif
+
+        // ADR-039 deferred physical cleanup. The thumbnail service is the only media reader today and
+        // gates cleanup through `awaitIdle`; a live Editor session is "the route is on the stack".
+        // Trigger A: the Editor route leaves the path → one pass for that Project, never awaited by
+        // navigation. Trigger B: app startup → one pass per durable Project (below).
+        let consumers: any ProjectMediaConsumerGating = (clipThumbnails as? any ProjectMediaConsumerGating) ?? IdleProjectMediaConsumersFallback()
+        let projectCleanup = ProjectMediaCleanupCoordinator(
+            repository: projectRepository,
+            mediaStore: projectMediaStore,
+            consumers: consumers,
+            lifecycle: projectLifecycle,
+            isEditorSessionLive: { [router] projectID in router.hasLiveProjectEditor(for: projectID) }
+        )
+        self.projectCleanup = projectCleanup
+        router.onProjectEditorRouteRemoved = { [projectCleanup] projectID in
+            projectCleanup.scheduleReconcile(projectID: projectID)
+        }
+        #if DEBUG
+        configureUITestCleanupSeams()
+        routeToUITestProjectsEntryIfNeeded()
+        routeToUITestProjectsEntryRealMediaIfNeeded()
+        #endif
+        projectCleanup.scheduleReconcileAll()
 
         MellowLog.app.info("Permission onboarding completed: \(onboardingCompleted, privacy: .public)")
 
@@ -438,6 +469,15 @@ final class AppEnvironment {
             router.path = [.projectEditor(saved.id)]
             return saved.clips.map(\.id)
         }
+        // `-uiTestReopenProjectsEntry`: STEP 12A startup-reconciliation check — relaunch WITHOUT
+        // reseeding and WITHOUT an Editor route (so startup cleanup is not skipped for a live
+        // session), landing on the production 프로젝트 screen whose 기존 프로젝트 불러오기 opens the
+        // saved Project as-is.
+        if arguments.contains("-uiTestReopenProjectsEntry") {
+            guard let saved = try? repository.recentProjects().first else { return nil }
+            router.path = [.projectsEntry]
+            return saved.clips.map(\.id)
+        }
         guard arguments.contains("-uiTestSeedEditorProject") else { return nil }
         // Start from a clean store so the seeded editor project is deterministic and independent of
         // any leftover shared-container state from earlier tests.
@@ -451,9 +491,13 @@ final class AppEnvironment {
         let requestedCount = arguments.first { $0.hasPrefix("-uiTestSeedEditorClips=") }
             .flatMap { Int($0.replacingOccurrences(of: "-uiTestSeedEditorClips=", with: "")) } ?? baseDurations.count
         let durations = (0..<max(1, requestedCount)).map { baseDurations[$0 % baseDurations.count] }
+        // Canonical committed paths (no file behind them — thumbnails are faked): a deleted seeded
+        // clip is "pending + file already absent", which STEP 12A cleanup finalizes.
         let clips: [VlogClip] = durations.enumerated().compactMap { index, duration in
-            guard let path = try? RelativeMediaPath("seed/editor-clip-\(index).mov") else { return nil }
+            let clipID = UUID()
+            guard let path = try? ProjectMediaStore.committedMediaPath(projectID: projectID, clipID: clipID) else { return nil }
             return try? VlogClip(
+                id: clipID,
                 projectID: projectID,
                 sourceKind: .recorded,
                 mediaRelativePath: path,
@@ -536,6 +580,28 @@ final class AppEnvironment {
         router.path = [.projectsEntry]
     }
 
+    /// STEP 12A deterministic seams (DEBUG / UI tests only). `-uiTestCleanupDiagnostics` surfaces
+    /// cumulative pass counters; `-uiTestCleanupDelay=<ms>` holds every pass inside its critical
+    /// section for that long (proves Back is non-blocking and that an Editor reopen waits).
+    private func configureUITestCleanupSeams() {
+        if let delay = arguments.first(where: { $0.hasPrefix("-uiTestCleanupDelay=") })
+            .flatMap({ Int($0.replacingOccurrences(of: "-uiTestCleanupDelay=", with: "")) }), delay > 0 {
+            projectCleanup.debugHold = { try? await Task.sleep(for: .milliseconds(delay)) }
+        }
+        guard arguments.contains("-uiTestCleanupDiagnostics") else { return }
+        var removed = 0, absent = 0, finalized = 0, deferred = 0, passes = 0
+        uiTestCleanupSummary = "cleanup passes=0 removed=0 absent=0 finalized=0 deferred=0"
+        projectCleanup.onReport = { [weak self] report in
+            guard !report.skippedForLiveEditor else { return }
+            passes += 1
+            removed += report.removedFiles.count
+            absent += report.alreadyAbsent.count
+            finalized += report.finalized.count
+            deferred += report.deferred.count
+            self?.uiTestCleanupSummary = "cleanup passes=\(passes) removed=\(removed) absent=\(absent) finalized=\(finalized) deferred=\(deferred)"
+        }
+    }
+
     private static func makeUITestSelectionScript(arguments: [String], key: String = "-uiTestMediaSelection=") async -> FakeProjectMediaSelector.Script {
         let mode = arguments.first { $0.hasPrefix(key) }?
             .replacingOccurrences(of: key, with: "") ?? "cancel"
@@ -583,3 +649,9 @@ private final class UpdateFailingProjectRepository: ProjectRepository {
     func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
 }
 #endif
+
+/// Used only if the thumbnail provider in use does not read Project media (a DEBUG fake): there is
+/// then no active media consumer to wait for. The production `ClipThumbnailService` always gates.
+private struct IdleProjectMediaConsumersFallback: ProjectMediaConsumerGating {
+    func awaitIdle(for paths: Set<RelativeMediaPath>, timeout: Duration) async -> Bool { true }
+}

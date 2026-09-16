@@ -92,6 +92,18 @@ struct HomeView: View {
                     .accessibilityIdentifier("projectsEntryIntent")
             }
         }
+        // Phase 5 STEP 12A: cumulative cleanup counters (`-uiTestCleanupDiagnostics`) so UI tests can
+        // observe that a deferred pass completed; cleanup has no production surface by design.
+        .overlay(alignment: .bottom) {
+            if let summary = environment.uiTestCleanupSummary {
+                Text(summary)
+                    .font(.caption2)
+                    .padding(4)
+                    .background(Color(.systemBackground))
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("cleanupDiagnostics")
+            }
+        }
         #endif
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.loadRecent() }

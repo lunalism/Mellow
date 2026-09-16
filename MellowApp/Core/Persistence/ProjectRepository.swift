@@ -10,7 +10,9 @@ protocol ProjectRepository {
     /// caller bug and is rejected (`missingDurableClip`), not silently deleted (ADR-021).
     func update(_ project: VlogProject) throws
     /// Explicit physical-cleanup boundary for one pending-deleted Clip's metadata. Refused for an
-    /// active Clip. Media files are not touched here; the future cleanup slice sequences both.
+    /// active Clip (`clipNotPendingDeletion`, also thrown for an already-finalized row). Media files
+    /// are not touched here; `ProjectMediaCleanupCoordinator` sequences file removal → verified
+    /// absence → this call (ADR-039). Maintenance semantics: must NOT bump the Project's `updatedAt`.
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws
     func deleteProject(id: UUID) throws
 }

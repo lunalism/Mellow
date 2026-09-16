@@ -813,6 +813,8 @@ Delete / Undo의 Active-consumer Lifecycle을 포함한 B03은 Step 3에서 별�
 
 **Partial Supersession:** ADR-033에 따라 Recording Finalization은 더 이상 Project를 Commit 대상으로 갖지 않으므로 Late Recording Commit 차단 계약은 Project Materialization / Import 경로에만 적용되며, Project 삭제 / 대체는 Photos 원본을 절대 삭제하지 않는다. 아래 원문은 당시 기준의 기록이다.
 
+**Implementation Note (Phase 5 STEP 12A, ADR-039, 2026-09-16):** Pending Clip의 Physical Cleanup은 Live Editor Session 동안 금지되고 Editor Route 제거 / App 시작 두 경계에서만 `ProjectMediaCleanupCoordinator`가 File-first → Metadata-finalize 순서로 수행하며, Thumbnail Consumer Gate, Editor-open / Composition Serialization, Active + Missing 보호, Per-Clip 실패 격리는 ADR-039가 확정한다. Orphan / Workspace Sweep은 STEP 12B로 남는다.
+
 ## Context
 
 사용자 UI의 Delete와 실제 Media File의 Physical Delete는 동일한 작업이 아니다.
@@ -2316,6 +2318,7 @@ Phase 5 STEP 10 최초 구현은 Delete 전용 Bottom Snackbar와 "가장 최근
 - History Entry는 편집 전후의 **영속 Editor State(Active Clip 집합, Pending-deleted Clip 집합, Selection)와 편집 종류**만 담는 값이다. Media / Image / Closure를 담지 않으므로 Session 동안 상한을 두지 않는다.
 - **Delete-only Snackbar, Timer 기반 Undo Window, "가장 최근 삭제 한 건" 제한은 폐기**한다. Delete는 여전히 확인 없이 즉시 적용되며 Undo가 안전 장치다.
 - **Durable Pending Deletion은 유지**한다: Delete는 Clip을 Active Timeline에서 제거하고 같은 Identity / Media / Metadata를 Pending-deleted로 영속화하며, Session History 안에서 Undo / Redo가 그 Clip을 같은 Identity로 오간다.
+- **Implementation Note (STEP 12A, ADR-039):** "Session이 끝난 뒤의 Pending Deletion만 Cleanup 후보"는 구현에서 "Editor Route가 Stack에 있는 동안은 그 Project의 어떤 Pending Clip도 물리 정리하지 않는다"로 확정되었다. Session 안에서 Redo가 사라져 논리적으로 도달 불가능해진 Clip도 Session 경계(Back)까지 파일이 유지되며, Editor는 Cleanup을 위해 어떤 History도 유지하지 않는다.
 - **Add Clips(ADR-037)도 History-capable Mutation이다(STEP 11):** 한 Picker Batch = 한 History Entry(`.add`). Add를 Undo하면 새 Clip은 Active Timeline에서 빠지되 물리 삭제되지 않고 같은 Pending-deleted(Inactive, Durable) 상태로 남아 Redo가 같은 UUID / Media Path / 파일 / Metadata를 되살린다(재복사 / 재선택 / 새 UUID 없음). History 복원은 현재 Project가 소유하지만 대상 State가 모르는 Clip을 절대 잊지 않고 Pending-deleted로 유지한다(Repository Omission Guard 유지). Undo Add 뒤 새 편집이나 Session 종료로 Redo가 사라진 Clip은 Durable Pending으로 남아 이후 Physical Cleanup Slice의 대상이 된다. `finalizeDeletedClip`(명시적 물리 Metadata 제거)은 Production에서 호출하지 않으며 Media 삭제 / Cleanup Scheduler / Timer는 없다. Session History에서 도달 가능한 Delete의 Media는 복구 가능해야 하고, Session이 끝난 뒤의 Pending Deletion만 이후 Cleanup Slice의 후보가 된다(ADR-021 안전 조건 유지).
 
 ## Consequences
@@ -2328,3 +2331,44 @@ Phase 5 STEP 10 최초 구현은 Delete 전용 Bottom Snackbar와 "가장 최근
 ## Non-goals
 
 - History 영속화, Cross-session Undo, Project 삭제 Undo, Physical Cleanup 정책, Add Clip / Trim / Framing / Text / Sticker 편집 자체.
+
+---
+
+# ADR-039 — Deferred Physical Cleanup Boundaries
+
+**Date:** 2026-09-16
+**Status:** Accepted
+
+**Clarifies / Extends:** ADR-021의 Logical / Physical Deletion 분리, Durable Pending Deletion, Physical Cleanup Safety, Process Termination 후 Reconciliation과 ADR-038의 "Session이 끝난 뒤의 Pending Deletion만 Cleanup 후보"를 Phase 5 STEP 12A의 실제 구현 경계로 확정한다. ADR-020의 Recovery Classification / Confirmed Orphan Contract, ADR-021의 Active Consumer 원칙, ADR-026의 Unavailable Clip 정책, ADR-033의 Safe Atomic Replacement는 변경하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+STEP 10 / 11 이후 Editor의 Delete와 Undo Add는 Clip을 Durable Pending(`VlogProject.deletedClips`)으로만 남기고 Media File은 절대 지우지 않았다(`finalizeDeletedClip` 경계만 존재, Production 호출 없음). ADR-021은 Physical Delete의 안전 조건(Undo Eligibility 종료, Active Consumer 없음, Late Commit 차단, Safe Classification)을 정의하지만 "언제", "누가", "어떤 순서로", "무엇과 직렬화하여" 지우는지는 구현에 열어 두었다. STEP 12 Design Review는 Editor Session 안에서 History Reachability를 매 편집마다 재계산해 즉시 정리하는 방식(Undo / Redo / Redo Invalidation / Reorder / Delete / Add마다 File IO)이 불필요하게 복잡하고 위험하다고 판단했고, 더 강한 단순 경계를 승인했다.
+
+## Decision
+
+1. **Live Editor Session 동안에는 그 Project의 어떤 Pending Clip도 물리적으로 정리하지 않는다.** Session 안에서 Eligibility가 바뀌어도(Undo Add 뒤 새 편집으로 Redo가 사라져 논리적으로 도달 불가능해져도) File IO는 Session 경계까지 기다린다. "Session이 살아 있다"는 Navigation 소유의 사실 — `.projectEditor(P)` Route가 Stack에 있음 — 로 판정하며 Editor History를 Cleanup을 위해 유지하지 않는다. Editor 위에 올라온 PhotosPicker / Sheet는 Route를 바꾸지 않으므로 Session 종료가 아니다.
+2. **Cleanup Trigger는 정확히 두 곳이다.** (A) Editor Route가 Path에서 제거될 때(Back / Pop / Path Reset) 해당 Project 하나를 비동기로 Reconcile한다 — Navigation은 Disk IO를 기다리지 않는다. (B) App 시작 시 Persistence가 준비된 뒤 모든 Durable Project를 Reconcile한다 — Editor History는 Process를 넘지 않으므로 시작 시점의 Project는 History-free이며, 시작 Route가 이미 Editor라면 Live Session으로 보고 건너뛴다. Camera 시작 / Recording은 Cleanup을 기다리지 않는다.
+3. **순서는 File-first → Metadata-finalize다.** Pending 재확인 → Canonical Owned Path 검증 → Media Reader Idle 대기 → File 삭제 → 부재 검증 → `finalizeDeletedClip`. 반대 순서(Metadata 먼저)는 금지한다: Crash 뒤에 남은 Pending Row는 발견 가능하지만 File 위에 남은 Row 없는 파일은 Orphan이 된다.
+4. **Pending + File 이미 없음 = File 단계 완료.** Cleanup 경계에서 Canonical 파일이 없으면 실패가 아니라 Crash Recovery(파일 삭제 → Process 종료 → Row Pending)로 보고 Metadata를 Finalize한다.
+5. **Active + File 없음 ≠ Cleanup.** `Project.clips`에 있는 Clip은 파일 유무와 무관하게 절대 Finalize / 삭제 / 수정하지 않는다. 이는 이후 Slice의 Unavailable Media / Replace 흐름(ADR-026)이다.
+6. **Cleanup Eligibility(모두 충족해야 함):** Clip이 `deletedClips`에 Durable하게 존재, `clips`에 없음, 해당 Project의 Live Editor Session 없음, 같은 Lifecycle Gate 안(Composition / Replacement / Editor Load와 배타), 해당 Path를 읽는 Active Media Consumer 없음(Bounded 대기), `mediaRelativePath`가 정확히 `Projects/<projectID>/Media/<clipID>.mov`(Prefix가 아닌 완전 일치 — Workspace / 다른 Clip / 다른 Project / 임의 Root Path 거부), 그리고 File 삭제 → 부재 검증 → Finalize 순서를 따를 수 있음. 불확실하면 Preserve + Log + 다음 경계에서 Retry.
+7. **Editor-open Serialization.** 새 Editor는 Project Snapshot을 읽기 전에 그 Project의 Lifecycle Gate를 기다린다(Cleanup이 파일은 지웠으나 Row는 아직 Pending인 중간 상태를 읽어 이후 Autosave로 Finalize된 Clip을 되살리는 Resurrection Race 차단). Route가 이미 Stack에 있으므로 대기 중에 새 Cleanup Pass는 시작되지 않는다.
+8. **Shared Operation Serialization.** Cleanup ↔ Project Composition / Safe Atomic Replacement ↔ Editor Project Load는 하나의 실제 Async Critical Section(`ProjectLifecycleOperationGate`: Main-Actor FIFO Hand-off Lock, Suspension을 가로질러 유지)으로 직렬화한다. Boolean Flag(TOCTOU) 금지. Camera Recording과 Editor Add(Live Session 안이라 Cleanup 불가)는 Gate를 잡지 않는다. Safe Atomic Replacement 자체와 Replacement의 A 정리 소유권은 바꾸지 않는다 — 겹침만 막는다.
+9. **Media Consumer Gate.** 현재 유일한 Production Media Reader는 `ClipThumbnailService`이며 In-flight Generation을 관찰하는 `awaitIdle(for:timeout:)`로 Cleanup에 참여한다. 대기는 Bounded이며(기본 3초, Policy) Timeout이면 파일 보존 + Row Pending + Log + 다음 경계 Retry, 사용자 Error 없음. Ready Cached Thumbnail은 Active Consumer가 아니다(Cache Purge 불필요). Request Ordering / Task Group 동작은 바꾸지 않는다. **이후 Playback / Export 등 Project Media를 읽는 모든 Consumer는 같은 Protection Contract(`ProjectMediaConsumerGating`)에 참여해야 하며, Cleanup은 알려주지 않은 Reader를 "없음"으로 가정하지 않는다.**
+10. **Ownership.** `ProjectMediaCleanupCoordinator`(Core/Projects)는 Cross-resource Lifecycle Orchestration만 소유한다 — `reconcile(projectID:)` / `reconcileAll()`, Eligibility 판정, Consumer 대기, File 삭제 → 부재 검증 → Finalize, Clip별 실패 격리, Idempotent Retry, Nonfatal Log. Repository = Metadata, `ProjectMediaStore` = Filesystem(`removeCommittedMedia(_:projectID:clipID:)`: Canonical 완전 일치만, Missing = Success, 삭제 실패 / 잔존은 Throw). Coordinator는 Editor History, Repository 구현, Photos, UI Alert, Camera, Orphan Scan을 소유하지 않는다.
+11. **Cleanup은 Maintenance이지 편집이 아니다.** `finalizeDeletedClip`은 InMemory / SwiftData 모두 Project `updatedAt`을 올리지 않아 Recent / 저장 Project Recency가 움직이지 않는다. Active Clip 거부, Save Rollback, 실패 시 Retryable Pending Row는 유지하며 이미 Finalize된 Row / 없는 Row는 Idempotent 성공이다.
+12. **Per-Clip 실패 격리.** 여러 Pending Clip은 한 Project Pass 안에서 독립적으로 처리한다 — 한 Clip의 File 삭제 실패는 다른 Clip의 성공을 되돌리지 않고 다음 Clip으로 진행한다. Latest-only 동작 없음.
+13. **No User-facing Cleanup Error.** 실패는 Pending 보존 + 재시도 + Diagnostic Log뿐이다(Popup / Snackbar / Editor Alert 없음).
+14. **STEP 12B 명시적 유보.** Row 없는 Media 파일 Scan, Project Row 없는 Project Directory, 버려진 `ProjectWorkspace`, Root 광역 Sweep은 이 ADR의 범위가 아니며 12A가 실기기에서 검증된 뒤 별도 Slice(ADR-020 Confirmed Orphan Contract 적용)로 다룬다.
+
+## Consequences
+
+- Editor 안의 모든 편집 경로(Undo / Redo / Reorder / Delete / Add)는 Cleanup을 전혀 알지 못하며 Media 안전성은 Navigation 경계 하나로 보장된다.
+- Crash / Kill 뒤 남은 어떤 부분 상태(Pending + File 있음 / Pending + File 없음 / Finalize 실패)도 다음 시작 Pass가 수렴시킨다.
+- Editor 진입은 진행 중인 Cleanup 뒤로 짧게 줄을 설 수 있다(Loading 상태 유지); Back은 절대 기다리지 않는다.
+- Release Build에는 Cleanup Control / 표시가 없다. DEBUG UI-test Seam(`-uiTestCleanupDiagnostics`, `-uiTestCleanupDelay=<ms>`, `-uiTestReopenProjectsEntry`)만 존재한다.
+
+## Non-goals
+
+- Orphan / Workspace Sweep(STEP 12B), Unavailable Replace UI, Representative Thumbnail, Playback / AVPlayer, Trim / Framing / Text / Sticker / Full Preview / Export, Server / Background Scheduler, Storage-management UX.

@@ -545,9 +545,9 @@ SwiftUI View 또는 Feature View Model에서 FileManager를 직접 사용하지 
 - Imported Media 저장
 - Temporary Media 관리
 - Atomic File Move
-- Clip File 삭제
+- Clip File 삭제(STEP 12A: `removeCommittedMedia` — Canonical Committed Path 완전 일치만, Idempotent, 잔존 시 Throw)
 - Project Media 삭제
-- Recovery Classification 이후 Confirmed Orphan 정리
+- Recovery Classification 이후 Confirmed Orphan 정리(STEP 12B, 미구현)
 - Storage Availability 확인 지원
 
 `MediaStore`는 Actor 기반으로 구성하는 방향을 사용한다.
@@ -559,6 +559,8 @@ MediaStore Actor 하나만으로 Repository, Preview, Export와 Producer 사이�
 Repository / Operation Lifecycle / Media Storage 사이에는 60절과 61절의 Active Media Usage, Project Validity와 Deferred Physical Cleanup을 조정하는 책임이 존재해야 한다.
 
 구체적인 Reference Counter, Lease Class, Coordinator Type 또는 Database Schema는 이 계약에서 고정하지 않는다.
+
+Phase 5 STEP 12A: 이 조정 책임의 첫 구현은 `ProjectMediaCleanupCoordinator` + `ProjectLifecycleOperationGate`(60절 "Phase 5 STEP 12A Implementation", ADR-039)이며 Known Pending Clip에 한정된다.
 
 ---
 
@@ -1748,6 +1750,17 @@ Active Media Usage를 추적하여 Physical Delete를 Defer할 수 있어야 하
 Cancellation 요청이나 UI에서 사라진 사실은 실제 Reference Release를 대신하지 않는다.
 
 삭제에 필요한 정보는 안전한 Cleanup과 재시도가 가능하도록 유지하며 동일 Artifact의 반복 Cleanup은 오류나 중복 상태를 만들지 않는다.
+
+### Phase 5 STEP 12A Implementation — Deferred Physical Cleanup of Known Pending Clips (ADR-039)
+
+`Core/Projects/ProjectMediaCleanupCoordinator.swift`가 위 안전 조건의 첫 Production 구현이며 `Project.deletedClips`(Durable Pending)만 다룬다. Row 없는 파일 / Project 없는 Directory / 버려진 Workspace의 Scan(ADR-020 Confirmed Orphan Contract)은 **STEP 12B로 명시적으로 유보**되어 아직 구현하지 않았다.
+
+- **Boundaries:** Live Editor Session(= `AppRouter.path`에 `.projectEditor(P)` 존재) 동안 P의 Pending Clip은 절대 물리 정리하지 않는다. Trigger는 두 개뿐이다 — (A) `AppRouter.path`의 `didSet`이 Editor Route 제거를 감지하면 `onProjectEditorRouteRemoved(P)` → `scheduleReconcile(projectID:)`(Fire-and-forget Task, Back은 Disk IO를 기다리지 않음; Sheet / PhotosPicker는 Path를 바꾸지 않으므로 발화하지 않음); (B) `AppEnvironment.init` 마지막의 `scheduleReconcileAll()`(Persistence 준비 뒤, Camera Prewarm과 무관). `ProjectEditorModel`과 View `onDisappear`는 Cleanup을 전혀 모른다.
+- **Serialization:** `ProjectLifecycleOperationGate`(Main-Actor FIFO Hand-off Async Lock, Suspension을 가로질러 유지, Boolean Flag 아님)를 Cleanup Pass, `ProjectCompositionCoordinator.compose`(Validate → Materialize → Persist → Promote → A 제거 전체 구간), `ProjectEditorDestination`의 Project Load가 공유한다. Editor Load는 Gate를 기다린 뒤에만 `repository.project(id:)`를 읽으므로 "파일은 지웠고 Row는 아직 Pending"인 중간 Snapshot을 읽어 Autosave로 되살리는 Resurrection Race가 없다(결정적 Race Test로 증명). Route가 이미 Stack에 있으므로 대기 중 새 Pass는 시작되지 않는다. Camera Recording과 Editor Add는 Gate를 잡지 않는다.
+- **Per-Clip Pipeline(Gate 안):** Live Session 확인 → Project 재로드 → Pending 각각에 대해 (1) Canonical Path 완전 일치(`ProjectMediaStore.committedMediaPath(projectID:clipID:)` = `Projects/<pid>/Media/<cid>.mov`; 불일치는 `nonCanonicalPath`로 Preserve + Log, Store를 호출조차 하지 않음) → (2) `ProjectMediaConsumerGating.awaitIdle(for:timeout:)`(Bounded, 기본 3초; Timeout은 `consumerBusy` Defer) → (3) `ProjectMediaStore.removeCommittedMedia(_:projectID:clipID:)`(Canonical 완전 일치만, Root 밖 / Workspace / Staging / Photos 도달 불가, Missing = Success, 잔존 시 Throw) → (4) Coordinator가 다시 `fileExists == false` 검증 → (5) Repository 재조회 후 여전히 Pending인 경우에만 `finalizeDeletedClip`. 이미 없는 Row는 Idempotent 성공, Active Row(파일 유무 무관)는 절대 Finalize하지 않는다. File 없음은 Crash Recovery(`alreadyAbsent`)로 Finalize 진행, Finalize 실패는 Row Pending + File 없음으로 남아 다음 Pass가 Finalize한다. 한 Clip의 실패는 다른 Clip을 막거나 되돌리지 않는다.
+- **Consumer Gate:** `ClipThumbnailService.awaitIdle(for:timeout:)`는 기존 In-flight Map만 관찰(20ms Poll)하며 Request Ordering / Task Group / Cache를 바꾸지 않는다. Ready Cached Thumbnail은 Consumer가 아니다. DEBUG Fake Provider는 Media를 읽지 않으므로 Idle Fallback을 쓴다. 이후 Playback / Export Reader는 같은 Protocol로 참여해야 한다.
+- **Maintenance Semantics:** `VlogProject.finalizeDeletedClip(id:)`와 두 Repository 구현 모두 `updatedAt`을 바꾸지 않는다(InMemory / SwiftData Test). `recentProjects()`가 Predicate / Limit 없는 전체 Durable Project 열거이므로 `reconcileAll()`은 이를 재사용한다.
+- **Diagnostics:** `MellowLog.app`에 Pass 시작(Pending 수) / Skip(Live Session) / Preserve·Defer 이유 / File 제거·이미 없음 / Finalize / Clip별 실패 / 완료를 짧은 ID Prefix로 남긴다(전체 경로 없음). 사용자 표시는 없다. DEBUG Seam: `-uiTestCleanupDiagnostics`(누적 Counter Overlay), `-uiTestCleanupDelay=<ms>`(Pass Hold), `-uiTestReopenProjectsEntry`(재시드 없는 시작 Reconcile 검증).
 
 ### Most-recent Undo Opportunity
 
