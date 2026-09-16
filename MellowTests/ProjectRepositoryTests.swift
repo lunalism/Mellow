@@ -155,6 +155,77 @@ final class ProjectRepositoryTests: XCTestCase {
         XCTAssertEqual(try reopenedEnvironment.repository.project(id: project.id), project)
     }
 
+    // MARK: - Reorder persistence (Phase 5 STEP 9)
+
+    /// A B C → C A B through `update`, then the container is released and a fresh one reopened:
+    /// the order, normalised `sortOrder`, clip identities and media metadata all survive; a second
+    /// reorder after reopen persists the same way.
+    func testSwiftDataReorderSurvivesContainerReopen() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let projectID = UUID()
+        let clips = try (0..<3).map { try makeClip(projectID: projectID, sortOrder: $0) }
+        let (a, b, c) = (clips[0].id, clips[1].id, clips[2].id)
+        var project = try VlogProject(id: projectID, orientation: .portrait9x16, clips: clips)
+        let originalByID = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0) })
+
+        do {
+            let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+            try environment.repository.create(project)
+            try project.reorderClip(id: c, toIndex: 0)
+            try environment.repository.update(project)
+            XCTAssertEqual(try environment.repository.project(id: projectID)?.clips.map(\.id), [c, a, b])
+        }
+
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        var reloaded = try XCTUnwrap(try reopened.repository.project(id: projectID))
+        XCTAssertEqual(reloaded.clips.map(\.id), [c, a, b])
+        XCTAssertEqual(reloaded.clips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(reloaded.totalDuration, project.totalDuration)
+        for clip in reloaded.clips {
+            let original = try XCTUnwrap(originalByID[clip.id])
+            XCTAssertEqual(clip.mediaRelativePath, original.mediaRelativePath)
+            XCTAssertEqual(clip.sourceDuration, original.sourceDuration)
+            XCTAssertEqual(clip.trimStart, original.trimStart)
+            XCTAssertEqual(clip.trimDuration, original.trimDuration)
+            XCTAssertEqual(clip.sourceKind, original.sourceKind)
+        }
+
+        // Second reorder after reopen: A after B → C B A.
+        try reloaded.reorderClip(id: a, toIndex: 2)
+        try reopened.repository.update(reloaded)
+        let again = try makeSwiftDataEnvironment(storeURL: store.url)
+        let final = try XCTUnwrap(try again.repository.project(id: projectID))
+        XCTAssertEqual(final.clips.map(\.id), [c, b, a])
+        XCTAssertEqual(final.clips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(Set(final.clips.map(\.id)), Set([a, b, c]))
+    }
+
+    /// `update` reconciles clips by identity and deletes persisted clips missing from the incoming
+    /// Project. A reorder carries the identical clip set, so nothing is deleted or re-created: the
+    /// persisted clip rows are the same three rows before and after.
+    func testSwiftDataSameClipSetUpdateRemovesNoPersistedClip() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        let projectID = UUID()
+        let clips = try (0..<3).map { try makeClip(projectID: projectID, sortOrder: $0) }
+        var project = try VlogProject(id: projectID, orientation: .portrait9x16, clips: clips)
+        try environment.repository.create(project)
+        let rowsBefore = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertEqual(rowsBefore.count, 3)
+        let identifiersBefore = Set(rowsBefore.map { ObjectIdentifier($0) })
+
+        try project.reorderClip(id: clips[2].id, toIndex: 0)
+        try environment.repository.update(project)
+
+        let rowsAfter = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertEqual(rowsAfter.count, 3, "no clip row was deleted")
+        XCTAssertEqual(Set(rowsAfter.map { ObjectIdentifier($0) }), identifiersBefore, "the same rows were updated in place")
+        XCTAssertEqual(Set(rowsAfter.map(\.id)), Set(clips.map(\.id)))
+        XCTAssertEqual(rowsAfter.sorted { $0.sortOrder < $1.sortOrder }.map(\.id), [clips[2].id, clips[0].id, clips[1].id])
+    }
+
     private func makeSwiftDataEnvironment(storeURL: URL) throws -> SwiftDataRepositoryEnvironment {
         let container = try MellowModelContainer.makePersistentContainer(storeURL: storeURL)
         return SwiftDataRepositoryEnvironment(container: container)

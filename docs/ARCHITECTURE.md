@@ -1562,6 +1562,8 @@ Trim Handle 또는 Framing Drag처럼 매우 자주 발생하는 변경을 매 F
 
 Interaction 동안 Temporary State를 사용하고 Interaction 종료 시 Persistence에 반영한다.
 
+Phase 5 STEP 9 Reorder 구현 Note: `ProjectEditorModel`이 Committed Order(`project`, Repository가 마지막으로 확인한 값), Drag 중 Temporary Preview Order(`previewOrder`, Clip ID 배열)와 Lifted Clip Identity(`draggingClipID`)를 소유한다. View는 Repository / Domain을 직접 만지지 않고 `beginReorder` / `previewReorder` / `commitReorder` / `cancelReorder`와 `moveClipEarlier` / `moveClipLater`만 호출하며, 두 경로 모두 하나의 `reorder(clipID:toIndex:)`로 수렴한다 — `VlogProject.reorderClip`(sortOrder 0…n-1 정규화) → 동일 순서면 무기록 → `repository.update` → `repository.project(id:)` Read-back 비교 → 실패 / 불일치 시 이전 Committed Project 복귀 + Recoverable Message. `update`의 Clip Reconciliation은 Incoming 집합에 없는 Clip만 삭제하므로 같은 Clip 집합인 Reorder에서는 어떤 Row도 삭제 / 재생성되지 않는다(Test로 고정). Commit은 Main Actor 동기 실행이라 겹치지 않으며 `isCommittingReorder`가 재진입 Commit을 추가로 거부한다.
+
 ---
 
 ## 58. Draft Retention

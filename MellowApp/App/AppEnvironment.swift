@@ -383,6 +383,14 @@ final class AppEnvironment {
         repository: any ProjectRepository,
         router: AppRouter
     ) -> [UUID]? {
+        // `-uiTestReopenEditorProject`: STEP 9 persistence check — relaunch WITHOUT reseeding, open the
+        // saved Project as-is (the previous launch's reorder must still be there) and keep the fake
+        // thumbnails bound to its existing clip ids.
+        if arguments.contains("-uiTestReopenEditorProject") {
+            guard let saved = try? repository.recentProjects().first else { return nil }
+            router.path = [.projectEditor(saved.id)]
+            return saved.clips.map(\.id)
+        }
         guard arguments.contains("-uiTestSeedEditorProject") else { return nil }
         // Start from a clean store so the seeded editor project is deterministic and independent of
         // any leftover shared-container state from earlier tests.

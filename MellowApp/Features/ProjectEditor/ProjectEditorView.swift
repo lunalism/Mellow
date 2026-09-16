@@ -23,7 +23,7 @@ struct ProjectEditorDestination: View {
             guard model == nil, !unavailable else { return }
             do {
                 if let project = try environment.projectRepository.project(id: projectID) {
-                    model = ProjectEditorModel(project: project, thumbnails: environment.clipThumbnails)
+                    model = ProjectEditorModel(project: project, repository: environment.projectRepository, thumbnails: environment.clipThumbnails)
                     #if DEBUG
                     MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
                     #endif
@@ -38,8 +38,9 @@ struct ProjectEditorDestination: View {
 }
 
 /// Phase 5 Project Editor (ADR-034): an immersive dark media workspace — a dominant Portrait Preview
-/// canvas above a persistent bottom editing dock with the ordered clip timeline. No playback, no
-/// reorder/delete, no edit tools; the shell deliberately shows no dead controls for deferred features.
+/// canvas above a persistent bottom editing dock with the ordered clip timeline. Clips can be
+/// selected and reordered (long press + drag, or the accessibility Move actions) with autosave. No
+/// playback, no delete, no edit tools; the shell deliberately shows no dead controls for deferred features.
 struct ProjectEditorView: View {
     @Bindable var model: ProjectEditorModel
     @Environment(\.displayScale) private var displayScale
@@ -51,19 +52,28 @@ struct ProjectEditorView: View {
                 selectedClip: model.selectedClip,
                 selectedPosition: selectedPosition
             )
-            EditorTimelineDock(
-                clips: model.orderedClips,
-                selectedClipID: model.selectedClipID,
-                totalDuration: model.totalDuration,
-                thumbnail: model.thumbnail(for:),
-                select: model.select,
-                showsStagedAddSlot: showsStagedAddSlot
-            )
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+            EditorTimelineDock(model: model, showsStagedAddSlot: showsStagedAddSlot)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
         }
         .padding(.top, 8)
         .background(EditorWorkspace.canvas.ignoresSafeArea())
+        // One subtle haptic per reorder-mode activation (long press succeeded); nothing on drop.
+        .sensoryFeedback(.impact(weight: .light), trigger: model.reorderActivationCount)
+        // Recoverable autosave failure (the order was already rolled back); same alert style as
+        // the Projects screen. The user simply reorders again.
+        .alert(
+            model.reorderMessage?.title ?? "",
+            isPresented: Binding(
+                get: { model.reorderMessage != nil },
+                set: { if !$0 { model.reorderMessage = nil } }
+            ),
+            presenting: model.reorderMessage
+        ) { _ in
+            Button("확인", role: .cancel) { model.reorderMessage = nil }
+        } message: { message in
+            Text(message.message)
+        }
         // Editor-only workspace appearance: the subtree and its navigation bar render dark whatever
         // the app appearance is; nothing global changes (Projects / Camera are untouched).
         .environment(\.colorScheme, .dark)

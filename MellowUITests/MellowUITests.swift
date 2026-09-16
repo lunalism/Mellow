@@ -370,6 +370,140 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 9: long-press drag reorder + autosave
+
+    /// A B C → long-press C, drag before A, release → C A B; selection follows C; Total unchanged;
+    /// the order survives leaving the Editor, relaunching the process and reopening the store.
+    @MainActor
+    func testEditorLongPressDragReordersAndPersists() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        try auditAndCapture(app, name: "editor-reorder-idle")
+
+        // A short tap only selects — it never lifts or moves a clip.
+        clip2.tap()
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        expectLabel(clip2, "Clip 2 of 3, 3.0s")
+
+        // Long press C, drag it left past A's leading edge, release.
+        let target = clip1.coordinate(withNormalizedOffset: CGVector(dx: -0.1, dy: 0.5))
+        clip3.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.7, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.3)
+
+        expectLabel(clip1, "Clip 1 of 3, 1.0s")
+        expectLabel(clip2, "Clip 2 of 3, 2.0s")
+        expectLabel(clip3, "Clip 3 of 3, 3.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected", "selection follows the dragged clip")
+        XCTAssertEqual(clip2.value as? String, "Not selected")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 1")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s", "reorder never changes the total")
+        // Exact V4.1 geometry after the drop: no lingering lift.
+        XCTAssertEqual(clip1.frame.width, 44, accuracy: 3)
+        XCTAssertEqual(clip1.frame.height, 78, accuracy: 3)
+        XCTAssertLessThan(clip1.frame.minX, clip2.frame.minX)
+        XCTAssertLessThan(clip2.frame.minX, clip3.frame.minX)
+        try auditAndCapture(app, name: "editor-reorder-after-drop")
+
+        // Leave and reopen the Editor in the same process (Load Existing Project).
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        // Relaunch without reseeding: the persisted order is what the store reopened with.
+        let relaunched = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestReopenEditorProject", "-uiTestProductionTimeline"])
+        relaunched.launch()
+        XCTAssertTrue(relaunched.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunched.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(relaunched.buttons["editorClip-1"], "Clip 1 of 3, 1.0s")
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 3, 2.0s")
+        expectLabel(relaunched.buttons["editorClip-3"], "Clip 3 of 3, 3.0s")
+        XCTAssertEqual(relaunched.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+
+        // A second reorder after reopen: drag the (now) first clip after the last one → A B C again.
+        let end = relaunched.buttons["editorClip-3"].coordinate(withNormalizedOffset: CGVector(dx: 1.1, dy: 0.5))
+        relaunched.buttons["editorClip-1"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.7, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+        expectLabel(relaunched.buttons["editorClip-1"], "Clip 1 of 3, 2.0s")
+        expectLabel(relaunched.buttons["editorClip-2"], "Clip 2 of 3, 3.0s")
+        expectLabel(relaunched.buttons["editorClip-3"], "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(relaunched.buttons["editorClip-3"].value as? String, "Selected")
+
+        relaunched.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(relaunched.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: relaunched)
+    }
+
+    /// Mid-drag presentation (deterministic DEBUG freeze, no touch): the lifted clip sits above its
+    /// neighbours which have reflowed, the dock geometry is unchanged. Visual evidence only.
+    @MainActor
+    func testEditorReorderDraggingPresentation() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline", "-uiTestFreezeReorderDrag=3,20"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        // Clip 3 (1.0s) is lifted and previewed at position 1 (the lifted cell rides under the
+        // finger and is not an accessibility element while lifted); the others have made room.
+        expectLabel(app.buttons["editorClip-2"], "Clip 2 of 3, 2.0s")
+        expectLabel(app.buttons["editorClip-3"], "Clip 3 of 3, 3.0s")
+        XCTAssertEqual(app.buttons["editorClip-2"].value as? String, "Not selected")
+        XCTAssertEqual(app.otherElements["editorDock"].frame.height, 100, accuracy: 6, "dock is stable while dragging")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        capture(app, name: "editor-reorder-dragging")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// Nine clips: drag the first clip to the trailing edge — the timeline auto-scrolls while the
+    /// finger holds at the edge so a far insertion target is reachable; the order lands, selection
+    /// follows the dragged clip, and the layout does not collapse.
+    @MainActor
+    func testEditorReorderWithManyClipsReachesFarTargetThroughEdgeScroll() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestOpenEditor", "-uiTestProductionTimeline", "-uiTestSeedEditorClips=9"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let strip = app.descendants(matching: .any)["clipThumbnailStrip"]
+        let first = app.buttons["editorClip-1"]
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertTrue(strip.exists)
+        expectLabel(first, "Clip 1 of 9, 2.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 18.0s")
+        XCTAssertFalse(app.buttons["editorClip-9"].exists && app.buttons["editorClip-9"].isHittable, "the last cell starts off-screen")
+
+        // Hold the lifted clip inside the trailing edge band long enough for auto-scroll to reach
+        // the end of the timeline, then release.
+        let edge = strip.coordinate(withNormalizedOffset: CGVector(dx: 1.0, dy: 0.5)).withOffset(CGVector(dx: -12, dy: 0))
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.7, thenDragTo: edge, withVelocity: .slow, thenHoldForDuration: 3.0)
+
+        // The 2.0s clip (formerly first) is now last; the former second clip leads.
+        let last = app.buttons["editorClip-9"]
+        XCTAssertTrue(last.waitForExistence(timeout: 3))
+        expectLabel(last, "Clip 9 of 9, 2.0s")
+        expectLabel(app.buttons["editorClip-8"], "Clip 8 of 9, 1.0s")
+        XCTAssertEqual(last.value as? String, "Selected", "selection follows the dragged clip")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 9")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 18.0s")
+        XCTAssertEqual(app.otherElements["editorDock"].frame.height, 100, accuracy: 6, "no layout collapse")
+        XCTAssertEqual(last.frame.height, 78, accuracy: 3)
+        try auditAndCapture(app, name: "editor-reorder-many-clips")
+
+        // Leading clip after the move is the former second (3.0s).
+        var attempts = 0
+        while !(first.exists && first.isHittable), attempts < 4 { app.buttons["editorClip-7"].swipeRight(); attempts += 1 }
+        expectLabel(first, "Clip 1 of 9, 3.0s")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
     // Phase 5 STEP 5: dedicated `프로젝트` screen (ADR-035 destination, ADR-036 two-action content),
     // reached only through deterministic DEBUG routing (`Camera → .projectsEntry`). Production Camera
     // `Projects` still opens Recent Projects in this slice.

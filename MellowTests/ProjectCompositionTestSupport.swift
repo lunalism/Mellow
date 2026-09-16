@@ -66,8 +66,12 @@ final class FailableProjectRepository: ProjectRepository {
     let inner = InMemoryProjectRepository()
     var createFails = false
     var deleteFails = false
+    var updateFails = false
     private(set) var createCount = 0
+    private(set) var updateCount = 0
     private(set) var deletedIDs: [UUID] = []
+    /// Runs inside `update` before the write lands (re-entrancy probes).
+    var onUpdate: (() -> Void)?
     enum Failure: Error { case injected }
 
     func create(_ project: VlogProject) throws {
@@ -77,7 +81,12 @@ final class FailableProjectRepository: ProjectRepository {
     }
     func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
     func recentProjects() throws -> [VlogProject] { try inner.recentProjects() }
-    func update(_ project: VlogProject) throws { try inner.update(project) }
+    func update(_ project: VlogProject) throws {
+        updateCount += 1
+        onUpdate?()
+        if updateFails { throw Failure.injected }
+        try inner.update(project)
+    }
     func deleteProject(id: UUID) throws {
         if deleteFails { throw Failure.injected }
         deletedIDs.append(id)

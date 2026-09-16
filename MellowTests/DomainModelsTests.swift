@@ -73,6 +73,30 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2])
     }
 
+    func testReorderFirstClipToEndAndSameIndexKeepsIdentitiesAndTotal() throws {
+        let projectID = UUID()
+        let first = try makeClip(id: UUID(), projectID: projectID, duration: .seconds(2), sortOrder: 0)
+        let second = try makeClip(id: UUID(), projectID: projectID, duration: .seconds(3), sortOrder: 1)
+        let third = try makeClip(id: UUID(), projectID: projectID, duration: .seconds(1), sortOrder: 2)
+        var project = try VlogProject(id: projectID, orientation: .portrait9x16, clips: [first, second, third])
+        let total = project.totalDuration
+
+        try project.reorderClip(id: first.id, toIndex: 2)
+        XCTAssertEqual(project.clips.map(\.id), [second.id, third.id, first.id])
+        XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(project.totalDuration, total)
+        XCTAssertEqual(project.orientation, .portrait9x16)
+
+        // Same index: order and sortOrder unchanged, no gaps or duplicates.
+        try project.reorderClip(id: third.id, toIndex: 1)
+        XCTAssertEqual(project.clips.map(\.id), [second.id, third.id, first.id])
+        XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2])
+
+        XCTAssertThrowsError(try project.reorderClip(id: first.id, toIndex: 3))
+        XCTAssertThrowsError(try project.reorderClip(id: UUID(), toIndex: 0))
+        XCTAssertEqual(project.clips.map(\.id), [second.id, third.id, first.id], "a rejected reorder mutates nothing")
+    }
+
     func testDisplayNameUsesCreatedAtWithLocaleAwareFormatting() throws {
         let createdAt = Date(timeIntervalSince1970: 1_704_164_240)
         let laterDate = createdAt.addingTimeInterval(60 * 60)

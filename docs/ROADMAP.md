@@ -1513,6 +1513,8 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 
 - **Editor Real Clip Thumbnails + Immersive Timeline — 완료 2026-09-15 (Phase 5 STEP 8, Physical PASS on LunaTestphone):** `ClipThumbnailService`(Project-owned Committed Media, `ProjectMediaStore` Read-only URL Resolver, `AVAssetImageGenerator`, Effective-range Midpoint Frame, Bounded Memory Cache, In-flight Coalescing)와 `ProjectEditorModel`의 Identity 기반 Stale-result Protection이 Ordered Timeline에 실제 Portrait Thumbnail을 공급한다(ARCHITECTURE 56절 "Phase 5 STEP 8 Implementation"). ProjectEditor는 DESIGN 19절의 V4.1 Baseline(Editor 전용 Dark Workspace, Full Flexible Preview Canvas, ≈100pt Bottom Timeline Dock, 44 × 78pt Cell, Signature Orange 2pt Selected Outline, Duration Tag, 중립 Failure Placeholder, Production Timeline은 Add Slot 없이 Clip 1부터 시작)을 사용한다. Reorder / Delete / Undo / Add Clip(ADR-037 PhotosPicker, 미구현) / Unavailable Replace / Representative Thumbnail Wiring / Camera Content-slot 승격 / Playback은 아직 시작하지 않았다.
 
+- **Clip Reorder + Persistence / Autosave — 구현 2026-09-16 (Phase 5 STEP 9, Physical Review Pending on LunaTestphone):** V4.1 Timeline의 Long Press(0.4초) + Horizontal Drag Reorder(Impact Haptic 1회, Lift 1.05, 이웃 Reflow, 32pt Edge Auto-scroll, Drop 시 1회 Commit)와 Non-drag Accessibility Action `앞으로 이동` / `뒤로 이동`이 `ProjectEditorModel`의 단일 Reorder 경로(`VlogProject.reorderClip` → `sortOrder` 0…n-1 정규화 → `ProjectRepository.update` → Read-back 검증 → Committed Order 발행)를 사용한다. Drag 중에는 Temporary Preview Order만 바뀌고 Repository는 Drop에서 한 번만 쓰이며, Cancel은 Committed Order 복귀 / 무기록, 저장 실패는 이전 순서 복귀 + `순서를 저장하지 못했어요.` Alert다. 같은 Clip 집합의 `update`는 Clip Row를 삭제 / 재생성하지 않음을 SwiftData Test로 증명했고, Reorder 결과는 Editor 재진입 / Process Relaunch / Container 재오픈 후 유지된다(Unit + UI Test). Delete / Undo / Add Clip / Playback은 여전히 시작하지 않았다.
+
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
 Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
@@ -1605,8 +1607,8 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 2. Thumbnail을 Cache Data로 관리한다.
 3. Project 화면에서 Clip을 Thumbnail 중심으로 표시한다.
 4. Clip Duration을 표시한다.
-5. Clip Reorder Interaction을 구현한다.
-6. Reorder 결과를 Persistence에 저장한다.
+5. Clip Reorder Interaction을 구현한다. — 구현 2026-09-16 (STEP 9, Physical Review Pending)
+6. Reorder 결과를 Persistence에 저장한다. — 구현 2026-09-16 (STEP 9, Autosave + Read-back 검증, Physical Review Pending)
 7. Clip Delete를 Logical Deletion으로 적용하여 UI에서 즉시 제거한다.
 8. Pending Deletion을 영속적으로 추적하고 Undo에 필요한 기존 Clip Identity, Media, Metadata, Original Index와 Stable Neighbor Anchor를 보존한다.
 9. 가장 최근 Clip Delete 한 건의 사용자-visible Undo를 제공하며 새로운 Delete가 이전 Undo Opportunity를 종료하도록 한다.
