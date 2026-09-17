@@ -8,7 +8,7 @@
 
 ### Product Definition
 
-Mellow는 일상의 짧은 순간들을 여러 개의 영상 클립으로 촬영하거나 Photos Library에서 가져와 간단하게 다듬고 하나의 미니 브이로그로 완성할 수 있는 iPhone-first 미니 브이로그 앱이다.
+Mellow는 일상의 짧은 순간들을 여러 개의 영상 클립으로 촬영하거나 Photos Library에서 가져와 간단하게 다듬고 하나의 미니 브이로그로 완성할 수 있는 **iPhone-only V1** 미니 브이로그 앱이다.
 
 Mellow의 핵심은 복잡한 영상 편집이 아니다.
 
@@ -1002,22 +1002,31 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 
 ### Initial Platform
 
-Mellow는 **iPhone-first native application**으로 개발한다.
+Mellow V1은 **iPhone-only native application**으로 개발한다.
 
 Swift와 SwiftUI를 사용하며 Minimum iOS는 iOS 18.0이다.
 
 공식 Device Quality Baseline은 iPhone 12 and later이고 Primary Physical Test Device는 iPhone 12다.
 
-`iPhone 12 and later`는 개발 및 QA 기준이며 App Store에서 이전 기기의 설치를 인위적으로 제한하는 조건이 아니다.
+`iPhone 12 and later`는 개발 및 QA 기준이며 App Store에서 이전 iPhone의 설치를 인위적으로 제한하는 조건이 아니다.
 
-첫 제품의 품질과 사용자 경험을
-iPhone에 집중한다.
+Mellow V1의 제품 UX, Navigation, Editing Interaction, Layout과 QA 기준은 iPhone을 대상으로 정의한다.
 
 ### iPad
 
-초기 범위에 포함하지 않는다.
+Mellow V1은 **Native iPad를 지원하지 않는다.**
 
-향후 필요성이 확인되면 별도로 검토한다.
+V1에서는 다음을 제공하지 않는다.
+
+- iPad-specific Layout
+- iPad-specific Navigation 또는 Editing UX
+- iPad Multitasking Adaptation
+- iPad-specific Asset
+- iPad App Store Screenshot / Presentation
+
+Native iPad 지원은 향후 명시적인 Product / Architecture Decision으로 별도 승인되기 전까지 도입하지 않는다.
+
+Apple 플랫폼이 iPhone-only Build를 iPad에서 Compatibility Mode 등으로 실행하도록 허용하더라도 이는 Mellow가 지원하는 Native iPad 기능이나 제품 범위로 간주하지 않는다.
 
 ### Android
 
@@ -1143,8 +1152,10 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 
 - Product name: Mellow
 - Mellow는 Mini Vlog 앱이다.
-- 초기 플랫폼은 iPhone이다.
-- iPhone-first native application으로 개발한다.
+- V1 지원 플랫폼은 iPhone이며 Mellow V1은 iPhone-only native application으로 개발한다.
+- Native iPad 지원은 V1 범위에서 명시적으로 제외하며 별도 Product / Architecture Decision 없이 도입하지 않는다.
+- iPad-specific Layout / Navigation / Editing UX / Multitasking Adaptation / Asset / App Store Presentation을 V1에 추가하지 않는다.
+- Apple 플랫폼의 iPhone Compatibility Mode 실행 가능성은 Mellow의 Native iPad 지원으로 간주하지 않는다.
 - Swift와 SwiftUI를 사용하며 Minimum iOS는 iOS 18.0이다.
 - 공식 Device Quality Baseline은 iPhone 12 and later이며 Primary Physical Test Device는 iPhone 12다.
 - iPhone 12 기준은 공식 개발 및 QA 기준이며 App Store 설치 제한 조건이 아니다.
@@ -1224,7 +1235,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 초기 MVP에서는 사진 필터 및 사진 편집 기능을 구현하지 않는다.
 - 초기 MVP에서는 전문 영상 편집 기능을 목표로 하지 않는다.
 - 사용자의 원본 영상은 보존한다.
-- Android와 iPad는 초기 지원 범위에서 제외한다.
+- Native iPad 지원과 Android는 V1 지원 범위에서 제외한다.
 
 ---
 

@@ -253,6 +253,35 @@ Fail한 Metric을 문서에서 삭제하거나 Threshold를 조용히 완화하�
 
 승인된 Threshold 또는 Acceptance Rule 변경은 Measured Evidence, Reason, Tradeoff, User Impact, Affected Scenario와 사용자 승인을 갖춘 Controlled Change를 요구하며 Performance 개선을 위해 Product Quality나 Media Safety를 Silent Downgrade하지 않는다.
 
+### 3.15 iPhone-Only Platform Constraint
+
+Mellow V1은 **iPhone-only native application**이며 Native iPad 지원은 명시적인 Product / Architecture Decision으로 별도 승인되기 전까지 금지한다.
+
+모든 Phase와 Release 준비는 다음 Platform Invariant를 유지한다.
+
+- App Target은 iPhone-only Device Family를 유지한다.
+- Native iPad Destination / Layout / Navigation / Editing UX를 추가하지 않는다.
+- iPad-specific Asset, Multitasking Adaptation 또는 App Store Screenshot / Presentation을 추가하지 않는다.
+- Debug와 Release Configuration의 iPhone-only Target Policy가 일치해야 한다.
+- Apple 플랫폼이 iPhone-only Build를 iPad Compatibility Mode로 실행할 수 있더라도 이를 Mellow의 지원 플랫폼 또는 Native iPad 기능으로 간주하지 않는다.
+
+#### Release Gate — iPhone-Only Distribution Audit
+
+Phase 5 Final Audit 및 Release / TestFlight 준비 전에 최소한 다음을 검증한다.
+
+- `TARGETED_DEVICE_FAMILY`가 iPhone-only로 해석된다.
+- Generated / effective `UIDeviceFamily`가 Native iPad 지원을 선언하지 않는다.
+- Supported Destinations가 Native iPad Target을 우발적으로 활성화하지 않는다.
+- iPad-specific Orientation / Scene / Layout Configuration이 추가되지 않았다.
+- iPad-specific Asset / Launch / Layout Code가 존재하지 않는다.
+- App Store Metadata / Screenshot 계획이 Mellow를 Native iPad App으로 표시하지 않는다.
+- Mac Designed for iPhone/iPad 및 Apple Vision 호환 배포 옵션의 노출 여부를 명시적으로 검토한다.
+- Debug와 Release Build Setting이 동일한 iPhone-only 정책을 유지한다.
+
+위 항목 중 Xcode가 결정하는 부분(Debug / Release의 effective `TARGETED_DEVICE_FAMILY`, 빌드된 제품의 `UIDeviceFamily`)은 읽기 전용 Guard `Tools/check-iphone-only.sh`(`--app <built .app>`로 제품 검증, `--self-test`로 판정 확인)로 검증한다. Build Phase가 아니며 Release Gate에서 수동 / CI로 실행한다.
+
+Native iPad 지원이 우발적으로 활성화된 상태는 Release Blocker다.
+
 
 ---
 
@@ -652,7 +681,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 1. Xcode에서 Mellow App Project를 생성한다.
 2. Bundle Identifier는 실제 App Store 준비 전 변경 가능한 값으로 사용하되 임의의 Company 정보는 만들지 않는다.
 3. Minimum Deployment Target을 iOS 18.0으로 설정한다.
-4. Supported Device Family를 iPhone 중심으로 구성한다.
+4. Supported Device Family를 iPhone-only로 구성하고 Native iPad Device Family를 활성화하지 않는다.
 5. `MellowApp`, `MellowTests`, `MellowUITests` Target을 확인한다.
 6. `ARCHITECTURE.md`의 Initial Project Structure를 기준으로 Folder Structure를 생성한다.
 7. `MellowApp.swift`는 App Entry Point만 담당하도록 유지한다.
@@ -682,6 +711,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 - Third-party Dependency가 없다.
 - Folder Structure가 Architecture 문서와 일치한다.
 - Compiler Warning이 없다.
+- App Target이 iPhone-only Device Family로 구성되고 Native iPad Support가 활성화되지 않는다.
 
 ## Exit Criteria
 
@@ -3159,6 +3189,7 @@ Cosmetic 또는 작은 UX 문제다.
 - Approved Performance Acceptance Profile의 Release-blocking Scenario Regression 통과
 - Required Performance Evidence 존재, Hard Fail 없음, Approved Threshold 또는 Acceptance Rule 충족
 - `git diff --check` 통과
+- `ROADMAP.md` 3.15절의 iPhone-Only Distribution Audit 통과 및 Native iPad Support 0건
 - 문서와 실제 구현이 일치
 
 ## Exit Criteria
@@ -3191,6 +3222,7 @@ Approved Performance Acceptance Profile의 Release-blocking Scenario가 Phase 14
 - Archive
 - TestFlight Internal Build
 - Basic Release Notes
+- iPhone-Only Distribution Audit
 
 ## Explicitly Excluded
 
@@ -3215,6 +3247,8 @@ Approved Performance Acceptance Profile의 Release-blocking Scenario가 Phase 14
 10. TestFlight Internal Testing용 Build를 업로드한다.
 11. 설치 후 iPhone 12에서 Smoke Test를 수행한다.
 12. Known Issues가 있다면 Release Notes에 기록한다.
+13. `ROADMAP.md` 3.15절에 따라 Debug / Release의 `TARGETED_DEVICE_FAMILY`, effective `UIDeviceFamily`, Supported Destinations, iPad-specific Configuration / Asset 부재를 검증한다.
+14. App Store Connect에서 Mac Designed for iPhone/iPad 및 Apple Vision 호환 배포 옵션의 노출 여부를 명시적으로 검토하고 제품 의도와 일치하는지 기록한다.
 
 ## Acceptance Criteria
 
@@ -3224,6 +3258,8 @@ Approved Performance Acceptance Profile의 Release-blocking Scenario가 Phase 14
 - Camera와 Export가 TestFlight Build에서도 정상 동작한다.
 - Privacy Description이 실제 기능과 일치한다.
 - Debug Dependency가 없다.
+- Native iPad Support가 활성화되지 않았고 iPhone-only Distribution Audit이 통과한다.
+- App Store Metadata / Screenshot 계획이 Mellow를 Native iPad App으로 표시하지 않는다.
 
 ## Exit Criteria
 
@@ -3252,7 +3288,7 @@ Mellow MVP를 내부 TestFlight에서 실제 테스트할 수 있어야 한다.
 - Background Blur
 - 4K Export
 - 60 fps Export
-- iPad
+- Native iPad support (별도 Product / Architecture Decision 필요)
 - Android
 - iCloud Sync
 - Account
