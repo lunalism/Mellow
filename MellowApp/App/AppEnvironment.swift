@@ -40,6 +40,9 @@ final class AppEnvironment {
     let editorClipAcquisition: EditorClipAcquisition
     /// Production `프로젝트` screen state (ADR-036): canonical saved-Project lookup + Select Clips.
     let projectsEntry: ProjectsEntryModel
+    /// Derived representative state of the saved Project (Phase 5 STEP 14): consumed by the Projects
+    /// screen visual (ADR-041: never the Camera content slot); refreshed on state boundaries, never polled.
+    let projectRepresentative: ProjectRepresentativeModel
     let home: HomeModel
     let modelContainer: ModelContainer
     let cameraService: any CameraCaptureService
@@ -72,6 +75,10 @@ final class AppEnvironment {
     /// seeded recovery fixture (`-uiTestSeed…` arguments), so UI tests can assert removal /
     /// preservation without touching the filesystem themselves.
     private(set) var uiTestRecoverySummary: String?
+    /// `-uiTestRepresentativeDiagnostics`: the current representative selection (saved Project prefix,
+    /// representative Clip duration, thumbnail readiness) as a tiny overlay so UI tests can assert the
+    /// derived state without reading pixels. Never Release.
+    private(set) var uiTestRepresentativeSummary: String?
     /// `-uiTestLegacyRecentProjects`: routes the Camera `Projects` control to the transitional Recent
     /// browser so historical Phase 2/3 regressions keep their exact semantics. Never Release.
     var usesLegacyRecentProjects: Bool { arguments.contains("-uiTestLegacyRecentProjects") }
@@ -341,6 +348,18 @@ final class AppEnvironment {
         clipAvailability = CommittedMediaAvailabilityChecker(resolver: projectMediaStore)
         #endif
 
+        // Phase 5 STEP 14: representative thumbnail of the saved Project. Same saved-Project rule as the
+        // Projects screen, same availability checker and thumbnail boundary as the Editor (fakes on the
+        // seeded UI-test routes), reads behind the lifecycle gate so an Editor-exit refresh sees the
+        // reconciled Project.
+        let composition = projectComposition
+        self.projectRepresentative = ProjectRepresentativeModel(
+            savedProject: { try composition.lastSavedProject() },
+            availability: clipAvailability,
+            thumbnails: clipThumbnails,
+            lifecycle: projectLifecycle
+        )
+
         // ADR-039 deferred physical cleanup. The thumbnail service is the only media reader today and
         // gates cleanup through `awaitIdle`; a live Editor session is "the route is on the stack".
         // Trigger A: the Editor route leaves the path → one pass for that Project, never awaited by
@@ -365,6 +384,7 @@ final class AppEnvironment {
         )
         #if DEBUG
         configureUITestCleanupSeams()
+        configureUITestRepresentativeDiagnostics()
         routeToUITestProjectsEntryIfNeeded()
         routeToUITestProjectsEntryRealMediaIfNeeded()
         seedUITestRecoveryFixturesIfNeeded()
@@ -656,6 +676,32 @@ final class AppEnvironment {
             finalized += report.finalized.count
             deferred += report.deferred.count
             self?.uiTestCleanupSummary = "cleanup passes=\(passes) removed=\(removed) absent=\(absent) finalized=\(finalized) deferred=\(deferred)"
+        }
+    }
+
+    /// STEP 14 diagnostics (DEBUG / UI tests only): mirrors the representative model's published state
+    /// into a text overlay whenever it changes. Observation-driven, no polling.
+    private func configureUITestRepresentativeDiagnostics() {
+        guard arguments.contains("-uiTestRepresentativeDiagnostics") else { return }
+        observeRepresentativeForUITests()
+    }
+
+    private func observeRepresentativeForUITests() {
+        let summary = withObservationTracking {
+            Self.representativeSummary(projectRepresentative.state, request: projectRepresentative.currentRequest)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.observeRepresentativeForUITests() }
+        }
+        uiTestRepresentativeSummary = summary
+    }
+
+    private static func representativeSummary(_ state: ProjectRepresentativeState, request: ClipThumbnailRequest?) -> String {
+        switch state {
+        case .noProject:
+            return "representative project=none clip=none thumbnail=none"
+        case .project(let id, let thumbnail):
+            let clip = request.map { ClipDurationText.string($0.trimDuration) } ?? "none"
+            return "representative project=\(id.uuidString.prefix(8)) clip=\(clip) thumbnail=\(thumbnail == nil ? "placeholder" : "ready")"
         }
     }
 

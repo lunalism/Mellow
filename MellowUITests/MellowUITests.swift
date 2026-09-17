@@ -1885,6 +1885,197 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: two)
     }
 
+    // MARK: - Phase 5 STEP 14: representative Project thumbnail on the Projects surface (ADR-034 §7 / ADR-041)
+
+    /// Seeded A B C (2.0 / 3.0 / 1.0 s, fake thumbnails) landing on the `프로젝트` screen; the derived
+    /// representative is mirrored into `representativeDiagnostics` (saved Project prefix, representative
+    /// Clip duration, thumbnail readiness) so the state is assertable without reading pixels.
+    private static let representativeArguments = ["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry", "-uiTestProductionTimeline", "-uiTestRepresentativeDiagnostics"]
+
+    @MainActor
+    private func expectRepresentative(_ app: XCUIApplication, clip: String, thumbnail: String, timeout: TimeInterval = 5, _ note: String = "") {
+        let label = app.staticTexts["representativeDiagnostics"]
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "clip=\(clip)", "thumbnail=\(thumbnail)"), object: label)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: timeout), .completed, "representative is '\(label.exists ? label.label : "<none>")' \(note)")
+    }
+
+    @MainActor
+    private func representativeProject(_ app: XCUIApplication) -> String {
+        let label = app.staticTexts["representativeDiagnostics"].label
+        return label.split(separator: " ").first { $0.hasPrefix("project=") }.map(String.init) ?? ""
+    }
+
+    @MainActor
+    private func projectsVisual(_ app: XCUIApplication, _ kind: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "projectsEntryVisual-\(kind)").firstMatch
+    }
+
+    /// Saved healthy Project: the Projects screen visual shows the first clip's representative (A,
+    /// 2.0 s); edits in the Editor (reorder, delete, delete-all) change it on return; a 0-clip Project
+    /// falls back to the neutral placeholder. The Camera slot is never involved.
+    @MainActor
+    func testProjectsVisualShowsRepresentativeAndFollowsEdits() throws {
+        let app = legacyRecentApp(Self.representativeArguments)
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", "A is the first healthy clip")
+        let project = representativeProject(app)
+        XCTAssertNotEqual(project, "project=none")
+        XCTAssertTrue(projectsVisual(app, "image").waitForExistence(timeout: 3), "the visual shows the representative image")
+        try auditAndCapture(app, name: "projects-representative-image")
+
+        // Reorder B before A → representative B (3.0 s) once back on the Projects screen.
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 5))
+        dragClip(app, from: 2, toBefore: 1)
+        expectLabel(app.buttons["editorClip-1"], "Clip 1 of 3, 3.0s")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        expectRepresentative(app, clip: "3.0s", thumbnail: "ready", "reorder changed the representative")
+        XCTAssertEqual(representativeProject(app), project, "same saved Project")
+
+        // Delete B (first) → A represents again.
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 5))
+        app.buttons["editorClip-1"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+        expectLabel(app.buttons["editorClip-1"], "Clip 1 of 2, 2.0s")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", "delete changed the representative")
+
+        // Delete every clip → 0-clip Project: neutral placeholder, Load Existing still enabled.
+        app.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(app.buttons["editorClip-2"].waitForExistence(timeout: 5))
+        app.buttons["deleteSelectedClip"].tap(); app.buttons["deleteSelectedClip"].tap()
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        expectRepresentative(app, clip: "none", thumbnail: "placeholder", "0-clip Project shows the placeholder")
+        XCTAssertTrue(projectsVisual(app, "placeholder").waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["loadExistingProject"].isEnabled)
+        try auditAndCapture(app, name: "projects-representative-placeholder")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// Unavailable clips: the first unavailable clip is skipped (B represents); an all-unavailable
+    /// Project shows the placeholder; Replace of the unavailable first clip makes the replacement
+    /// (2.0 s fixture) the representative.
+    @MainActor
+    func testProjectsVisualSkipsUnavailableAndFollowsReplace() throws {
+        let first = legacyRecentApp(Self.representativeArguments + ["-uiTestUnavailableClips=1", "-uiTestEditorAddSelection=ready"])
+        first.launch()
+        XCTAssertTrue(first.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        expectRepresentative(first, clip: "3.0s", thumbnail: "ready", "first clip unavailable → B")
+        first.buttons["loadExistingProject"].tap()
+        XCTAssertTrue(first.buttons["editorClip-3"].waitForExistence(timeout: 5))
+        expectLabel(first.buttons["editorClip-1"], "Clip 1 of 3, 2.0s, unavailable")
+        first.buttons["editorClip-1"].tap()
+        first.buttons["replaceSelectedClip"].tap()
+        expectLabelEventually(first.buttons["editorClip-1"], "Clip 1 of 3, 2.0s", timeout: 10, "D replaces the unavailable first clip")
+        first.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(first.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        expectRepresentative(first, clip: "2.0s", thumbnail: "ready", "the replacement is first healthy → representative")
+        first.terminate()
+
+        let all = legacyRecentApp(Self.representativeArguments + ["-uiTestUnavailableClips=1,2,3"])
+        all.launch()
+        XCTAssertTrue(all.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        expectRepresentative(all, clip: "none", thumbnail: "placeholder", "all unavailable → placeholder")
+        XCTAssertTrue(projectsVisual(all, "placeholder").waitForExistence(timeout: 3))
+        XCTAssertTrue(all.buttons["loadExistingProject"].isEnabled, "the Project still opens")
+        all.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(all.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: all)
+    }
+
+    /// Camera slot ownership (ADR-041): with a saved Project and NO recording this session the Camera
+    /// bottom-left slot keeps its Phase-4 empty presentation (never the Project representative, never
+    /// a control); after a direct recording it shows the session's last-recording feedback and still
+    /// does not navigate; the upper-trailing `Projects` control opens the Projects screen; deleting the
+    /// Project clears the derived representative.
+    @MainActor
+    func testCameraSlotStaysCaptureFeedbackWhileProjectsSurfaceOwnsRepresentative() throws {
+        // Production routing (no legacy argument): the Camera `Projects` control must open `프로젝트`.
+        let app = cameraTestApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProductionTimeline", "-uiTestRepresentativeDiagnostics"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", "derived state exists for the saved Project…")
+        let slot = app.otherElements["projectContent"]
+        XCTAssertTrue(slot.waitForExistence(timeout: 2), "…but the Camera slot is the Phase-4 element")
+        XCTAssertEqual(slot.label, "Project content, empty", "saved Project never substitutes the capture slot")
+        XCTAssertFalse(app.buttons["projectContent"].exists, "not a control")
+        slot.tap()
+        XCTAssertFalse(app.otherElements["projectEditor"].waitForExistence(timeout: 1), "no navigation from the Camera slot")
+        XCTAssertTrue(app.otherElements["cameraShell"].exists)
+        try auditAndCapture(app, name: "camera-slot-capture-owned")
+
+        // Direct recording → session feedback (the fake capture yields no frame, so the label stays the
+        // Phase-4 empty content; the point is that the slot is capture-owned and non-navigable).
+        waitUntilRecordReady(app)
+        let shutter = app.buttons["cameraShutter"]
+        shutter.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Stop recording'"), object: shutter)], timeout: 3), .completed)
+        sleep(2)
+        shutter.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Record'"), object: shutter)], timeout: 5), .completed)
+        XCTAssertTrue(slot.exists); XCTAssertFalse(app.buttons["projectContent"].exists)
+        XCTAssertTrue(["Project content, empty", "Last recording preview"].contains(slot.label), "capture feedback only: \(slot.label)")
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", "recording never touched the Project representative")
+
+        // Upper-trailing Projects control remains the Project access: the Projects screen, whose
+        // visual carries the representative.
+        app.buttons["projects"].tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        XCTAssertTrue(projectsVisual(app, "image").waitForExistence(timeout: 3))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        XCTAssertEqual(slot.label, "Project content, empty")
+        app.terminate()
+
+        // Delete the saved Project (legacy Recent browser, no reseed) → the derived state clears and the
+        // Camera slot is unchanged.
+        let cleanup = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestRepresentativeDiagnostics"])
+        cleanup.launch()
+        XCTAssertTrue(cleanup.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        // Without the seeded route the PRODUCTION availability checker runs, and the seeded clips
+        // have no files: the persisted Project correctly derives as all-unavailable → placeholder.
+        expectRepresentative(cleanup, clip: "none", thumbnail: "placeholder", "persisted Project, real checker: no usable source")
+        removeProjects(in: cleanup)
+        expectRepresentative(cleanup, clip: "none", thumbnail: "none", "deleted Project clears the representative")
+        XCTAssertEqual(cleanup.otherElements["projectContent"].label, "Project content, empty")
+    }
+
+    /// Safe Atomic Replacement: after a new Project is committed and becomes the saved Project, the
+    /// Projects visual represents the NEW Project, never the retired one.
+    @MainActor
+    func testProjectsVisualFollowsSafeProjectReplacement() throws {
+        let app = legacyRecentApp(Self.representativeArguments + ["-uiTestMediaSelection=ready"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", "old Project A represents on the Projects screen")
+        let old = representativeProject(app)
+        XCTAssertTrue(projectsVisual(app, "image").waitForExistence(timeout: 3))
+        app.buttons["startNewProject"].tap()
+        let confirm = app.alerts["새 프로젝트를 시작할까요?"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        confirm.buttons["새 프로젝트 만들기"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 3))
+        expectRepresentative(app, clip: "2.0s", thumbnail: "ready", timeout: 10, "new Project B represents")
+        XCTAssertNotEqual(representativeProject(app), old, "the retired Project is no longer the source")
+        XCTAssertTrue(projectsVisual(app, "image").waitForExistence(timeout: 3))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.otherElements["projectContent"].label, "Project content, empty", "Camera slot untouched by the Project")
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
     // MARK: - Phase 5 STEP 7: production Camera → 프로젝트 routing (no DEBUG routing arguments)
 
     @MainActor

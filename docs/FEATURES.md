@@ -1030,7 +1030,7 @@ ADR-033에 따라 Projects는 저장 Project가 없으면 `Select Clips`, 있으
 
 ADR-032 이후 V1 구조는 Portrait Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
 
-Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
+Camera Chrome은 두 Affordance를 분리한다(ADR-041): Upper-trailing `Projects`가 저장 Project 접근(Projects 화면 → Editor)이고, 좌하단 Compact Slot은 방금 촬영한 Direct Capture의 피드백(이후 별도 승인 시 Latest Capture Review)이다. 좌하단 Slot은 저장 Project Representative나 Editor 바로가기가 아니며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다. Project Representative Thumbnail은 Projects 화면 같은 Project-oriented Surface에만 표시한다.
 
 ### Video Import
 

@@ -41,6 +41,12 @@ struct HomeView: View {
         return model.showProjects
     }
 
+    /// Saved-Project representative for the Projects screen visual (DESIGN §11 contract: canonical
+    /// representative thumbnail → placeholder). Nil keeps the deterministic placeholder.
+    private var representativeImage: UIImage? {
+        environment.projectRepresentative.state.thumbnail.map { UIImage(cgImage: $0) }
+    }
+
     var body: some View {
         @Bindable var router = model.router
         NavigationStack(path: $router.path) {
@@ -49,7 +55,9 @@ struct HomeView: View {
                     PermissionOnboardingView(model: onboarding)
                 } else {
                     // V1 root: a new Portrait capture surface that persists no project on launch. Its
-                    // `Projects` control enters the canonical `프로젝트` screen (ADR-035/036).
+                    // `Projects` control enters the canonical `프로젝트` screen (ADR-035/036). Its
+                    // bottom-left content slot is direct-capture feedback only (ADR-041) — the saved
+                    // Project's representative lives on the Projects screen, never here.
                     CameraDestination(context: .newCapture, showProjects: showProjects)
                 }
             }
@@ -67,12 +75,12 @@ struct HomeView: View {
                     // real-media physical-review route); production is unaffected by either.
                     #if DEBUG
                     if let entry = environment.uiTestProjectsEntry {
-                        ProjectsEntryView(model: entry, photosSelector: environment.uiTestRealMediaSelector)
+                        ProjectsEntryView(model: entry, photosSelector: environment.uiTestRealMediaSelector, representativeImage: representativeImage)
                     } else {
-                        ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector)
+                        ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector, representativeImage: representativeImage)
                     }
                     #else
-                    ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector)
+                    ProjectsEntryView(model: environment.projectsEntry, photosSelector: environment.photosVideoSelector, representativeImage: representativeImage)
                     #endif
                 case .projectEditor(let id):
                     ProjectEditorDestination(projectID: id).id(id)
@@ -110,12 +118,37 @@ struct HomeView: View {
                 .allowsHitTesting(false)
             }
         }
+        // Phase 5 STEP 14: the derived representative selection (`-uiTestRepresentativeDiagnostics`).
+        .overlay(alignment: .bottom) {
+            if let summary = environment.uiTestRepresentativeSummary {
+                Text(summary)
+                    .accessibilityIdentifier("representativeDiagnostics")
+                .font(.caption2)
+                .padding(4)
+                .background(Color(.systemBackground))
+                .allowsHitTesting(false)
+            }
+        }
         #endif
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.loadRecent() }
+            if phase == .active {
+                model.loadRecent()
+                environment.projectRepresentative.scheduleRefresh()
+            }
+        }
+        // STEP 14 re-evaluation boundaries: whenever navigation lands outside a live Editor session
+        // (Projects screen, Recent, root), the saved Project may have changed — Editor edits,
+        // composition / Safe Atomic Replacement, deletion — so the Projects-surface representative is
+        // re-derived. Never while an Editor route is on the stack (the Editor owns that session) and
+        // never on a timer.
+        .onChange(of: model.router.path) { _, path in
+            if !path.contains(where: { if case .projectEditor = $0 { return true } else { return false } }) {
+                environment.projectRepresentative.scheduleRefresh()
+            }
         }
         .onAppear {
             model.loadRecent()
+            environment.projectRepresentative.scheduleRefresh()
             if !environment.shouldShowPermissionOnboarding {
                 environment.prewarmCameraIfNeeded()
             }

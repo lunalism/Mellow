@@ -1555,6 +1555,8 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 
 - **Unavailable Clip + User-driven Replace — 구현 2026-09-16 (Phase 5 STEP 13, ADR-040, Physical Review Pending):** Project-owned Committed 파일이 없는 Active Clip을 Editor가 매 Load / Active-set 변경마다 파생(`ClipAvailabilityChecking`, 영속 Flag 없음)해 같은 위치 / Total / 선택 / Reorder / History를 유지한 채 `video.slash` Cell + Preview Shell(`클립을 사용할 수 없어요` / `파일을 찾을 수 없어요.` / `클립 교체`)로 보인다. Replace는 System PhotosPicker 1개 Video → 기존 Add Acquisition Stack → `VlogProject.replaceClip`(새 Identity가 같은 Slot, 원 Clip은 Durable Pending) → `.replace` History Entry 1개이며 Undo / Redo · 12A / 12B Media Lifetime · 실패 Atomicity를 기존 경로로 완결한다. Corrupt / Unreadable 기존 파일, Playback, Representative Thumbnail Wiring, Camera Content-slot 승격은 시작하지 않았다.
 
+- **Representative Project Thumbnail Infrastructure + Projects-surface Presentation — 구현 2026-09-17 (Phase 5 STEP 14 re-scoped, ADR-034 §7 / ADR-041, Physical Review Pending):** `ProjectRepresentativeModel`이 저장 Project의 Representative(현재 논리 순서의 첫 Available Active Clip; Pending / Unavailable 제외; 없으면 Placeholder)를 STEP 8 Thumbnail Service + STEP 13 Availability로 파생하고 Identity 기반 Stale-result 차단으로 발행하며, Projects 화면의 80pt Visual이 이를 표시한다(DESIGN §11 Contract 이행). Camera 좌하단 Slot은 ADR-041에 따라 Direct-capture 피드백(Phase 4 그대로)으로 남고 Project Representative / Editor 바로가기가 되지 않는다. Camera Recording은 Project Representative를 바꾸지 않는다(ADR-033). Latest Capture Review / Gallery, Playback / Trim / Framing / Export는 시작하지 않았다.
+
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
 Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
@@ -1605,7 +1607,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 또한 ADR-034는 다음을 확정한다.
 
 - Camera `Projects`는 전용 Pushed `프로젝트` 화면으로 이동한다(Presentation은 ADR-035가 ADR-034의 Bottom Sheet를 대체; `Camera → 프로젝트 → ProjectEditor`, 표준 Back). 화면 Content는 ADR-036에 따라 항상 두 개의 중앙 Action — Primary `Start New Project`(`새 프로젝트 시작`), Secondary `Load Existing Project`(`기존 프로젝트 불러오기`, 저장 Project 있을 때만 Enabled, ProjectEditor 직접 열기) — 이며 Recent List / Card / Metadata를 두지 않고, 저장 Project가 있을 때 `Start New Project`는 `Creating a new project will replace your last saved project.` 의미의 Cancel / Create New Project 확인을 Projects 화면 위 Native Alert로 표시한다.
-- Camera Bottom-left Content Slot은 저장 Project 없으면 Phase 4 Session-only 피드백을 유지하고, 저장 Project가 있으면 Project Representative Thumbnail 표시 + 탭 시 저장 Project Editor 진입으로 승격한다(Raw Playback 아님). 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
+- Camera Bottom-left Content Slot은 저장 Project 유무와 무관하게 Phase 4 Session-only Direct-capture 피드백에 남고(ADR-041이 ADR-034 §6의 Editor 진입 승격을 폐기), Project 접근은 Upper-trailing `Projects`, Project Representative Thumbnail은 Projects 화면 Visual이 표시한다. Latest Capture Review / Gallery는 별도 Gate다. 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
 - Large Preview는 Phase 5에서 Surface / Shell만 만들고 실제 Effective-result Playback은 Phase 8 소유다. Raw Media를 Shortcut으로 재생하지 않는다.
 
 ### Select-Clips Media Boundary — ADR-034
@@ -1666,9 +1668,9 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 21. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다. — 구현 2026-09-16 (STEP 13: `VlogProject.replaceClip`)
 22. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다. — 구현 2026-09-16 (STEP 13: 기존 Dock Delete / History / 12A 경로 그대로)
 23. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-24. Clip Reorder, Delete, Undo Restore, successful Replace, Availability Change와 Representative Media Identity Change 뒤에는 current logical Clip Order에서 Representative Source를 다시 평가하며 current Source가 없으면 Placeholder를 사용한다.
-25. Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 successful Replacement 뒤에만 Representative Source를 다시 평가한다.
-26. Representative Source가 Delete 또는 Unavailable Transition으로 바뀌면 old cached Thumbnail을 current Representative로 계속 신뢰하지 않고 다음 Healthy / Usable Clip 또는 Placeholder를 사용하게 한다.
+24. Clip Reorder, Delete, Undo Restore, successful Replace, Availability Change와 Representative Media Identity Change 뒤에는 current logical Clip Order에서 Representative Source를 다시 평가하며 current Source가 없으면 Placeholder를 사용한다. — 구현 2026-09-17 (STEP 14: Navigation / Scene 경계 Refresh)
+25. Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 successful Replacement 뒤에만 Representative Source를 다시 평가한다. — 구현 2026-09-17 (STEP 14)
+26. Representative Source가 Delete 또는 Unavailable Transition으로 바뀌면 old cached Thumbnail을 current Representative로 계속 신뢰하지 않고 다음 Healthy / Usable Clip 또는 Placeholder를 사용하게 한다. — 구현 2026-09-17 (STEP 14: Request-identity 검증)
 
 Undo Window Duration은 ADR-038로 불필요해졌으며 특정 Lease / Counter / Coordinator Type을 이 Phase의 선행 결정으로 강제하지 않는다.
 

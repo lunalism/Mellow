@@ -95,6 +95,8 @@
 		000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */; };
 		000000000000000000000263 /* ClipAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000163 /* ClipAvailability.swift */; };
 		000000000000000000000264 /* ProjectEditorReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000164 /* ProjectEditorReplaceTests.swift */; };
+		000000000000000000000265 /* ProjectRepresentativeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000165 /* ProjectRepresentativeModel.swift */; };
+		000000000000000000000266 /* ProjectRepresentativeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000166 /* ProjectRepresentativeModelTests.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -210,6 +212,8 @@
 		000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStartupRecoveryCoordinatorTests.swift; sourceTree = "<group>"; };
 		000000000000000000000163 /* ClipAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipAvailability.swift; sourceTree = "<group>"; };
 		000000000000000000000164 /* ProjectEditorReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorReplaceTests.swift; sourceTree = "<group>"; };
+		000000000000000000000165 /* ProjectRepresentativeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepresentativeModel.swift; sourceTree = "<group>"; };
+		000000000000000000000166 /* ProjectRepresentativeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepresentativeModelTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -298,6 +302,7 @@
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
 				000000000000000000000164 /* ProjectEditorReplaceTests.swift */,
+				000000000000000000000166 /* ProjectRepresentativeModelTests.swift */,
 				00000000000000000000013D /* PermissionOnboardingModelTests.swift */,
 				00000000000000000000013A /* RecordingPolicyTests.swift */,
 				00000000000000000000013B /* RecordingRecoveryTests.swift */,
@@ -393,6 +398,7 @@
 				000000000000000000000122 /* RecentProjectRow.swift */,
 				000000000000000000000121 /* HomeView.swift */,
 				000000000000000000000120 /* HomeModel.swift */,
+				000000000000000000000165 /* ProjectRepresentativeModel.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -751,6 +757,7 @@
 				000000000000000000000222 /* RecentProjectRow.swift in Sources */,
 				000000000000000000000221 /* HomeView.swift in Sources */,
 				000000000000000000000220 /* HomeModel.swift in Sources */,
+				000000000000000000000265 /* ProjectRepresentativeModel.swift in Sources */,
 				000000000000000000000202 /* AppEnvironment.swift in Sources */,
 				000000000000000000000203 /* AppRouter.swift in Sources */,
 				000000000000000000000204 /* MellowLog.swift in Sources */,
@@ -795,6 +802,7 @@
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,
 				000000000000000000000264 /* ProjectEditorReplaceTests.swift in Sources */,
+				000000000000000000000266 /* ProjectRepresentativeModelTests.swift in Sources */,
 				00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */,
 				00000000000000000000023A /* RecordingPolicyTests.swift in Sources */,
 				00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */,

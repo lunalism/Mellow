@@ -1572,6 +1572,8 @@ Selector Placement / Camera Control Layout은 Phase 3 Structural UX Gate에서 �
 
 **Partial Supersession (ADR-033):** `Camera → Short Clip Capture → Clip Review / Management → Editor → Export`를 하나의 Persisted Project 안에서 연결한다는 전제 중 Capture 단계는 Project에 속하지 않는다. Camera Clip은 Photos에 저장되고 Project는 이후 `Select Clips`에서 만들어지며 Compact Project-content Access는 단일 저장 Project 진입으로 재해석한다. Lightweight Editor 구조는 유지한다.
 
+**Partial Supersession (ADR-041, 2026-09-17):** "Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Access를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동한다"와 위 ADR-033 Note의 "Compact Project-content Access는 단일 저장 Project 진입으로 재해석" 부분은 ADR-041이 대체한다: Camera Upper-trailing `Projects` Control이 Project 접근이고, Camera 좌하단 Compact Slot은 Direct-capture 피드백(Session-only 마지막 Recording)에 속하며 저장 Project Representative나 ProjectEditor 접근이 아니다. Camera에 Timeline / Dashboard를 두지 않는다는 결정과 Lightweight Editor 결정은 유지된다. 아래 원문은 당시 기준의 기록이다.
+
 **Partial Supersession (ADR-037):** Lightweight Editor의 "Camera / Photos Library를 지원하는 Add Clip" 중 Editor Add Clip의 Acquisition Source는 System PhotosPicker로 확정되었으며 Editor `+`는 Camera를 열지 않는다. 아래 원문은 당시 기준의 기록이다.
 
 ## Context
@@ -2000,6 +2002,8 @@ Unavailable Clip은 논리적 Strip 위치에 계속 보인다. Clear Placeholde
 
 ### 6. Camera Bottom-left Content Slot (Phase 4 → Phase 5 전환)
 
+**Superseded by ADR-041 (2026-09-17):** 아래 "저장 Project 있음 → Project Representative Thumbnail + 저장 Project Editor 진입으로 승격" 항목은 제품 의도 Drift로 확인되어 폐기되었다. Camera 좌하단 Slot은 저장 Project 유무와 무관하게 Direct-capture 피드백(Session-only 마지막 Recording)에 속하고 Project 접근은 Upper-trailing `Projects` Control이며, Project Representative Thumbnail(§7)은 Projects 화면 같은 Project-oriented Surface에만 표시된다. 아래 원문은 당시 기록이다.
+
 - **저장 Project 없음:** 현재 Phase 4 동작 유지 — Session-only `lastRecordingThumbnail`, Recording-success 시각 피드백, Project Identity 없음, Playable URL 없음, Non-navigable. Raw-video Playback으로 만들지 않는다.
 - **저장 Project 있음:** 동일 Compact 영역을 Project-aware Content Access로 승격 가능 — 현재 Project Representative Thumbnail 표시, 탭 시 해당 저장 Project의 Editor / Clip Management Surface 열기. 저장 Project가 있으면 Project Representative Thumbnail이 Session-only Latest-recording 피드백보다 Semantic 우선한다. 이는 Tile을 "Play last recording"으로 바꾸지 않는다. 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
 
@@ -2271,7 +2275,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
 - Editor Add Clip의 Acquisition Source — Resolved 2026-09-15 by ADR-037: System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다.
-- Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034: 저장 Project 없으면 Session-only 피드백 유지, 있으면 Project Representative Thumbnail + Editor 진입으로 승격(Raw Playback 아님).
+- Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034, **Superseded by ADR-041 (2026-09-17):** Slot은 Direct-capture 피드백에 남고 Project Representative는 Projects 화면이 표시한다; Editor 진입 승격은 폐기.
 - Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Resolved 2026-09-16 by ADR-040.
 - Multi-project 복원 시점 — Pending, Post-V1 Product Decision.
 
@@ -2430,3 +2434,37 @@ STEP 12A / 12B 이후 Editor는 Pending Clip의 물리 정리와 Orphan 회수�
 ## Non-goals
 
 - Decode-level Corrupt / Unreadable 구조적 분류, Playback / AVPlayer, Trim / Framing / Text / Sticker UI, Full Preview / Export, Storage-pressure Cleanup, Broad Photos 권한, Camera를 Replace Source로 사용, 여러 Unavailable Clip의 Batch Replace, Representative Thumbnail Wiring.
+
+---
+
+# ADR-041 — Camera Content Slot Ownership
+
+**Date:** 2026-09-17
+**Status:** Accepted
+
+**Partially Supersedes:** ADR-030의 "Camera 최근 / 마지막 Clip Thumbnail 또는 Compact Project-content Access → 탭 시 해당 Project의 Clip Review / Editor" 문장(및 그 ADR-033 Note의 "단일 저장 Project 진입" 재해석), ADR-034 §6 "Camera Bottom-left Content Slot"의 "저장 Project 있음 → Project Representative Thumbnail 표시 + 탭 시 저장 Project Editor 진입" 항목과 이를 인용한 ADR-035 / ADR-036 / ADR-037 Cross-reference, ROADMAP Phase 5 Gate 요약, ARCHITECTURE의 동일 문장, PRODUCT / FEATURES / DESIGN의 "Camera 최근 / 마지막 Clip Thumbnail → 해당 Project의 Clip Review / Editor" 문구. ADR-034 §7(Representative Thumbnail Semantics), §1–§5의 Projects / Editor 결정, ADR-033의 Capture-first / Project-independent Recording은 변경하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+Phase 5 STEP 14는 ADR-034 §6 문구대로 Camera 좌하단 Slot을 "저장 Project Representative + Editor 바로가기"로 구현했고 자동 검증까지 통과했으나, 실기기 확인 직전에 그 문구가 원래 제품 의도에서 벗어났음이 확인되었다. 원래 의도는 Camera Chrome의 두 Affordance를 분리하는 것이다: Upper-trailing `Projects`는 Project 접근, 좌하단 Compact Slot은 방금 촬영한 Direct Capture의 피드백(이후 Latest Capture Review). Phase 4가 실제로 구현한 것도 후자(`lastRecordingThumbnail`, Session-only, Non-navigable)다.
+
+## Decision
+
+1. **Camera Upper-trailing `Projects` Control이 Canonical Project 접근이다**(ADR-035 / ADR-036 `프로젝트` 화면 → `기존 프로젝트 불러오기` / `새 프로젝트 시작`).
+2. **Camera 좌하단 Compact Content Slot은 Direct-capture 경험에 속한다.** 저장 Project 유무는 이 Slot의 의미를 바꾸지 않는다.
+3. 현재 Session에 성공한 Direct Recording이 있으면 Slot은 그 **Latest-capture Thumbnail**(Phase 4 `RecordingCoordinator.lastThumbnail`: Photos 저장 성공 후에만 발행, Session-only, 영속 / Playable URL / PHAsset 참조 없음)을 보일 수 있다. 없으면 Phase 4의 빈 Content 표현을 유지한다.
+4. Slot은 **저장 Project Representative가 되거나 ProjectEditor 바로가기가 되어서는 안 된다.** Project Clip의 Raw Playback도 아니다.
+5. **Project Representative Thumbnail(ADR-034 §7, ARCHITECTURE §56)은 Project-oriented Surface에 속한다** — 현재 Projects 화면 Visual(DESIGN §11 "저장 Project 있음: Representative Visual Contract"). Camera Capture 피드백에는 쓰지 않는다.
+6. **Latest Capture Review(미래):** Camera Thumbnail 탭이 마지막 촬영 Review를 열 수 있으나, 구현 전에 Playback / Media Lifetime / Permission Architecture를 별도 승인해야 한다. 현재 Phase 4는 저장 성공 후 `CGImage` 하나만 유지하며 Staging Movie는 Photos로 이동 / 제거되므로 재생 가능한 Local URL도 Durable Photos Asset 참조도 없다. 결정 Gate에서 최소한 다음을 비교한다 — **Option A** Session-local Review Media(Bounded Latest-capture Artifact 보존, Broad Photos Read 권한 없음, 명시적 Cleanup / 교체 Lifecycle, 추가 임시 저장 공간) vs **Option B** Photos Asset Identity(생성된 PHAsset Identity 보관 → 재생 시 Fetch, Photos Read-access / Permission Architecture 필요, 삭제 / Unavailable Asset 동작). 이 ADR은 A / B를 선택하지 않는다.
+7. **Persistent Multi-item Mellow Gallery는 Latest Capture Review가 함의하지 않으며** 별도 Product / Architecture Decision(Durable Capture History / Ledger, Media Ownership / Reference Model, Photos Authorization Model, Disappearance / Reconciliation, Thumbnail Ownership / Cache, Navigation, Retention / Deletion Semantics)이 필요하다. Latest Capture Review를 조용히 Gallery로 확장하지 않는다.
+8. **Direct Camera Recording은 ADR-033대로 Project-independent다.** Recording은 Photos에만 저장되고 Project를 만들거나 변형하지 않으며 Project Representative 선택에도 영향을 주지 않는다.
+
+## Consequences
+
+- STEP 14는 "Project Representative Thumbnail Infrastructure + Projects-surface Presentation"으로 재범위된다: `ProjectRepresentativeModel`(파생 / Cache, Schema 변경 없음)은 유지되고 Camera Slot 결합 코드는 제거된다.
+- Camera 좌하단 Slot은 Phase 4 구현 그대로(Non-navigable, `Last recording preview` / `Project content, empty`) 남는다.
+- Latest Capture Review와 Gallery는 각각 별도 Gate로 남는다.
+
+## Non-goals
+
+- Latest Capture Review 구현, Playback, Photos Read 권한 변경, Gallery, Camera Chrome 재설계, ADR-034 §7 Representative Semantics 변경.

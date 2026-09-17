@@ -479,7 +479,9 @@ Project Screen / Lightweight Editor는 현재 Vlog를 구성하는 Clip을 관�
 
 ADR-032 이후 V1 구조는 Portrait Camera → Short Clip Capture → Clip Review / Management → Editor → Export를 하나의 Persisted Vlog Project 안에서 연결한다.
 
-Camera에는 최근 / 마지막 Clip의 작은 Thumbnail 또는 동등한 Compact Project-content Affordance를 두고 탭하면 해당 Project의 Clip Review / Editor로 이동하며 별도 Dashboard나 복잡한 Camera Timeline을 추가하지 않는다.
+Camera Chrome은 두 Affordance를 분리한다(ADR-041): Upper-trailing `Projects`(§11 Projects Access)가 저장 Project 접근이고, 좌하단 Compact Content Slot(38 × 64pt)은 Direct-capture 피드백 — 현재 Session의 마지막 성공 Recording Thumbnail(`Last recording preview`) 또는 빈 Content(`Project content, empty`) — 이며 Non-navigable이다. 좌하단 Slot은 저장 Project Representative나 Editor 바로가기가 아니다. Latest Capture Review는 별도 Gate(ADR-041 §6) 전까지 구현하지 않는다.
+
+Phase 5 STEP 14(2026-09-17, Physical Review Pending): Project Representative Thumbnail은 §11 "저장 Project 있음" Visual Contract대로 Projects 화면의 80pt Rounded-square Visual에 공급된다 — 현재 논리 순서의 첫 Healthy Clip Frame(Aspect Fill) 또는 Usable Source가 없을 때(0 Clip / All-unavailable / 생성 전 / 생성 실패) 기존 중립 `film` Placeholder. Visual은 Display-only이며 Headline / Supporting / 두 Action은 변하지 않는다. Camera Slot은 Phase 4 표현 그대로다.
 
 Editor는 큰 Preview를 Primary Visual Focus로 두고 단순한 Ordered Clip Thumbnail Strip, 명시적인 Clip Selection, 가벼운 Clip Tools와 Add Clip / Final Output Action으로 구성한다.
 
