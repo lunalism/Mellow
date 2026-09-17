@@ -69,6 +69,31 @@ final class MellowUITests: XCTestCase {
         existingAuthorizedApp.terminate()
     }
 
+    /// Onboarding accessibility in BOTH appearances, pinned deterministically (`-uiTestAppearance=`):
+    /// the all-rows state (Camera allowed, Microphone allowed, Photos undecided) and the Start state
+    /// are audited for contrast / hit region / element description in Dark and again in Light. The
+    /// secondary copy (subtitle, purpose lines, Required / Optional) is what used to report
+    /// "Contrast nearly passed" in Light; both appearances must pass with the same layout.
+    @MainActor
+    func testOnboardingAccessibilityPassesInDarkAndLightAppearance() throws {
+        for appearance in ["dark", "light"] {
+            let app = cameraTestApp(["-cameraNotDetermined", "-micNotDetermined", "-photosAddNotDetermined", "-uiTestResetOnboarding", "-uiTestAppearance=\(appearance)"])
+            app.launch()
+            XCTAssertTrue(app.staticTexts["permissionOnboardingTitle"].waitForExistence(timeout: 3), appearance)
+            try auditAndCapture(app, name: "Onboarding Camera Only \(appearance)")
+            app.buttons["permissionAllow-camera"].tap()
+            XCTAssertTrue(app.buttons["permissionAllow-microphone"].waitForExistence(timeout: 3), appearance)
+            app.buttons["permissionAllow-microphone"].tap()
+            XCTAssertTrue(app.buttons["permissionAllow-photos"].waitForExistence(timeout: 3), appearance)
+            XCTAssertTrue(app.staticTexts["Required"].firstMatch.exists); XCTAssertTrue(app.staticTexts["Optional"].exists, "requirement captions still present")
+            try auditAndCapture(app, name: "Onboarding All Rows \(appearance)")
+            app.buttons["permissionAllow-photos"].tap()
+            XCTAssertTrue(app.buttons["startMellow"].waitForExistence(timeout: 3), appearance)
+            try auditAndCapture(app, name: "Onboarding Start \(appearance)")
+            app.terminate()
+        }
+    }
+
     @MainActor
     func testLaunchAloneDoesNotPersistEmptyProject() throws {
         let app = legacyRecentApp()

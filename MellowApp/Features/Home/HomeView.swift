@@ -148,6 +148,16 @@ struct HomeView: View {
 /// One progressive-reveal onboarding screen (ADR-033): Camera, then Microphone, then Photos, each
 /// granted individually; Start Mellow appears once all three are decided. The Mellow screen never
 /// navigates — only the iOS system sheet appears per row action.
+/// Secondary text on the onboarding screen. The system `.secondary` label is 60 % translucent and
+/// composites to ≈#8A8A8E on the Light page (3.4:1) and ≈#85858B on the Light row card (3.3:1) —
+/// below the 4.5:1 minimum for subheadline / caption text, which the accessibility audit reports as
+/// "Contrast nearly passed". Light therefore uses an opaque grey that keeps the secondary hierarchy
+/// (#66666B: 5.7:1 on white, 5.1:1 on `secondarySystemBackground`); Dark keeps the system secondary
+/// label, which already composites to ≥5:1 on both surfaces. Typography and layout are unchanged.
+private let onboardingSecondaryText = Color(uiColor: UIColor { traits in
+    traits.userInterfaceStyle == .dark ? .secondaryLabel : UIColor(red: 0x66 / 255, green: 0x66 / 255, blue: 0x6B / 255, alpha: 1)
+})
+
 struct PermissionOnboardingView: View {
     @Bindable var model: PermissionOnboardingModel
     @Environment(\.openURL) private var openURL
@@ -169,7 +179,7 @@ struct PermissionOnboardingView: View {
                             .accessibilityIdentifier("permissionOnboardingTitle")
                         Text("A few permissions help Mellow capture and save moments.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(onboardingSecondaryText)
                             .multilineTextAlignment(.center)
                     }
 
@@ -265,9 +275,9 @@ private struct OnboardingPermissionRow: View {
                     Text(title).font(.body.weight(.semibold))
                         .padding(.trailing, titleTrailingInset)
                 }
-                Text(purpose).font(.subheadline).foregroundStyle(.secondary)
+                Text(purpose).font(.subheadline).foregroundStyle(onboardingSecondaryText)
                     .lineLimit(1).minimumScaleFactor(0.75)
-                Text(requirement).font(.caption).foregroundStyle(.secondary)
+                Text(requirement).font(.caption).foregroundStyle(onboardingSecondaryText)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,7 +329,7 @@ private struct OnboardingPermissionRow: View {
                 .accessibilityIdentifier("permissionSettings-\(identifier)")
         case .restricted:
             Text(kind == .microphone ? "Muted" : "Unavailable")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(onboardingSecondaryText)
                 .lineLimit(1).minimumScaleFactor(0.85)
                 .accessibilityIdentifier("permissionState-\(identifier)")
         }
