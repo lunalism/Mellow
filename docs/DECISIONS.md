@@ -2227,7 +2227,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Source Reference를 함께 유지할지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Imported Clip의 최소 길이 — Resolved by ADR-042(2026-09-17 사용자 승인): 1.0초. Phase 6 구현 요구사항(현재 Phase 5 구현은 미강제).
 - 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
-- Phase 6 Normalization-required Import의 진입 / 진행 / 실패 Presentation 구조와 1.0초 미만 거부 Presentation / Copy — Pending, Phase 6 Structural UX Gate(Segment Selection 아님).
+- 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
+- Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation 구조, 다중 선택 Invalid 항목 요약 / 혼합 Session Presentation, Storage 부족 Presentation — Pending, Phase 6 Structural UX Gate(Segment Selection 아님).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
 
 ### Camera
@@ -2493,6 +2494,8 @@ Phase 5 STEP 14는 ADR-034 §6 문구대로 Camera 좌하단 Slot을 "저장 Pro
 
 **Revision (2026-09-17, 사용자 승인):** 최초 초안의 Canonical Invariant `0 < entire Photos source duration <= 5 seconds`는 같은 날 사용자 승인으로 **Imported 최소 길이 1.0초**를 포함한 `1.0s <= entire Photos source duration <= 5.0s`로 확정되었다. 이 ADR의 본문은 확정된 Invariant를 기준으로 기술하며 "Imported Clip 최소 길이" Pending은 해소되었다. 1.0초 최소는 승인된 Product Policy이고 현재 Phase 5 구현(`Phase5ReadyMediaValidator`는 `0 < d`만 검사, `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정)은 아직 이를 강제하지 않으므로 Phase 6 구현 요구사항이다.
 
+**Revision 2 (2026-09-17, 사용자 승인 — Below-minimum Copy):** 1.0초 미만 Photos Source 거부의 Canonical 사용자 안내가 Title `영상이 너무 짧아요` / Message `1초 이상의 영상을 선택해주세요.`로 확정되었다. 5.0초 초과 안내(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 변경 없이 유지되며 두 안내는 의미상 구분된다. 이 Revision은 ADR-042 아래 명시적으로 Pending이던 UX 세부 하나를 완료할 뿐 Canonical Duration Policy를 바꾸지 않으므로 새 ADR을 만들지 않는다. 이 Copy는 아직 Production 코드에 존재하지 않으며(1.0초 미만 Validator / Alert 미구현) Phase 6 구현 요구사항이다. 다중 선택에서 Invalid 항목의 요약 / 혼합 Session Presentation, Normalization-required 진입 / 진행 / 실패 / Retry, Storage 부족 Presentation, 부분 성공 정책, Duration 비교 Tolerance는 이 Revision이 결정하지 않는다.
+
 **Supersedes:** ADR-029 "Imported Video" 항목 중 **"Photos Source Video의 전체 Duration은 제한하지 않으며 2분 또는 20분 Source도 선택할 수 있다"**와 **"사용자는 Source에서 원하는 구간을 자유롭게 선택 / Trim하며"**(Long-source Segment Selection) 및 ADR-029 Consequences의 "Phase 6 Import와 Phase 7 Trim은 길이 제한 없는 Source … Segment를 구현·검증한다". ADR-006(이미 ADR-029로 Superseded)의 "10초보다 긴 Source Video에서는 … 구간을 선택한다"는 역사 기록 그대로 두되 현재 정책이 아님을 이 ADR이 다시 확인한다.
 
 **Partially Supersedes / Clarifies:**
@@ -2540,7 +2543,7 @@ System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 �
 - Clip Metadata를 Commit하지 않는다.
 - 부분 Project Mutation이 없다(다중 선택은 All-or-nothing: 하나라도 초과면 전체 거부).
 - Photos 원본은 변경되지 않는다.
-- 기존 안내 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 그대로 사용하며 두 번째 Duration Alert나 다른 Duration 정책을 만들지 않는다.
+- 5.0초 초과: 기존 안내 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 그대로 사용한다. 1.0초 미만: Canonical 안내 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(Revision 2)를 사용한다. 두 안내는 별개의 의미이며 그 밖의 다른 Duration 정책이나 제3의 Duration Alert를 만들지 않는다.
 - Select Clips / Add / Replace 세 경로가 같은 Canonical Rule과 같은 Copy를 따른다.
 
 ### Duration 규칙의 구분
@@ -2548,7 +2551,7 @@ System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 �
 | 구분 | 규칙 |
 | --- | --- |
 | Direct Camera Capture | ADR-029 / ADR-033: 선택 Preset(1–5s) 이하, 1.0초 이상, 자동 / 수동 정지 |
-| Photos Source Eligibility | 이 ADR: `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함), Preset 무관, 비정수 허용, 1.0초 미만 / 5.0초 초과 거부 |
+| Photos Source Eligibility | 이 ADR: `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함), Preset 무관, 비정수 허용; 1.0초 미만 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`), 5.0초 초과 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`) |
 | Phase-5-ready Media | ADR-034 §2: 위 Eligibility를 만족하고 Portrait / ≤1080p-class / ≤30 fps / SDR이어서 Normalization 없이 그대로 Materialize 가능 |
 | Phase-6 Normalization-required Media | Eligibility(Duration)는 만족하지만 4K / High-resolution, HDR / Dolby Vision, >30 fps, Landscape / Presentation Transform 등으로 Phase-5-ready 경계를 벗어나는 Media — Phase 6이 정규화 |
 | Invalid Media | 읽을 수 없음 / Video Track 없음 / Duration 0 이하 → 거부(Below-minimum / Above-maximum 거부와 구분) |
@@ -2565,7 +2568,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 ### Phase 5 / Phase 7 Consequences
 
 - Phase 5(현재 구현): 5.0초 초과 `.tooLong` 거부, 세 경로의 공통 Validator / Copy, All-or-nothing, Photos 원본 불변은 그대로 유효하다. **현재 Phase 5 구현은 1.0초 미만 Source를 거부하지 않고 받아들인다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사). 이 문서 작업은 코드를 바꾸지 않는다.
-- Phase 6(구현 요구): 세 경로(Select Clips / Add / Replace)에 1.0초 미만 거부를 추가하고 Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Below-minimum의 Presentation과 정확한 Copy는 Phase 6 Structural UX Gate에서 결정하며 이 ADR은 Copy를 정하지 않는다. 5.0초 초과 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 그대로 유지한다.
+- Phase 6(구현 요구): 세 경로(Select Clips / Add / Replace)에 1.0초 미만 거부를 추가하고 Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Below-minimum의 Canonical Copy는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(Revision 2)이며 세 경로가 같은 Copy를 사용한다. 5.0초 초과 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 그대로 유지한다. 개별 검출된 1.0초 미만 항목의 안내만 확정되었고, 다중 선택 결과의 요약 / 혼합 Session Presentation은 Structural UX Gate에 남는다.
 - Phase 7: Imported Clip Trim은 Recorded Clip Trim과 같은 모델(`trimStart` / `trimDuration`, Project-owned Media 범위 안)이며 "원본 Source 전체 범위 Re-trim" 선택지는 존재하지 않는다. F-MVP-028의 Pending은 해소된다.
 
 ## Rationale
@@ -2597,7 +2600,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 만족하는 Source의 Re-encode vs Transform 보존 Copy) — Landscape Source가 Phase 6 경로로 들어온다는 사실은 ADR-034 §2로 확정
-- Phase 6 Normalization-required Media의 Import 진입 / 진행 / 실패 Presentation 구조와 1.0초 미만 거부의 Presentation / 정확한 Copy(Structural UX Gate — Segment Selection 아님)
+- Phase 6 Normalization-required Media의 Import 진입 / 진행 / 실패 / Retry Presentation 구조, 다중 선택에서 하나 이상의 Invalid / Ineligible 항목을 요약하는 방식과 혼합 Session Presentation, Import Storage 부족 Presentation(Structural UX Gate — Segment Selection 아님; 1.0초 미만 개별 안내 Copy는 Revision 2로 확정되어 제외)
 
 ## Non-goals
 

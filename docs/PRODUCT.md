@@ -468,7 +468,7 @@ ADR-042에 따라 Mellow는 **선택한 Photos Video의 전체 길이**가 `1.0s
 
 1.0초 이상 5.0초 이하인 Source Video는 전체 구간이 그대로 Clip이 된다. 정확히 1.0초와 5.0초는 허용되고 1.3초, 2.7초, 4.5초처럼 정수가 아닌 길이도 유효하며 Camera Preset은 Photos Import와 무관하다. 0.4초 / 0.8초 같은 1.0초 미만은 거부, 5.0초 초과는 거부, 0 이하 / 읽을 수 없음은 Invalid다. Imported 최소 1.0초는 Direct Capture 최소 1.0초(ADR-033)와 값이 같지만 별개의 규칙이다.
 
-System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있다. Mellow는 Metadata 검사 후 해당 항목을 거부하고 Project-owned Media 생성, Clip Metadata Commit, 부분 Project 변경 없이 Photos 원본을 그대로 둔다. 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이며 1.0초 미만 안내는 Phase 6 Structural UX Gate에서 정한다. Select Clips / Add / Replace 세 경로가 같은 규칙과 안내를 사용한다. 5.0초 초과 거부는 Phase 5가 이미 구현했고 1.0초 미만 거부는 Phase 6 구현 요구사항이다.
+System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있다. Mellow는 Metadata 검사 후 해당 항목을 거부하고 Project-owned Media 생성, Clip Metadata Commit, 부분 Project 변경 없이 Photos 원본을 그대로 둔다. 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이고 1.0초 미만 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`다(ADR-042 Revision 2, 두 안내는 별개). Select Clips / Add / Replace 세 경로가 같은 규칙과 안내를 사용한다. 5.0초 초과 거부는 Phase 5가 이미 구현했고 1.0초 미만 거부는 Phase 6 구현 요구사항이다.
 
 SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
 

@@ -475,7 +475,7 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - 1.3초, 2.7초, 4.5초, 5.0초 같은 비정수 길이 허용(정수 불필요), Camera Preset과 무관
 - 0.4초 / 0.8초 등 1.0초 미만 거부, 5.0초 초과 거부, 0 이하 / 읽을 수 없음 Invalid
 - 범위 밖 영상 거부 시 Materialize / Normalize / Persist / Append / Replace 미수행, Project-owned Media 미생성, Clip Metadata 미Commit, 부분 Project 변경 없음, Photos 원본 불변
-- 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 사용하며 Select Clips / Add / Replace 세 경로가 동일; 1.0초 미만 거부 안내는 Phase 6 Structural UX Gate에서 결정
+- 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 사용하며 Select Clips / Add / Replace 세 경로가 동일; 1.0초 미만 거부 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(ADR-042 Revision 2)이며 세 경로 동일
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분
 - 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시킨다)
 - 원본 영상의 비파괴적 처리
@@ -486,7 +486,7 @@ System PhotosPicker는 길이로 항목을 미리 숨기거나 비활성화하�
 
 ### Example
 
-원본 영상 길이가 4.5초라면 전체 4.5초가 그대로 Clip으로 추가되고, 정확히 1.0초 또는 5.0초여도 추가된다. 원본 영상 길이가 0.8초라면 Below-minimum으로 거부되고, 2분 14초라면 `영상이 너무 길어요` 안내와 함께 거부되며 두 경우 모두 프로젝트는 변경되지 않는다.
+원본 영상 길이가 4.5초라면 전체 4.5초가 그대로 Clip으로 추가되고, 정확히 1.0초 또는 5.0초여도 추가된다. 원본 영상 길이가 0.8초라면 `영상이 너무 짧아요` 안내와 함께 거부되고, 2분 14초라면 `영상이 너무 길어요` 안내와 함께 거부되며 두 경우 모두 프로젝트는 변경되지 않는다.
 
 ---
 

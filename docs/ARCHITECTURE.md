@@ -923,7 +923,7 @@ ADR-042에 따라 Photos에서 Import하는 원본 Video는 **전체 Duration**�
 
 구현 상태: 5.0초 초과 거부(`.tooLong`)는 Phase 5가 구현했다. 1.0초 미만 거부는 아직 구현되지 않았으며(`Phase5ReadyMediaValidator`는 `0 < d`만 검사) Phase 6 구현 요구사항이다.
 
-System PhotosPicker는 Duration으로 항목을 미리 숨기지 못하므로 사용자가 5초 초과 Video를 탭할 수 있다. Mellow는 Broad Photos Read 권한 없이 선택 File을 전송받은 뒤 Metadata Validation에서 해당 항목을 거부하고(5.0초 초과: `requires import preparation(.tooLong)`, `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`; 1.0초 미만: Phase 6이 추가할 Below-minimum 결과, Copy는 Structural UX Gate) Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않는다. Select Clips / Add / Replace 세 경로가 같은 Validator를 사용한다(Phase 5 STEP 6 / 11 / 13 구현).
+System PhotosPicker는 Duration으로 항목을 미리 숨기지 못하므로 사용자가 5초 초과 Video를 탭할 수 있다. Mellow는 Broad Photos Read 권한 없이 선택 File을 전송받은 뒤 Metadata Validation에서 해당 항목을 거부하고(5.0초 초과: `requires import preparation(.tooLong)`, `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`; 1.0초 미만: Phase 6이 추가할 Below-minimum 결과, Copy는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` — ADR-042 Revision 2) Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않는다. Select Clips / Add / Replace 세 경로가 같은 Validator를 사용한다(Phase 5 STEP 6 / 11 / 13 구현).
 
 ---
 
