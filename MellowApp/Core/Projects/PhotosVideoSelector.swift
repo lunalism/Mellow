@@ -21,6 +21,10 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
     var items: [PhotosPickerItem] = [] {
         didSet { evaluate() }
     }
+    /// Selection bound of the CURRENT session for the hosting `.photosPicker` (nil = unlimited, the
+    /// Add / Select-Clips default). Set before presentation, cleared when the session resolves, so
+    /// one host serves both the multi-select Add and the single-video Replace (ADR-040).
+    private(set) var maxSelectionCount: Int?
 
     /// Grace period after dismissal for the picker to deliver a confirmed selection into the binding.
     static let confirmationGrace: Duration = .milliseconds(800)
@@ -35,6 +39,10 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
     private var session: Session?
 
     func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating) async -> ProjectMediaSelectionOutcome {
+        await selectVideos(into: workspace, store: store, admission: admission, selectionLimit: nil)
+    }
+
+    func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome {
         if let stale = session {
             // A session that never resolved must not leak into this one.
             session = nil
@@ -43,6 +51,7 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
         // The importing closure is static; the current operation's gate is published for it.
         ReceivedVideoFile.admission.set(admission)
         items = []
+        maxSelectionCount = selectionLimit
         return await withCheckedContinuation { continuation in
             session = Session(continuation: continuation, workspace: workspace, store: store)
             isPresented = true
@@ -97,6 +106,7 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
         session = nil
         ReceivedVideoFile.admission.set(nil)
         items = []
+        maxSelectionCount = nil
         isPresented = false
         current.continuation.resume(returning: outcome)
     }

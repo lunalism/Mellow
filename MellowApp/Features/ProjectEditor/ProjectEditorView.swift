@@ -36,10 +36,14 @@ struct ProjectEditorDestination: View {
                         project: project,
                         repository: environment.projectRepository,
                         thumbnails: environment.clipThumbnails,
-                        acquisition: environment.editorClipAcquisition
+                        acquisition: environment.editorClipAcquisition,
+                        availability: environment.clipAvailability
                     )
                     #if DEBUG
                     MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
+                    // Physical-review aid (ADR-040 fixture flow): the active Clip identities in logical
+                    // order, so a tester can name the disposable Clip for `-uiTestRemoveActiveClipMedia=`.
+                    MellowLog.app.info("Project editor active clips \(project.clips.map(\.id.uuidString).joined(separator: ","), privacy: .public)")
                     #endif
                 } else {
                     unavailable = true
@@ -66,7 +70,11 @@ struct ProjectEditorView: View {
             ProjectPreviewCanvas(
                 orientation: model.project.orientation,
                 selectedClip: model.selectedClip,
-                selectedPosition: selectedPosition
+                selectedPosition: selectedPosition,
+                isSelectedClipUnavailable: model.isSelectedClipUnavailable,
+                canReplace: model.canReplaceSelectedClip,
+                isReplacing: model.isReplacingClip,
+                replace: replaceSelectedClip
             )
             EditorTimelineDock(model: model, deleteSelected: deleteSelectedClip, addClips: addClips)
                 .padding(.horizontal, 10)
@@ -108,9 +116,10 @@ struct ProjectEditorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         // Thumbnail work lives in the model / service, never in body evaluation. `.task` cancels the
         // load when the screen leaves, so no generation outlives it.
-        // Re-run whenever the active clip set changes (Add / Delete / Undo / Redo): only clips that
-        // are not ready are requested, so this is a no-op for a reorder or a pure selection change.
-        .task(id: ThumbnailLoadKey(scale: displayScale, clipIDs: model.committedClips.map(\.id))) {
+        // Re-run whenever the active clip SET changes (Add / Delete / Undo / Redo / Replace): the
+        // model re-derives availability, then requests only the thumbnails that are not ready. The key
+        // is order-independent, so a reorder or a pure selection change never re-runs it (ADR-040 §6).
+        .task(id: ThumbnailLoadKey(scale: displayScale, clipIDs: Set(model.committedClips.map(\.id)))) {
             await model.loadThumbnails(displayScale: displayScale)
         }
         .navigationTitle("Project")
@@ -135,6 +144,15 @@ struct ProjectEditorView: View {
         }
     }
 
+    private func replaceSelectedClip() {
+        guard model.canReplaceSelectedClip else { return }
+        Task {
+            if await model.replaceSelectedClip() != nil {
+                AccessibilityNotification.Announcement("클립을 교체했어요. 실행 취소할 수 있어요.").post()
+            }
+        }
+    }
+
     private func deleteSelectedClip() {
         guard model.deleteSelectedClip() else { return }
         AccessibilityNotification.Announcement("클립을 삭제했어요. 실행 취소할 수 있어요.").post()
@@ -153,15 +171,18 @@ struct ProjectEditorView: View {
     }
 }
 
-/// Identity of one thumbnail load: the display scale and the active clip set.
+/// Identity of one thumbnail load: the display scale and the active clip set (order-independent).
 private struct ThumbnailLoadKey: Hashable {
     let scale: CGFloat
-    let clipIDs: [UUID]
+    let clipIDs: Set<UUID>
 }
 
-/// Hosts the system Photos picker for the Editor's production selector (ADR-037): videos only, no
-/// library read permission (the picker runs out of process). Absent under test fakes. Its own
-/// selector instance, so the Projects screen's picker host below in the stack never competes.
+/// Hosts the system Photos picker for the Editor's production selector (ADR-037 Add, ADR-040
+/// Replace): videos only, no library read permission (the picker runs out of process). ONE host
+/// serves both flows — the selector's current session sets the selection bound (Add: unlimited,
+/// Replace: exactly 1), so two pickers can never compete and a cancel resolves only its own session.
+/// Absent under test fakes. Its own selector instance, so the Projects screen's picker host below in
+/// the stack never competes.
 private struct EditorPhotosPickerHost: ViewModifier {
     let selector: PhotosVideoSelector?
 
@@ -172,6 +193,7 @@ private struct EditorPhotosPickerHost: ViewModifier {
                 .photosPicker(
                     isPresented: $selector.isPresented,
                     selection: $selector.items,
+                    maxSelectionCount: selector.maxSelectionCount,
                     matching: .videos,
                     preferredItemEncoding: .current
                 )
@@ -212,10 +234,18 @@ private struct EditorHistoryButton: View {
 /// aspect-fits (9:16) inside `mediaArea`; future Text / Sticker tools overlay the canvas through the
 /// `ZStack` without taking layout space. STEP 8 shows only a faint glyph: no playback, no AVPlayer,
 /// no static thumbnail preview, no engineering copy. The selected clip is described for accessibility.
+///
+/// STEP 13 (ADR-040): when the SELECTED Clip's media is structurally unavailable, the same canvas
+/// hosts a centred neutral shell (`video.slash`, title, message, `클립 교체`) as an overlay layer —
+/// no red card, no alert, no second Delete (the dock trash stays the one destructive control).
 struct ProjectPreviewCanvas: View {
     let orientation: ProjectOrientation
     let selectedClip: VlogClip?
     let selectedPosition: Int?
+    var isSelectedClipUnavailable = false
+    var canReplace = false
+    var isReplacing = false
+    var replace: () -> Void = {}
 
     private var mediaAspect: CGFloat {
         switch orientation {
@@ -226,28 +256,89 @@ struct ProjectPreviewCanvas: View {
 
     var body: some View {
         ZStack {
-            EditorWorkspace.canvas
-            // Media area: where the Project's 9:16 content will aspect-fit later. Invisible now.
-            Color.clear
-                .aspectRatio(mediaAspect, contentMode: .fit)
-                .overlay {
-                    Image(systemName: "film")
-                        .font(.system(size: 30, weight: .regular))
-                        .foregroundStyle(Color(white: 0.28))
-                }
-            // Overlay layer (top-leading / trailing tool placement) is reserved here; nothing is
-            // rendered until the owning Phase ships real controls — no dead buttons.
+            // The canvas itself stays ONE accessibility element with a stable identity whatever is
+            // selected; the unavailable shell is a sibling layer with its own readable elements.
+            ZStack {
+                EditorWorkspace.canvas
+                // Media area: where the Project's 9:16 content will aspect-fit later. Invisible now.
+                Color.clear
+                    .aspectRatio(mediaAspect, contentMode: .fit)
+                    .overlay {
+                        Image(systemName: "film")
+                            .font(.system(size: 30, weight: .regular))
+                            .foregroundStyle(Color(white: 0.28))
+                            .opacity(isSelectedClipUnavailable ? 0 : 1)
+                    }
+                // Overlay layer (top-leading / trailing tool placement) is reserved here; nothing is
+                // rendered until the owning Phase ships real controls — no dead buttons.
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("projectEditorPreview")
+            .accessibilityLabel(accessibilityText)
+            if isSelectedClipUnavailable {
+                UnavailableClipShell(canReplace: canReplace, isReplacing: isReplacing, replace: replace)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 4)
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("projectEditorPreview")
-        .accessibilityLabel(accessibilityText)
     }
 
     private var accessibilityText: String {
         guard let selectedPosition else { return "Preview, no clip selected" }
-        return "Preview, selected clip \(selectedPosition)"
+        return "Preview, selected clip \(selectedPosition)" + (isSelectedClipUnavailable ? ", unavailable" : "")
+    }
+}
+
+/// Centred neutral unavailable shell (DESIGN §19 STEP 13): glyph, exact V1 copy and the one Replace
+/// action. Workspace-consistent (dark control surface, light foreground), no destructive colour, no
+/// second Delete. The button keeps a 44 pt target and shows progress while the Replace transaction
+/// runs; it is disabled (never hidden) while any other mutation is in flight.
+private struct UnavailableClipShell: View {
+    let canReplace: Bool
+    let isReplacing: Bool
+    let replace: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "video.slash")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(EditorWorkspace.secondaryText)
+                .accessibilityHidden(true)
+            Text("클립을 사용할 수 없어요")
+                .font(.headline)
+                .foregroundStyle(EditorWorkspace.primaryText)
+                .accessibilityIdentifier("unavailableClipTitle")
+            Text("파일을 찾을 수 없어요.")
+                .font(.subheadline)
+                .foregroundStyle(EditorWorkspace.secondaryText)
+                .accessibilityIdentifier("unavailableClipMessage")
+            Button(action: replace) {
+                ZStack {
+                    Text("클립 교체")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(canReplace ? EditorWorkspace.primaryText : EditorWorkspace.secondaryText)
+                        .opacity(isReplacing ? 0 : 1)
+                    if isReplacing {
+                        ProgressView().controlSize(.small).tint(EditorWorkspace.secondaryText)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .frame(minHeight: 44)
+                .background(EditorWorkspace.control, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canReplace)
+            .padding(.top, 6)
+            .accessibilityIdentifier("replaceSelectedClip")
+            .accessibilityLabel("클립 교체")
+            .accessibilityHint("사진 보관함에서 이 클립을 교체합니다.")
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("unavailableClipShell")
     }
 }
 

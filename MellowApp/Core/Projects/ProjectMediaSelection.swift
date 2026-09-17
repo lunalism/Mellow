@@ -27,6 +27,18 @@ protocol ProjectMediaSelecting: AnyObject {
     /// `admission` is consulted with each incoming file's actual byte size immediately before the
     /// first Mellow-owned full-size copy of that file (sequentially, re-querying capacity each time).
     func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating) async -> ProjectMediaSelectionOutcome
+    /// Same session, with an upper bound on how many items the picker offers to confirm
+    /// (`selectionLimit` nil = the boundary's default). Replace (ADR-040) uses exactly 1; the model
+    /// still verifies the returned cardinality, so a boundary that ignores the limit cannot widen a
+    /// Replace into a batch.
+    func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome
+}
+
+extension ProjectMediaSelecting {
+    /// Default: boundaries that have no notion of a selection limit run the ordinary session.
+    func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome {
+        await selectVideos(into: workspace, store: store, admission: admission)
+    }
 }
 
 /// Thrown by the transfer bridge when pre-copy admission refuses an incoming file.

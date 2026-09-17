@@ -391,6 +391,69 @@ final class ProjectRepositoryTests: XCTestCase {
         XCTAssertEqual(try again.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 4, "never a fifth row")
     }
 
+    // MARK: - Replace durability (Phase 5 STEP 13, ADR-040) — no schema change
+
+    /// Replace = B row kept as pending + D row inserted (one commit); unrelated rows keep their
+    /// identity; Undo (B active / D pending) and Redo (B pending / D active) only flip the same
+    /// rows; the omission guard still protects both; 12A's `finalizeDeletedClip` removes exactly the
+    /// pending row. State survives container reopen at every step.
+    func testSwiftDataReplaceKeepsBothRowsAndSurvivesReopenThroughUndoRedoAndFinalize() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        var (project, ids) = try makeThreeClipProject()
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(project)
+        let rowsBefore = Dictionary(uniqueKeysWithValues: try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).map { ($0.id, $0.persistentModelID) })
+
+        let dID = UUID()
+        let d = try VlogClip(id: dID, projectID: project.id, sourceKind: .imported,
+                             mediaRelativePath: try ProjectMediaStore.committedMediaPath(projectID: project.id, clipID: dID),
+                             sourceDuration: .seconds(2), trimDuration: .seconds(2), sortOrder: 0)
+        try project.replaceClip(id: b, with: d)
+        try environment.repository.update(project)                                              // one commit
+        let rowsAfter = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertEqual(rowsAfter.count, 4, "B kept, D inserted")
+        for id in [a, b, c] { XCTAssertEqual(rowsAfter.first { $0.id == id }?.persistentModelID, rowsBefore[id], "existing rows retain identity") }
+        XCTAssertNotNil(rowsAfter.first { $0.id == b }?.deletedAt); XCTAssertNil(rowsAfter.first { $0.id == dID }?.deletedAt)
+
+        let reopen1 = try makeSwiftDataEnvironment(storeURL: store.url)
+        var reopened = try XCTUnwrap(try reopen1.repository.project(id: project.id))
+        XCTAssertEqual(reopened.clips.map(\.id), [a, dID, c], "final Replace state after reopen")
+        XCTAssertEqual(reopened.clips.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(reopened.deletedClips.map(\.id), [b])
+        XCTAssertEqual(reopened.clips[1].sourceKind, .imported); XCTAssertEqual(reopened.clips[1].trimStart, .zero); XCTAssertNil(reopened.clips[1].framing)
+        let truncated = try VlogProject(id: project.id, createdAt: project.createdAt, orientation: .portrait9x16, clips: reopened.clips)
+        XCTAssertThrowsError(try environment.repository.update(truncated), "omitting pending B is refused") { XCTAssertEqual($0 as? ProjectRepositoryError, .missingDurableClip) }
+
+        // Undo Replace (history restore): B active, D pending — rows retained.
+        let undone = try VlogProject(id: project.id, createdAt: project.createdAt, orientation: .portrait9x16,
+                                     clips: [reopened.clips[0], try reopened.deletedClips[0].assigning(sortOrder: 1, deletion: nil), reopened.clips[2]].enumerated().map { try $1.assigningSortOrder($0) },
+                                     deletedClips: [try reopened.clips[1].assigning(sortOrder: 1, deletion: ClipDeletionRecord(deletedAt: .now, originalIndex: 1, previousClipID: a, nextClipID: c))])
+        try environment.repository.update(undone)
+        let reopen2 = try makeSwiftDataEnvironment(storeURL: store.url)
+        reopened = try XCTUnwrap(try reopen2.repository.project(id: project.id))
+        XCTAssertEqual(reopened.clips.map(\.id), [a, b, c]); XCTAssertEqual(reopened.deletedClips.map(\.id), [dID])
+        XCTAssertEqual(try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 4)
+
+        // Redo Replace: B pending, D active — same rows, same identities.
+        try environment.repository.update(project)
+        let reopen3 = try makeSwiftDataEnvironment(storeURL: store.url)
+        reopened = try XCTUnwrap(try reopen3.repository.project(id: project.id))
+        XCTAssertEqual(reopened.clips.map(\.id), [a, dID, c]); XCTAssertEqual(reopened.deletedClips.map(\.id), [b])
+        let rowsRedo = try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>())
+        XCTAssertEqual(rowsRedo.count, 4, "never a fifth row")
+        for id in [a, b, c] { XCTAssertEqual(rowsRedo.first { $0.id == id }?.persistentModelID, rowsBefore[id]) }
+
+        // Exit cleanup (12A) finalizes exactly the pending row; the active rows are untouched.
+        try environment.repository.finalizeDeletedClip(projectID: project.id, clipID: b)
+        XCTAssertThrowsError(try environment.repository.finalizeDeletedClip(projectID: project.id, clipID: dID)) { XCTAssertEqual($0 as? ProjectRepositoryError, .clipNotPendingDeletion) }
+        let reopen4 = try makeSwiftDataEnvironment(storeURL: store.url)
+        let final = try XCTUnwrap(try reopen4.repository.project(id: project.id))
+        XCTAssertEqual(final.clips.map(\.id), [a, dID, c]); XCTAssertTrue(final.deletedClips.isEmpty)
+        XCTAssertEqual(try environment.container.mainContext.fetch(FetchDescriptor<PersistedVlogClip>()).count, 3)
+    }
+
     private func makeSwiftDataEnvironment(storeURL: URL) throws -> SwiftDataRepositoryEnvironment {
         let container = try MellowModelContainer.makePersistentContainer(storeURL: storeURL)
         return SwiftDataRepositoryEnvironment(container: container)

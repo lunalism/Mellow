@@ -591,7 +591,7 @@ Replace가 취소, Validation 실패, Storage 부족, Import 또는 Recording �
 
 Photos Video Import를 Replacement Source로 선택하는 경우에도 F-MVP-021의 Photos 원본 보존 계약을 따른다.
 
-Replacement의 Clip Identity와 기존 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 정책은 구현 전에 별도 Gate에서 결정한다.
+Replacement의 Clip Identity와 기존 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 정책은 구현 전에 별도 Gate에서 결정한다. — Resolved by ADR-040 (2026-09-16, Phase 5 STEP 13): Replacement는 새 Clip Identity(Model B)로 기존 Logical Slot을 차지하고 `.imported`, Trim Reset(전체 Source), Framing nil, 새 Thumbnail을 가지며 기존 Unavailable Clip은 Durable Pending으로 남아 Session History의 Undo / Redo와 STEP 12A Cleanup 계약을 따른다. Phase 5의 Unavailable 범위는 Committed 파일 없음 / 해석 불가이며 Replace Source는 System PhotosPicker 1개 Video다.
 
 ---
 
@@ -1448,8 +1448,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Physical Deletion의 구체적인 구현 방식
 - Active Usage Tracking의 구체적인 구현 방식
 - Coordinator / Lease / Reference Counter 구조
-- Unavailable Clip의 Exact Visual Design과 Replace UI Flow
-- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 및 사용자 Reset 안내 정책
+- Unavailable Clip의 Exact Visual Design과 Replace UI Flow — Resolved by ADR-040 / DESIGN 19절 STEP 13
+- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset 및 사용자 Reset 안내 정책 — Resolved by ADR-040 (새 Identity, Trim / Framing Reset, 새 Thumbnail, Phase 5에는 안내할 Reset 없음)
 - Post-MVP Clip Duplicate 도입 여부
 - Post-MVP Clip Split 도입 여부
 - 개별 Clip Mute 기능 필요 여부

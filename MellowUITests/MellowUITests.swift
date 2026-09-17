@@ -1466,6 +1466,400 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    // MARK: - Phase 5 STEP 13: unavailable Clip + Replace (ADR-040)
+
+    /// Seeded A B C (2.0 / 3.0 / 1.0 s) with the listed 1-based positions structurally unavailable
+    /// (deterministic fake availability by identity: a Clip created by Replace is always available).
+    private func unavailableArguments(_ positions: String, mode: String? = nil, extra: [String] = []) -> [String] {
+        (mode.map { addArguments($0) } ?? Self.editorArguments) + ["-uiTestUnavailableClips=\(positions)"] + extra
+    }
+
+    @MainActor
+    private func expectUnavailableShell(_ app: XCUIApplication, present: Bool, _ note: String = "") {
+        let title = app.staticTexts["unavailableClipTitle"], replace = app.buttons["replaceSelectedClip"]
+        if present {
+            XCTAssertTrue(title.waitForExistence(timeout: 3), "unavailable shell title \(note)")
+            XCTAssertEqual(title.label, "클립을 사용할 수 없어요")
+            XCTAssertEqual(app.staticTexts["unavailableClipMessage"].label, "파일을 찾을 수 없어요.")
+            XCTAssertTrue(replace.exists, "Replace present \(note)"); XCTAssertEqual(replace.label, "클립 교체")
+        } else {
+            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: replace)
+            XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 3), .completed, "no Replace for a healthy clip \(note)")
+            XCTAssertFalse(title.exists, note)
+        }
+    }
+
+    /// A + B + C + D: the unavailable clip keeps its slot, duration and Total; selecting it shows the
+    /// neutral Preview shell with the single Replace action while Delete stays only the dock trash;
+    /// a healthy clip shows no Replace. Accessibility audit on the unavailable selected screen.
+    @MainActor
+    func testEditorUnavailableClipStaysInPlaceWithShellReplaceAndDockDelete() throws {
+        let app = legacyRecentApp(unavailableArguments("2"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s", "Total includes the unavailable clip")
+        XCTAssertEqual(clip2.frame.width, 44, accuracy: 1); XCTAssertEqual(clip2.frame.height, 78, accuracy: 1, "V4.1 geometry unchanged")
+        XCTAssertLessThan(clip1.frame.maxX, clip2.frame.minX); XCTAssertLessThan(clip2.frame.maxX, clip3.frame.minX)
+        XCTAssertFalse(app.alerts.firstMatch.exists, "no alert on open")
+        // Healthy selection (default = clip 1): no Replace, no shell.
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        expectUnavailableShell(app, present: false, "healthy clip 1")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 1")
+
+        clip2.tap()
+        XCTAssertEqual(clip2.value as? String, "Selected", "unavailable clip selects normally")
+        expectUnavailableShell(app, present: true)
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 2, unavailable")
+        let replace = app.buttons["replaceSelectedClip"], delete = app.buttons["deleteSelectedClip"]
+        XCTAssertTrue(replace.isEnabled)
+        XCTAssertGreaterThanOrEqual(replace.frame.height, 44); XCTAssertGreaterThanOrEqual(replace.frame.width, 44)
+        XCTAssertLessThan(replace.frame.maxY, app.otherElements["editorDock"].frame.minY, "Replace lives in the Preview canvas")
+        XCTAssertTrue(delete.isEnabled, "Delete stays the dock trash")
+        XCTAssertEqual(app.buttons.matching(identifier: "deleteSelectedClip").count, 1, "no second Delete")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == '클립 삭제'")).count, 1)
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "selection is not history")
+        try auditAndCapture(app, name: "editor-unavailable-selected")
+
+        clip3.tap()
+        expectUnavailableShell(app, present: false, "healthy clip 3")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 3")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// E: Replace → picker cancel changes nothing (silent); a non-ready replacement shows the canonical
+    /// typed message and leaves the unavailable clip, selection, Total and history untouched.
+    @MainActor
+    func testEditorReplaceCancelAndNonReadyChangeNothing() throws {
+        let cancel = legacyRecentApp(unavailableArguments("2", mode: "cancel"))
+        cancel.launch()
+        XCTAssertTrue(cancel.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(cancel.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        cancel.buttons["editorClip-2"].tap()
+        expectUnavailableShell(cancel, present: true)
+        cancel.buttons["replaceSelectedClip"].tap()
+        expectLabel(cancel.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(cancel.buttons["editorClip-2"].value as? String, "Selected", "selection unchanged")
+        XCTAssertEqual(cancel.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(cancel.buttons["editorUndo"].isEnabled, "no history")
+        XCTAssertFalse(cancel.alerts.firstMatch.exists, "cancel is silent")
+        expectUnavailableShell(cancel, present: true, "after cancel")
+        XCTAssertTrue(cancel.buttons["replaceSelectedClip"].isEnabled, "ready for the next attempt")
+        cancel.terminate()
+
+        let tooLong = legacyRecentApp(unavailableArguments("2", mode: "tooLong"))
+        tooLong.launch()
+        XCTAssertTrue(tooLong.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(tooLong.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        tooLong.buttons["editorClip-2"].tap()
+        tooLong.buttons["replaceSelectedClip"].tap()
+        XCTAssertTrue(tooLong.alerts["영상이 너무 길어요"].waitForExistence(timeout: 10))
+        XCTAssertTrue(tooLong.alerts.staticTexts["5초 이하의 영상을 선택해주세요."].exists)
+        tooLong.alerts.buttons["확인"].tap()
+        expectLabel(tooLong.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(tooLong.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(tooLong.buttons["editorUndo"].isEnabled)
+        expectUnavailableShell(tooLong, present: true, "after non-ready")
+
+        tooLong.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(tooLong.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: tooLong)
+    }
+
+    /// F + G + H: Replace with a ready 2.0 s source puts the NEW clip in the same slot (selected, Total
+    /// updated, normal thumbnail, Undo enabled); Undo brings the unavailable clip back (shell again,
+    /// Redo enabled); Redo returns the replacement without a picker.
+    @MainActor
+    func testEditorReplaceThenUndoRedo() throws {
+        let app = legacyRecentApp(unavailableArguments("2", mode: "ready"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"]
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        clip2.tap()
+        expectUnavailableShell(app, present: true)
+
+        app.buttons["replaceSelectedClip"].tap()
+        expectLabelEventually(clip2, "Clip 2 of 3, 2.0s", timeout: 10, "replacement occupies the same position with its own duration")
+        expectLabel(clip1, "Clip 1 of 3, 2.0s"); expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        XCTAssertEqual(clip2.value as? String, "Selected", "the new clip is selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 5.0s", "Total uses the replacement's duration")
+        expectUnavailableShell(app, present: false, "after Replace")
+        XCTAssertEqual(app.otherElements["projectEditorPreview"].label, "Preview, selected clip 2")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        try auditAndCapture(app, name: "editor-replace-result")
+
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(clip2.value as? String, "Selected", "Undo re-selects the unavailable clip")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        expectUnavailableShell(app, present: true, "after Undo")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+
+        redo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 2.0s")
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 5.0s")
+        expectUnavailableShell(app, present: false, "after Redo")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// I + J: the unavailable clip reorders through the existing drag path (selection follows it,
+    /// Total unchanged, still unavailable), and Delete / Undo / Redo of it are the ordinary history.
+    @MainActor
+    func testEditorUnavailableClipReorderAndDeleteUndoRedo() throws {
+        let app = legacyRecentApp(unavailableArguments("2"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+
+        dragClip(app, from: 2, toBefore: 1)                       // B A C
+        expectLabel(clip1, "Clip 1 of 3, 3.0s, unavailable")
+        expectLabel(clip2, "Clip 2 of 3, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected", "selection follows the moved clip")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        expectUnavailableShell(app, present: true, "moved clip still unavailable")
+        XCTAssertTrue(undo.isEnabled)
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(clip2.value as? String, "Selected")
+        XCTAssertTrue(redo.isEnabled)
+
+        delete.tap()                                              // A C
+        expectLabel(clip2, "Clip 2 of 2, 1.0s")
+        XCTAssertFalse(clip3.exists)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        expectUnavailableShell(app, present: false, "healthy clip selected after Delete")
+        XCTAssertTrue(undo.isEnabled); XCTAssertFalse(redo.isEnabled, "new edit clears Redo")
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(clip2.value as? String, "Selected", "restored clip re-selected, still unavailable")
+        expectUnavailableShell(app, present: true, "after Undo Delete")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        redo.tap()
+        expectLabel(clip2, "Clip 2 of 2, 1.0s")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// K + L: several unavailable clips are independent (each shows its own shell when selected);
+    /// an all-unavailable Project still opens with every cell, the metadata Total, a selection, the
+    /// shell, Replace and the dock Delete. Accessibility audit on the all-unavailable screen.
+    @MainActor
+    func testEditorMultipleAndAllUnavailableClips() throws {
+        let two = legacyRecentApp(unavailableArguments("1,3"))
+        two.launch()
+        XCTAssertTrue(two.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(two.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(two.buttons["editorClip-1"], "Clip 1 of 3, 2.0s, unavailable")
+        expectLabel(two.buttons["editorClip-2"], "Clip 2 of 3, 3.0s")
+        expectLabel(two.buttons["editorClip-3"], "Clip 3 of 3, 1.0s, unavailable")
+        XCTAssertEqual(two.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(two.alerts.firstMatch.exists, "no modal barrage")
+        expectUnavailableShell(two, present: true, "clip 1 selected by default")
+        two.buttons["editorClip-2"].tap()
+        expectUnavailableShell(two, present: false, "healthy clip 2")
+        two.buttons["editorClip-3"].tap()
+        expectUnavailableShell(two, present: true, "clip 3")
+        two.buttons["deleteSelectedClip"].tap()                    // affects only clip 3
+        expectLabel(two.buttons["editorClip-1"], "Clip 1 of 2, 2.0s, unavailable")
+        expectLabel(two.buttons["editorClip-2"], "Clip 2 of 2, 3.0s")
+        two.terminate()
+
+        let all = legacyRecentApp(unavailableArguments("1,2,3"))
+        all.launch()
+        XCTAssertTrue(all.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(all.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(all.buttons["editorClip-1"], "Clip 1 of 3, 2.0s, unavailable")
+        expectLabel(all.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        expectLabel(all.buttons["editorClip-3"], "Clip 3 of 3, 1.0s, unavailable")
+        XCTAssertEqual(all.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertEqual(all.buttons["editorClip-1"].value as? String, "Selected")
+        expectUnavailableShell(all, present: true, "all unavailable")
+        XCTAssertTrue(all.buttons["replaceSelectedClip"].isEnabled); XCTAssertTrue(all.buttons["deleteSelectedClip"].isEnabled)
+        XCTAssertFalse(all.alerts.firstMatch.exists)
+        try auditAndCapture(all, name: "editor-all-unavailable")
+        // Deleting everything reaches the ordinary valid empty state; the Project is not auto-deleted.
+        for _ in 0..<3 { all.buttons["deleteSelectedClip"].tap() }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: all.buttons["editorClip-1"])], timeout: 3), .completed)
+        XCTAssertEqual(all.staticTexts["projectTotalDuration"].label, "Total duration 0.0s")
+        expectUnavailableShell(all, present: false, "empty Project")
+        XCTAssertEqual(all.otherElements["projectEditorPreview"].label, "Preview, no clip selected")
+
+        all.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(all.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: all)
+    }
+
+    /// M + N: Replace then Reorder, and Replace then Delete — Undo ×2 / Redo ×2 follow chronological
+    /// order (no selective Replace undo).
+    @MainActor
+    func testEditorReplaceWithReorderAndDeleteIsChronological() throws {
+        let app = legacyRecentApp(unavailableArguments("2", mode: "ready"))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let undo = app.buttons["editorUndo"], redo = app.buttons["editorRedo"], delete = app.buttons["deleteSelectedClip"]
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        clip2.tap()
+        app.buttons["replaceSelectedClip"].tap()
+        expectLabelEventually(clip2, "Clip 2 of 3, 2.0s", timeout: 10)                     // A D C
+
+        // M: reorder D to the front, then Undo ×2 / Redo ×2.
+        dragClip(app, from: 2, toBefore: 1)                                                  // D A C
+        expectLabel(clip1, "Clip 1 of 3, 2.0s"); expectLabel(clip2, "Clip 2 of 3, 2.0s")
+        XCTAssertEqual(clip1.value as? String, "Selected")
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 2.0s"); expectUnavailableShell(app, present: false, "A D C")
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable"); expectUnavailableShell(app, present: true, "A B C")
+        XCTAssertFalse(undo.isEnabled); XCTAssertTrue(redo.isEnabled)
+        redo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 2.0s"); expectUnavailableShell(app, present: false, "A D C again")
+        redo.tap()
+        expectLabel(clip1, "Clip 1 of 3, 2.0s"); XCTAssertEqual(clip1.value as? String, "Selected", "D A C again")
+        XCTAssertFalse(redo.isEnabled)
+        undo.tap(); undo.tap()                                                               // back to A B C
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable")
+        redo.tap()                                                                           // A D C
+        expectLabel(clip2, "Clip 2 of 3, 2.0s")
+
+        // N: delete A, then Undo ×2 / Redo ×2.
+        clip1.tap()
+        delete.tap()                                                                         // D C
+        expectLabel(clip1, "Clip 1 of 2, 2.0s"); expectLabel(clip2, "Clip 2 of 2, 1.0s"); XCTAssertFalse(clip3.exists)
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+        undo.tap()
+        expectLabel(clip1, "Clip 1 of 3, 2.0s"); expectLabel(clip2, "Clip 2 of 3, 2.0s")     // A D C
+        undo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 3.0s, unavailable"); expectUnavailableShell(app, present: true, "A B C")
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        redo.tap()
+        expectLabel(clip2, "Clip 2 of 3, 2.0s")                                              // A D C
+        redo.tap()
+        expectLabel(clip1, "Clip 1 of 2, 2.0s"); XCTAssertFalse(clip3.exists)                // D C
+        XCTAssertEqual(app.staticTexts["projectTotalDuration"].label, "Total duration 3.0s")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// O: leave the Editor with the Replace in place → cleanup finalizes the unavailable clip's
+    /// pending row only (file already absent) → the reopened Editor shows the replacement, healthy.
+    /// P: leave with the Replace undone → cleanup removes the replacement's file and finalizes it →
+    /// the reopened Editor shows the unavailable clip again with an empty history.
+    @MainActor
+    func testEditorReopenAfterFinalAndUndoneReplace() throws {
+        let final = legacyRecentApp(Self.cleanupArguments + ["-uiTestEditorAddSelection=ready", "-uiTestUnavailableClips=2"])
+        final.launch()
+        XCTAssertTrue(final.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(final, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0")
+        openSavedProjectEditor(final)
+        XCTAssertTrue(final.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        final.buttons["editorClip-2"].tap()
+        final.buttons["replaceSelectedClip"].tap()
+        expectLabelEventually(final.buttons["editorClip-2"], "Clip 2 of 3, 2.0s", timeout: 10)
+        assertCleanupSummaryStays(final, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "no pass while the Editor is live")
+        leaveEditorToProjects(final)
+        waitForCleanupSummary(final, "cleanup passes=2 removed=0 absent=1 finalized=1 deferred=0", "B: pending + missing → metadata finalized only")
+        openSavedProjectEditor(final)
+        XCTAssertTrue(final.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(final.buttons["editorClip-2"], "Clip 2 of 3, 2.0s")
+        expectUnavailableShell(final, present: false, "replacement is healthy after reopen")
+        final.buttons["editorClip-2"].tap()
+        expectUnavailableShell(final, present: false, "still healthy when selected")
+        XCTAssertEqual(final.staticTexts["projectTotalDuration"].label, "Total duration 5.0s")
+        XCTAssertFalse(final.buttons["editorUndo"].isEnabled); XCTAssertFalse(final.buttons["editorRedo"].isEnabled)
+        try auditAndCapture(final, name: "editor-replace-reopened-final")
+        leaveEditorToProjects(final)
+        leaveProjectsAndRemove(final)
+
+        let undone = legacyRecentApp(Self.cleanupArguments + ["-uiTestEditorAddSelection=ready", "-uiTestUnavailableClips=2"])
+        undone.launch()
+        XCTAssertTrue(undone.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        waitForCleanupSummary(undone, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0")
+        openSavedProjectEditor(undone)
+        XCTAssertTrue(undone.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        undone.buttons["editorClip-2"].tap()
+        undone.buttons["replaceSelectedClip"].tap()
+        expectLabelEventually(undone.buttons["editorClip-2"], "Clip 2 of 3, 2.0s", timeout: 10)
+        undone.buttons["editorUndo"].tap()
+        expectLabel(undone.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertTrue(undone.buttons["editorRedo"].isEnabled, "Redo available: the replacement's file must stay")
+        assertCleanupSummaryStays(undone, "cleanup passes=1 removed=0 absent=0 finalized=0 deferred=0", "no pass while the Editor is live")
+        leaveEditorToProjects(undone)
+        waitForCleanupSummary(undone, "cleanup passes=2 removed=1 absent=0 finalized=1 deferred=0", "D: pending + file → removed, then finalized")
+        openSavedProjectEditor(undone)
+        XCTAssertTrue(undone.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        expectLabel(undone.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(undone.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        undone.buttons["editorClip-2"].tap()
+        expectUnavailableShell(undone, present: true, "unavailable again after reopen")
+        XCTAssertFalse(undone.buttons["editorUndo"].isEnabled); XCTAssertFalse(undone.buttons["editorRedo"].isEnabled)
+        leaveEditorToProjects(undone)
+        leaveProjectsAndRemove(undone)
+    }
+
+    /// Q: a persistence failure during Replace rolls everything back (unavailable clip, selection,
+    /// Total, no history) behind the generic Replace alert; more than one returned source is also a
+    /// failure with the same rollback.
+    @MainActor
+    func testEditorReplaceFailureRollsBackWithoutHistory() throws {
+        let save = legacyRecentApp(unavailableArguments("2", mode: "ready", extra: ["-uiTestEditorSaveFailure"]))
+        save.launch()
+        XCTAssertTrue(save.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(save.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        save.buttons["editorClip-2"].tap()
+        save.buttons["replaceSelectedClip"].tap()
+        XCTAssertTrue(save.alerts["클립을 교체하지 못했어요"].waitForExistence(timeout: 10))
+        XCTAssertTrue(save.alerts.staticTexts["다시 시도해주세요. 프로젝트는 그대로 있어요."].exists)
+        save.alerts.buttons["확인"].tap()
+        expectLabel(save.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertEqual(save.buttons["editorClip-2"].value as? String, "Selected")
+        XCTAssertEqual(save.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(save.buttons["editorUndo"].isEnabled, "no history")
+        expectUnavailableShell(save, present: true, "after rollback")
+        XCTAssertTrue(save.buttons["replaceSelectedClip"].isEnabled)
+        try auditAndCapture(save, name: "editor-replace-failed")
+        save.terminate()
+
+        let two = legacyRecentApp(unavailableArguments("2", mode: "ready2"))
+        two.launch()
+        XCTAssertTrue(two.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(two.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        two.buttons["editorClip-2"].tap()
+        two.buttons["replaceSelectedClip"].tap()
+        XCTAssertTrue(two.alerts["클립을 교체하지 못했어요"].waitForExistence(timeout: 10), "more than one source is a failure")
+        two.alerts.buttons["확인"].tap()
+        expectLabel(two.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
+        XCTAssertFalse(two.buttons["editorClip-4"].exists, "nothing appended either")
+        XCTAssertEqual(two.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")
+        XCTAssertFalse(two.buttons["editorUndo"].isEnabled)
+
+        two.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(two.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: two)
+    }
+
     // MARK: - Phase 5 STEP 7: production Camera → 프로젝트 routing (no DEBUG routing arguments)
 
     @MainActor
@@ -2133,6 +2527,14 @@ final class MellowUITests: XCTestCase {
     private func expectLabel(_ element: XCUIElement, _ expected: String, _ note: String = "") {
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed,
+                       "label is \(element.label) instead of \(expected) \(note)")
+    }
+
+    /// Same as `expectLabel` with a caller-chosen timeout (fixture media generation + validation).
+    @MainActor
+    private func expectLabelEventually(_ element: XCUIElement, _ expected: String, timeout: TimeInterval, _ note: String = "") {
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: timeout), .completed,
                        "label is \(element.label) instead of \(expected) \(note)")
     }
 

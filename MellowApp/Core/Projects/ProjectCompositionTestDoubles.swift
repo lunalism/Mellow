@@ -67,9 +67,18 @@ final class FakeProjectMediaSelector: ProjectMediaSelecting {
 
     /// Every pre-copy admission the fake performed: the incoming byte size it asked for.
     private(set) var admittedBytes: [Int64] = []
+    /// The selection limit each session was asked for (nil = unlimited), in call order.
+    private(set) var selectionLimits: [Int?] = []
 
     func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating) async -> ProjectMediaSelectionOutcome {
+        await selectVideos(into: workspace, store: store, admission: admission, selectionLimit: nil)
+    }
+
+    /// The scripted fixtures are returned as-is whatever the limit: a Replace test that scripts two
+    /// fixtures proves the MODEL refuses the cardinality, not the fake.
+    func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome {
         selectionCount += 1
+        selectionLimits.append(selectionLimit)
         if let pendingScript {
             script = await pendingScript.value
             self.pendingScript = nil

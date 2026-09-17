@@ -107,6 +107,32 @@ struct VlogProject: Identifiable, Equatable, Sendable {
         updatedAt = appendedAt
     }
 
+    // MARK: - Replace (ADR-040)
+
+    /// Replaces the active Clip `oldID` with `replacement` in ONE logical mutation (ADR-040, Model B):
+    /// the old Clip leaves the timeline through the ordinary deletion rules (durable pending, anchors
+    /// recorded, metadata and media untouched) and the replacement — a NEW identity, already
+    /// materialised — takes its exact logical index; `sortOrder` is renormalised 0…n-1 and every
+    /// other active identity, order and pending Clip is unchanged. Rejected without mutating anything
+    /// when `oldID` is not active, the replacement belongs to another Project, is pending-deleted, or
+    /// collides with any durable identity (including `oldID` itself).
+    mutating func replaceClip(id oldID: UUID, with replacement: VlogClip, replacedAt: Date = .now) throws {
+        guard let index = clips.firstIndex(where: { $0.id == oldID }) else {
+            throw DomainValidationError.clipNotFound
+        }
+        guard replacement.projectID == id else {
+            throw DomainValidationError.clipProjectMismatch
+        }
+        guard !replacement.isPendingDeletion, !durableClips.contains(where: { $0.id == replacement.id }) else {
+            throw DomainValidationError.clipDeletionStateMismatch
+        }
+        try deleteClip(id: oldID, deletedAt: replacedAt)
+        var reinstated = clips
+        reinstated.insert(replacement, at: index)
+        clips = try reinstated.enumerated().map { try $1.assigningSortOrder($0) }
+        updatedAt = replacedAt
+    }
+
     // MARK: - Logical deletion (ADR-021)
 
     /// Logically deletes an active Clip: it leaves the timeline at once (remaining `sortOrder`

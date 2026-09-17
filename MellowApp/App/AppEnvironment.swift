@@ -27,6 +27,9 @@ final class AppEnvironment {
     let projectStorageGate: any ProjectStorageGating
     /// Editor clip thumbnails (ARCHITECTURE §56): Project-owned committed media only, memory cache.
     let clipThumbnails: any ClipThumbnailProviding
+    /// Editor derived Clip availability (ADR-040): the read-only committed-media resolver, or the
+    /// deterministic fake on the seeded UI-test Editor routes (whose Clips never have files).
+    let clipAvailability: any ClipAvailabilityChecking
     /// Production Select-Clips boundary (system Photos picker) hosted by the Projects screen.
     let photosVideoSelector: PhotosVideoSelector
     /// Production Add-Clips picker hosted by the Editor (ADR-037); its own instance so the Projects
@@ -321,11 +324,21 @@ final class AppEnvironment {
                 script[seededEditorClipIDs[position - 1]] = .failure(.mediaMissing)
             }
             clipThumbnails = FakeClipThumbnailProvider(script: script)
+            // `-uiTestUnavailableClips=<1-based positions>`: exactly those seeded Clips (by identity,
+            // resolved at launch) are structurally unavailable; every other Clip — including a Clip
+            // added or created by Replace during the test — is available. Never Release.
+            let positions = arguments.first { $0.hasPrefix("-uiTestUnavailableClips=") }?
+                .replacingOccurrences(of: "-uiTestUnavailableClips=", with: "")
+                .split(separator: ",").compactMap { Int($0) } ?? []
+            let unavailable = Set(positions.compactMap { seededEditorClipIDs.indices.contains($0 - 1) ? seededEditorClipIDs[$0 - 1] : nil })
+            clipAvailability = FakeClipAvailabilityChecker(unavailableClipIDs: unavailable)
         } else {
             clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
+            clipAvailability = CommittedMediaAvailabilityChecker(resolver: projectMediaStore)
         }
         #else
         clipThumbnails = ClipThumbnailService(resolver: projectMediaStore)
+        clipAvailability = CommittedMediaAvailabilityChecker(resolver: projectMediaStore)
         #endif
 
         // ADR-039 deferred physical cleanup. The thumbnail service is the only media reader today and
@@ -383,6 +396,7 @@ final class AppEnvironment {
         Task { @MainActor [weak self] in
             #if DEBUG
             await self?.writeUITestRecoveryFixtures()
+            await self?.removeUITestActiveClipMediaIfRequested()
             #endif
             var report = await recovery.sweepAbandonedWorkspaces()
             _ = await cleanup.reconcileAll()
@@ -683,6 +697,37 @@ final class AppEnvironment {
             return
         }
         uiTestRecoveryFixtures = fixtures
+    }
+
+    /// ADR-040 physical-review fixture primitive (DEBUG only), `-uiTestRemoveActiveClipMedia=<clipUUID>`:
+    /// removes ONLY the canonical committed media file of that one ACTIVE Clip so the Editor derives
+    /// it as unavailable, and never touches metadata. The Clip must exist, be active in its Project
+    /// (found by identity across the durable Projects) and reference exactly its canonical path;
+    /// otherwise nothing happens. Built on the same exact-match, symlink-refusing store primitive
+    /// cleanup uses — no directory removal, no container wipe, no Baseline identity hard-coded.
+    /// Runs once at startup before maintenance (12A / 12B never touch an active Clip either way).
+    private func removeUITestActiveClipMediaIfRequested() async {
+        guard let raw = arguments.first(where: { $0.hasPrefix("-uiTestRemoveActiveClipMedia=") })?
+                .replacingOccurrences(of: "-uiTestRemoveActiveClipMedia=", with: ""),
+              let clipID = UUID(uuidString: raw) else { return }
+        let label = String(clipID.uuidString.prefix(8))
+        guard let store = projectMediaStore as? ProjectMediaStore,
+              let projects = try? projectRepository.recentProjects(),
+              let project = projects.first(where: { $0.clips.contains { $0.id == clipID } }),
+              let clip = project.clips.first(where: { $0.id == clipID }) else {
+            MellowLog.app.error("UI-test unavailable fixture refused: clip=\(label, privacy: .public) is not an active Clip of any Project")
+            return
+        }
+        guard let canonical = try? ProjectMediaStore.committedMediaPath(projectID: project.id, clipID: clipID), clip.mediaRelativePath == canonical else {
+            MellowLog.app.error("UI-test unavailable fixture refused: clip=\(label, privacy: .public) path is not canonical")
+            return
+        }
+        do {
+            try await store.removeCommittedMedia(canonical, projectID: project.id, clipID: clipID)
+            MellowLog.app.info("UI-test unavailable fixture applied: clip=\(label, privacy: .public) media removed, metadata kept active")
+        } catch {
+            MellowLog.app.error("UI-test unavailable fixture failed: clip=\(label, privacy: .public) \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// Writes the recorded fixtures; awaited by the startup maintenance Task before its first step.

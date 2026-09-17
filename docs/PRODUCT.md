@@ -1235,7 +1235,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - 세로/가로 프로젝트 선택 UI
 - 프로젝트 자동 표시 이름의 구체적인 날짜 및 시간 Format
 - Draft 저장 실패 처리 및 자동 복구의 세부 정책
-- Unavailable Clip의 정확한 Visual Design과 Replace UI Flow
+- Unavailable Clip의 정확한 Visual Design과 Replace UI Flow — Resolved by ADR-040 / DESIGN 19절 STEP 13
 - Replacement가 동일 Clip Identity를 유지할지 여부와 Trim, Framing, Transform, Thumbnail Metadata의 Preserve / Reset 및 사용자 Reset 안내 정책
 - Project Metadata Corruption의 정확한 Recovery Algorithm과 안전한 Failure State의 UI Copy
 - Representative Thumbnail의 정확한 frame timestamp, Placeholder Visual, Image Format / Dimensions, Cache Directory와 Eviction / Retry Policy

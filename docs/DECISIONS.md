@@ -1340,6 +1340,8 @@ ADR-020의 Valid Artifact와 Partial / Incomplete Output 분류 및 Recovery Can
 
 **Partial Supersession:** ADR-033에 따라 V1은 Recording으로 Project를 만들지 않고 편집 가능한 저장 Project를 최대 하나만 유지하므로 0 Clip Project는 V1 정상 흐름에서 생성되지 않는다. Unavailable Clip / Replace 정책은 유지하며 아래 원문은 당시 기준의 기록이다.
 
+**Implementation Note (Phase 5 STEP 13, ADR-040, 2026-09-16):** Phase 5의 Unavailable은 "Active Clip Metadata + Project-owned Committed 파일 없음 / 해석 불가"로만 좁혀 구현되었고(Corrupt / Unreadable 기존 파일은 이후 Decode Phase), 영속 Flag 없이 Editor가 매 Load마다 파생한다. Replace는 System PhotosPicker 1개 선택 → 새 Clip Identity(Model B)로 같은 논리 Slot을 채우며 Editor Session History에 참여한다. "Replacement Metadata Migration Decision"과 "Replacement Clip Identity Implementation" Pending은 ADR-040으로 해결되었다.
+
 ## Context
 
 0 Clip Draft는 정상 사용자 Workflow 중 발생할 수 있다.
@@ -2007,7 +2009,7 @@ Current Logical Clip Order → 첫 Healthy / Usable Clip → Representative Sour
 
 ## Still Pending (이 ADR이 확정하지 않음)
 
-- Unavailable-Clip Replacement Metadata Migration: 기존 Clip ID 유지 vs 새 Clip ID, Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration 세부, 사용자-facing Reset 전달 — Replacement 구현 직전까지 Pending. 이는 Projects Entry / Editor Shell / 기본 Thumbnail / Selection / Reorder / Delete·Undo / Project-aware Camera Content Access를 Block하지 않고, Unavailable-media Replacement 구현 Slice만 Block한다.
+- Unavailable-Clip Replacement Metadata Migration: 기존 Clip ID 유지 vs 새 Clip ID, Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration 세부, 사용자-facing Reset 전달 — **Resolved by ADR-040 (2026-09-16):** 새 Clip ID(Model B), Trim Reset(`trimStart` 0 / `trimDuration` = Source), Framing nil, Thumbnail은 새 Identity로 정상 생성, Phase 5에는 사용자에게 알릴 기존 Trim / Framing이 없으므로 Reset 안내 없음. §5 Unavailable Clip Structure의 Presentation은 DESIGN §19 STEP 13 항목으로 확정되었다.
 - 완전한 임의 Photos Import / Normalization(Phase 6), Trim / Framing(Phase 7), 실제 Effective-result Playback / Full Vlog Preview(Phase 8), Export(Phase 9).
 - Undo Window Duration, 정확한 Localization Copy, 정확한 Snackbar / Sheet Visual Tuning.
 
@@ -2256,8 +2258,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Automatic Skip of Unavailable Clip — Rejected by ADR-026.
 - Automatic Delete of Unavailable Clip or All-unavailable Project — Rejected by ADR-026.
 - User-controlled Replace — Accepted by ADR-026.
-- Exact Unavailable Visual과 Replace UI — Pending, Owning UX Gate.
-- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Migration 및 Reset Communication — Pending, Before Replacement Implementation.
+- Exact Unavailable Visual과 Replace UI — Resolved 2026-09-16 by ADR-040 / DESIGN 19절 STEP 13.
+- Replacement Clip Identity와 Trim, Framing, Transform, Thumbnail Metadata Migration 및 Reset Communication — Resolved 2026-09-16 by ADR-040 (Model B 새 Identity, Trim / Framing Reset, 새 Thumbnail).
 - Project Metadata Recovery Algorithm과 Exact Corrupted-project UI / Copy — Pending.
 
 ### Capture-First V1 (ADR-033)
@@ -2270,7 +2272,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
 - Editor Add Clip의 Acquisition Source — Resolved 2026-09-15 by ADR-037: System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다.
 - Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034: 저장 Project 없으면 Session-only 피드백 유지, 있으면 Project Representative Thumbnail + Editor 진입으로 승격(Raw Playback 아님).
-- Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Pending, Replacement 구현 직전(ADR-034가 다시 Open으로 만들지 않음).
+- Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Resolved 2026-09-16 by ADR-040.
 - Multi-project 복원 시점 — Pending, Post-V1 Product Decision.
 
 ### Portrait-Only V1 Transition
@@ -2319,6 +2321,7 @@ Phase 5 STEP 10 최초 구현은 Delete 전용 Bottom Snackbar와 "가장 최근
 - **Delete-only Snackbar, Timer 기반 Undo Window, "가장 최근 삭제 한 건" 제한은 폐기**한다. Delete는 여전히 확인 없이 즉시 적용되며 Undo가 안전 장치다.
 - **Durable Pending Deletion은 유지**한다: Delete는 Clip을 Active Timeline에서 제거하고 같은 Identity / Media / Metadata를 Pending-deleted로 영속화하며, Session History 안에서 Undo / Redo가 그 Clip을 같은 Identity로 오간다.
 - **Implementation Note (STEP 12A, ADR-039):** "Session이 끝난 뒤의 Pending Deletion만 Cleanup 후보"는 구현에서 "Editor Route가 Stack에 있는 동안은 그 Project의 어떤 Pending Clip도 물리 정리하지 않는다"로 확정되었다. Session 안에서 Redo가 사라져 논리적으로 도달 불가능해진 Clip도 Session 경계(Back)까지 파일이 유지되며, Editor는 Cleanup을 위해 어떤 History도 유지하지 않는다.
+- **Replace(ADR-040)도 History-capable Mutation이다(STEP 13):** 성공한 Replace 한 번 = History Entry `.replace`(`클립 교체`) 한 개. Before State = B Active(Unavailable) / D 없음 / Selection B, After State = B Pending / D Active / Selection D. Undo Replace는 `commitHistory`의 기존 "대상 Snapshot이 모르는 Durable Clip은 Pending으로 유지" 규칙으로 D를 Pending-deleted(파일 유지)로 남기고 B를 같은 Identity로 되살리며, Redo는 같은 D UUID / Path / 파일을 Active로 되돌린다(Picker / 복사 없음). Undo 뒤 새 편집으로 Redo가 사라진 D는 Session 경계까지 Pending으로 남아 STEP 12A가 회수한다.
 - **Add Clips(ADR-037)도 History-capable Mutation이다(STEP 11):** 한 Picker Batch = 한 History Entry(`.add`). Add를 Undo하면 새 Clip은 Active Timeline에서 빠지되 물리 삭제되지 않고 같은 Pending-deleted(Inactive, Durable) 상태로 남아 Redo가 같은 UUID / Media Path / 파일 / Metadata를 되살린다(재복사 / 재선택 / 새 UUID 없음). History 복원은 현재 Project가 소유하지만 대상 State가 모르는 Clip을 절대 잊지 않고 Pending-deleted로 유지한다(Repository Omission Guard 유지). Undo Add 뒤 새 편집이나 Session 종료로 Redo가 사라진 Clip은 Durable Pending으로 남아 이후 Physical Cleanup Slice의 대상이 된다. `finalizeDeletedClip`(명시적 물리 Metadata 제거)은 Production에서 호출하지 않으며 Media 삭제 / Cleanup Scheduler / Timer는 없다. Session History에서 도달 가능한 Delete의 Media는 복구 가능해야 하고, Session이 끝난 뒤의 Pending Deletion만 이후 Cleanup Slice의 후보가 된다(ADR-021 안전 조건 유지).
 
 ## Consequences
@@ -2376,7 +2379,7 @@ STEP 10 / 11 이후 Editor의 Delete와 Undo Add는 Clip을 Durable Pending(`Vlo
 - **Metadata 무변경 · Failure Isolation · Idempotent.** Recovery는 어떤 Metadata도 쓰지 않는다(`updatedAt` 불변, Finalize 호출 없음). 후보별 do / catch — 실패는 보존 + Count + Log + 다음 실행 Retry, 사용자 표시 없음. 두 번째 실행은 아무것도 만들거나 다시 지우지 않는다. Crash 도중(파일 삭제 전 / 후, Directory 부분 삭제, Workspace 부분 삭제)의 어떤 상태도 Filesystem 자체가 Retry State이므로 Durable Marker가 필요 없다.
 - **CaptureStaging 절대 제외.** 12B는 `Projects/`와 `ProjectWorkspace/`의 직속 자식(+ `Projects/<P>/Media/` 직속 자식)만 열거한다. `CaptureStaging/`, `tmp/ProjectMediaTransfer`, Photos, Container의 나머지는 열거조차 하지 않으며 `RecordingRecovery`(Phase 4)가 CaptureStaging의 유일한 소유자로 남는다.
 - **STEP 11 즉시 Rollback은 그대로.** In-process Add 실패는 여전히 즉시 자기 파일을 지운다; 12B는 Process가 Rollback / Commit 전에 죽은 경우만 다룬다. Safe Atomic Replacement의 Live A 제거도 `compose` 소유 그대로이며 12B는 이후 시작에서 남은 Directory만 회수한다.
-- **Unavailable Media 경계.** Row + Durable Clip + 파일 없음 = Unavailable Media(다음 Slice), 12B 미접촉. Row + Durable Clip + 파일 = 참조, 보존. Row + 참조 없음 + Canonical 파일 = Orphan 후보. Row 없음 + Canonical Directory = Orphan Directory 후보.
+- **Unavailable Media 경계.** Row + Durable Clip + 파일 없음 = Unavailable Media(STEP 13, ADR-040 — Active면 Editor가 Unavailable로 파생, Pending이면 12A가 Metadata만 Finalize), 12B 미접촉. Row + Durable Clip + 파일 = 참조, 보존. Row + 참조 없음 + Canonical 파일 = Orphan 후보. Row 없음 + Canonical Directory = Orphan Directory 후보.
 - **Diagnostics.** `ProjectStartupRecoveryReport`(Workspace / Directory / Media 제거·실패, 참조 보존, Noncanonical 보존, Live Skip Count)는 Test / DEBUG 전용이며 `-uiTestCleanupDiagnostics` Overlay에 합쳐진다. DEBUG Seam: `-uiTestSeedOrphanMedia` / `-uiTestSeedOrphanProjectDir` / `-uiTestSeedAbandonedWorkspace` / `-uiTestSeedNoncanonicalFixtures` / `-uiTestRemoveNoncanonicalFixtures` / `-uiTestRecoveryDelay=<ms>` / `-uiTestCrashAfterAddMaterialize`(Mellow Root 안에서만, Production UI 노출 없음).
 
 ## Consequences
@@ -2389,3 +2392,41 @@ STEP 10 / 11 이후 Editor의 Delete와 Undo Add는 Clip을 Durable Pending(`Vlo
 ## Non-goals
 
 - Orphan / Workspace Sweep(STEP 12B), Unavailable Replace UI, Representative Thumbnail, Playback / AVPlayer, Trim / Framing / Text / Sticker / Full Preview / Export, Server / Background Scheduler, Storage-management UX.
+
+---
+
+# ADR-040 — Unavailable Clip and Replace Semantics
+
+**Date:** 2026-09-16
+**Status:** Accepted
+
+**Clarifies / Extends:** ADR-026(Unavailable Clip / Replace 정책), ADR-034 §5(Unavailable Clip Structure)와 "Still Pending — Replacement Metadata Migration", ADR-021 / ADR-038의 Durable Pending Deletion + Session History, ADR-037의 Editor Acquisition Boundary, ADR-039의 "Active + File 없음 ≠ Cleanup"을 Phase 5 STEP 13의 실제 구현 계약으로 확정한다. 기존 ADR을 대체하지 않으며 역사적 기록을 다시 쓰지 않는다.
+
+## Context
+
+STEP 12A / 12B 이후 Editor는 Pending Clip의 물리 정리와 Orphan 회수를 갖췄지만, "Active Clip인데 Project-owned 파일이 없다"는 상태는 ADR-039 §5가 명시적으로 미접촉으로 남긴 채 사용자에게 Thumbnail 실패 Placeholder(`film`)로만 보였다. ADR-026 / ADR-034는 Unavailable Clip이 위치를 유지하고 사용자가 Replace / Delete할 수 있어야 한다고 정했지만 Replacement Identity(같은 Clip ID vs 새 ID), Trim / Framing / Thumbnail 이전, 정확한 Presentation은 Pending Gate였다. Design Review에서 아래 결정이 승인되었다.
+
+## Decision
+
+1. **Unavailable은 파생 상태이며 영속하지 않는다.** SwiftData Flag / Migration 없음. `ProjectEditorModel`이 `ClipAvailabilityChecking`(Production: `CommittedMediaAvailabilityChecker` = `ProjectMediaStore`의 Read-only `committedMediaURL(for:)` Wrapper)으로 Editor Load와 Active Clip 집합이 바뀌는 모든 편집(Add / Delete / Undo / Redo / Replace) 뒤에 Active Clip마다 재파생한다(`availabilityByClipID`, Generation + Clip Identity / Media Path Guard로 Stale 결과 차단). Reorder / Selection만으로는 재평가하지 않는다. Timer / Polling / Directory Scan / AVAsset Decode / Photos 조회 없음. `repository.project(id:)`는 파일 유무와 무관하게 성공한다.
+2. **Phase 5 Unavailable 범위 = Committed 파일 없음 / 해석 불가만.** Resolver의 문서화된 계약(`mediaMissing`, `pathEscapesRoot`)만 Unavailable로 분류하고 그 밖의 예기치 않은 오류는 보존 방향(Available)으로 처리한다. 존재하지만 Corrupt / AVAsset-unreadable / Decode 실패인 파일은 이 Slice에서 Unavailable이 아니며(이후 Playback / Decode Phase), 기존 파일의 Thumbnail 생성 실패는 기존 중립 Thumbnail-failure Presentation(`.unavailable`, `film`)을 그대로 쓴다 — 구조적 Unavailable(`.mediaUnavailable`, `video.slash`)과 분리된 상태다.
+3. **Active Unavailable Clip의 구조적 의미.** Active로 남고, 정확한 논리 위치를 유지하며, Metadata `trimDuration`으로 Project Total에 계속 포함되고, 선택 / Reorder(STEP 9 경로 그대로) / History 참여가 가능하다. 절대 자동 삭제 / Skip / 대체 / Pending 전환 / Finalize / 12A·12B Cleanup / 자동 Project Rewrite를 하지 않는다. 알려진 Unavailable Clip에는 Thumbnail을 요청하지 않으며(Retry Storm 방지) 늦게 도착한 Thumbnail 결과가 Unavailable을 Ready로 바꿀 수 없다.
+4. **Presentation(DESIGN §19 STEP 13).** Timeline Cell은 44 × 78 Geometry / 위치 / Duration Tag / Selected Outline을 유지하고 중립 `video.slash` Glyph만 다르다(빨간 처리 없음, Cell 안 Text 없음, Accessibility Label `Clip N of M, X.Xs, unavailable`). 선택된 Clip이 Unavailable이면 기존 Full Preview Canvas에 중립 Shell — `video.slash`, Title `클립을 사용할 수 없어요`, Message `파일을 찾을 수 없어요.`, Primary `클립 교체`(44pt Target, Workspace 일관 Capsule) — 를 보인다. Alert / Modal / 빨간 Card 없음. Delete는 기존 Dock Trash 하나뿐이며 Preview에 두 번째 Delete를 두지 않는다. Healthy Clip은 Replace를 노출하지 않는다.
+5. **Replace 취득 = System PhotosPicker, 정확히 1개 Video.** Editor의 기존 Acquisition Stack(ADR-037: Editor 전용 `PhotosVideoSelector` Session, Pre-copy Admission, `Phase5ReadyMediaValidator`, `ProjectStorageGate`, `ProjectMediaStore` Workspace / Materialization, `ProjectClipAppendCoordinator.prepareClips`)을 그대로 재사용하며 두 번째 Import 시스템 / 새 Reserve를 만들지 않는다. 하나의 Picker Host가 Add(무제한)와 Replace(`maxSelectionCount` 1)를 Session 단위 Selection Limit으로 구분하고, Model이 반환 개수를 다시 검증한다(1개 초과 = 실패). Camera는 Replace Source가 아니며 Broad Photos 권한은 없다. Non-ready Source(5초 초과 등)는 Add / Select Clips와 같은 Typed Copy를 쓴다.
+6. **Replace Identity = Model B(새 Clip).** `A B(unavailable) C` → Replace → `A D C`. `VlogProject.replaceClip(id:with:)`가 하나의 Domain Mutation으로 B를 기존 Deletion 규칙(Anchor 기록, Metadata / Media 불변)으로 Durable Pending에 옮기고 D(`id != B.id`, 같은 `projectID`, `sourceKind = .imported`, `sourceDuration = trimDuration = Source Duration`, `trimStart = 0`, `framing = nil`, Canonical `Projects/<pid>/Media/<D>.mov`)를 B의 정확한 Index에 넣은 뒤 `sortOrder`를 0…n-1로 정규화한다. 다른 Active Identity / 순서 / 기존 Pending Clip은 변하지 않는다. 잘못된 oldID, 다른 Project, Identity 충돌(oldID 포함), Pending 상태의 Replacement는 무변경으로 거부한다. 근거: Clip UUID는 Project-owned Canonical Media Path와 강하게 묶여 있어 새 UUID를 써야 기존 History / Pending Retention / 12A / 12B / Thumbnail Identity가 숨은 Media Stash나 Same-path 충돌 없이 그대로 동작한다.
+7. **Replace는 일반 Editor History에 참여한다(ADR-038).** 성공 1회 = `.replace` Entry 1개(`클립 교체`), Autosave + Read-back 1회, Selection B → D. Undo: `A B(unavailable) C`, D는 Durable Pending(파일 유지), Selection B, Total은 B Metadata로 복귀, Picker / 복사 없음. Redo: 같은 D UUID / Path / 파일, B Pending, Selection D, Thumbnail Cache 재사용. Undo 뒤 새 편집은 Redo를 버리고 D는 Session 동안 Pending으로 남는다. 시간순 LIFO만 있으며 선택적 Replace Undo는 없다.
+8. **Media Lifetime = Pending Retention + STEP 12A / 12B.** Session 중에는 어느 쪽 파일도 지우지 않는다. Editor 종료 시 Final State가 Replace면 12A가 B(Pending + 파일 없음)의 Metadata만 Finalize하고 D는 Active로 남는다; Undo된 채 종료면 12A가 D 파일 삭제 → Finalize하고 B는 Active Unavailable로 남는다. D Materialize 뒤 Commit 전에 Process가 죽으면 기존 12B가 Row 없는 D 파일을 회수한다. 새 Cleanup 메커니즘 없음.
+9. **실패 Atomicity.** Picker Cancel / Transfer 실패 / Invalid / Preparation 필요 / Storage 부족 / Materialize 실패 / Domain 거부 / Persist 실패 / Read-back 불일치 — 모든 경우 B는 정확히 이전 그대로(위치 / Metadata / Total / Selection), History 무변경, Repository Update 0회, 기존 Media 불변이며 이 Operation이 만든 D 파일만 즉시 제거한다. Generic 실패 Copy: `클립을 교체하지 못했어요` / `다시 시도해주세요. 프로젝트는 그대로 있어요.` / `확인`.
+10. **Transaction 직렬화.** Add와 Replace는 하나의 `acquisitionMode`(`.add` / `.replace(clipID)`)를 공유한다. 진행 중에는 Add / Delete / Reorder / Undo / Redo / 두 번째 Replace가 거부되어 Picker가 두 번 뜨지 않는다. Selection 변경은 막지 않으며 Replace 대상은 탭 시점의 Clip Identity다.
+11. **DEBUG Seam / 실기기 Fixture.** `-uiTestUnavailableClips=<1-based positions>`는 Seeded Editor Route에서 해당 Clip Identity만 Unavailable로 파생하는 Fake Checker다(기존 Fixture는 기본 Available). `-uiTestRemoveActiveClipMedia=<clipUUID>`는 실기기 Fixture 전용 Exact-path Primitive로, 명시된 UUID가 어떤 Project의 Active Clip이고 Path가 Canonical과 완전히 일치할 때만 그 파일 하나를 `removeCommittedMedia`로 제거하며 Metadata를 건드리지 않는다. Directory 제거 / Container Wipe(`--remove-existing-content`) / Baseline ID Hard-code는 금지다.
+
+## Consequences
+
+- Unavailable Clip이 있어도 Project는 항상 열리고 Healthy Clip 편집은 영향을 받지 않으며, 사용자는 위치를 잃지 않고 Replace 또는 Delete로 직접 복구한다.
+- Replace가 Add / Delete / Undo / Redo / Cleanup / Recovery와 같은 Domain / History / Media Lifecycle 위에서 동작해 별도 Stash나 Cleanup 경로가 생기지 않는다.
+- `ClipThumbnailPresentation`에 `.mediaUnavailable`이 추가되어 Thumbnail 실패와 구조적 Unavailable이 UI / Accessibility에서 구분된다.
+- Corrupt / Unreadable 기존 파일의 사용자 표현은 이후 Decode Phase의 결정으로 남는다.
+
+## Non-goals
+
+- Decode-level Corrupt / Unreadable 구조적 분류, Playback / AVPlayer, Trim / Framing / Text / Sticker UI, Full Preview / Export, Storage-pressure Cleanup, Broad Photos 권한, Camera를 Replace Source로 사용, 여러 Unavailable Clip의 Batch Replace, Representative Thumbnail Wiring.

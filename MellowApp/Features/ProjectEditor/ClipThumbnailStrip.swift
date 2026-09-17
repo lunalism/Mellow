@@ -513,6 +513,10 @@ private struct ClipTimelineCell: View {
             case .unavailable:
                 // Neutral fallback in the same slot and geometry; nothing here reads as an error.
                 Image(systemName: "film").font(.body).foregroundStyle(EditorWorkspace.secondaryText)
+            case .mediaUnavailable:
+                // Structurally missing media (ADR-040): same geometry and position, a distinct neutral
+                // glyph, no destructive colour, no text in the tiny cell. Selection outline unchanged.
+                Image(systemName: "video.slash").font(.body).foregroundStyle(EditorWorkspace.secondaryText)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -533,6 +537,7 @@ private struct ClipTimelineCell: View {
         case .ready: break
         case .loading: label += ", loading"
         case .unavailable: label += ", thumbnail unavailable"
+        case .mediaUnavailable: label += ", unavailable"
         }
         return label
     }

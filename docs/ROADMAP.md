@@ -1523,6 +1523,8 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 
 - **Startup Orphan Media + Workspace Recovery — 구현 2026-09-16 (Phase 5 STEP 12B, ADR-039 Implementation Note, Physical Review Pending):** `ProjectStartupRecoveryCoordinator`가 App 시작 Maintenance(Workspace Sweep → 12A `reconcileAll` → Orphan Recovery, 하나의 Task, Camera 무대기)에서만 Row 없는 Canonical `Projects/<P>/` Directory 전체(삭제 직전 Row 부재 재확인), 존재하는 Project의 `Media/` 직속 Canonical `<UUID>.mov` 중 Active + Pending 어느 Durable Clip에도 ID / Path로 참조되지 않는 파일, `liveWorkspaceIDs`에 없는 Canonical `ProjectWorkspace/<op>/`를 회수한다. `ProjectMediaLayout`이 인정하지 않는 모든 Object(비 UUID 이름, 다른 확장자 / 철자, 미래 Subdirectory, Sidecar, Symlink)는 보존 + Log; CaptureStaging / tmp / Photos는 열거조차 하지 않는다. Metadata 무변경, Clip / Directory별 실패 격리, Idempotent, Live Editor Session Project Skip. **다음 Phase-5 Slice: Unavailable Media / Replace(ADR-026) — 12B는 Unavailable UI를 다루지 않는다.**
 
+- **Unavailable Clip + User-driven Replace — 구현 2026-09-16 (Phase 5 STEP 13, ADR-040, Physical Review Pending):** Project-owned Committed 파일이 없는 Active Clip을 Editor가 매 Load / Active-set 변경마다 파생(`ClipAvailabilityChecking`, 영속 Flag 없음)해 같은 위치 / Total / 선택 / Reorder / History를 유지한 채 `video.slash` Cell + Preview Shell(`클립을 사용할 수 없어요` / `파일을 찾을 수 없어요.` / `클립 교체`)로 보인다. Replace는 System PhotosPicker 1개 Video → 기존 Add Acquisition Stack → `VlogProject.replaceClip`(새 Identity가 같은 Slot, 원 Clip은 Durable Pending) → `.replace` History Entry 1개이며 Undo / Redo · 12A / 12B Media Lifetime · 실패 Atomicity를 기존 경로로 완결한다. Corrupt / Unreadable 기존 파일, Playback, Representative Thumbnail Wiring, Camera Content-slot 승격은 시작하지 않았다.
+
 ADR-030에 따라 Ordered Thumbnail Strip의 Single Tap은 선택, Long Press + Drag는 Reorder이며 Move Earlier / Move Later 같은 Non-drag Accessibility 대안을 제공한다.
 
 Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 연결하고 같은 Persisted Project의 Editor Shell을 구성하며 큰 Preview 영역의 실제 Playback은 기존 Phase 7–8 경계를 따른다.
@@ -1568,7 +1570,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 - Snackbar / Toast 등 Undo를 표시할 UI Surface와 Presentation 구조 — Resolved by ADR-034(Transient Bottom Snackbar), **Superseded by ADR-038: Navigation Bar 우상단 상시 Undo / Redo Session History**.
 - Project Duration과 Add Clip Action의 배치 — Resolved by ADR-034: Project Total Duration은 Clip 조직 영역 근처의 조용한 보조 정보, `Add Clips`는 명시적 Project-level Action.
 - Add Clip의 Acquisition Source — Resolved by ADR-037: Editor `+`는 System PhotosPicker를 열어 Phase-5-ready Media를 현재 Project에 Append하며 Camera에 다시 진입하지 않는다.
-- Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034: 논리적 위치 유지 Placeholder + Color-only 아닌 Unavailable State + 명시적 Replace / Delete.
+- Unavailable Clip의 사용자-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034: 논리적 위치 유지 Placeholder + Color-only 아닌 Unavailable State + 명시적 Replace / Delete. 정확한 Presentation / Copy는 ADR-040 / DESIGN 19절 STEP 13.
 
 또한 ADR-034는 다음을 확정한다.
 
@@ -1598,7 +1600,7 @@ ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Res
 
 Localization Copy만 Tuning / Polish로 남으며(Undo Window Duration은 ADR-038로 불필요) 위 Structural UX Gate는 ADR-034 / ADR-038로 해결되어 해당 UI 구현을 시작할 수 있다.
 
-Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다.
+Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인으로 해결한다. — **Resolved by ADR-040 (2026-09-16):** 새 Clip Identity(Model B) / Trim Reset / Framing Reset(nil) / Transform 없음 / 새 Identity로 Thumbnail 정상 생성 / Phase 5에는 알릴 Reset이 없음.
 
 - Replacement가 Same Clip Identity를 유지할지 또는 새 Clip Identity와 Slot Reference를 사용할지
 - Trim Preserve 또는 Reset
@@ -1629,10 +1631,10 @@ Replacement Metadata Migration을 구현하기 전에 다음을 사용자 승인
 16. Undo가 현재 다른 Clip의 상대 순서나 Unrelated Reorder를 되돌리지 않도록 한다.
 17. Media Usage 추적과 Physical Delete를 조정하여 사용 확인 이후 실제 삭제 사이에도 안전 조건이 유지되도록 한다. — 구현 2026-09-16 (STEP 12A: `ClipThumbnailService.awaitIdle` Consumer Gate + `ProjectLifecycleOperationGate` 직렬화; 이후 Playback / Export Consumer는 같은 Contract에 참여)
 18. Thumbnail Generation의 Source Usage를 추적하고 Late Result 적용 직전에 Project / Clip Validity, Clip Usability, Media Identity, current Representative Source Identity와 applicable Edit State를 확인하여 Stale Result를 폐기한다.
-19. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다.
-20. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다.
-21. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다.
-22. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다.
+19. 참조 Media가 Missing, Unreadable, Corrupt, Validation 실패 또는 Expected Reference와 불일치하는 Clip을 기존 Timeline Position의 Unavailable 상태로 유지하며 자동 삭제하거나 숨기거나 자동 대체하지 않는다. — 구현 2026-09-16 (STEP 13, ADR-040: Phase 5 범위는 Committed 파일 Missing / 해석 불가; Corrupt / Unreadable 기존 파일은 Decode Phase)
+20. Unavailable Clip의 Replace Action이 Direct Recording 또는 Photos Import의 기존 Media Acquisition과 Transactional Media Commit을 사용하고 Photos 원본을 변경하지 않으며 성공 전 Placeholder를 유지하고 실패, 취소 또는 Interruption이 다른 Clip과 Project를 손상시키지 않게 한다. — 구현 2026-09-16 (STEP 13: System PhotosPicker 1개 Video, ADR-037 Acquisition Stack 재사용)
+21. Successful Replacement가 기존 Logical Slot을 복구하고 Unrelated Reorder를 되돌리지 않게 한다. — 구현 2026-09-16 (STEP 13: `VlogProject.replaceClip`)
+22. Unavailable Clip의 Delete에 ADR-021의 Logical Delete, Undo, Active Usage와 Physical Cleanup 계약을 적용한다. — 구현 2026-09-16 (STEP 13: 기존 Dock Delete / History / 12A 경로 그대로)
 23. Clip 표시, Reorder / Delete / Undo와 Add Clip Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
 24. Clip Reorder, Delete, Undo Restore, successful Replace, Availability Change와 Representative Media Identity Change 뒤에는 current logical Clip Order에서 Representative Source를 다시 평가하며 current Source가 없으면 Placeholder를 사용한다.
 25. Replacement가 완료되기 전 또는 실패한 경우에는 ADR-026의 existing Unavailable Placeholder와 current Representative Source 상태를 유지하고 successful Replacement 뒤에만 Representative Source를 다시 평가한다.
@@ -3344,9 +3346,9 @@ Error / Interruption Haptic은 별도 Pending이며 정확한 Native iOS 구현�
 - ADR-030 Ordered Thumbnail Strip과 Long Press + Drag / Non-drag Accessibility 대안의 상세 표현
 - Delete Control Placement와 Snackbar / Toast 등 Undo Presentation Surface
 - Project Duration / Add Clip 배치
-- Unavailable Clip의 User-visible Representation과 Replace / Delete Action 접근 구조
-- Replacement Clip Identity 또는 Slot Reference Model
-- Replacement의 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset과 Reset Communication
+- Unavailable Clip의 User-visible Representation과 Replace / Delete Action 접근 구조 — Resolved by ADR-034 / ADR-040
+- Replacement Clip Identity 또는 Slot Reference Model — Resolved by ADR-040 (Model B: 새 Clip Identity, 같은 Logical Slot)
+- Replacement의 Trim, Framing, Transform, Thumbnail Metadata Preserve / Reset과 Reset Communication — Resolved by ADR-040 (Reset / nil / 새 Thumbnail / 안내 없음)
 
 ADR-021 / F-MVP-025의 Undo semantics는 ADR-038(Session Undo / Redo History)로 갱신되었으며 Undo Window Duration 결정은 더 이상 필요하지 않다.
 

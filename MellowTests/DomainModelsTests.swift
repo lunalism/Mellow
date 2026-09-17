@@ -278,6 +278,96 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(project.updatedAt, stamp, "empty batch is a no-op")
     }
 
+    // MARK: - Replace (Phase 5 STEP 13, ADR-040)
+
+    /// A replacement Clip as the append coordinator would produce it: new identity, `.imported`,
+    /// trim reset to the whole source, no framing, canonical committed path for THIS Project.
+    private func makeReplacement(projectID: UUID, seconds: Int64) throws -> VlogClip {
+        let id = UUID()
+        return try VlogClip(
+            id: id, projectID: projectID, sourceKind: .imported,
+            mediaRelativePath: try ProjectMediaStore.committedMediaPath(projectID: projectID, clipID: id),
+            sourceDuration: .seconds(seconds), trimStart: .zero, trimDuration: .seconds(seconds), framing: nil, sortOrder: 42
+        )
+    }
+
+    func testReplaceClipPutsNewIdentityInExactSlotAndMakesOldClipPending() throws {
+        var (project, ids) = try makeFourClipProject()                                // A B C D (1 2 3 4 s)
+        try project.deleteClip(id: ids[3])                                            // A B C, D pending
+        let before = project
+        let d = try makeReplacement(projectID: project.id, seconds: 5)
+        let stamp = Date(timeIntervalSince1970: 9_500)
+
+        try project.replaceClip(id: ids[1], with: d, replacedAt: stamp)               // A D C
+
+        XCTAssertEqual(project.clips.map(\.id), [ids[0], d.id, ids[2]], "D occupies B's exact logical index")
+        XCTAssertNotEqual(d.id, ids[1], "Model B: a NEW identity")
+        XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2], "sortOrder renormalised")
+        XCTAssertEqual(project.clips[0], before.clips[0], "other active clips untouched")
+        XCTAssertEqual(project.clips[2].id, before.clips[2].id)
+        let replaced = project.clips[1]
+        XCTAssertEqual(replaced.projectID, project.id)
+        XCTAssertEqual(replaced.sourceKind, .imported)
+        XCTAssertEqual(replaced.trimStart, .zero)
+        XCTAssertEqual(replaced.trimDuration, replaced.sourceDuration)
+        XCTAssertNil(replaced.framing)
+        XCTAssertNil(replaced.deletion)
+        XCTAssertEqual(project.deletedClips.map(\.id), [ids[3], ids[1]], "pre-existing pending preserved; B pending after it")
+        let b = try XCTUnwrap(project.deletedClips.last)
+        XCTAssertTrue(b.isPendingDeletion)
+        XCTAssertEqual(b.mediaRelativePath, before.clips[1].mediaRelativePath, "B's metadata and media reference intact")
+        XCTAssertEqual(b.trimDuration, .seconds(2))
+        XCTAssertEqual(b.deletion?.originalIndex, 1)
+        XCTAssertEqual(b.deletion?.previousClipID, ids[0]); XCTAssertEqual(b.deletion?.nextClipID, ids[2])
+        XCTAssertEqual(b.deletion?.deletedAt, stamp)
+        XCTAssertEqual(project.totalDuration, .seconds(1 + 5 + 3), "Total uses D's duration")
+        XCTAssertEqual(project.updatedAt, stamp)
+        XCTAssertEqual(project.durableClips.count, 5)
+        // The durable set is a valid Project value again (round-trips the initialiser).
+        XCTAssertNoThrow(try VlogProject(id: project.id, orientation: .portrait9x16, clips: project.clips, deletedClips: project.deletedClips))
+    }
+
+    func testReplaceFirstAndLastClipsKeepBoundaries() throws {
+        var (project, ids) = try makeFourClipProject()
+        let first = try makeReplacement(projectID: project.id, seconds: 1)
+        try project.replaceClip(id: ids[0], with: first)
+        XCTAssertEqual(project.clips.map(\.id), [first.id, ids[1], ids[2], ids[3]])
+        let last = try makeReplacement(projectID: project.id, seconds: 2)
+        try project.replaceClip(id: ids[3], with: last)
+        XCTAssertEqual(project.clips.map(\.id), [first.id, ids[1], ids[2], last.id])
+        XCTAssertEqual(project.clips.map(\.sortOrder), [0, 1, 2, 3])
+        XCTAssertEqual(project.deletedClips.map(\.id), [ids[0], ids[3]])
+        // A single-clip Project stays valid through Replace.
+        var single = try VlogProject(id: UUID(), orientation: .portrait9x16, clips: [])
+        let only = try makeClip(id: UUID(), projectID: single.id, sortOrder: 0)
+        try single.appendClips([only])
+        let onlyReplacement = try makeReplacement(projectID: single.id, seconds: 3)
+        try single.replaceClip(id: only.id, with: onlyReplacement)
+        XCTAssertEqual(single.clips.map(\.id), [onlyReplacement.id]); XCTAssertEqual(single.deletedClips.map(\.id), [only.id])
+    }
+
+    func testReplaceClipRejectsInvalidTargetsWithoutMutating() throws {
+        var (project, ids) = try makeFourClipProject()
+        try project.deleteClip(id: ids[3])
+        let before = project
+        let ok = try makeReplacement(projectID: project.id, seconds: 2)
+
+        XCTAssertThrowsError(try project.replaceClip(id: UUID(), with: ok), "unknown old id") { XCTAssertEqual($0 as? DomainValidationError, .clipNotFound) }
+        XCTAssertThrowsError(try project.replaceClip(id: ids[3], with: ok), "pending old id is not active") { XCTAssertEqual($0 as? DomainValidationError, .clipNotFound) }
+        let foreign = try makeReplacement(projectID: UUID(), seconds: 2)
+        XCTAssertThrowsError(try project.replaceClip(id: ids[1], with: foreign), "wrong Project") { XCTAssertEqual($0 as? DomainValidationError, .clipProjectMismatch) }
+        let collidingActive = try makeClip(id: ids[2], projectID: project.id, sortOrder: 0)
+        XCTAssertThrowsError(try project.replaceClip(id: ids[1], with: collidingActive), "identity collision with an active clip") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+        let collidingPending = try makeClip(id: ids[3], projectID: project.id, sortOrder: 0)
+        XCTAssertThrowsError(try project.replaceClip(id: ids[1], with: collidingPending), "identity collision with a pending clip") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+        let sameAsOld = try makeClip(id: ids[1], projectID: project.id, sortOrder: 0)
+        XCTAssertThrowsError(try project.replaceClip(id: ids[1], with: sameAsOld), "the old identity is never reused") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+        let alreadyPending = try ok.assigning(sortOrder: 0, deletion: ClipDeletionRecord(deletedAt: .now, originalIndex: 0, previousClipID: nil, nextClipID: nil))
+        XCTAssertThrowsError(try project.replaceClip(id: ids[1], with: alreadyPending), "replacement must be active") { XCTAssertEqual($0 as? DomainValidationError, .clipDeletionStateMismatch) }
+
+        XCTAssertEqual(project, before, "every rejection leaves the Project untouched")
+    }
+
     func testDisplayNameUsesCreatedAtWithLocaleAwareFormatting() throws {
         let createdAt = Date(timeIntervalSince1970: 1_704_164_240)
         let laterDate = createdAt.addingTimeInterval(60 * 60)

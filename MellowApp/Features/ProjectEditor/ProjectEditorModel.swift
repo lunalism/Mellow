@@ -2,18 +2,23 @@ import CoreGraphics
 import Foundation
 import Observation
 
-/// Per-clip thumbnail presentation state. Presentation only — never persisted, never a statement
-/// about Clip availability (ADR-026 unavailable-media handling is a later slice).
+/// Per-clip thumbnail presentation state. Presentation only — never persisted. Derived-data failure
+/// (`.unavailable`) and structural media unavailability (`.mediaUnavailable`, ADR-040) are distinct
+/// states: the first is "the file is there but no frame could be made", the second is "there is no
+/// file to read" and it is never requested again while it holds.
 enum ClipThumbnailPresentation: Equatable {
     case loading
     case ready(CGImage)
-    /// Generation failed (missing / unreadable / no frame). The Clip keeps its slot; the view shows a
-    /// calm neutral placeholder.
+    /// Generation failed (unreadable / no frame / generation error) for media that structurally
+    /// exists. The Clip keeps its slot; the view shows a calm neutral placeholder.
     case unavailable
+    /// The Clip's Project-owned media is missing (`ClipAvailability.unavailable`). Derived from the
+    /// availability state, not from a thumbnail result; no thumbnail is requested for it.
+    case mediaUnavailable
 
     static func == (lhs: ClipThumbnailPresentation, rhs: ClipThumbnailPresentation) -> Bool {
         switch (lhs, rhs) {
-        case (.loading, .loading), (.unavailable, .unavailable): return true
+        case (.loading, .loading), (.unavailable, .unavailable), (.mediaUnavailable, .mediaUnavailable): return true
         case (.ready(let a), .ready(let b)): return a === b
         default: return false
         }
@@ -27,11 +32,14 @@ enum ProjectEditorMessage: Equatable {
     case deleteSaveFailed
     case undoFailed
     case redoFailed
-    /// Add Clips (ADR-037): the same typed outcomes and copy as Select Clips, one message per batch.
+    /// Clip acquisition (Add, ADR-037 — and Replace, ADR-040, which reuses the SAME preparation
+    /// outcomes and copy): the typed outcomes of Select Clips, one message per operation.
     case addRequiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
     case addInvalidMedia
     case addInsufficientStorage
     case addFailed
+    /// Replace (ADR-040) generic failure: the original unavailable Clip is exactly as it was.
+    case replaceFailed
 
     var title: String {
         switch self {
@@ -43,6 +51,7 @@ enum ProjectEditorMessage: Equatable {
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
         case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
         case .addFailed: return "클립을 추가하지 못했어요."
+        case .replaceFailed: return "클립을 교체하지 못했어요"
         }
     }
     var message: String {
@@ -50,15 +59,15 @@ enum ProjectEditorMessage: Equatable {
         case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationMessage(reason)
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
         case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
-        case .addFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
+        case .addFailed, .replaceFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
         default: return "다시 시도해주세요."
         }
     }
 }
 
-/// The acquisition boundary the Editor's Add Clips uses (ADR-037): the same selector / store /
-/// gate / validator chain as Select Clips, scoped to appending to the loaded Project. Absent (nil)
-/// only in unit tests that never add.
+/// The acquisition boundary the Editor's Add Clips (ADR-037) and Replace (ADR-040) use: the same
+/// selector / store / gate / validator chain as Select Clips, scoped to the loaded Project. Absent
+/// (nil) only in unit tests that never acquire.
 @MainActor
 struct EditorClipAcquisition {
     let mediaStore: any ProjectMediaStoring
@@ -96,6 +105,8 @@ struct EditorHistoryEntry: Equatable, Sendable {
         case reorder
         case delete
         case add
+        /// ADR-040: one unavailable Clip replaced by one NEW Clip in the same logical slot.
+        case replace
 
         /// Short Korean description used in accessibility hints ("클립 삭제 실행 취소").
         var description: String {
@@ -103,6 +114,7 @@ struct EditorHistoryEntry: Equatable, Sendable {
             case .reorder: return "클립 순서 변경"
             case .delete: return "클립 삭제"
             case .add: return "클립 추가"
+            case .replace: return "클립 교체"
             }
         }
     }
@@ -112,14 +124,22 @@ struct EditorHistoryEntry: Equatable, Sendable {
     let after: EditorEditState
 }
 
+/// Which acquisition transaction owns the picker right now (ADR-037 Add / ADR-040 Replace). One at a
+/// time: the two flows share one selector session and one commit path, never two picker presentations.
+enum EditorClipAcquisitionMode: Equatable, Sendable {
+    case add
+    case replace(UUID)
+}
+
 /// Presentation state for the Phase 5 Project Editor (ADR-034).
 ///
-/// Holds one loaded Project, its ordered clips, total duration, the selected clip and the per-clip
-/// thumbnail presentation. STEP 8 added asynchronous thumbnail loading with identity-based
-/// stale-result protection; STEP 9 added clip reorder (long press + drag and the non-drag Move
-/// Earlier / Move Later actions) with autosave; STEP 10 adds logical Clip delete (ADR-021, durable
-/// pending deletion) and the session-local Undo / Redo history (ADR-038). There is still no
-/// physical cleanup, add clip or playback.
+/// Holds one loaded Project, its ordered clips, total duration, the selected clip, the per-clip
+/// thumbnail presentation and the per-clip derived media availability. STEP 8 added asynchronous
+/// thumbnail loading with identity-based stale-result protection; STEP 9 added clip reorder (long
+/// press + drag and the non-drag Move Earlier / Move Later actions) with autosave; STEP 10 adds
+/// logical Clip delete (ADR-021, durable pending deletion) and the session-local Undo / Redo history
+/// (ADR-038); STEP 11 Add Clips (ADR-037); STEP 13 derived unavailability + user-driven Replace
+/// (ADR-040). There is still no playback.
 ///
 /// Reorder state is deliberately small and explicit: `project` is the committed state, `previewOrder`
 /// the temporary order shown while a drag is in flight, `draggingClipID` the lifted Clip. Nothing is
@@ -138,8 +158,16 @@ final class ProjectEditorModel {
     @ObservationIgnored private let repository: any ProjectRepository
     @ObservationIgnored private let thumbnails: any ClipThumbnailProviding
     @ObservationIgnored private let acquisition: EditorClipAcquisition?
+    /// Derived media availability (ADR-040). Nil (unit tests that never load) = every Clip available.
+    @ObservationIgnored private let availabilityChecker: (any ClipAvailabilityChecking)?
     private(set) var selectedClipID: UUID?
     private(set) var thumbnailStates: [UUID: ClipThumbnailPresentation] = [:]
+    /// Availability by Clip identity, evaluated on load and whenever the active set changes; never
+    /// persisted. Entries are kept for Clips that left the active set (a pending Clip that Undo brings
+    /// back is re-evaluated by the next load anyway). Absent = not yet evaluated = treated as available.
+    private(set) var availabilityByClipID: [UUID: ClipAvailability] = [:]
+    /// Identity of the availability evaluation in flight; a result from an older evaluation is stale.
+    private var availabilityGeneration = 0
     /// Display scale of the active load; part of every current request identity. Nil while no load
     /// is active, which makes every late result stale.
     private var activeThumbnailScale: CGFloat?
@@ -169,15 +197,17 @@ final class ProjectEditorModel {
     private(set) var undoStack: [EditorHistoryEntry] = []
     private(set) var redoStack: [EditorHistoryEntry] = []
 
-    /// True from "+" until the Add batch resolves (picker open, transferring, validating,
-    /// materialising, committing). Every other mutation is refused meanwhile.
-    private(set) var isAddingClips = false
+    /// Non-nil from the acquisition tap ("+" or `클립 교체`) until that transaction resolves (picker
+    /// open, transferring, validating, materialising, committing). Every other mutation — and a
+    /// second acquisition of either kind — is refused meanwhile, so two pickers can never be presented.
+    private(set) var acquisitionMode: EditorClipAcquisitionMode?
 
-    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil) {
+    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil, availability: (any ClipAvailabilityChecking)? = nil) {
         self.project = project
         self.repository = repository
         self.thumbnails = thumbnails
         self.acquisition = acquisition
+        self.availabilityChecker = availability
         // Default selection: the first clip when the project has clips, otherwise none.
         self.selectedClipID = project.clips.first?.id
     }
@@ -193,14 +223,32 @@ final class ProjectEditorModel {
     /// Committed logical order, unaffected by any drag preview.
     var committedClips: [VlogClip] { project.clips }
 
-    /// No mutation may start while another (including an Add batch) is in flight or a clip is lifted.
-    private var isMutationBlocked: Bool { isCommittingMutation || isAddingClips || draggingClipID != nil }
+    /// True while any acquisition (Add or Replace) is in flight.
+    var isAcquiringClips: Bool { acquisitionMode != nil }
+    var isAddingClips: Bool { acquisitionMode == .add }
+    var isReplacingClip: Bool {
+        if case .replace = acquisitionMode { return true }
+        return false
+    }
+
+    /// No mutation may start while another (including an acquisition) is in flight or a clip is lifted.
+    private var isMutationBlocked: Bool { isCommittingMutation || isAcquiringClips || draggingClipID != nil }
 
     var canUndo: Bool { !undoStack.isEmpty && !isMutationBlocked }
     var canRedo: Bool { !redoStack.isEmpty && !isMutationBlocked }
     /// "+" is a production control whenever an acquisition boundary exists (always in the app).
     var supportsAddingClips: Bool { acquisition != nil }
     var canAddClips: Bool { supportsAddingClips && !isMutationBlocked }
+    /// Replace (ADR-040) exists ONLY for a selected Clip whose media is structurally unavailable;
+    /// healthy Clips never expose it in Phase 5.
+    var canReplaceSelectedClip: Bool {
+        guard supportsAddingClips, let selectedClipID, availability(for: selectedClipID).isUnavailable else { return false }
+        return !isMutationBlocked
+    }
+    var isSelectedClipUnavailable: Bool {
+        guard let selectedClipID else { return false }
+        return availability(for: selectedClipID).isUnavailable
+    }
     /// The edit Undo would reverse / Redo would reapply (accessibility hints).
     var undoTarget: EditorHistoryEntry.Kind? { undoStack.last?.kind }
     var redoTarget: EditorHistoryEntry.Kind? { redoStack.last?.kind }
@@ -352,43 +400,9 @@ final class ProjectEditorModel {
     @discardableResult
     func addClips() async -> Int {
         guard let acquisition, canAddClips else { return 0 }
-        isAddingClips = true
-        defer { isAddingClips = false }
-        guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
-            editorMessage = .addFailed
-            return 0
-        }
-        let added = await addClips(using: acquisition, workspace: workspace)
-        await acquisition.mediaStore.discard(workspace)
-        return added
-    }
-
-    private func addClips(using acquisition: EditorClipAcquisition, workspace: ProjectMediaWorkspace) async -> Int {
-        let sources: [SelectedVideoSource]
-        switch await acquisition.mediaSelector.selectVideos(into: workspace, store: acquisition.mediaStore, admission: acquisition.storageGate) {
-        case .cancelled:
-            return 0
-        case .insufficientStorage:
-            editorMessage = .addInsufficientStorage
-            return 0
-        case .failed:
-            editorMessage = .addFailed
-            return 0
-        case .selected(let selected):
-            sources = selected
-        }
-        let newClips: [VlogClip]
-        switch await acquisition.appender.prepareClips(for: project, sources: sources) {
-        case .ready(let clips):
-            newClips = clips
-            #if DEBUG
-            acquisition.debugAfterMaterialize?()
-            #endif
-        case .requiresImportPreparation(let reason): editorMessage = .addRequiresImportPreparation(reason); return 0
-        case .invalidMedia: editorMessage = .addInvalidMedia; return 0
-        case .insufficientStorage: editorMessage = .addInsufficientStorage; return 0
-        case .failed: editorMessage = .addFailed; return 0
-        }
+        acquisitionMode = .add
+        defer { acquisitionMode = nil }
+        guard case .ready(let newClips) = await acquireClips(using: acquisition, selectionLimit: nil, failure: .addFailed) else { return 0 }
         var updated = project
         do { try updated.appendClips(newClips) } catch {
             await acquisition.appender.discard(newClips)
@@ -401,6 +415,95 @@ final class ProjectEditorModel {
             return 0
         }
         return newClips.count
+    }
+
+    // MARK: - Replace (STEP 13, ADR-040)
+
+    /// `클립 교체` on the selected, structurally unavailable Clip B: system picker (exactly ONE
+    /// video) → transfer → validate → materialise ONE new Clip D into this Project's media directory
+    /// → `VlogProject.replaceClip` (B becomes durable pending, D takes B's exact logical index with a
+    /// NEW identity, `.imported`, trim reset, no framing) → one autosave + read-back → ONE `.replace`
+    /// history entry → D selected. Cancel and every failure leave B, the Project, history, selection
+    /// and existing media exactly as before; a D file that was created but never committed is removed
+    /// at once. Undo / Redo of the entry go through the general history (B ↔ D swap identities, no
+    /// picker, no copy). Returns the new Clip's id on success.
+    @discardableResult
+    func replaceSelectedClip() async -> UUID? {
+        guard let acquisition, let targetID = selectedClipID, canReplaceSelectedClip else { return nil }
+        acquisitionMode = .replace(targetID)
+        defer { acquisitionMode = nil }
+        guard case .ready(let newClips) = await acquireClips(using: acquisition, selectionLimit: 1, failure: .replaceFailed) else { return nil }
+        // Cardinality is the model's rule, not the picker's: anything but exactly one source is a failure.
+        guard newClips.count == 1, let replacement = newClips.first else {
+            await acquisition.appender.discard(newClips)
+            editorMessage = .replaceFailed
+            return nil
+        }
+        var updated = project
+        do { try updated.replaceClip(id: targetID, with: replacement) } catch {
+            await acquisition.appender.discard(newClips)
+            editorMessage = .replaceFailed
+            return nil
+        }
+        guard commitEdit(.replace, updated, selecting: replacement.id, failure: .replaceFailed, label: "replace") else {
+            await acquisition.appender.discard(newClips)
+            return nil
+        }
+        return replacement.id
+    }
+
+    private enum AcquisitionResult {
+        case ready([VlogClip])
+        case none
+    }
+
+    /// The one acquisition path Add and Replace share (ADR-037 / ADR-040): workspace → selector
+    /// session (`selectionLimit` bounds the picker) → `ProjectClipAppendCoordinator.prepareClips`
+    /// (reserve guard → validate ALL → materialise ALL). Cancel is silent; every other outcome maps
+    /// to the canonical Select-Clips copy, with `failure` as the operation's generic message. The
+    /// workspace is always discarded here; a materialised batch that the caller cannot commit is the
+    /// caller's to discard.
+    private func acquireClips(using acquisition: EditorClipAcquisition, selectionLimit: Int?, failure: ProjectEditorMessage) async -> AcquisitionResult {
+        guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
+            editorMessage = failure
+            return .none
+        }
+        let result = await acquireClips(using: acquisition, workspace: workspace, selectionLimit: selectionLimit, failure: failure)
+        await acquisition.mediaStore.discard(workspace)
+        return result
+    }
+
+    private func acquireClips(using acquisition: EditorClipAcquisition, workspace: ProjectMediaWorkspace, selectionLimit: Int?, failure: ProjectEditorMessage) async -> AcquisitionResult {
+        let sources: [SelectedVideoSource]
+        switch await acquisition.mediaSelector.selectVideos(into: workspace, store: acquisition.mediaStore, admission: acquisition.storageGate, selectionLimit: selectionLimit) {
+        case .cancelled:
+            return .none
+        case .insufficientStorage:
+            editorMessage = .addInsufficientStorage
+            return .none
+        case .failed:
+            editorMessage = failure
+            return .none
+        case .selected(let selected):
+            sources = selected
+        }
+        if let selectionLimit, sources.count > selectionLimit {
+            // A boundary that returned more than the session allowed: nothing was materialised yet.
+            editorMessage = failure
+            return .none
+        }
+        switch await acquisition.appender.prepareClips(for: project, sources: sources) {
+        case .ready(let clips):
+            #if DEBUG
+            acquisition.debugAfterMaterialize?()
+            #endif
+            return .ready(clips)
+        case .requiresImportPreparation(let reason): editorMessage = .addRequiresImportPreparation(reason)
+        case .invalidMedia: editorMessage = .addInvalidMedia
+        case .insufficientStorage: editorMessage = .addInsufficientStorage
+        case .failed: editorMessage = failure
+        }
+        return .none
     }
 
     // MARK: - Undo / Redo (ADR-038)
@@ -498,10 +601,46 @@ final class ProjectEditorModel {
         }
     }
 
+    // MARK: - Availability (STEP 13, ADR-040)
+
+    /// Derived availability of a Clip. Unknown (not yet evaluated, or no checker) = available.
+    func availability(for clipID: UUID) -> ClipAvailability {
+        availabilityByClipID[clipID] ?? .available
+    }
+
+    /// Evaluates availability for every ACTIVE Clip through the checker (one existence resolution per
+    /// Clip, off the Main Actor, no decode, no thumbnails) and publishes each answer only if it is
+    /// still current: same evaluation generation, Clip still active with the same media reference.
+    /// Runs on Editor load and after every active-set change (the view's thumbnail load task), so
+    /// Add / Delete / Undo / Redo / Replace re-derive it; there is no timer and no polling.
+    func refreshAvailability() async {
+        guard let checker = availabilityChecker else { return }
+        availabilityGeneration += 1
+        let generation = availabilityGeneration
+        let clips = project.clips
+        await withTaskGroup(of: (VlogClip, ClipAvailability).self) { group in
+            for clip in clips {
+                group.addTask { (clip, await checker.availability(for: clip)) }
+            }
+            for await (clip, availability) in group {
+                applyAvailability(availability, for: clip, generation: generation)
+            }
+        }
+    }
+
+    private func applyAvailability(_ availability: ClipAvailability, for clip: VlogClip, generation: Int) {
+        guard generation == availabilityGeneration,
+              project.clips.first(where: { $0.id == clip.id })?.mediaRelativePath == clip.mediaRelativePath else { return }
+        availabilityByClipID[clip.id] = availability
+    }
+
     // MARK: - Thumbnails
 
+    /// Presentation for a cell: structural unavailability wins over every thumbnail state (a late
+    /// image can never make a known-missing Clip look ready), otherwise the thumbnail result.
     func thumbnail(for clipID: UUID) -> ClipThumbnailPresentation {
-        thumbnailStates[clipID] ?? .loading
+        if availability(for: clipID).isUnavailable { return .mediaUnavailable }
+        return thumbnailStates[clipID] ?? .loading
     }
 
     /// The request identity a result must still match to be published for `clipID`. Nil when no
@@ -514,15 +653,20 @@ final class ProjectEditorModel {
         )
     }
 
-    /// Requests every not-yet-ready thumbnail in logical order and publishes each result as it
-    /// arrives. Runs until all requests settle or the caller is cancelled (the view's `.task`), so no
-    /// generation work outlives the screen. Generation itself happens inside the service, off the
-    /// Main Actor.
+    /// Re-derives availability first, then requests every not-yet-ready thumbnail of every AVAILABLE
+    /// Clip in logical order and publishes each result as it arrives. A structurally unavailable Clip
+    /// is never requested (no retry storm; its cell shows the unavailable presentation). Runs until
+    /// all requests settle or the caller is cancelled (the view's `.task`), so no generation work
+    /// outlives the screen. Generation itself happens inside the service, off the Main Actor.
     func loadThumbnails(displayScale: CGFloat) async {
+        await refreshAvailability()
+        guard !Task.isCancelled else { return }
         activeThumbnailScale = displayScale
         let requests = orderedClips.compactMap { clip -> ClipThumbnailRequest? in
-            if case .ready = thumbnail(for: clip.id) { return nil }
-            return currentThumbnailRequest(for: clip.id)
+            switch thumbnail(for: clip.id) {
+            case .ready, .mediaUnavailable: return nil
+            case .loading, .unavailable: return currentThumbnailRequest(for: clip.id)
+            }
         }
         let thumbnails = self.thumbnails
         await withTaskGroup(of: Void.self) { group in
@@ -547,7 +691,8 @@ final class ProjectEditorModel {
     /// Project — same Project, same Clip identity, same media reference, trim range and pixel budget.
     /// Late or foreign results are discarded; they never overwrite another Clip's state.
     func applyThumbnailResult(_ result: Result<CGImage, Error>, for request: ClipThumbnailRequest) {
-        guard request.projectID == project.id, currentThumbnailRequest(for: request.clipID) == request else { return }
+        guard request.projectID == project.id, currentThumbnailRequest(for: request.clipID) == request,
+              !availability(for: request.clipID).isUnavailable else { return }
         switch result {
         case .success(let image):
             thumbnailStates[request.clipID] = .ready(image)

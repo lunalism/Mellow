@@ -27,6 +27,29 @@ final class PhotosVideoSelectorTests: XCTestCase {
         return (workspace, task)
     }
 
+    /// ADR-040: the selection bound belongs to the session — set for the host before presentation,
+    /// cleared when the session resolves, so a later Add session is unlimited again.
+    func testSelectionLimitIsPublishedForTheSessionAndClearedOnResolve() async throws {
+        let selector = PhotosVideoSelector()
+        XCTAssertNil(selector.maxSelectionCount)
+        let workspace = try await store.beginWorkspace()
+        let task = Task { await selector.selectVideos(into: workspace, store: store, admission: FakeProjectStorageGate(verdict: .sufficient), selectionLimit: 1) }
+        await Task.yield()
+        for _ in 0..<50 where !selector.isPresented { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(selector.isPresented)
+        XCTAssertEqual(selector.maxSelectionCount, 1, "Replace session: exactly one video")
+        selector.isPresented = false
+        selector.pickerDismissed()
+        let outcome = await task.value
+        guard case .cancelled = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertNil(selector.maxSelectionCount, "cleared with the session")
+        let (_, unlimited) = try await begin(selector)
+        XCTAssertNil(selector.maxSelectionCount, "an Add session is unlimited")
+        selector.isPresented = false
+        selector.pickerDismissed()
+        _ = await unlimited.value
+    }
+
     func testCancelWithoutSelectionIsCancelledAndSessionStartsEmpty() async throws {
         let selector = PhotosVideoSelector()
         selector.items = [item] // stale write outside any session: ignored
