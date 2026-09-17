@@ -627,7 +627,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | 1–5-second Maximum Presets / Recording / Audio | Phase 4 |
 | Clip List / Reorder / Delete / Undo | Phase 5 |
 | Photos Video Import | Phase 6 |
-| Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization) |
+| Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization + Preparation Sheet / 취소 / Retry / Storage 부족 / Invalid Filtering Presentation) |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
 | Full Vlog Preview | Phase 8 |
@@ -1776,7 +1776,9 @@ ADR-042에 따라 Photos Video는 **전체 Source Duration이 `1.0s <= duration 
 
 Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0초 안에 있으면 1.3초 / 2.7초 / 4.5초 / 5.0초 같은 비정수 Duration도 유효하다(정수 불필요). 정확히 1.0초와 5.0초는 허용, 0.4초 / 0.8초 같은 1.0초 미만은 거부, 5.0초 초과는 거부, 0 이하 / 읽을 수 없음은 Invalid Media다.
 
-**구현 상태 구분:** 5.0초 초과 거부는 Phase 5가 이미 세 경로에서 구현·검증했다. **1.0초 미만 거부는 아직 구현되지 않았다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사하고 `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정) — 이는 Phase 6 구현 요구사항이며 Below-minimum Presentation / Copy는 아래 Structural UX Gate 대상이다.
+**Structural UX:** ADR-042 Revision 4(2026-09-17)로 Normalization-required Import의 자동 진입 / Blocking Preparation Sheet / 취소 / Runtime 실패 · Retry / Storage 부족 / Preflight Invalid Filtering / 통합 안내 우선순위 / Accepted Set 경계가 모두 확정되어 Phase 6 Structural UX Gate는 해결되었다. Technical Gate는 그대로 Pending이다.
+
+**구현 상태 구분:** 5.0초 초과 거부는 Phase 5가 이미 세 경로에서 구현·검증했다. **1.0초 미만 거부는 아직 구현되지 않았다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사하고 `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정) — 이는 Phase 6 구현 요구사항이다. Per-item Filtering, Preparation Sheet, 취소, Retry, Storage Preflight Presentation, Invalid Media Filtering, 새 안내 Copy도 모두 아직 구현되지 않았으며 Swift / Test는 별도 승인된 구현 작업에서만 변경한다.
 
 System PhotosPicker는 Duration으로 항목을 미리 숨기지 못하므로 사용자가 5초 초과 Video를 탭할 수 있다. Mellow는 Metadata Validation 후 해당 항목을 거부하고 Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않으며 Photos 원본을 변경하지 않는다. 5.0초 초과 거부는 Phase 5 STEP 6 / 11 / 13이 이미 세 경로(`새 프로젝트 시작` / Editor `+` / `클립 교체`)에서 같은 Validator(`requires import preparation(.tooLong)`)와 같은 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로 구현·검증한 동작이며 Phase 6은 이를 유지하고 다른 Duration 정책을 만들지 않는다. 1.0초 미만 거부는 Phase 6이 같은 세 경로에 추가하며 Canonical 안내는 ADR-042 Revision 2(2026-09-17 승인)의 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`다(Above-maximum 안내와 별개, 세 경로 동일).
 
@@ -1803,6 +1805,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Imported Clip 생성(`sourceKind = .imported`, `trimStart = 0`, `trimDuration = sourceDuration = Working Media Duration`, `framing = nil`)
 - 공통 Media Commit Recovery 적용
 - Phase 5 Select Clips / Add / Replace 세 경로가 같은 Eligibility Rule과 같은 Normalization 경로를 사용
+- Normalization-required Import Presentation(ADR-042 Revision 4): 자동 진입, Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` + 가시적 Progress + `2/5` 위치 + `취소`, 전부 Phase-5-ready이면 Sheet 없음, 성공 시 자동 Dismiss + 통합 제외 안내 1회, 취소 / Runtime 실패(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`) / Storage 부족(`저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`)의 Cleanup과 무변경 보장, Preflight 판별 Invalid Media Per-item 제외(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`), 복합 제외 안내(`일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)
 - 기존 Multi-select Session(Select Clips / Add)의 Per-item Duration Filtering(ADR-042 Revision 3): Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)만 Transaction 전에 제외하고 통합 안내 1회 표시, Duration-eligible 항목(Phase-5-ready + Normalization-required 혼재 가능)은 Accepted Set으로 계속, Accepted Set의 Preparation / Commit은 Atomic(실패 시 부분 Mutation 없음), 전부 Ineligible이면 무변경 + 통합 안내
 
 ## Explicitly Excluded
@@ -1847,6 +1850,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(현재 5초 상한의 1-frame Quantization 허용치 / Clamp는 구현 세부사항이며 Product 경계를 재정의하지 않는다 — 검증 방식만 결정)
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 이미 만족하는 Source를 Re-encode할지 Transform 보존 Copy로 Materialize할지) — Landscape Source가 Phase 6 경로로 들어온다는 사실 자체는 ADR-034 §2 / `Phase5ReadyMediaValidator`(`.orientation` → 준비 필요)로 이미 확정되어 있다
+- Preparation의 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(관찰 가능한 UX / Cleanup / 무변경 보장은 ADR-042 Revision 4로 확정)
 
 이 Gate가 해결되지 않으면 실제 Normalization 구현을 시작하지 않는다.
 
@@ -1862,15 +1866,19 @@ Import Storage Estimate는 5초 이하 전체 Source와 승인된 Pipeline이 Op
 
 이전의 "Materialized Segment 내부 Re-trim vs Source Reference 유지 원본 전체 범위 Re-trim" Decision Gate는 ADR-042로 해소되었다. Imported Clip의 Re-trim(Phase 7)은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 Source Reference를 유지하지 않는다.
 
-### Structural UX Gate for Normalization-required Import
+### Structural UX Gate for Normalization-required Import — Resolved by ADR-042 Revision 4 (2026-09-17)
 
-Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다음 Presentation 구조를 Phase 6 구현 전에 사용자 승인으로 결정한다.
+Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Normalization-required Import Presentation은 ADR-042 Revision 4로 모두 확정되어 이 Gate는 **해결**되었다. 승인된 계약(정확한 Copy는 ADR-042 Revision 4 / DESIGN 15절 참조):
 
-- Duration-eligible이지만 Normalization이 필요한 Source(4K / HDR / Dolby Vision / >30 fps / Landscape)를 선택했을 때 기존 `이 영상은 바로 사용할 수 없어요` / `세로 영상을 선택해주세요` 거부를 어떤 진입 / 진행(Normalization Progress) / 완료 / 실패 표현으로 대체할지, Select Clips / Add / Replace 세 경로에서의 일관된 구조, 그리고 Accepted Set 안에 Ready 항목과 Normalization-required 항목이 섞였을 때의 진행 / 완료 Presentation(Accepted Set Atomicity 자체는 이 Gate에서 바꾸지 않는다).
-- Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조(기존 `저장 공간이 부족해요` / `공간을 확보한 뒤 다시 시도해 주세요.` Copy 재사용 여부 포함).
+- **자동 진입 + Blocking Preparation Sheet:** Accepted Set에 Normalization-required 항목이 있으면 선택 / Filtering 직후 확인 화면 없이 자동 시작, Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.`, 가시적 Progress, 다중 항목은 `2/5` 형태의 현재 위치, `취소` Button; 전부 Phase-5-ready이면 Sheet 없음; 성공 시 자동 Dismiss → Project 생성 / Add / Replace 완료 → 사전 제외가 있었다면 통합 제외 안내 1회; 별도 성공 Alert 없음. Select Clips / Add / Replace 세 경로 동일 구조.
+- **취소:** Operation 취소, 임시 / 부분 생성 후보 파일 전부 제거, Select Clips 미생성 / Add · Replace 무변경(기존 Clip 보존), 부분 Metadata / Media 없음, 제외 성공 안내 없음, 사전 Operation UI 복귀.
+- **Runtime 실패:** Operation 실패(Per-item 제외 아님), Accepted Set Atomicity, 부분 집합 미Commit, 파일 정리, 무변경, `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + Primary `다시 시도`(Source Handle이 Live Session에서 유효할 때 같은 Accepted Set 재시도) + Secondary `취소`; Source 접근 무효 시 Mutation 없이 안전 실패, Broad Photos 권한 없음.
+- **Storage 부족 Preflight:** Media 생성 전 Estimate + Reserve 검사, 부족하면 Media / Project 무변경(Replace 기존 Clip 보존), `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`; Settings Deep Link 없음(Formula / Reserve / API / Race는 Technical Gate).
+- **Preflight 판별 Invalid Media:** Malformed / Unreadable / Unsupported로 신뢰성 있게 분류되는 항목만 Per-item 제외, 나머지 계속, 전부 제외 시 미생성 / 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; Preparation 중 발견된 실패는 Runtime 실패 정책.
+- **통합 안내 우선순위:** 완료된 Operation당 최대 1회 — Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 항목 개수 없음; 취소 / 실패가 제외 성공 안내보다 우선.
 - 5초 초과 Source 거부 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 유지하며 이 Gate에서 다시 결정하지 않는다.
 - 1.0초 미만 Source 거부의 개별 안내 Copy — **Resolved by ADR-042 Revision 2(2026-09-17):** `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, Above-maximum 안내와 별개, 단일 항목 선택과 Replace에 사용.
-- 다중 선택의 Duration-ineligible 항목 처리 — **Resolved by ADR-042 Revision 3(2026-09-17):** Per-item Filtering + 하나의 통합 안내(1.0초 미만만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 5.0초 초과만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`), 항목 개수 표현 없음, 전부 Ineligible이면 무변경 + 통합 안내, Select Clips / Add 동일. Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 섞인 다중 선택의 처리 / 안내는 여전히 이 Gate의 Pending이다.
+- 다중 선택의 Duration-ineligible 항목 처리 — **Resolved by ADR-042 Revision 3(2026-09-17):** Per-item Filtering + 하나의 통합 안내(1.0초 미만만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 5.0초 초과만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`), 항목 개수 표현 없음, 전부 Ineligible이면 무변경 + 통합 안내, Select Clips / Add 동일. Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 섞인 다중 선택의 처리 / 안내 — **Resolved by ADR-042 Revision 4:** Preflight 판별 항목 Per-item 제외 + `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 사유 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`.
 
 이 Gate는 Full Trim UX를 Phase 6으로 옮기거나 Working Media Technical Pending을 확정하지 않는다.
 
@@ -1893,13 +1901,19 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
 16. Import / Normalization / Materialization 중 Project Delete / Replacement가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
-18. Normalization-required Import의 진입 / 진행 / 실패 Presentation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+18. Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, Progress, `2/5`, `취소`), 실패 / Retry Alert, Storage 부족 Alert, 통합 제외 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준(Label, VoiceOver Announcement, Dynamic Type, Contrast, Reduce Motion)을 처음부터 적용한다.
 19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 5초 이하 전체 Source, Picker Transient 복사본, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
 21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
 22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
 23. Select Clips / Add / Replace 세 경로가 같은 Eligibility → Phase-5-ready Pass-through 또는 Normalization → Commit 경로를 공유하도록 하며 Phase 5의 Accepted Set Atomicity / Undo · Redo / Cleanup / Unavailable 계약을 바꾸지 않는다.
 24. 다중 선택(Select Clips / Editor Add)에 ADR-042 Revision 3의 Per-item Duration Filtering을 구현한다: 모든 항목의 전체 Duration 검사 → Duration-ineligible(1.0초 미만 / 5.0초 초과) 항목만 제외(Materialize / Normalize / Persist / Append 없음, Photos 원본 불변) → 남은 Accepted Set(Phase-5-ready + Normalization-required 혼재 가능)만 Workspace / Validate / Admission / Materialize / Persist Transaction에 투입 → 하나의 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)를 항목별 반복 Alert 대신 한 번 표시 → 전부 Ineligible이면 Select Clips는 Project 미생성, Add는 기존 Project 무변경. Accepted Set 안의 어떤 실패도 부분 Project Mutation을 남기지 않는다. Replace는 단일 후보이므로 Filtering 대상이 아니며 Ineligible 후보는 개별 안내로 거부하고 기존 Clip / Media를 보존한다. 현재 Phase 5 구현(첫 Non-ready 항목에서 전체 거부)을 이 정책으로 교체한다.
+25. ADR-042 Revision 4의 Preparation Presentation을 구현한다: Accepted Set에 Normalization-required 항목이 있으면 확인 화면 없이 자동으로 Preparation을 시작하고 Blocking Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, 가시적 Progress, 다중 항목 `2/5` 위치, `취소`)를 표시하며, 전부 Phase-5-ready이면 Sheet를 표시하지 않고, 완전 성공 시 Sheet를 자동으로 닫고 Project 생성 / Add / Replace를 완료한 뒤 사전 제외가 있었다면 통합 제외 안내를 한 번 표시한다(별도 성공 Alert 없음).
+26. `취소` 취소를 구현한다: Operation 취소 → 그 Operation의 임시 / 부분 생성 Project-owned 후보 파일 전부 제거 → Select Clips 미생성 / Add · Replace 무변경(기존 Clip 보존) → 부분 Metadata / Media 없음 → 제외 성공 안내 없이 사전 Operation UI로 복귀. 저수준 취소 메커니즘은 Technical Gate.
+27. Runtime Preparation / Normalization 실패를 Operation 실패로 구현한다: Accepted Set Atomicity 유지(성공 부분 집합 미Commit), 임시 / 부분 파일 제거, 무변경(Select Clips 미생성, Replace 기존 Clip 보존), `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + `다시 시도`(Source Handle이 Live Session에서 유효할 때 같은 Accepted Set 재시도) + `취소`(Cleanup 후 종료); Source 접근 무효 시 Mutation 없이 안전 실패, Broad Photos 권한 미도입. Runtime 실패를 Per-item 제외로 바꾸지 않는다.
+28. Storage 부족 Preflight Presentation을 구현한다: Materialization / Normalization 전 Estimate + Reserve 검사 → 부족 시 Media 미생성 / Project 무변경(Replace 기존 Clip 보존) → `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`(Settings Deep Link 없음). 현재 Phase 5 Message `공간을 확보한 뒤 다시 시도해 주세요.`를 승인 Message로 교체한다.
+29. Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 항목의 Per-item 제외를 구현한다: 해당 항목만 제외, 나머지 계속, 전부 제외 시 Select Clips 미생성 / Add 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`. 모든 Corruption을 Preflight에서 발견한다고 가정하지 않는다.
+30. 통합 제외 안내 우선순위를 구현한다: 완료된 Operation당 최대 1회, Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`, 항목 개수 없음, 취소 / 실패 시 제외 성공 안내 미표시.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 원본 Source Reference는 유지하지 않는다(ADR-042).
 
@@ -1918,6 +1932,10 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 - Import Storage Preflight 실패 시 Materialization / Normalization Operation 미시작
 - Storage 부족 시 Working Media Quality Silent Downgrade 금지
 - Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
+- Preparation Presentation 판정: Accepted Set 전부 Phase-5-ready → Sheet 없음; Normalization-required 항목 1개 이상 → Sheet 자동 표시; `current/total` 계산(`2/5`)
+- 취소 / Runtime 실패 / Storage 부족 / Preflight Invalid의 State 전이와 결과 분류(Preflight 제외 vs Runtime 실패 구분)
+- 통합 제외 안내 선택: Duration만 / Invalid만 / 둘 다 → 정확한 Copy; 취소 · 실패 시 제외 성공 안내 억제
+- Retry가 같은 Accepted Set을 대상으로 하며 Source Handle 무효 시 안전 실패
 
 ## Integration Tests
 
@@ -1956,6 +1974,13 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 - Import Storage Preflight 실패 시 Source Materialization / Normalization 미시작과 기존 Project Media 보존
 - Materialization / Normalization / Metadata Persistence 중 Runtime Disk Full에서 Partial Output 미등록, Photos 원본 불변과 Recovery Candidate 보호
 - Storage Failure Cleanup이 Safe Classification 이후에만 실행되고 공간 확보 후 Retry가 중복 Clip을 만들지 않음
+- Preparation Sheet: 전부 Phase-5-ready Accepted Set에서 Sheet 미표시; Normalization-required 항목 포함 시 자동 표시, 정확히 `영상을 준비하고 있어요` / `잠시만 기다려주세요.`, 다중 항목 `2/5` Progress; 성공 시 자동 Dismiss 후 Commit, 사전 제외가 있었다면 통합 안내 1회
+- 취소: `취소` 후 임시 / 부분 파일 0, Project 무변경 / 미생성, Replace 기존 Clip 보존, 제외 성공 안내 없음
+- Runtime 실패(Accepted Set 중 하나 실패 주입): 부분 집합 미Commit, 파일 정리, `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`; Retry 성공 시 전체 Commit, Retry 재실패 시 동일 정리, Source Handle 무효 시 안전 실패
+- Storage Preflight가 어떤 Media 생성보다 먼저 실행되고 부족 시 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`와 무변경
+- Preflight 판별 Unreadable / Unsupported 항목 Per-item 제외와 나머지 계속, 전부 제외, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; Duration + Invalid 복합 시 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 통합 안내 1회
+- Select Clips / Editor Add / Replace 각각에서 위 시나리오; Replace는 거부 / 취소 / Storage 부족 / Runtime 실패 모두에서 기존 Clip · Media · 위치 보존
+- Ready + Normalization-required 혼합 Accepted Set의 Atomic Commit
 
 ## Physical Device Test
 
@@ -1977,17 +2002,19 @@ Import 중 Project Delete / Replacement와 늦은 Completion을 검증하여 삭
 
 Storage Preflight 부족과 Normalization 중 Runtime Disk Full을 검증하여 Photos 원본과 기존 Project Media가 유지되고 Partial Output이 등록되지 않으며 공간 확보 후 안전하게 재시도되는지 확인한다.
 
+실기기에서 Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, `2/5` Progress, `취소`)의 자동 표시 / 자동 Dismiss, 전부 Phase-5-ready 선택에서의 Sheet 미표시, 취소 후 임시 파일 0과 Project 무변경, Runtime 실패 주입 후 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`과 Retry 성공 · 실패, Storage 부족 시 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Unreadable / Unsupported Fixture의 Per-item 제외와 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.` 통합 안내 1회, Replace의 모든 비성공 결과에서 기존 Clip 보존, VoiceOver Label / Announcement를 확인한다.
+
 ### Import / Normalization Baseline Measurement Evidence
 
 Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch를 포함한 5초 이하 전체 Source의 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
 
-Evidence에는 Scenario, Build / Commit, Test Asset Identity(Source Duration 포함)와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 applicable한 경우 Cancellation Responsiveness를 관찰한다.
+Evidence에는 Scenario, Build / Commit, Test Asset Identity(Source Duration 포함)와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 Preparation Sheet의 Progress 갱신과 `취소` 이후 Cleanup 완료까지의 Cancellation Responsiveness를 관찰한다.
 
 이 Baseline Measurement는 ADR-022와 ADR-024의 기존 SDR Normalization / Storage Safety Contract를 변경하지 않으며 Phase 13 Performance Acceptance Profile의 Input으로 사용하고 Final Numeric Performance Threshold를 이 Phase에서 요구하거나 임의로 만들지 않는다.
 
 ## UI Accessibility Verification
 
-Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거부 안내(`영상이 너무 길어요` / `영상이 너무 짧아요`)와 다중 선택 통합 안내(`짧은 영상이 제외되었어요` / `긴 영상이 제외되었어요` / `일부 영상이 제외되었어요`)에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, Progress / `2/5`, `취소`), 실패 / Retry Alert(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`), Storage 부족 Alert(`저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.`), Duration 거부 안내(`영상이 너무 길어요` / `영상이 너무 짧아요`)와 통합 제외 안내(`짧은 영상이 제외되었어요` / `긴 영상이 제외되었어요` / `일부 영상이 제외되었어요` / `일부 영상을 추가할 수 없어요`)에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
 
 현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
 
@@ -2018,6 +2045,12 @@ Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호한다.
 - Storage 부족 때문에 승인된 1080p-class / 30 fps / SDR Working Media 방향을 자동으로 낮추지 않는다.
 - 공간 확보 후 Import를 안전하게 재시도할 수 있다.
+- Accepted Set에 Normalization-required 항목이 있으면 확인 화면 없이 Preparation이 자동 시작되고 Blocking Sheet가 정확히 `영상을 준비하고 있어요` / `잠시만 기다려주세요.`와 가시적 Progress(다중 항목 `2/5`)와 `취소`를 보이며, 전부 Phase-5-ready이면 Sheet가 나타나지 않고, 성공 시 Sheet가 자동으로 닫히고 Operation이 완료되며 별도 성공 Alert가 없다.
+- `취소` 취소는 임시 / 부분 생성 파일을 모두 제거하고 Project를 만들거나 바꾸지 않으며(Replace 기존 Clip 보존) 제외 성공 안내를 보이지 않는다.
+- Runtime Preparation 실패는 Accepted Set 전체의 실패로 처리되어 부분 집합이 Commit되지 않고 파일이 정리되며 정확히 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + `다시 시도` + `취소`를 보이고, Retry는 같은 Accepted Set을 재시도하며 Source 접근 무효 시 Mutation 없이 실패한다.
+- Storage Preflight는 어떤 Media 생성보다 먼저 실행되고 부족 시 정확히 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`를 보이며 Project / Media를 변경하지 않는다.
+- Preflight에서 판별된 Unreadable / Unsupported 항목은 Per-item 제외되고 나머지는 계속되며 정확히 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`(Duration 사유와 복합이면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)가 완료된 Operation당 한 번만 표시되고, 취소 / 실패 시에는 제외 성공 안내가 표시되지 않는다.
+- Replace는 거부 / 취소 / Storage 부족 / Runtime 실패 어느 경우에도 기존 Clip과 Media를 보존하고 완전 성공 시에만 Atomic하게 교체한다.
 - Phase 5의 Phase-5-ready Pass-through, Accepted Set Atomicity, Undo / Redo, Cleanup, Unavailable / Replace 동작이 회귀하지 않는다.
 - iPhone 12 Import / Normalization Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
@@ -2035,7 +2068,7 @@ ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승�
 
 Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
-해당 화면의 Structural UX Gate(Normalization-required Import Presentation)가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
+해당 화면의 Structural UX Gate는 ADR-042 Revision 4로 구현 전에 승인되었으며, 승인된 Preparation Sheet / 취소 / Retry / Storage 부족 / Invalid Filtering / 통합 안내 계약의 Unit / Integration / UI Test와 기존 Accessibility 검증 결과 및 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -3448,6 +3481,7 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
+- Preparation의 구체적 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항; 관찰 가능한 UX는 ADR-042 Revision 4로 확정)
 
 1.0초 미만 거부의 개별 안내 Copy(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`)는 ADR-042 Revision 2로, 다중 선택의 Per-item Duration Filtering과 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)는 ADR-042 Revision 3으로 확정되었다.
 
@@ -3457,7 +3491,7 @@ Photos Source Eligibility `1.0s <= entire source duration <= 5.0s`(ADR-042, Impo
 
 Import Estimate는 5초 이하 전체 Source의 실제 Materialization / Normalization Pipeline을 기준으로 하며 System PhotosPicker가 Photos Read 권한 없이 전송하는 전체 File의 Transient 복사본을 Peak에 포함하되 Commit 이후 보관하지 않는다.
 
-Phase 6 Normalization-required Import의 진입 / 진행 / 실패 Presentation 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정한다. Segment Selection Structural UX Gate는 ADR-042로 제거되었다.
+Phase 6 Structural UX(Normalization-required Import 자동 진입 / Blocking Preparation Sheet / 취소 / Runtime 실패 · Retry / Storage 부족 Presentation / Preflight Invalid Filtering / 통합 안내 우선순위 / Accepted Set 경계)는 ADR-042 Revision 4로 확정되어 Structural UX Gate가 해결되었다. Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 남은 Gate는 위 Technical 항목뿐이다.
 
 ## Before Phase 7
 

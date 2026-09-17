@@ -980,6 +980,20 @@ Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p
 
 실패 시 ADR-020의 Valid Source / Recovery Candidate 보존 계약을 따르며 Cancellation과 Deleted Target / Active Usage는 ADR-021의 경계를 그대로 적용한다.
 
+### Import Preparation Operation Lifecycle (ADR-042 Revision 4)
+
+Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른다(Phase 6 구현 요구; 정확한 Copy는 ADR-042 Revision 4 / DESIGN 15절).
+
+1. **Preflight 분류:** 선택 항목마다 전체 Source Duration Eligibility(ADR-042)와 Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 여부를 검사하고 Phase-5-ready / Normalization-required를 판정한다.
+2. **제외 경계:** Duration-ineligible 항목과 Preflight 판별 Invalid 항목은 Per-item으로 제외되며 Workspace / Materialize / Normalize / Persist 어느 Transaction에도 들어가지 않는다. 남은 항목이 **Accepted Set**이고 Phase-5-ready와 Normalization-required 항목이 공존할 수 있다. Replace는 후보가 하나이며 Preflight 거부 시 기존 Clip / Media를 보존한다.
+3. **Storage Preflight:** Accepted Set의 Materialization / Normalization을 시작하기 전에 Estimated Required Space + Safety Reserve를 검사한다(62절). 부족하면 어떤 Media도 생성하지 않고 Project를 변경하지 않는다. Formula / Reserve / Free-space API / Race 처리는 Technical Gate다.
+4. **Preparation Operation:** Accepted Set에 Normalization-required 항목이 있으면 자동으로 하나의 취소 가능한 Preparation Operation을 시작하고(Feature Layer는 Blocking Sheet와 `current/total` Progress를 표시) Workspace 안에서 Materialize / Normalize한다. 전부 Phase-5-ready이면 기존 Copy 경로만 사용한다.
+5. **취소:** Cooperative Cancellation 요청 후 그 Operation이 만든 임시 / 부분 생성 파일을 모두 제거하고 Project / Clip Metadata를 변경하지 않는다(Replace 기존 Clip 보존). ADR-021의 Active Usage 원칙에 따라 실제 Release 이후 정리한다. 구체적 API는 Technical Gate다.
+6. **Runtime 실패 Rollback:** Accepted Set 중 하나라도 Preparation / Materialization / Normalization / Persist에 실패하면 Operation 전체가 실패다 — 성공한 부분 집합을 Commit하지 않고 임시 / 부분 파일을 제거하며 Project는 무변경(Select Clips 미생성)이다. Preflight Invalidity(Per-item 제외)와 Runtime 실패(Operation 전체 실패)는 구분되며 Runtime 실패를 Per-item 제외로 바꾸지 않는다. Relaunch를 넘는 Recovery 깊이 / Durable Operation Identity는 Technical Gate다.
+7. **Retry 범위:** Retry는 같은 Accepted Set Operation을 Live Operation / Session 안에서 Source Handle이 여전히 유효할 때만 다시 시도하며, Source 접근이 무효이면 Mutation 없이 안전하게 실패한다. Broad Photos 권한을 도입하지 않는다. Source-handle 유지 메커니즘은 Technical Gate다.
+8. **Commit:** 성공 시 Accepted Set 전체를 ADR-020 / ADR-037 계약으로 Atomic Commit한다(Materialize → Project State → Persist → Read-back). Replace는 완전 성공 시에만 Media / Metadata를 Atomic하게 교체한다.
+9. **안내 우선순위:** 완료된 Operation당 통합 제외 안내 최대 1회; 취소 / 실패가 우선하며 완료되지 않은 Operation에 제외 성공 안내를 표시하지 않는다.
+
 ### Technical Gate Before Phase 6 Normalization
 
 다음 항목은 아직 Pending이며 Phase 6 Definition of Ready / Decision Gate에서 사용자 승인을 받아야 한다.
@@ -1962,7 +1976,7 @@ Export Storage가 부족하면 해당 Export를 시작하지 않는다.
 
 Feature Layer는 사용자가 현재 시작할 수 없는 Operation, 기존 Media가 유지된다는 점과 공간 확보 후 재시도할 수 있음을 이해할 수 있게 전달한다.
 
-정확한 Copy, Alert / Banner / Sheet, Icon과 Button Placement는 이 Architecture에서 확정하지 않고 각 Owning Phase의 Structural UX Gate에 남긴다.
+정확한 Copy, Alert / Banner / Sheet, Icon과 Button Placement는 이 Architecture에서 확정하지 않고 각 Owning Phase의 Structural UX Gate에 남긴다. Phase 6 Import의 Storage 부족 Presentation은 ADR-042 Revision 4로 확정되었다(`저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Media 생성 전 Preflight, Settings Deep Link 없음).
 
 Storage 부족을 이유로 1080p를 720p로 낮추거나 Frame Rate, Audio, Recording Duration, Import Working Media 또는 Export Quality를 자동으로 변경하지 않는다.
 

@@ -437,11 +437,25 @@ Import 기능은 Camera 촬영보다 숨겨져서는 안 되지만 Record Button
 
 ADR-042에 따라 Photos에서 선택한 영상은 전체 길이가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 받아들인다.
 
-1.0초보다 짧거나 5.0초보다 긴 영상은 가져오지 않으며 Segment Selection 화면을 두지 않는다. System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있고, Mellow는 Metadata 검사 후 거부하며 프로젝트와 Photos 원본을 변경하지 않는다. 단일 항목 / Replace 후보의 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이고 1.0초 미만 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`다(ADR-042 Revision 2, 의미상 별개). 다중 선택(Select Clips / Add)에서는 ADR-042 Revision 3에 따라 길이 조건에 맞지 않는 영상만 제외하고 나머지로 계속 진행하며 항목별 반복 Alert 대신 통합 안내를 한 번 표시한다: `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`(항목 개수 표현 없음). 모두 제외되면 프로젝트를 만들거나 바꾸지 않는다. 길이 외 Invalid 영상이 섞인 경우의 안내는 Phase 6 Structural UX Gate에서 결정한다. 안내는 Select Clips / Add / Replace 세 경로에서 동일하다.
+1.0초보다 짧거나 5.0초보다 긴 영상은 가져오지 않으며 Segment Selection 화면을 두지 않는다. System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있고, Mellow는 Metadata 검사 후 거부하며 프로젝트와 Photos 원본을 변경하지 않는다. 단일 항목 / Replace 후보의 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이고 1.0초 미만 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`다(ADR-042 Revision 2, 의미상 별개). 다중 선택(Select Clips / Add)에서는 ADR-042 Revision 3에 따라 길이 조건에 맞지 않는 영상만 제외하고 나머지로 계속 진행하며 항목별 반복 Alert 대신 통합 안내를 한 번 표시한다: `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`(항목 개수 표현 없음). 모두 제외되면 프로젝트를 만들거나 바꾸지 않는다. 읽을 수 없거나 지원하지 않는 영상이 섞인 경우의 안내는 아래 Normalization-required Import Presentation(ADR-042 Revision 4)을 따른다. 안내는 Select Clips / Add / Replace 세 경로에서 동일하다.
 
 범위 안의 영상은 전체 영상이 그대로 Clip이 된다.
 
-Phase-5-ready가 아닌 5초 이하 영상(4K / HDR / Dolby Vision / 30 fps 초과 / Landscape)의 Normalization-required Import 진입 / 진행 / 실패 표현은 Phase 6 Structural UX Gate에서 결정한다.
+### Normalization-required Import Presentation — ADR-042 Revision 4 (2026-09-17 승인, Phase 6 구현 요구)
+
+Phase-5-ready가 아닌 1.0–5.0초 영상(4K / HDR / Dolby Vision / 30 fps 초과 / Landscape)이 Accepted Set에 하나라도 있으면 선택 / 제외 직후 확인 화면 없이 Preparation을 자동으로 시작하고 **Blocking Preparation Sheet**를 표시한다.
+
+- Sheet Title `영상을 준비하고 있어요`, Message `잠시만 기다려주세요.`, 가시적 Progress, 다중 항목이면 현재 위치를 `2/5` 형태로 표시, Button `취소` 하나.
+- Accepted Set 전체가 Phase-5-ready이면 Sheet를 표시하지 않는다.
+- 완전 성공 시 Sheet를 자동으로 닫고 Project 생성 / Add / Replace를 완료하며, 사전에 제외된 항목이 있었다면 통합 제외 안내를 한 번 표시한다. 별도 성공 Alert는 없다.
+- `취소`: Operation을 취소하고 임시 / 부분 생성 파일을 모두 제거하며 Project를 만들거나 바꾸지 않고(Replace의 기존 Clip 보존) 제외 성공 안내를 보이지 않은 채 사전 Operation UI로 복귀한다.
+- Runtime Preparation 실패(Preflight를 통과한 뒤 실패): Alert Title `영상을 준비하지 못했어요`, Message `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`, Primary `다시 시도`, Secondary `취소`. 부분 집합을 Commit하지 않고 파일을 정리하며 Project는 무변경이다. `다시 시도`는 같은 Accepted Set을 다시 시도하고 `취소`는 정리 후 종료한다.
+- Storage 부족 Preflight(Media 생성 전): Alert Title `저장 공간이 부족해요`, Message `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.`, Action `확인`. Settings Deep Link 없음. Project / Media 무변경.
+- Preflight에서 판별된 Unreadable / Unsupported 항목만 제외되었을 때: `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`. Duration 사유와 복합이면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`(Revision 3의 Duration 복합 안내와 Title이 같고 Message가 다르다).
+- 우선순위: 완료된 선택 Operation당 통합 제외 안내는 최대 1회이며 항목 개수 표현이 없다. 취소 / 실패가 발생하면 제외 성공 안내를 표시하지 않는다.
+- Accessibility: Sheet / Alert / 통합 안내는 33절 기준을 따른다 — Title / Message / Button의 VoiceOver Label, Sheet 표시 · Progress 갱신 · 완료 / 실패의 Announcement, `2/5`의 읽기 가능한 Label, 44pt Touch Target, Dynamic Type, Color-only가 아닌 상태 표현, Reduce Motion 시 Progress Animation 축소.
+
+Preparation Sheet, 취소, Retry, Storage 부족 안내, Invalid Filtering, 통합 안내는 모두 아직 Production 코드에 없으며 Phase 6 구현 요구사항이다.
 
 ---
 
@@ -718,7 +732,7 @@ Error Message는 기술적인 원인보다 사용자가 무엇을 해야 하는�
 예시는 다음과 같다.
 
 - `Camera access is needed to record a clip.`
-- `There isn’t enough storage to save this video.`
+- `There isn’t enough storage to save this video.`(Phase 6 Import Storage 부족 안내는 15절의 승인 Copy `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.`를 사용한다)
 - `This vlog couldn’t be exported. Try again.`
 - `Recording was interrupted.`
 
@@ -979,7 +993,7 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 3 — Camera Foundation | Resolved 2026-09-13: Full-bleed Camera Preview, UI-only 1–5s Selector / 기본 3s, Flip / Compact Content, 조용한 Mismatch, Camera-only Permission 안내와 Rear 1.0×–2.0× Pinch / Transient Indicator. ADR-032로 Portrait-only V1, Splash 진입과 Camera Chrome Projects Access가 추가되고 Landscape Camera Layout / Control Rail은 V1 범위에서 제외 | Control의 비구조적인 시각 조정과 Portrait Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
 | Phase 5 — Clip Management | Resolved by ADR-034 / ADR-035 / ADR-036: Projects 전용 Pushed 화면(ADR-035, Bottom Sheet 아님)에 항상 두 중앙 Action `Start New Project` / `Load Existing Project`(ADR-036, List / Card 없음)와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar(ADR-038로 Navigation Bar 상시 Undo / Redo History로 대체), 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격(ADR-041로 폐기 — Slot은 Direct-capture 피드백, Representative는 Projects 화면) | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
-| Phase 6 — Normalization-required Import | ADR-042로 Segment Selection Gate는 제거됨. 1.0–5.0초이지만 Phase-5-ready가 아닌 Source의 Import 진입 / 진행 / 실패 / Retry Presentation 구조, 길이 외 Invalid 영상이 섞인 다중 선택의 안내, Import Storage 부족 Presentation 구조(1.0초 미만 개별 안내 Copy는 ADR-042 Revision 2로, 다중 선택 Duration Filtering / 통합 안내는 Revision 3으로 확정) | 승인된 Import Presentation의 비구조적 Visual Tuning |
+| Phase 6 — Normalization-required Import | Resolved by ADR-042 Revision 2–4: 1.0초 미만 개별 안내(Rev 2), 다중 선택 Duration Filtering / 통합 안내(Rev 3), 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` / `취소`, 취소 Cleanup, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Preflight Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`, 안내 우선순위(Rev 4). Segment Selection Gate는 제거됨 | 승인된 Import Presentation의 비구조적 Visual Tuning(Progress 형태, Spacing, Motion Refinement) |
 | Phase 7 — Trim / Framing / Text | 명시적 T Tool의 세부 UX와 Text 정책, Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
 | Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |

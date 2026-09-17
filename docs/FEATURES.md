@@ -478,7 +478,7 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - 단일 항목 / Replace 후보의 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`, 1.0초 미만 거부 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(ADR-042 Revision 2); Replace 후보 거부 시 기존 Clip 보존
 - 다중 선택(Select Clips / Editor Add)은 ADR-042 Revision 3에 따라 Duration-ineligible 항목만 제외하고 유효 항목으로 계속 진행하며 통합 안내를 한 번 표시: 짧은 항목만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`, 긴 항목만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`, 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 전부 Ineligible이면 아무것도 추가하지 않음; Normalization-required 항목은 제외되지 않음; Accepted Set의 Commit은 Atomic
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분
-- 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시킨다)
+- 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부 · Per-item Filtering · Preparation Sheet · 취소 · Retry · Storage Preflight Presentation · Invalid Filtering · 새 안내는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시키고 첫 Non-ready 항목에서 선택 전체를 거부한다)
 - 원본 영상의 비파괴적 처리
 
 ### PhotosPicker 제약
@@ -521,6 +521,11 @@ SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 �
 - Import / Normalization의 Estimated Peak Additional Storage와 Safety Reserve를 충족하지 못하면 Materialization과 Normalization을 시작하지 않는다.
 - Storage 부족이나 Runtime Disk Full로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본과 기존 Project Media를 보호한다.
 - Storage 부족을 이유로 승인된 1080p-class / 30 fps / SDR Working Media 정책을 자동 하향하지 않는다.
+- ADR-042 Revision 4: Accepted Set에 Normalization-required 항목이 있으면 확인 화면 없이 자동 시작하고 Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.`(Progress, 다중 항목 `2/5`, `취소`)를 표시하며 전부 Phase-5-ready이면 Sheet를 표시하지 않는다; 성공 시 자동 Dismiss + 통합 제외 안내 1회, 별도 성공 Alert 없음.
+- `취소` 취소와 Runtime 실패(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`)는 임시 / 부분 파일을 모두 제거하고 부분 집합을 Commit하지 않으며 Project를 만들거나 바꾸지 않는다(Replace 기존 Clip 보존). Retry는 같은 Accepted Set을 재시도한다.
+- Storage 부족은 Media 생성 전에 판정하여 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`를 표시하고 무변경이다.
+- Preflight에서 판별된 Unreadable / Unsupported 항목은 Per-item 제외되어 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`(Duration 사유와 복합이면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)를 완료된 Operation당 한 번 표시하며 취소 / 실패 시에는 제외 안내를 표시하지 않는다.
+- 위 Presentation은 승인된 정책이며 Phase 6 구현 요구사항이다.
 
 정상적으로 Project-owned Media가 생성되어 추가된 Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지되어야 한다.
 
