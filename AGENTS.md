@@ -223,8 +223,8 @@ The following guardrails must not be changed without an approved decision and co
 - Direct capture offers maximum-duration presets of 1 / 2 / 3 / 4 / 5 seconds, defaulting to 3 seconds.
 - Recording automatically stops at the selected maximum; manual early stop is allowed and exact integer output duration is not required.
 - Duration selection is a camera/capture-level setting changeable between clips, not an immutable project property.
-- Imported source video duration is unrestricted.
-- Any Mellow clip must satisfy 0 < duration <= 5 seconds; imported segments may have noninteger durations and do not follow camera presets.
+- A Photos source video is accepted only when its entire duration satisfies 1.0 second <= sourceDuration <= 5.0 seconds (inclusive; exact 1.0 s and 5.0 s accepted, noninteger allowed); sources shorter than 1.0 s or longer than 5.0 s are rejected after metadata validation and there is no long-source segment selection, source reference, or full-range re-trim (ADR-042).
+- Any Mellow clip must satisfy 0 < duration <= 5 seconds; imported clips may have noninteger durations and do not follow camera presets.
 - Photos original media must not be modified or deleted by Mellow.
 - Multiple local drafts are supported.
 - Drafts do not automatically expire.

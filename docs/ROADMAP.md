@@ -222,7 +222,7 @@ Apple Native Tooling을 우선하며 OSLog 또는 Signpost, Instruments, Xcode D
 | Scenario Family | 최소 Scenario Meaning | 의미 있는 Measurement Category |
 | --- | --- | --- |
 | Direct Recording | Rear Camera, Front Camera, 최대 5초 Clip, Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence를 포함한다. | Capture Stability, Completion Reliability, Post-record Commit Latency, Memory, Thermal, Repeated Capture Stability와 Unexpected Dropped 또는 Failed Capture를 관찰한다. |
-| Photos Import / Normalization | 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 최대 5초 Selected Segment를 포함한다. | Import / Normalization Duration, Peak Memory, Peak Additional Storage, Thermal, Operation Success와 필요한 Cancellation Responsiveness를 관찰한다. |
+| Photos Import / Normalization | 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch의 5초 이하 전체 Source를 포함한다. | Import / Normalization Duration, Peak Memory, Peak Additional Storage, Thermal, Operation Success와 필요한 Cancellation Responsiveness를 관찰한다. |
 | Individual Clip Preview | Trim, Framing, Front Mirrored Clip과 Imported Silent Clip을 포함한다. | Preparation Latency, First Usable Playback Readiness, Playback Stability, 필요한 Seek Responsiveness와 Memory를 관찰한다. |
 | Full Vlog Preview | Small, Representative, Larger MVP Project, Mixed Recorded / Imported Clip, Edited Clip과 Repeated Preview Open / Close를 포함한다. | Composition Preparation, First Usable Playback, Seek / Playback Responsiveness, Playback Stall 또는 Dropped Presentation, Memory, Thermal과 Repeated-preview Stability를 관찰한다. |
 | Export | Short, Representative, Larger Project와 Mixed Source, Trim / Framing / Mirror를 포함한다. | Elapsed Export, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 관찰한다. |
@@ -627,7 +627,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | 1–5-second Maximum Presets / Recording / Audio | Phase 4 |
 | Clip List / Reorder / Delete / Undo | Phase 5 |
 | Photos Video Import | Phase 6 |
-| Imported Video 5-second Selection | Phase 6–7 |
+| Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + Normalization) |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
 | Full Vlog Preview | Phase 8 |
@@ -946,7 +946,7 @@ Camera 없이도 Project Lifecycle의 기본 흐름이 완성되어야 한다.
 
 ADR-030의 Camera Shell / Structural Navigation을 소유하며 ADR-032에 따라 V1 Portrait-only 범위와 Direct-to-Camera Launch를 함께 소유한다.
 
-**Status:** Completed — 2026-09-14 iPhone 12 Physical-device Gate 통과, Portrait-only V1 Camera Baseline 승인. Phase 4는 시작하지 않았다.
+**Status:** Completed — 2026-09-14 iPhone 12 Physical-device Gate 통과, Portrait-only V1 Camera Baseline 승인. ("Phase 4는 시작하지 않았다"는 2026-09-14 당시 기록이며 Phase 4는 이후 완료되었다.)
 
 2026-09-14 Physical Review 결과:
 
@@ -1160,7 +1160,7 @@ ADR-023의 Rear 1× Wide, Preview Zoom Range, Front Preview Mirroring, Permissio
 
 # Phase 4 — Video Recording
 
-**Status:** Not Started.
+**Status:** Completed — `main` `dbc1f9d` (`feat: complete phase 4 recording`)로 구현·병합되었고 Phase 5가 이 Baseline 위에 구현·완료되었다. 아래 Decision Gate / Implementation Task 서술은 Phase 4 계획과 구현 당시의 기록이며 Active Blocker가 아니다.
 
 ADR-032에 따라 Phase 4 Recording은 V1 Portrait 9:16만 대상으로 하며 Landscape Recording 복원은 Post-V1 Product Decision이다.
 
@@ -1208,7 +1208,7 @@ Phase 4 Recording 구현 전 기존 Domain Policy / Test를 `0 < effectiveClipDu
 
 Phase 3 Camera Foundation과 UI-only Duration Selector는 실제 Recording / Auto Stop 또는 5초 Domain Migration의 구현 완료를 뜻하지 않으며 Photos Import / Trim도 이후 Phase에 남긴다.
 
-Phase 6는 공통 Policy에 맞는 Imported Segment 선택 / Materialization을 구현하고 Phase 7은 Trim 검증을 구현하며 Source 전체 길이에 Clip 상한을 적용하지 않는다.
+Phase 6는 공통 Policy에 맞는 5초 이하 전체 Source의 Import / Normalization / Materialization을 구현하고 Phase 7은 Trim 검증을 구현하며 ADR-042에 따라 Photos Source 전체 길이에도 5초 상한을 적용한다.
 
 Phase 3는 기존 Camera Shell / Structural UX 경계 안에서 Selector 배치와 Interaction 구조만 결정하며 실제 Selector의 Recording 동작과 Domain / Test Migration은 Phase 4에 남긴다.
 
@@ -1526,6 +1526,8 @@ Recording Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 �
 
 # Phase 5 — Clip Project Management
 
+**Status:** Completed — `phase/05-clip-management`가 2026-09-17 `main`에 Fast-forward 병합되었다(`ff42ad2` `feat: add project representative thumbnail`, Phase 5 Final Exit Audit 통과). 아래 STEP 항목의 "구현 … Physical Review Pending" 표기는 각 STEP 구현 시점의 역사 기록이며 Phase 5 완료 시점의 Active Blocker가 아니다(Merge Rule에 따라 Exit Criteria / Device Evidence 충족 후 병합). Phase 6 Production 구현은 시작하지 않았다.
+
 ## Goal
 
 촬영된 여러 Clip을 하나의 Mini Vlog 구조로 정리할 수 있게 한다.
@@ -1612,7 +1614,7 @@ Camera의 Compact Project-content Access를 실제 Thumbnail / Clip Review와 �
 
 ### Select-Clips Media Boundary — ADR-034
 
-Phase 5 `Select Clips`(= `Start New Project`)는 Phase-5-ready media만 Bootstrap한다. Phase 5는 Project Bootstrap에 필요한 최소 System Selection Boundary 호출, 기본 Media 속성 검사, Usable 여부 Validation, Usable Media의 App-managed Materialize / Copy(ADR-020), Clip Metadata 생성, 단일 저장 Project 구성과 Safe Atomic Replacement를 소유한다. Long-source Segment Selection, 임의 Trim / Re-trim, HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization, Crop / Framing과 완전한 Import 편집 UI는 Phase 6 / 7 소유로 유지한다. Non-ready Media는 조용히 자르거나 Transcode / Crop하거나 잘못된 Clip Metadata를 만들거나 Import 성공으로 처리하지 않으며 부분 Commit 없이 Typed `requires import preparation` 결과로 표현한다. 이 경계는 F-MVP-018~F-MVP-022를 Phase 5-complete로 재정의하지 않는다.
+Phase 5 `Select Clips`(= `Start New Project`)는 Phase-5-ready media만 Bootstrap한다. Phase 5는 Project Bootstrap에 필요한 최소 System Selection Boundary 호출, 기본 Media 속성 검사, Usable 여부 Validation, Usable Media의 App-managed Materialize / Copy(ADR-020), Clip Metadata 생성, 단일 저장 Project 구성과 Safe Atomic Replacement를 소유한다. Long-source Segment Selection, 임의 Trim / Re-trim, HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization, Crop / Framing과 완전한 Import 편집 UI는 Phase 6 / 7 소유로 유지한다. (**ADR-042, 2026-09-17:** Long-source Segment Selection과 원본 범위 Re-trim은 이후 제외되었으며 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다; 나머지 Phase 6 / 7 소유 항목은 유지.) Non-ready Media는 조용히 자르거나 Transcode / Crop하거나 잘못된 Clip Metadata를 만들거나 Import 성공으로 처리하지 않으며 부분 Commit 없이 Typed `requires import preparation` 결과로 표현한다. 이 경계는 F-MVP-018~F-MVP-022를 Phase 5-complete로 재정의하지 않는다.
 
 Presentation은 ADR-038에 따라 Delete 즉시 UI 제거, 시간순 Session Undo / Redo, Process 종료 후 History 미유지와 동일 Clip Identity / Media 복원을 유지한다("가장 최근 삭제 한 건" 제한은 폐기).
 
@@ -1766,45 +1768,62 @@ Logical Deletion, Session Undo / Redo History, 결정적 복원, Unavailable Cli
 
 # Phase 6 — Photos Video Import
 
-ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segment는 `0 < duration <= 5 seconds`이고 Camera 정수 Preset과 독립적으로 자유롭게 선택한다.
+**Status:** Not Started — Documentation Replanning 완료 2026-09-17 (ADR-042, Level 3 Product / UX Change). Production 구현은 시작하지 않았다.
 
-1.3초 / 2.7초 / 4.5초 / 5.0초 허용과 0 이하 / 5초 초과 거부를 검증한다.
+### ADR-042 Replanning — 2026-09-17
+
+ADR-042에 따라 Photos Video는 **전체 Source Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만** 받아들인다. 1.0초 미만 또는 5.0초를 초과하는 Photos Source는 Import하지 않으며 임의의 긴 Source에서 최대 5초 Segment를 선택하는 기능, Segment Selection UI, 원본 Source Reference 유지, 원본 전체 범위 Re-trim은 V1 / MVP에서 제공하지 않는다.
+
+Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0초 안에 있으면 1.3초 / 2.7초 / 4.5초 / 5.0초 같은 비정수 Duration도 유효하다(정수 불필요). 정확히 1.0초와 5.0초는 허용, 0.4초 / 0.8초 같은 1.0초 미만은 거부, 5.0초 초과는 거부, 0 이하 / 읽을 수 없음은 Invalid Media다.
+
+**구현 상태 구분:** 5.0초 초과 거부는 Phase 5가 이미 세 경로에서 구현·검증했다. **1.0초 미만 거부는 아직 구현되지 않았다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사하고 `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정) — 이는 Phase 6 구현 요구사항이며 Below-minimum Presentation / Copy는 아래 Structural UX Gate 대상이다.
+
+System PhotosPicker는 Duration으로 항목을 미리 숨기지 못하므로 사용자가 5초 초과 Video를 탭할 수 있다. Mellow는 Metadata Validation 후 해당 항목을 거부하고 Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않으며 Photos 원본을 변경하지 않는다. 5.0초 초과 거부는 Phase 5 STEP 6 / 11 / 13이 이미 세 경로(`새 프로젝트 시작` / Editor `+` / `클립 교체`)에서 같은 Validator(`requires import preparation(.tooLong)`)와 같은 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로 구현·검증한 동작이며 Phase 6은 이를 유지하고 다른 Duration 정책을 만들지 않는다. 1.0초 미만 거부는 Phase 6이 같은 세 경로에 추가하며 그 Copy는 이 문서에서 정하지 않는다.
+
+Duration 규칙의 구분은 ADR-042의 표를 따른다: Direct Capture(ADR-029 / ADR-033) · Photos Source Eligibility(ADR-042) · Phase-5-ready Media(ADR-034 §2) · Phase-6 Normalization-required Media · Invalid Media · Phase 7 비파괴 Trim.
 
 ## Goal
 
-Photos Library의 기존 Video를 Mellow Project에 안전하게 추가할 수 있게 한다.
+Photos Library의 기존 Video 중 전체 길이가 5초 이하이면서 Phase-5-ready 경계(Portrait / ≤1080p-class / ≤30 fps / SDR)를 벗어나는 Video를 Mellow Project에 안전하게 추가할 수 있게 한다.
 
-Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하며 별도의 저장 완료 또는 Orphan 판정 기준을 만들지 않는다.
+ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Phase 5 Project Materialization / Cleanup / Recovery 경계)을 Import Normalization에도 적용하며 별도의 저장 완료 또는 Orphan 판정 기준을 만들지 않는다. Phase 5는 Normalization을 구현하지 않았으며 Normalization Pipeline 자체는 Phase 6이 새로 구현한다.
 
 ## Included
 
-- System Photos Picker
-- Video Selection
-- 긴 Source 허용
-- Source Metadata Load
-- 최대 5초 Segment Selection 준비
-- SDR / HDR / Dolby Vision Source 허용
-- 4K / High-resolution 및 30 fps 초과 Source 허용
+- System Photos Picker(기존 `PhotosVideoSelector` 경로 재사용, Broad Photos Read 권한 없음)
+- Video Selection과 전체 Source Duration Eligibility 검사(`1.0s <= duration <= 5.0s`; 기존 5.0초 초과 `.tooLong` 거부 유지 + 1.0초 미만 거부 신규 구현; Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분)
+- Source Metadata Load(Duration, Display Transform, Resolution, Frame Rate, Color / Dynamic Range)
+- SDR / HDR / Dolby Vision Source 허용(5초 이하)
+- 4K / High-resolution 및 30 fps 초과 Source 허용(5초 이하)
+- Landscape / Presentation Transform이 다른 Source 허용(5초 이하)
+- Duration-eligible이지만 Phase-5-ready가 아닌 Source의 Normalization-required Import 준비 상태
 - Project-owned Media Materialization
-- 1080p-class / 30 fps / SDR Working Media
+- 1080p-class / 30 fps / SDR Working Media(전체 Source 기준)
 - Source Presentation Aspect Ratio와 Framing 가능 영역 보존
-- Imported Clip 생성
+- Imported Clip 생성(`sourceKind = .imported`, `trimStart = 0`, `trimDuration = sourceDuration = Working Media Duration`, `framing = nil`)
 - 공통 Media Commit Recovery 적용
+- Phase 5 Select Clips / Add / Replace 세 경로가 같은 Eligibility Rule과 같은 Normalization 경로를 사용
+- 기존 Multi-select Session(Select Clips / Add) 안의 Normalization-required 항목 처리: 기존 All-or-nothing 유지(하나라도 Invalid / Ineligible / Normalization 실패면 전체 미변경); 혼합 Session의 Presentation은 Structural UX Gate 대상
 
 ## Explicitly Excluded
 
+- 5초 초과 Photos Source의 Import(ADR-042)
+- Long-source Segment Selection / Import Editing State / Segment Selection UI(ADR-042)
+- Source Reference(Photos Asset Identity, App-owned 원본 복사본) 유지(ADR-042)
+- 원본 전체 범위 Re-trim(ADR-042)
 - Full Trim UX 완성
 - Advanced Crop
 - Fit Layout
 - Blur Background
-- Multi-selection Import
+- 새로운 별도의 Multi-selection Import 기능(Phase 5 Select Clips / Editor Add의 기존 Multi-select Session은 그대로 유지되며 사라지지 않는다. 그 Session 안에서 Eligible 항목 일부가 Phase 6 Normalization을 필요로 해도 기존 All-or-nothing Project Mutation 안전성이 그대로 적용되며 부분 성공 정책은 별도 승인 없이 도입하지 않는다.)
 
 ## Decision Gate Before Implementation
 
-### Accepted Direction — ADR-022
+### Accepted Direction — ADR-022 / ADR-042
 
 다음 방향은 이미 Accepted이며 Phase 6 Definition of Ready에서 확인한다.
 
+- Photos Source Eligibility `1.0s <= entire source duration <= 5.0s`(양 끝 포함, ADR-042 사용자 승인)
 - SDR / HDR / Dolby Vision Source Import 허용
 - 4K / High-resolution Source Import 허용
 - HDR / Dolby Vision → SDR Working Media
@@ -1812,6 +1831,7 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - Photos Source 원본 보존
 - Project Fill + Crop을 Normalization에 bake-in하지 않음
 - Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역 보존
+- Segment Selection 없음, Source Reference 없음, 원본 범위 Re-trim 없음 (ADR-042)
 
 ### Pending Technical Gate
 
@@ -1822,8 +1842,11 @@ Phase 4에서 구현한 공통 Media Commit Lifecycle을 Import에도 적용하�
 - 정확한 SDR Color Profile / Tagging
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
-- 선택된 Segment, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
+- 5초 이하 전체 Source, Picker Transient 복사본, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
+- Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식
+- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(현재 5초 상한의 1-frame Quantization 허용치 / Clamp는 구현 세부사항이며 Product 경계를 재정의하지 않는다 — 검증 방식만 결정)
+- Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 이미 만족하는 Source를 Re-encode할지 Transform 보존 Copy로 Materialize할지) — Landscape Source가 Phase 6 경로로 들어온다는 사실 자체는 ADR-034 §2 / `Phase5ReadyMediaValidator`(`.orientation` → 준비 필요)로 이미 확정되어 있다
 
 이 Gate가 해결되지 않으면 실제 Normalization 구현을 시작하지 않는다.
 
@@ -1833,78 +1856,79 @@ Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개
 
 Tone-mapping 구현 방법은 여전히 Pending이며 필요한 결정은 관련 Normalization 구현 전에 해결하되 여기서 특정 Algorithm이나 Apple API 조합을 강제하지 않는다.
 
-Import Storage Estimate는 선택된 최대 5초 Segment와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 하며 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않는다.
+Import Storage Estimate는 5초 이하 전체 Source와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 한다. System PhotosPicker는 Photos Read 권한 없이 선택 File 전체를 Mellow 임시 영역으로 전송하므로 그 Transient 복사본은 Peak에 포함하되 Commit 이후 보관하지 않는다.
 
-### Existing Re-trim Decision Gate
+### Re-trim / Source Reference — Resolved by ADR-042
 
-Imported Clip의 Re-trim 정책이 아직 확정되지 않았다면 이 Phase 시작 전에 반드시 결정한다.
+이전의 "Materialized Segment 내부 Re-trim vs Source Reference 유지 원본 전체 범위 Re-trim" Decision Gate는 ADR-042로 해소되었다. Imported Clip의 Re-trim(Phase 7)은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 Source Reference를 유지하지 않는다.
 
-선택지는 최소한 다음을 비교한다.
+### Structural UX Gate for Normalization-required Import
 
-- Materialized 최대 5초 Segment 내부에서만 Re-trim
-- Source Reference를 유지하여 원본 전체 범위 Re-trim 허용
+Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다음 Presentation 구조를 Phase 6 구현 전에 사용자 승인으로 결정한다.
 
-사용자 승인 전에는 임의로 선택하지 않는다.
+- Duration-eligible이지만 Normalization이 필요한 Source(4K / HDR / Dolby Vision / >30 fps / Landscape)를 선택했을 때 기존 `이 영상은 바로 사용할 수 없어요` / `세로 영상을 선택해주세요` 거부를 어떤 진입 / 진행(Normalization Progress) / 완료 / 실패 표현으로 대체할지, Select Clips / Add / Replace 세 경로에서의 일관된 구조, 그리고 기존 Multi-select Session에서 Ready 항목과 Normalization-required 항목이 섞였을 때의 Presentation(All-or-nothing 동작 자체는 이 Gate에서 바꾸지 않는다).
+- Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조(기존 `저장 공간이 부족해요` / `공간을 확보한 뒤 다시 시도해 주세요.` Copy 재사용 여부 포함).
+- 5초 초과 Source 거부 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 유지하며 이 Gate에서 다시 결정하지 않는다.
+- **1.0초 미만 Source 거부의 Presentation과 정확한 Copy**(ADR-042 최소 길이 승인에 따른 신규 항목; Above-maximum Copy와 구분되는 별도 안내인지 포함).
 
-### Structural UX Gate for Import Selection
-
-이 Phase가 이미 포함하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조는 Phase 6 구현 전에 사용자 승인으로 결정한다.
-
-Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조도 이 Gate에서 사용자 승인으로 결정한다.
-
-Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을 준다면 그 필요한 부분도 Phase 6 전에 결정하고 나머지 Full Trim / Framing 구조는 Phase 7 Gate에서 해결한다.
-
-이 Gate는 Full Trim UX를 Phase 6으로 옮기거나 Re-trim / Source Reference 및 Working Media Technical Pending을 확정하지 않는다.
+이 Gate는 Full Trim UX를 Phase 6으로 옮기거나 Working Media Technical Pending을 확정하지 않는다.
 
 ## Implementation Tasks
 
-1. PhotosPicker 기반 Video Selection을 구현한다.
-2. Broad Photos Read Permission 없이 가능한 Flow를 우선한다.
-3. Source Video Duration과 Display Transform을 읽는다.
-4. SDR / HDR / Dolby Vision, 4K / High-resolution, Portrait / Landscape 및 Project Aspect와 다른 Source를 정상적으로 다룰 수 있게 한다.
-5. 사용자가 최대 5초 Segment를 선택할 수 있는 Import Editing State를 준비한다.
+1. 기존 PhotosPicker 기반 Video Selection(`PhotosVideoSelector`, Broad Photos Read Permission 없음)을 재사용한다.
+2. 선택 항목마다 전체 Source Duration Eligibility(`1.0s <= duration <= 5.0s`, 양 끝 포함)를 먼저 검사한다. 5.0초 초과는 기존 `.tooLong` 거부로, 1.0초 미만은 새 Below-minimum 거부로 종료하며(Select Clips / Add / Replace 세 경로 동일, Materialize / Normalize / Persist / Append / Replace / 부분 Commit 없음) Validation 결과 모델이 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Normalization은 이 검사를 통과한 Source에만 적용한다.
+3. Source Video Duration, Display Transform, Resolution, Frame Rate, Color / Dynamic Range를 읽는다.
+4. SDR / HDR / Dolby Vision, 4K / High-resolution, Portrait / Landscape 및 Project Aspect와 다른 5초 이하 Source를 정상적으로 다룰 수 있게 한다.
+5. Duration-eligible이지만 Phase-5-ready가 아닌 Source를 위한 Normalization-required Import 상태를 준비한다(Segment Selection 없음).
 6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Media 작성 전에 Durable Operation Identity를 확보하고 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
-7. 검증된 Source / Staged Media에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다.
+7. 검증된 Source / Staged Media 전체에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다.
 8. 30 fps 초과 Source를 포함하여 Working Media를 30 fps 기준으로 정규화하고 Source FPS를 Photos 원본에서 변경하지 않으며 VFR 변환 구현은 승인된 기준을 따른다.
 9. Photos 원본을 변경하지 않는다.
-10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
+10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존, Duration(Working Media가 `0 < effectiveClipDuration <= 5 seconds` Domain Invariant를 만족하고 Source Eligibility 1.0–5.0초와 일관됨; 경계 비교 정책은 Technical Gate)을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
 11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
-13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다.
-14. Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다.
+13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다(Relaunch 이후의 보존 범위는 Pending Technical Gate의 Recovery 깊이 결정을 따른다).
+14. Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다(ADR-039 STEP 12B Predicate 확장 포함).
 15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
-16. Import / Normalization / Materialization 중 Project Delete가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
+16. Import / Normalization / Materialization 중 Project Delete / Replacement가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
-18. Photos Import와 최대 5초 Segment Selection Controls에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
-19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 선택된 최대 5초 Segment, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
+18. Normalization-required Import의 진입 / 진행 / 실패 Presentation에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준을 처음부터 적용한다.
+19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 5초 이하 전체 Source, Picker Transient 복사본, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
 21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
 22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
+23. Select Clips / Add / Replace 세 경로가 같은 Eligibility → Phase-5-ready Pass-through 또는 Normalization → Commit 경로를 공유하도록 하며 Phase 5의 All-or-nothing / Undo · Redo / Cleanup / Unavailable 계약을 바꾸지 않는다.
 
-복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 Source Reference와 Re-trim 범위는 이 Phase의 별도 Decision Gate를 따른다.
+복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 원본 Source Reference는 유지하지 않는다(ADR-042).
 
 ## Unit Tests
 
-- Import State
-- 5초 Segment Validation
+- Import State(Normalization-required, Segment Selection 없음)
+- 전체 Source Duration Eligibility Validation: 정확히 1.0초 허용, 1.3초 / 2.7초 / 4.5초 허용, 정확히 5.0초 허용, 0.4초 / 0.8초 등 1.0초 미만 Below-minimum 거부, 5.0초 초과 Above-maximum 거부, 0 이하 / 읽을 수 없음 Invalid; Verdict 모델이 네 경우를 구분
+- 1.0초 미만 / 5.0초 초과 거부 시 Materialize / Normalize / Persist / Append / Replace 미호출과 Project 무변경
+- Select Clips / Add / Replace 세 경로가 같은 Eligibility Verdict와 Copy를 사용
 - Source Metadata Mapping
-- Imported Clip SourceKind
+- Imported Clip SourceKind와 Metadata(`trimStart = 0`, `trimDuration = sourceDuration`, `framing = nil`)
 - 승인된 Working Media Profile과 Raster / Upscaling Policy의 Source Metadata Mapping
-- 선택된 Segment와 승인된 Normalization Pipeline 기반 Import Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
+- 5초 이하 전체 Source와 승인된 Normalization Pipeline 기반 Import Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
 - Import Storage Preflight 실패 시 Materialization / Normalization Operation 미시작
 - Storage 부족 시 Working Media Quality Silent Downgrade 금지
 - Runtime Disk Full과 Metadata Persistence 실패의 Failure State 및 Recovery Candidate 분류
 
 ## Integration Tests
 
-- 720p Source
-- 1080p Source
-- 4K Source
+- 720p Source(5초 이하)
+- 1080p Source(5초 이하)
+- 4K Source(5초 이하)
 - Portrait Source
 - Landscape Source
-- 60 fps Source
-- 5초 미만 Source
-- 5초 초과 Source
+- 60 fps Source(5초 이하)
+- 1.0초 이상 5.0초 미만 Source(전체 사용, 비정수 포함)
+- 정확히 1.0초 Source(허용, 전체 사용)
+- 정확히 5.0초 Source(허용, 전체 사용; 경계 비교 정책은 Technical Gate 결정에 따라 검증)
+- 1.0초 미만 Source(예: 0.4초 / 0.8초): Select Clips / Add / Replace 각각에서 Below-minimum 거부, Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
+- 5.0초 초과 Source: Select Clips / Add / Replace 각각에서 `.tooLong` 거부, Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
+- Multi-select에 1.0초 미만 또는 5.0초 초과 항목이 하나라도 포함되면 전체 거부(All-or-nothing)
 - SDR / HDR / Dolby Vision Source 각각의 SDR Working Media 생성
 - 4K / High-resolution → 1080p-class / 30 fps / SDR Working Media
 - 30 fps 초과 Source의 Working Media Frame Rate 확인
@@ -1912,6 +1936,7 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - Portrait / Landscape 및 Source / Project Aspect Mismatch의 Presentation Transform 보존
 - 16:9 Source → 9:16 Project 등에서 Project Crop bake-in 없이 Phase 7 Framing에 필요한 좌우 / 상하 Source 영역 보존
 - 심각한 Highlight Clipping / 잘못된 색 변환 / Orientation 손상 등 명백한 변환 실패를 Final Validation에서 정상 Media로 등록하지 않음
+- Phase-5-ready Source는 Normalization 없이 기존 Pass-through 경로를 유지
 - Import / Normalization 성공·실패·취소 후 Photos Source 불변
 - Source / Staged Media와 Normalized Output의 각각의 Validation
 - Normalization 도중 실패 후 Valid Source 보존과 Incomplete Derived Output 분류
@@ -1919,9 +1944,9 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 - Metadata Save 성공 후 UI Update 전 중단과 중복 없는 Recovery
 - Cancel / Failure 후 Discardable Temporary Artifact Cleanup과 Recoverable Media 보존
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
-- Import / Normalization / Materialization 각각에서 Project Delete를 경합시켜 Metadata Commit과 Resurrection 차단
+- Import / Normalization / Materialization 각각에서 Project Delete / Replacement를 경합시켜 Metadata Commit과 Resurrection 차단
 - Cancellation 요청 직후 아직 Media를 사용하는 Operation의 Cleanup 지연과 Release 이후 안전한 정리
-- 4K / HDR / Dolby Vision Source의 선택된 최대 5초 Segment에 대한 Staging + Normalization Peak Additional Storage Estimate
+- 4K / HDR / Dolby Vision 5초 이하 Source의 Staging + Normalization Peak Additional Storage Estimate
 - Import Storage Preflight 실패 시 Source Materialization / Normalization 미시작과 기존 Project Media 보존
 - Materialization / Normalization / Metadata Persistence 중 Runtime Disk Full에서 Partial Output 미등록, Photos 원본 불변과 Recovery Candidate 보호
 - Storage Failure Cleanup이 Safe Classification 이후에만 실행되고 공간 확보 후 Retry가 중복 Clip을 만들지 않음
@@ -1930,37 +1955,43 @@ Trim / Crop 화면 분리 여부가 이 최소 구간 선택 구조에 영향을
 
 iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
-SDR, HDR, Dolby Vision 및 4K / High-resolution Source를 실제로 Import하여 1080p-class / 30 fps / SDR Working Media 생성과 Source / Project Aspect Mismatch의 Framing 영역 보존을 검증한다.
+5초 이하의 SDR, HDR, Dolby Vision 및 4K / High-resolution Source를 실제로 Import하여 1080p-class / 30 fps / SDR Working Media 생성과 Source / Project Aspect Mismatch의 Framing 영역 보존을 검증한다.
+
+5.0초 초과 Source를 System PhotosPicker에서 실제로 탭하여 Select Clips / Add / Replace 세 경로 모두에서 `영상이 너무 길어요` 거부, Project-owned Media / Clip Metadata 미생성, Photos 원본 불변을 확인한다. 1.0초 미만 Source(예: 0.4초 / 0.8초)를 실제로 탭하여 같은 세 경로에서 Below-minimum 거부(승인된 Presentation), Project-owned Media / Clip Metadata 미생성, Photos 원본 불변을 확인하고, 정확히 1.0초와 정확히 5.0초 Source가 Import되는지 확인한다.
 
 특히 HDR / Dolby Vision Source의 SDR 변환 결과와 Source Orientation을 확인하며 Test Asset 확보 방식은 별도 준비 과정에서 결정한다.
 
 Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
 
-Import 중 Project Delete와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
+Import 중 Project Delete / Replacement와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
-4K SDR 및 4K HDR / Dolby Vision Source의 선택된 최대 5초 Segment로 실제 Import Peak Additional Storage와 Preflight Estimate의 합리성을 측정하며 전체 Photos 원본 복제를 전제로 하지 않는다.
+4K SDR 및 4K HDR / Dolby Vision 5초 이하 Source로 실제 Import Peak Additional Storage(Picker Transient 복사본 포함)와 Preflight Estimate의 합리성을 측정한다.
 
 Storage Preflight 부족과 Normalization 중 Runtime Disk Full을 검증하여 Photos 원본과 기존 Project Media가 유지되고 Partial Output이 등록되지 않으며 공간 확보 후 안전하게 재시도되는지 확인한다.
 
 ### Import / Normalization Baseline Measurement Evidence
 
-Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 선택된 최대 5초 Segment를 포함한 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
+Phase 6는 Physical iPhone 12에서 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch를 포함한 5초 이하 전체 Source의 재현 가능한 Import / Normalization Baseline Measurement Evidence를 남긴다.
 
-Evidence에는 Scenario, Build / Commit, Test Asset Identity, Selected Segment와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 applicable한 경우 Cancellation Responsiveness를 관찰한다.
+Evidence에는 Scenario, Build / Commit, Test Asset Identity(Source Duration 포함)와 Project Shape, Elapsed Normalization Observation, Memory, Peak Additional Storage, Thermal과 Operation Success / Failure를 기록하고 applicable한 경우 Cancellation Responsiveness를 관찰한다.
 
 이 Baseline Measurement는 ADR-022와 ADR-024의 기존 SDR Normalization / Storage Safety Contract를 변경하지 않으며 Phase 13 Performance Acceptance Profile의 Input으로 사용하고 Final Numeric Performance Threshold를 이 Phase에서 요구하거나 임의로 만들지 않는다.
 
 ## UI Accessibility Verification
 
-Photos Import와 최대 5초 Segment Selection Controls에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+Normalization-required Import의 진입 / 진행 / 실패 표현과 기존 Duration 거부 안내에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
 
 현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
 
 ## Acceptance Criteria
 
-- 긴 Video도 선택할 수 있다.
-- Project에 들어가는 Clip은 최대 5초다.
+- 전체 길이가 1.0초 이상 5.0초 이하(양 끝 포함)인 Photos Video만 Project에 들어가며 Project에 들어가는 Clip은 최대 5초다. 정확히 1.0초와 5.0초, 1.3초 / 2.7초 / 4.5초 같은 비정수 길이는 허용된다.
+- 5.0초 초과 Photos Source는 Select Clips / Add / Replace 어느 경로에서도 Import되지 않고 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.` 안내를 받으며 Project-owned Media, Clip Metadata, 부분 Project Mutation이 발생하지 않는다.
+- 1.0초 미만 Photos Source(예: 0.4초 / 0.8초)는 Select Clips / Add / Replace 어느 경로에서도 Import되지 않고 승인된 Below-minimum 안내를 받으며 Project-owned Media, Clip Metadata, 부분 Project Mutation이 발생하지 않는다.
+- Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분한다.
+- Segment Selection UI, Source Reference, 원본 범위 Re-trim이 존재하지 않는다.
 - SDR / HDR / Dolby Vision Source와 4K / High-resolution Source를 허용하고 승인된 1080p-class / 30 fps / SDR Working Pipeline을 사용한다.
+- Normalization은 전체 Source Duration Eligibility 검사 이후에만 시작한다.
 - 저해상도 Source는 Phase 6 전에 승인된 Upscaling / Raster 정책을 따르며 임의의 확대 여부를 가정하지 않는다.
 - Project Crop이 Working File에 bake-in되지 않고 Phase 7에서 Framing할 Source의 유효 영역과 Presentation Aspect Ratio / Orientation이 보존된다.
 - Normalization Output Validation을 통과한 Media만 등록하며 명백한 색 변환 실패나 Orientation 손상을 정상 Clip으로 취급하지 않는다.
@@ -1970,12 +2001,13 @@ Photos Import와 최대 5초 Segment Selection Controls에서 3.11절의 Touch T
 - Normalization 실패가 Valid Source / Staging Media를 파괴하지 않는다.
 - Materialization 이후 Metadata Persistence 실패를 복구할 수 있으며 Commit 완료 전 Clip을 정상 UI에 표시하지 않는다.
 - Cancel / Failure Cleanup은 확인된 Discardable Artifact에만 적용되며 반복 수행해도 정상 Media와 Recovery Candidate를 훼손하지 않는다.
-- Project Delete 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
+- Project Delete / Replacement 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
 - Import Operation이 사용하는 Media는 Cancellation 요청만으로 삭제되지 않으며 Release와 Safe Classification 이후 정리된다.
-- Import 시작 전 Operation-aware Storage Preflight가 선택된 Segment와 승인된 Pipeline의 Estimate 및 Safety Reserve를 적용하고 부족하면 Materialization / Normalization을 시작하지 않는다.
+- Import 시작 전 Operation-aware Storage Preflight가 5초 이하 전체 Source와 승인된 Pipeline의 Estimate 및 Safety Reserve를 적용하고 부족하면 Materialization / Normalization을 시작하지 않는다.
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호한다.
 - Storage 부족 때문에 승인된 1080p-class / 30 fps / SDR Working Media 방향을 자동으로 낮추지 않는다.
 - 공간 확보 후 Import를 안전하게 재시도할 수 있다.
+- Phase 5의 Phase-5-ready Pass-through, All-or-nothing, Undo / Redo, Cleanup, Unavailable / Replace 동작이 회귀하지 않는다.
 - iPhone 12 Import / Normalization Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
@@ -1986,13 +2018,13 @@ Photos Import와 최대 5초 Segment Selection Controls에서 3.11절의 Touch T
 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
-ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
+ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)가 세 경로에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
 
 ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
 Import / Normalization Baseline Measurement는 `ROADMAP.md` 3.14절의 Evidence Contract에 따라 기록되어야 하지만 Final Performance Acceptance Threshold는 Phase 13 Gate에서 승인한다.
 
-해당 화면의 Structural UX Gate가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
+해당 화면의 Structural UX Gate(Normalization-required Import Presentation)가 구현 전에 승인되었고 기존 Accessibility 검증 결과와 필요한 iPhone 12 확인이 완료되어야 한다.
 
 ---
 
@@ -2006,9 +2038,9 @@ Font / Position / Size / Duration / Animation 정책과 Metadata / Persistence �
 
 Text 검증은 Clip 선택 대상의 정확성, 명시적 T 진입, 수정 / Relaunch Persistence, Accessibility와 기존 Clip 관리 동작 보존을 포함한다.
 
-ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segment는 `0 < duration <= 5 seconds`이고 Camera 정수 Preset과 독립적으로 자유롭게 선택한다.
+ADR-029 / ADR-042에 따라 Photos Source는 전체 Duration이 `1.0s <= duration <= 5.0s`일 때만 Project에 들어오며(Segment Selection 없음) Camera 정수 Preset은 Import / Trim에 적용하지 않는다. 이 Phase의 Trim은 Recorded / Imported Clip 모두 Project-owned Clip Media 범위 안의 비파괴 Metadata Trim(`0 < trimDuration <= 5 seconds`, `trimStart + trimDuration <= sourceDuration`)이며 원본 Source 전체 범위 Re-trim이나 Source Reference는 존재하지 않는다.
 
-1.3초 / 2.7초 / 4.5초 / 5.0초 허용과 0 이하 / 5초 초과 거부를 검증한다.
+Trim은 1.3초 / 2.7초 / 4.5초 / 5.0초 같은 비정수 결과를 허용하고 0 이하 / 5초 초과 Trim 결과를 거부한다(Domain Invariant `0 < effectiveClipDuration <= 5 seconds`; Photos Source Eligibility의 1.0초 최소는 Import 시점 규칙이며 Trim 결과 하한을 별도로 정하지 않는다).
 
 ## Goal
 
@@ -2056,7 +2088,7 @@ ADR-029에 따라 Photos Source Duration은 제한하지 않으며 사용 Segmen
 - Crop Reset 필요 여부와 Crop UI 구조
 - Portrait / Landscape Project에서의 Editing Control 배치
 
-Phase 6에서 구현한 Import Segment Selection의 승인된 구조를 재사용하고 이 Phase에 남은 구조적 선택지는 사용자 승인 전까지 Pending으로 유지한다.
+ADR-042에 따라 Phase 6은 Segment Selection 구조를 만들지 않으므로 이 Phase가 Trim Interaction 구조 전체를 소유하며 남은 구조적 선택지는 사용자 승인 전까지 Pending으로 유지한다.
 
 Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop bake-in 금지와 Metadata 기반 비파괴 Framing 계약을 유지한다.
 
@@ -2065,7 +2097,7 @@ Pinch 포함 여부를 임의로 선택하지 않으며 ADR-022의 Project Crop 
 1. `trimStart`와 `trimDuration` Editing State를 구현한다.
 2. Trim 범위가 5초를 초과하지 않도록 한다.
 3. Recorded Clip Re-trim을 구현한다.
-4. Imported Clip Re-trim을 확정된 정책에 따라 구현한다.
+4. Imported Clip Re-trim을 ADR-042에 따라 Project-owned Clip Media 범위 안에서만 구현한다(원본 Source 범위 Re-trim 없음).
 5. Framing Metadata를 Normalized Coordinate로 저장한다.
 6. Phase 6 Working Media에 보존된 Source 영역을 사용하여 Fill + Crop Transform을 Metadata 기반으로 구현하고 Crop Region / Position / Scale을 Working File에 bake-in하지 않는다.
 7. Source `preferredTransform`을 고려한다.
@@ -3062,7 +3094,7 @@ Codex는 Gate를 통과시키기 위해 Threshold, Repetition Count, Project Sha
 2. Performance Acceptance Profile의 Scenario, Project Shape, Metric, Measurement Method, Repetition, Cold / Warm Policy, PASS / FAIL Rule과 Release-blocking Scope를 사용자 승인으로 확정한다.
 3. Approved Profile의 Measurement Method가 iPhone 12에서 재현 가능하고 OSLog 또는 Signpost, Instruments, Xcode Device Metrics, Application Instrumentation, AVFoundation Observable Timing 또는 Storage Observation으로 필요한 Evidence를 수집할 수 있는지 검증한다.
 4. Rear / Front Recording, 최대 5초 Completion, Active Rear Zoom, Repeated Capture, Commit / Thumbnail / Draft Persistence의 Capture Stability, Completion Reliability, Post-record Commit Observation, Memory와 Thermal Behavior를 Official Scenario로 실행한다.
-5. 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch와 Selected Segment Import / Normalization의 Elapsed Observation, Memory, Peak Additional Storage, Thermal, Success / Failure와 applicable Cancellation Responsiveness를 Official Scenario로 실행한다.
+5. 1080p SDR, 4K SDR, HDR / Dolby Vision, Portrait, Landscape, Aspect Mismatch의 5초 이하 전체 Source Import / Normalization의 Elapsed Observation, Memory, Peak Additional Storage, Thermal, Success / Failure와 applicable Cancellation Responsiveness를 Official Scenario로 실행한다.
 6. Individual Clip과 Full Vlog Preview의 Composition Preparation, First Usable Playback, applicable Seek / Playback Responsiveness, Playback Stability, Memory, Thermal과 Repeated Open / Close를 Official Scenario로 실행한다.
 7. Short, Representative, Larger Project의 Export Elapsed Observation, Throughput 또는 Duration Relationship, Peak Memory, Peak Storage, Thermal, Output Validation, Preview / Export Parity와 Repeated Export Stability를 Official Scenario로 실행한다.
 8. Instruments로 Main Thread Hitch와 Memory Behavior를 확인하고 Large Project에서 모든 Asset을 동시에 Load하지 않으며 Thumbnail Generation이 UI를 Block하지 않는지 검증한다.
@@ -3118,7 +3150,7 @@ Recording / Import / Export의 Actual Peak Additional Storage, 승인된 Estimat
 6. 선택한 최대 Duration Auto Stop을 검증한다.
 7. 여러 Clip을 추가한다.
 8. Photos에서 기존 Video를 Import한다.
-9. 긴 Video에서 최대 5초 구간을 선택한다.
+9. 5초 이하 Photos Video를 선택해 가져오고, 5초 초과 Video는 거부 안내를 받는다(ADR-042).
 10. 4K Video를 Import한다.
 11. Imported Clip의 Framing을 조정한다.
 12. Clip을 삭제하고 Undo한다.
@@ -3394,23 +3426,25 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 
 ## Before Phase 6
 
-- Imported Clip Re-trim 범위
-- Source Reference 유지 여부
+- Imported Clip Re-trim 범위 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만(원본 범위 Re-trim 없음).
+- Source Reference 유지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Working Media Codec
 - Working Media Container
 - 정확한 SDR Color Profile / Tagging
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
-- 선택된 Segment와 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
+- 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
+- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
+- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
 
-HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 Project Crop bake-in 금지 / Framing 영역 보존은 ADR-022 Accepted 기준이다.
+Photos Source Eligibility `1.0s <= entire source duration <= 5.0s`(ADR-042, Imported 최소 1.0초 사용자 승인 — Phase 6 구현 요구), HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 Project Crop bake-in 금지 / Framing 영역 보존은 ADR-022 / ADR-042 Accepted 기준이다.
 
 위 Technical Gate가 해결되기 전에는 실제 Normalization 구현을 시작하지 않으며 Tone-mapping의 필요한 미결정 사항도 관련 구현 전에 해결한다.
 
-Import Estimate는 전체 Photos 원본 File을 Mellow Container에 무조건 복제한다고 가정하지 않고 선택된 최대 5초 Segment의 실제 Materialization / Normalization Pipeline을 기준으로 한다.
+Import Estimate는 5초 이하 전체 Source의 실제 Materialization / Normalization Pipeline을 기준으로 하며 System PhotosPicker가 Photos Read 권한 없이 전송하는 전체 File의 Transient 복사본을 Peak에 포함하되 Commit 이후 보관하지 않는다.
 
-Phase 6에서 이미 구현하는 최소 Import Segment Selection의 Control / Interaction 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정하고 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정을 Phase 7이나 Phase 12로 미루지 않는다.
+Phase 6 Normalization-required Import의 진입 / 진행 / 실패 Presentation 구조와 Import Storage 부족 / 공간 확보 후 Retry의 Presentation 구조도 구현 전에 결정한다. Segment Selection Structural UX Gate는 ADR-042로 제거되었다.
 
 ## Before Phase 7
 
@@ -3422,7 +3456,7 @@ ADR-030의 Clip Text 입력 / 수정 정책, Metadata / Persistence와 Phase 8�
 - Drag / Position Framing 세부 구조와 Crop Reset 필요 여부
 - Portrait / Landscape Editing Control 배치
 
-Phase 6에서 승인된 구간 선택 구조는 재사용하며 ADR-022의 Framing 영역 보존과 Metadata Editing 계약은 변경하지 않는다.
+ADR-042에 따라 Phase 6은 구간 선택 구조를 만들지 않으므로 Trim Interaction 구조는 이 Gate가 전부 소유하며 ADR-022의 Framing 영역 보존과 Metadata Editing 계약은 변경하지 않는다.
 
 이 Phase의 Pinch to Zoom Pending은 Phase 7 Editing Framing Interaction에 관한 것으로 ADR-023의 승인된 Rear Capture Zoom과 별개다.
 

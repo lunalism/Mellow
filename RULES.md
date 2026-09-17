@@ -149,8 +149,8 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - 선택은 Camera / Capture-level 설정으로 Clip 사이에 변경할 수 있으며 Project-level 불변 속성이 아니다.
 - 선택한 Maximum에서 Auto Stop하며 Manual Early Stop을 허용하고 정확한 정수 Output 길이를 강제하지 않는다.
 - 모든 Source의 Clip은 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
-- Imported Video Source는 길이 제한 없이 선택할 수 있다.
-- Imported Segment는 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
+- Photos Video Source는 전체 Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 받아들이며 1.0초 미만 / 5.0초 초과 Source는 거부하고 Segment Selection을 제공하지 않는다(ADR-042).
+- Imported Clip은 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.
 - Project Clip Count에는 임의의 고정 Maximum을 두지 않는다.
 - 9:16 Portrait와 16:9 Landscape Project를 지원한다.

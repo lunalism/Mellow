@@ -250,6 +250,8 @@ Photos 원본 Video는 비파괴적으로 유지한다.
 
 현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
+**Partial Supersession (ADR-042, 2026-09-17):** "선택된 … 구간을 기준으로" Working Media를 만든다는 Segment 전제와 Consequences의 "원본 Source 전체 범위 Re-trim" Pending은 ADR-042로 대체·해소되었다. Photos Source는 전체 Duration이 `1.0s <= duration <= 5.0s`일 때만 받아들이며 Source 전체가 Project-owned Working Media의 기준이고, 원본 전체 범위 Re-trim과 Source Reference 유지는 제공하지 않는다. Project-owned Media / Photos 원본 보존은 그대로 유효하다.
+
 ## Context
 
 Mellow Draft가 Photos Library의 원본 Asset만 참조하면 사용자가 원본 Video를 삭제했을 때 Draft가 손상될 수 있다.
@@ -926,6 +928,8 @@ Photos Save / Share 완료 파일의 상세 Lifecycle은 M05 / Export Lifecycle 
 
 현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
 
+**Partial Supersession (ADR-042, 2026-09-17):** "선택된 최대 10초(→5초) Segment를 기반으로 하는 Project-owned Working Media"의 Segment 전제는 ADR-042로 대체되었다. Working Media의 기준은 전체 Duration이 `1.0s <= duration <= 5.0s`인 Photos Source 전체이며 Long-source Segment Selection은 존재하지 않는다. Non-goals의 "Import Re-trim / Source Reference"는 ADR-042로 해소되었다(원본 범위 Re-trim 없음). SDR / 30 fps / 1080p-class, Framing 영역 보존, Crop bake-in 금지, Validation과 나머지 Pending Technical Gate는 그대로 유효하다.
+
 ## Context
 
 Phase 6에서 실제 4K / HDR Import Source로 Project-owned Working Media를 생성해야 하지만 기존 HDR / SDR Decision Gate는 Phase 9에 있어 구현 시점보다 늦었다.
@@ -1011,7 +1015,7 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 - Audio Codec / Bitrate
 - Background Export
 - Export Retry
-- Import Re-trim / Source Reference
+- Import Re-trim / Source Reference (이후 ADR-042로 해소: 원본 범위 Re-trim / Source Reference 없음)
 - Performance Threshold
 
 ---
@@ -1022,7 +1026,7 @@ Phase 6에서 Color / Spatial / Frame Rate Normalization을 검증하고 Phase 7
 
 **Status:** Accepted
 
-**Partial Supersession:** ADR-033이 Microphone 필수 Direct Recording(Denied / Restricted 시 Recording 차단, Video-only Fallback 없음)을 대체하여 Microphone을 선택 권한으로 하고 무음 Recording을 허용하며, Recording Start Gate를 upright Portrait 자세만 허용(Landscape / Face Up / Face Down / Unknown / Unstable 거부)으로 확정한다. Recording 중 자세 변경은 ADR-033(2026-09-14 Resolution)으로 확정되어 Clip Orientation이 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다. 나머지 Lens / Zoom / Mirroring / Interruption 계약은 유지하며 아래 원문은 당시 기준의 기록이다.
+**Partial Supersession:** ADR-033이 Microphone 필수 Direct Recording(Denied / Restricted 시 Recording 차단, Video-only Fallback 없음)을 대체하여 Microphone을 선택 권한으로 하고 무음 Recording을 허용하며, Recording Start Gate를 upright Portrait 자세만 허용(Landscape / Face Up / Face Down / Unknown / Unstable 거부)으로 확정한다. Recording 중 자세 변경은 ADR-033(2026-09-14 Resolution)으로 확정되어 Clip Orientation이 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다. 나머지 Lens / Zoom / Mirroring / Interruption 계약은 유지하며 아래 원문은 당시 기준의 기록이다. 아래 "Minimum Valid Clip Duration Pending"은 ADR-033(Direct Capture 1.0초)과 ADR-042(Imported Photos Source 1.0초)로 해소되었다.
 
 **Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
 
@@ -1164,6 +1168,8 @@ ADR-020의 Transactional Commit / Recovery, ADR-021의 Project Validity / Late R
 **Partial Supersession:** 이 ADR의 10초 Duration / Timer 참조만 ADR-029에 의해 Superseded되었으며 아래 원문은 당시 기준의 기록이다.
 
 현재 Capture는 선택한 최대 Duration, Imported Segment와 공통 Clip 상한은 5초를 적용하고 나머지 결정은 Accepted 상태로 유지한다.
+
+**Clarification (ADR-042, 2026-09-17):** "Import Estimate는 선택된 최대 10초(→5초) Source Segment …"에서 Estimate의 기준 Source는 이제 전체 Duration이 5초 이하인 Photos Source 전체다(Segment Selection 없음). System PhotosPicker는 Photos Read 권한 없이 선택 File 전체를 Mellow 임시 영역으로 전송하므로 그 임시 복사본은 Operation Lifetime의 Transient Peak에 포함되고 Commit 이후 보관하지 않는다. 정확한 Formula / Reserve는 여전히 Phase 6 Technical Gate Pending이다.
 
 ## Context
 
@@ -1499,7 +1505,9 @@ Domain / Persistence Architecture 변경, 실제 Camera / Thumbnail / Media 기�
 # ADR-029 — Short Clip Duration Policy
 
 **Date:** 2026-09-13
-**Status:** Accepted
+**Status:** Accepted — "Imported Video" 항목은 ADR-042에 의해 Partially Superseded
+
+**Partial Supersession (ADR-042, 2026-09-17):** 아래 "Imported Video"의 "Photos Source Video의 전체 Duration은 제한하지 않으며 2분 또는 20분 Source도 선택할 수 있다"와 "사용자는 Source에서 원하는 구간을 자유롭게 선택 / Trim하며", Consequences의 "길이 제한 없는 Source … Segment를 구현·검증한다"는 **더 이상 현재 정책이 아니다**. 현재 정책은 `1.0s <= entire Photos source duration <= 5.0s`이며 Long-source Segment Selection은 제공하지 않는다. Direct Capture 항목, 비정수 Duration 허용, Camera Preset의 Import 미적용, Canonical Invariant `0 < effectiveClipDuration <= 5 seconds`, Photos 원본 보존 / Project-owned Working Media 방향은 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
 
 ## Context
 
@@ -1624,7 +1632,7 @@ ADR-029의 Duration 정책은 변경하지 않는다.
 - Phase 3: Launch Projects Access와 Camera Shell / Structural Navigation이며 이후 Editor 기능을 선행 구현하지 않는다.
 - Phase 4: 실제 Capture와 ADR-029 Recording 정책을 구현한다.
 - Phase 5: 실제 Thumbnail / Clip Review, Selection, Long Press + Drag / Accessible Reorder, Delete / Add Clip과 Editor Shell을 구현한다.
-- Phase 6: Photos Import와 Segment Selection을 구현한다.
+- Phase 6: Photos Import와 Segment Selection을 구현한다. — **ADR-042 (2026-09-17):** Segment Selection은 제외되었다. Phase 6은 5초 이하 전체 Source의 Normalization-required Import를 구현한다.
 - Phase 7: 기존 Trim / Framing과 함께 사용자가 승인한 가벼운 Text 입력 / 수정 UI를 구현하며 세부 Text 정책과 Metadata / Persistence 계약을 구현 전에 승인한다.
 - Phase 8: Shared Individual / Full Preview에 승인된 Text 결과를 반영한다.
 - Phase 9: 명확한 Final Output과 승인된 Text의 Export / Preview Parity를 구현한다.
@@ -1758,7 +1766,7 @@ Mellow의 핵심 가치는 앱을 열고 바로 짧은 순간을 촬영하는 �
 ### Imported Media Orientation
 
 - Portrait-only Capture는 Source Media의 Portrait 제한을 의미하지 않는다.
-- 이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 Source 길이를 제한하지 않으며 선택 Segment는 `0 < duration <= 5 seconds`를 만족한다.
+- 이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 Source 길이를 제한하지 않으며 선택 Segment는 `0 < duration <= 5 seconds`를 만족한다. — **ADR-042 (2026-09-17):** "Source 길이를 제한하지 않으며 선택 Segment" 부분은 대체되었다. Photos Source는 전체 Duration이 `1.0s <= duration <= 5.0s`일 때만 받아들이며 Portrait / Landscape 허용은 유지한다.
 - Portrait 9:16 Project에 삽입할 때 비율 불일치는 승인된 Fill + Crop과 조정 가능한 Framing을 사용한다.
 
 ### Editor / Preview / Export
@@ -1931,7 +1939,7 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 ## Non-goals
 
 - Recording Progress Ring의 정확한 색상은 이 ADR에서 확정하지 않으며 구현 / Physical Visual Review Polish로 남긴다.
-- Imported Clip 최소 길이, Location Metadata, Multi-project 복원 시점은 이 결정에서 확정하지 않는다.
+- Imported Clip 최소 길이, Location Metadata, Multi-project 복원 시점은 이 결정에서 확정하지 않는다. (Imported Clip 최소 길이는 이후 ADR-042로 1.0초 확정.)
 - 이 ADR은 구현이 아니며 Phase 4는 시작되지 않았다.
 
 ---
@@ -1941,6 +1949,8 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 **Date:** 2026-09-14
 **Status:** Accepted
 **Partial Supersession:** 이 ADR의 §1 Projects Entry Presentation(Compact Native Bottom Sheet)만 ADR-035에 의해 전용 Pushed Projects 화면으로 Superseded되었으며, §3 `Add Clips`의 "Direct Camera 취득 / Photos 취득 각각 라우팅" 문구 중 Editor Add Clip의 Acquisition Source는 ADR-037에 의해 System PhotosPicker(현재 Project Append)로 확정되었다. §1의 Semantic Hierarchy(`Start New Project` / `Continue Editing` / 대체 확인)와 §2–§7의 나머지는 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
+
+**Clarification (ADR-042, 2026-09-17):** §2의 "Phase 6 / 7 소유 유지" 목록 중 **Long-source Segment Selection과 임의 Source Trim / Re-trim(원본 범위)**은 어느 Phase도 소유하지 않는 제외 기능이 되었다. Photos Source는 전체 Duration `1.0s <= duration <= 5.0s`일 때만 받아들이며(1.0초 미만 거부는 Phase 6 구현 요구) 5초 초과 Source의 Typed `requires import preparation(.tooLong)` 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 Phase 6 이후에도 **최종 사용자 동작**이다(Phase 6이 이를 Segment Selection으로 바꾸지 않는다). HDR / Dolby Vision → SDR, 4K → 1080p-class, Frame-rate Normalization, Landscape / Transform 처리는 여전히 Phase 6 소유이며 §2의 Phase-5-ready Boundary 자체는 변경되지 않는다.
 
 **Clarifies / Extends:** ADR-030의 Lightweight Editor / Ordered Thumbnail Strip 방향과 ADR-033의 Camera Projects Entry(`Select Clips` / `Load Last Saved`), Safe Atomic Replacement, Single Saved Project 및 Camera Compact Project-content Access를 Phase 5 구현 직전 Structural UX Gate 수준으로 구체화한다. ADR-021(Logical Deletion / Undo)과 ADR-026(Unavailable Clip / Replace)의 Accepted Semantics는 변경하지 않고 Presentation만 확정한다. 기존 ADR을 대체(Supersede)하지 않으며 역사적 기록을 다시 쓰지 않는다.
 
@@ -2148,7 +2158,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 - Editor `+`는 **"이 Project에 Clip 추가"**를 뜻하며 System PhotosPicker를 연다. Camera를 열지 않는다.
 - Flow: `ProjectEditor → + → PhotosPicker → 하나 이상 Video 선택 → 선택 항목 전부 Inspect / Validate → 모두 Phase-5-ready이면 Project-owned Copy Materialize → 현재 Project 끝에 Picker 선택 순서대로 Append → Persist / Autosave → Editor Timeline 갱신`. 하나라도 Ready가 아니면 **아무것도 Append하지 않고** 현재 Project는 변경되지 않는다(All-or-nothing).
-- Phase-5-ready 규칙은 ADR-034 §2 / STEP 6 계약을 그대로 재사용한다(0 < duration ≤ 5s, Portrait, ≤1080p-class, ≤30 fps, SDR, Audio 선택). Non-ready Media는 기존 `requires import preparation` UX를 받으며 조용한 Trim / Crop / Transcode / Normalize / HDR 변환 / Frame-rate 변경을 하지 않는다. Long-source Segment Selection, 4K → 1080p, HDR → SDR, Frame-rate Normalization, Import 편집 준비는 Phase 6 소유로 유지되며 Phase 5가 완전한 Photos Import를 구현했다고 주장하지 않는다.
+- Phase-5-ready 규칙은 ADR-034 §2 / STEP 6 계약을 그대로 재사용한다(0 < duration ≤ 5s, Portrait, ≤1080p-class, ≤30 fps, SDR, Audio 선택; **ADR-042 이후** Import Eligibility 하한은 1.0초이며 1.0초 미만 거부는 Phase 6 구현 요구 — 현재 Validator는 미강제). Non-ready Media는 기존 `requires import preparation` UX를 받으며 조용한 Trim / Crop / Transcode / Normalize / HDR 변환 / Frame-rate 변경을 하지 않는다. Long-source Segment Selection, 4K → 1080p, HDR → SDR, Frame-rate Normalization, Import 편집 준비는 Phase 6 소유로 유지되며 Phase 5가 완전한 Photos Import를 구현했다고 주장하지 않는다. (**ADR-042:** Long-source Segment Selection은 이후 제외되었고 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다; 나머지 Phase 6 소유 항목은 유지.)
 - Append는 현재 Persisted Project P에 대한 **APPEND** Operation이다: 대체 Project 생성, Safe Atomic Replacement, 또 다른 Current Project 생성, 기존 Clip 삭제, 순서 Reset, Orientation 변경을 하지 않는다. 새 Clip은 현재 논리적 마지막 Clip 뒤에 Picker 선택 순서로 붙는다(`A → B → C` + `D → E` = `A → B → C → D → E`).
 - Transaction 안전성은 STEP 6와 같은 원칙을 따른다: Workspace → Validate → Storage Admission → Materialize → Appended Project State 구성 → Persist → Read-back Verify → Cleanup. Commit 전 실패 시 P는 변경되지 않으며, Persistence 실패 시 부분 Append된 논리 Project를 노출하지 않고, Photos 원본은 건드리지 않는다.
 - Picker Cancel: Project Mutation 없음, 새 Clip 없음, Error 없음, 이전 Selection 재사용 없음, Media 잔여물 없음. STEP 6의 Real-picker Session Isolation 수정을 유지한다.
@@ -2173,7 +2183,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026` 또는 `Resolved by ADR-028`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028` 또는 `Resolved by ADR-042`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -2211,9 +2221,14 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 ### Imported Media
 
-- Imported Clip을 이후 원본 Source 전체 범위에서 다시 Trim할 수 있게 할지 여부
-- 현재 Materialized Segment 내부에서만 Re-trim할지 여부
-- Source Reference를 함께 유지할지 여부
+- Photos Source Duration Eligibility — Resolved by ADR-042: 전체 Source Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 Import하며 1.0초 미만 / 5.0초 초과는 거부하고 Long-source Segment Selection은 제공하지 않는다.
+- Imported Clip을 이후 원본 Source 전체 범위에서 다시 Trim할 수 있게 할지 여부 — Resolved by ADR-042: 제공하지 않는다.
+- 현재 Materialized Segment 내부에서만 Re-trim할지 여부 — Resolved by ADR-042: Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하다(Phase 7).
+- Source Reference를 함께 유지할지 여부 — Resolved by ADR-042: 유지하지 않는다.
+- Imported Clip의 최소 길이 — Resolved by ADR-042(2026-09-17 사용자 승인): 1.0초. Phase 6 구현 요구사항(현재 Phase 5 구현은 미강제).
+- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
+- Phase 6 Normalization-required Import의 진입 / 진행 / 실패 Presentation 구조와 1.0초 미만 거부 Presentation / Copy — Pending, Phase 6 Structural UX Gate(Segment Selection 아님).
+- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
 
 ### Camera
 
@@ -2227,7 +2242,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Microphone Permission의 Direct Recording 동작 — Superseded by ADR-033: Microphone은 선택 권한이며 Denied / Restricted이면 무음 Video Recording을 허용하고 `mic.slash` 상태와 Settings Recovery를 제공한다.
 - Orientation Mismatch와 Mid-record Rotation — Resolved by ADR-033: Start Gate는 upright Portrait만 허용하고, Recording 시작 후 자세 변경은 Stop / Restart / Orientation 변경 없이 Portrait Clip으로 계속되며 종료 후 자세를 재평가한다.
 - 정확한 Orientation Detection API / Threshold / Debounce — Pending.
-- Minimum Valid Clip Duration — Resolved by ADR-033: Direct Capture 1.0초 이상, Imported Clip 최소 길이는 별도 Pending.
+- Minimum Valid Clip Duration — Resolved by ADR-033: Direct Capture 1.0초 이상; Imported Clip 최소 길이는 Resolved by ADR-042: 1.0초.
 - Recording Interruption에서 Valid Partial Clip의 최종 처리 — Resolved by ADR-033: 1.0초 이상이고 Finalization 성공 시 Photos 저장, 미만이면 폐기.
 - Recording Error / Interruption Haptic — Pending.
 - Tap to Focus 도입 시점
@@ -2242,7 +2257,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Estimated Peak Additional Storage + Safety Reserve — High-level Policy Resolved by ADR-024.
 - 정확한 Safety Reserve Bytes — Pending, 관련 Owning Phase Technical Gate.
 - Recording Estimate Formula, Capture Codec / Bitrate 상수와 Finalization Overhead — Pending, Before Phase 4.
-- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6.
+- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6(ADR-042: 기준 Source는 5초 이하 전체 Source이며 Picker Transient 복사본을 Peak에 포함).
 - Export Snapshot 기반 Estimate Formula와 Temporary Multiplier — Pending, Before Phase 9.
 - Storage Warning 기준과 Low-storage UI Presentation — Pending, Owning UX Gate.
 
@@ -2270,7 +2285,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 
 - Recording 시작 후 Device 자세 변경 시 동작 — Resolved 2026-09-14 by ADR-033: Clip은 Recording 전체 동안 Portrait으로 고정되고 자세 변경만으로 Stop / Restart하지 않으며 종료 후 자세를 재평가한다.
 - Recording Progress Ring의 정확한 색상 / 표현 — Pending, Phase 4 구현 / Physical Visual Review Polish이며 ADR 결정 대상이 아니다.
-- Imported Clip의 최소 길이 — Pending, Phase 6.
+- Imported Clip의 최소 길이 — Resolved by ADR-042: 1.0초(Phase 6 구현 요구).
 - Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Hierarchy, 대체 확인 Cancel / Create New Project); Presentation은 ADR-035로 전용 Pushed `프로젝트` 화면(`Camera → 프로젝트 → ProjectEditor`)으로 확정, Bottom Sheet 아님; 화면 Content는 ADR-036으로 항상 두 개의 중앙 Action(`새 프로젝트 시작` / `기존 프로젝트 불러오기`, 후자는 저장 Project 있을 때만 Enabled, List / Card / Metadata 없음)으로 확정; 정확한 Localization Copy만 Polish로 Pending.
 - Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
@@ -2468,3 +2483,124 @@ Phase 5 STEP 14는 ADR-034 §6 문구대로 Camera 좌하단 Slot을 "저장 Pro
 ## Non-goals
 
 - Latest Capture Review 구현, Playback, Photos Read 권한 변경, Gallery, Camera Chrome 재설계, ADR-034 §7 Representative Semantics 변경.
+
+---
+
+# ADR-042 — Whole-Source Photos Video Eligibility (1.0 s ≤ Source Duration ≤ 5.0 s)
+
+**Date:** 2026-09-17
+**Status:** Accepted
+
+**Revision (2026-09-17, 사용자 승인):** 최초 초안의 Canonical Invariant `0 < entire Photos source duration <= 5 seconds`는 같은 날 사용자 승인으로 **Imported 최소 길이 1.0초**를 포함한 `1.0s <= entire Photos source duration <= 5.0s`로 확정되었다. 이 ADR의 본문은 확정된 Invariant를 기준으로 기술하며 "Imported Clip 최소 길이" Pending은 해소되었다. 1.0초 최소는 승인된 Product Policy이고 현재 Phase 5 구현(`Phase5ReadyMediaValidator`는 `0 < d`만 검사, `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정)은 아직 이를 강제하지 않으므로 Phase 6 구현 요구사항이다.
+
+**Supersedes:** ADR-029 "Imported Video" 항목 중 **"Photos Source Video의 전체 Duration은 제한하지 않으며 2분 또는 20분 Source도 선택할 수 있다"**와 **"사용자는 Source에서 원하는 구간을 자유롭게 선택 / Trim하며"**(Long-source Segment Selection) 및 ADR-029 Consequences의 "Phase 6 Import와 Phase 7 Trim은 길이 제한 없는 Source … Segment를 구현·검증한다". ADR-006(이미 ADR-029로 Superseded)의 "10초보다 긴 Source Video에서는 … 구간을 선택한다"는 역사 기록 그대로 두되 현재 정책이 아님을 이 ADR이 다시 확인한다.
+
+**Partially Supersedes / Clarifies:**
+- ADR-007 Consequences의 "Imported Clip의 Re-trim을 원본 Source 전체 범위까지 허용할지 … 별도 결정이 필요하다" — 이 Pending은 **해소**된다(원본 전체 범위 Re-trim 없음, Source Reference 없음). ADR-007의 Project-owned Media / Photos 원본 보존 / Working Media 정규화 방향은 유지한다.
+- ADR-022의 "선택된 최대 10초(→5초) Segment를 기반으로 하는 Project-owned Working Media" 문구 — Working Media의 기준은 이제 **선택 Segment가 아니라 5초 이하 Source 전체**다. SDR / 30 fps / 1080p-class / Framing 영역 보존 / Crop bake-in 금지 / Validation 계약은 그대로 유지한다. ADR-022 Non-goals의 "Import Re-trim / Source Reference"는 이 ADR로 해소된다.
+- ADR-024 / ARCHITECTURE 62절의 "Import Estimate는 선택된 최대 5초 Source Segment …" — Import Estimate의 기준 Source는 5초 이하 전체 Source다(정확한 Formula / Reserve는 여전히 Pending).
+- ADR-030 Roadmap Ownership "Phase 6: Photos Import와 Segment Selection을 구현한다"와 ADR-032 "Source 길이를 제한하지 않으며 선택 Segment는 …" — Segment Selection / 무제한 Source 부분만 대체.
+- ADR-034 §2 / ADR-037의 "Long-source Segment Selection … Phase 6 / 7 소유 유지" — 해당 항목은 어느 Phase도 소유하지 않는 **제외 기능**이 된다. Phase 5 Select-Clips Media Boundary(Phase-5-ready media만 Bootstrap, Non-ready는 Typed `requires import preparation`)는 변경하지 않는다.
+- `RULES.md` 6절 "Imported Video Source는 길이 제한 없이 선택할 수 있다", `AGENTS.md` Confirmed MVP Guardrails "Imported source video duration is unrestricted", PRODUCT / FEATURES(F-MVP-018 / F-MVP-019 / F-MVP-028) / DESIGN(15–16절) / ARCHITECTURE(5, 25, 37, 38, 40절) / ROADMAP(Phase 6–7, §10 Traceability, Before Phase 6–7 Gate)의 동일 취지 문장은 이 ADR과 같은 작업에서 정렬한다.
+
+**Explicitly Unchanged:** ADR-029 Direct Capture(1s–5s Preset, 기본 3s, Manual Early Stop)와 Canonical Invariant `0 < effectiveClipDuration <= 5 seconds`, ADR-033 Direct Capture 1.0초 최소(별개 규칙) / Photos Add-only 권한 / Capture ≠ Project, ADR-020 / ADR-021 / ADR-024 / ADR-026 / ADR-039 / ADR-040의 Media Commit / Deletion / Storage / Unavailable / Cleanup / Replace 계약, ADR-016 Non-destructive Editing, ADR-034 §2의 Phase 5 Media Boundary, ADR-037 Editor Add Acquisition, Phase 5 Select Clips / Editor Add의 기존 Multi-select Session과 All-or-nothing Project Mutation 안전성(사라지거나 부분 성공으로 바뀌지 않는다), ADR-041의 Latest Capture Review / Gallery 별도 Gate.
+
+## Context
+
+Phase 5 STEP 6 / 11 / 13은 사용자가 선택한 Photos Video를 `Phase5ReadyMediaValidator`로 검사하여 Duration이 5초를 초과하면 `requires import preparation(.tooLong)`으로 거부하고(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`), Project-owned Media 생성 · Clip Metadata Commit · 부분 Project Mutation 없이 Photos 원본을 그대로 둔다. 이 동작은 Select Clips(`새 프로젝트 시작`), Editor Add(`+`), Replace(`클립 교체`) 세 경로가 같은 Validator를 공유하여 이미 동일하게 구현·검증되어 있다.
+
+Phase 6 Planning / Decision Gate Audit(2026-09-17)은 기존 문서가 여전히 "무제한 길이 Source에서 최대 5초 Segment를 선택"하는 Import를 Phase 6 요구사항으로 두고 있음을 확인했다. 이 요구는 (1) Segment Selection Structural UX Gate, (2) 원본 전체 범위 Re-trim / Source Reference 유지 결정, (3) Photos Read 권한 없이 System PhotosPicker가 전체 원본 File을 Mellow 임시 영역으로 전송하는 구조와 "전체 원본 복제를 전제로 하지 않는" Storage Estimate 문구 사이의 모순, (4) Selected Segment 기반 Normalization / Estimate / Recovery 복잡도를 함께 끌고 온다.
+
+사용자는 Mellow의 Mini Vlog 정체성(짧은 순간을 여러 Clip으로 잇기)에 맞춰 **Photos Video도 그 자체가 5초 이하인 짧은 순간만 받아들인다**는 Product / UX 결정을 승인했다. ROADMAP 4.4절 기준 Level 3(Product / UX Change)이다.
+
+## Decision
+
+### Photos Video Source Eligibility (Canonical)
+
+`1.0s <= entire Photos source duration <= 5.0s`
+
+- Mellow는 **선택한 Photos Video의 전체 Duration**이 위 조건(양 끝 포함)을 만족할 때만 그 Video를 받아들인다. 정확히 1.0초와 정확히 5.0초는 Eligible이다.
+- 1.0초 미만 Photos Source(예: 0.4초, 0.8초, 1.0초 미만의 모든 양수 Duration)는 거부한다. 5.0초를 초과하는 Photos Source도 거부한다. 거부된 Source는 Materialize / Normalize / Persist / Append / Replace / 부분 Commit 어느 것도 하지 않는다.
+- 5초를 초과하는 Photos Source는 Mellow Project에 Import하지 않는다. 임의의 긴 Source에서 최대 5초 Segment를 골라 가져오는 기능은 **제공하지 않는다**(V1 / MVP 범위 밖).
+- Phase 6은 Long-source Segment Selection UI를 추가하지 않으며, 이후 긴 원본을 다시 탐색하기 위한 Source Reference(Photos Asset Identity, App-owned 원본 복사본 등)를 보관하지 않는다.
+- Imported Clip의 Re-trim(Phase 7)은 **받아들여진 Project-owned Clip Media 범위 안**에서만 가능하며 그 밖으로 확장할 수 없다.
+- Camera Duration Preset(1s–5s, 기본 3s)은 Photos Import와 무관하며 Import에 적용하지 않는다.
+- 전체 Source가 1.0–5.0초 범위 안에 있으면 1.3초, 2.7초, 4.5초, 5.0초 같은 비정수 Duration도 유효하며 정수 Duration을 요구하지 않는다. 0초 이하 / 읽을 수 없음은 Invalid Media, 1.0초 미만은 Below-minimum 거부, 5.0초 초과는 Above-maximum 거부다.
+- **Duration 경계는 정확히 1.0초와 5.0초다.** 제품 한계를 "1초 - 1 Frame", "5초 + 1 Frame" 또는 "약 1–5초"로 재정의하지 않는다. 현재 Phase 5 구현이 5초 상한에 적용하는 1-frame(1/30초) Encoder Quantization 허용치와 5초 Clamp는 구현 세부사항이며, 정확한 Product 경계에 대한 AVFoundation Timescale / Frame-duration 비교 정책은 Phase 6 Technical Gate에서 검증 항목으로 다루되 Product 경계를 다시 열지 않는다.
+- Imported 최소 1.0초는 Direct Capture의 1.0초 최소(ADR-033)와 값이 같지만 별개의 규칙이다. Camera 정수 Preset은 Photos Import에 적용하지 않는다.
+- Duration-eligible Source도 여전히 Readable / Playable이어야 하며 그 밖의 승인된 Eligibility / Preparation 규칙(Phase-5-ready 경계, Phase 6 Normalization)을 따른다.
+
+### System PhotosPicker와 거부 시점
+
+System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 비활성화할 수 없으므로 사용자가 5초 초과 Video를 탭할 수 있다. "선택할 수 없다"는 것은 **Mellow가 Metadata Validation 후 해당 항목을 거부하고 Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않는다**는 뜻이다. Photos Read 권한을 새로 요구하지 않으며 Picker 밖에서 Library를 조회하지 않는다.
+
+5초 초과 항목이 거부되면:
+
+- Project-owned Media를 만들지 않는다.
+- Clip Metadata를 Commit하지 않는다.
+- 부분 Project Mutation이 없다(다중 선택은 All-or-nothing: 하나라도 초과면 전체 거부).
+- Photos 원본은 변경되지 않는다.
+- 기존 안내 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 그대로 사용하며 두 번째 Duration Alert나 다른 Duration 정책을 만들지 않는다.
+- Select Clips / Add / Replace 세 경로가 같은 Canonical Rule과 같은 Copy를 따른다.
+
+### Duration 규칙의 구분
+
+| 구분 | 규칙 |
+| --- | --- |
+| Direct Camera Capture | ADR-029 / ADR-033: 선택 Preset(1–5s) 이하, 1.0초 이상, 자동 / 수동 정지 |
+| Photos Source Eligibility | 이 ADR: `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함), Preset 무관, 비정수 허용, 1.0초 미만 / 5.0초 초과 거부 |
+| Phase-5-ready Media | ADR-034 §2: 위 Eligibility를 만족하고 Portrait / ≤1080p-class / ≤30 fps / SDR이어서 Normalization 없이 그대로 Materialize 가능 |
+| Phase-6 Normalization-required Media | Eligibility(Duration)는 만족하지만 4K / High-resolution, HDR / Dolby Vision, >30 fps, Landscape / Presentation Transform 등으로 Phase-5-ready 경계를 벗어나는 Media — Phase 6이 정규화 |
+| Invalid Media | 읽을 수 없음 / Video Track 없음 / Duration 0 이하 → 거부(Below-minimum / Above-maximum 거부와 구분) |
+| Phase 7 Trim | Project-owned Clip Media 범위 안에서의 비파괴 Metadata Trim(`0 < trimDuration <= 5s`, `trimStart + trimDuration <= sourceDuration`) |
+
+### Phase 6 Consequences
+
+Phase 6은 더 이상 무제한 길이 Source, Long-source Segment Selection, Segment Selection Structural UX Gate, 원본 전체 범위 Re-trim Decision, 선택 Segment 기반 Normalization / Storage Estimate / Recovery를 소유하지 않는다.
+
+Phase 6은 새로운 별도의 Multi-selection Import 기능을 만들지 않는다. 기존 Select Clips / Editor Add Multi-select Session 안에서 Eligible 항목 일부가 Normalization을 필요로 하는 경우에도 기존 All-or-nothing이 적용되며(하나라도 Invalid / Ineligible / Normalization 실패면 Project 무변경) 부분 성공 정책은 별도 승인 없이 도입하지 않는다. 혼합 Session의 Presentation은 Phase 6 Structural UX Gate에 속한다.
+
+Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Phase-5-ready 경계를 벗어나는 Media**의 Normalization(1080p-class / 30 fps / SDR, Source Presentation Transform과 Framing 가능 영역 보존, Project Fill + Crop bake-in 금지)과 ADR-020 / ADR-021 / ADR-024 계약(Transactional Commit, Recovery, Project Validity, Active Usage, Storage Safety)의 Import 적용을 소유한다. Normalization은 Duration Eligibility 검사 **이후**에만 시작한다.
+
+### Phase 5 / Phase 7 Consequences
+
+- Phase 5(현재 구현): 5.0초 초과 `.tooLong` 거부, 세 경로의 공통 Validator / Copy, All-or-nothing, Photos 원본 불변은 그대로 유효하다. **현재 Phase 5 구현은 1.0초 미만 Source를 거부하지 않고 받아들인다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사). 이 문서 작업은 코드를 바꾸지 않는다.
+- Phase 6(구현 요구): 세 경로(Select Clips / Add / Replace)에 1.0초 미만 거부를 추가하고 Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Below-minimum의 Presentation과 정확한 Copy는 Phase 6 Structural UX Gate에서 결정하며 이 ADR은 Copy를 정하지 않는다. 5.0초 초과 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 그대로 유지한다.
+- Phase 7: Imported Clip Trim은 Recorded Clip Trim과 같은 모델(`trimStart` / `trimDuration`, Project-owned Media 범위 안)이며 "원본 Source 전체 범위 Re-trim" 선택지는 존재하지 않는다. F-MVP-028의 Pending은 해소된다.
+
+## Rationale
+
+- Mini Vlog 정체성과 일관성: Camera가 5초 이하 순간만 만들듯 Photos에서도 5초 이하 순간만 가져온다.
+- Segment Selection UI, Source Reference, 원본 전체 범위 Re-trim, Selected-segment Estimate / Recovery라는 큰 복잡도와 미결정 Gate를 제거하고 Phase 6을 Normalization / 안전성에 집중시킨다.
+- Photos Read 권한 없이 System Picker만 쓰는 ADR-033 권한 모델과 모순 없이 구현 가능하다(전체 File 전송 뒤 Metadata 검사 → 거부).
+- 5.0초 상한 거부는 Phase 5가 이미 구현·검증했고, 1.0초 최소는 Camera 규칙과 같은 값이라 사용자 모델이 단순하다.
+
+## Consequences
+
+### Benefits
+
+- Phase 6 범위가 명확해지고 Structural UX Gate 하나와 Re-trim / Source Reference Decision Gate가 사라진다.
+- Import Storage Estimate가 "5초 이하 전체 Source + Normalization Output"으로 단순해진다.
+- Recorded / Imported Clip의 Trim 모델이 동일해진다(F-MVP-020).
+
+### Costs
+
+- 사용자는 긴 Photos Video를 Mellow에서 바로 쓸 수 없다(Photos 앱 등에서 미리 잘라 와야 한다). 이는 의도된 제품 제한이다.
+- 5초 초과 항목을 Picker에서 미리 숨길 수 없어 거부가 사후에 일어난다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Working Media Codec / Container
+- 정확한 SDR Color Profile / Tagging과 Tone-mapping 구현 방법
+- Low-resolution Source Upscaling Policy와 1080p-class Working Media의 정확한 Raster Dimension Rule
+- Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source 기준)
+- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식
+- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
+- Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 만족하는 Source의 Re-encode vs Transform 보존 Copy) — Landscape Source가 Phase 6 경로로 들어온다는 사실은 ADR-034 §2로 확정
+- Phase 6 Normalization-required Media의 Import 진입 / 진행 / 실패 Presentation 구조와 1.0초 미만 거부의 Presentation / 정확한 Copy(Structural UX Gate — Segment Selection 아님)
+
+## Non-goals
+
+- Phase 6 Production 구현(이 ADR은 문서 정렬이며 Swift / Xcode 변경이 없고 Normalization 구현을 시작하지 않는다).
+- Photos Read 권한 도입, PhotosPicker 대체, Camera Preset 변경, Direct Capture 규칙 변경.
+- Phase 7 Trim UX / Phase 8 Preview / Phase 9 Export 결정.

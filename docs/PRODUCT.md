@@ -292,7 +292,7 @@ Clip이 0개인 Project도 정상적인 Draft이며 Recent에 존재하고 다�
 
 Photos Library의 기존 영상을 MVP에서 프로젝트에 추가할 수 있다.
 
-원본 영상의 전체 길이는 제한하지 않으며 프로젝트에서 사용할 최대 5초 Segment를 선택한다.
+ADR-042에 따라 전체 길이가 1.0초 이상 5.0초 이하(양 끝 포함)인 영상만 받아들이며 1.0초 미만이거나 5.0초를 초과하는 영상은 가져오지 않는다. 긴 영상에서 최대 5초 구간을 골라 가져오는 기능은 제공하지 않는다.
 
 ### Clip Organizer
 
@@ -458,21 +458,21 @@ Recording 시작 후 Device를 회전해도 현재 Recording을 자동 Stop하�
 
 Recording Interruption은 Successful Manual Stop 또는 Successful Auto-stop으로 표시하지 않으며 생성된 Media는 ADR-020 / ADR-021의 Validation, Recovery와 Project Validity 계약을 따른다.
 
-Interruption으로 생성된 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 아직 확정하지 않는다.
+Interruption으로 생성된 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 ADR-033으로 확정되었다: Direct Capture는 1.0초 이상이고 Finalization이 성공하면 Photos에 저장하고 1.0초 미만이면 폐기한다. Imported Photos Source의 최소 길이는 ADR-042로 1.0초로 확정되었다(별개 규칙).
 
 #### Photos Video Import
 
 Photos Library의 기존 Video를 프로젝트에 추가할 수 있다.
 
-Source Video의 전체 길이는 제한하지 않으며 긴 Source에서도 원하는 시작점과 종료점을 선택하여 최대 5초 Segment를 추가할 수 있어야 한다.
+ADR-042에 따라 Mellow는 **선택한 Photos Video의 전체 길이**가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 그 Video를 받아들인다. 1.0초 미만이거나 5.0초를 초과하는 Source는 프로젝트에 가져오지 않으며 긴 Source에서 최대 5초 Segment를 선택하는 기능은 제공하지 않는다.
 
-0초보다 길고 5초 이하인 Source Video는 전체 구간을 사용할 수 있다.
+1.0초 이상 5.0초 이하인 Source Video는 전체 구간이 그대로 Clip이 된다. 정확히 1.0초와 5.0초는 허용되고 1.3초, 2.7초, 4.5초처럼 정수가 아닌 길이도 유효하며 Camera Preset은 Photos Import와 무관하다. 0.4초 / 0.8초 같은 1.0초 미만은 거부, 5.0초 초과는 거부, 0 이하 / 읽을 수 없음은 Invalid다. Imported 최소 1.0초는 Direct Capture 최소 1.0초(ADR-033)와 값이 같지만 별개의 규칙이다.
 
-Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
+System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있다. Mellow는 Metadata 검사 후 해당 항목을 거부하고 Project-owned Media 생성, Clip Metadata Commit, 부분 Project 변경 없이 Photos 원본을 그대로 둔다. 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이며 1.0초 미만 안내는 Phase 6 Structural UX Gate에서 정한다. Select Clips / Add / Replace 세 경로가 같은 규칙과 안내를 사용한다. 5.0초 초과 거부는 Phase 5가 이미 구현했고 1.0초 미만 거부는 Phase 6 구현 요구사항이다.
 
 SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
 
-선택된 최대 5초 Segment로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+5초 이하 전체 Source로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
 
 HDR / Dolby Vision의 Dynamic Range와 HDR Metadata를 Working Media에 완전히 보존하는 것은 MVP 목표가 아니다.
 
@@ -482,7 +482,7 @@ Working Media를 만들 때 프로젝트 비율에 맞춘 Fill + Crop을 미리 
 
 Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 수정하거나 삭제하지 않는다.
 
-Imported Clip의 Re-trim 범위와 Source Reference 유지 여부, Working Media Codec / Container, 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 아직 확정하지 않는다.
+Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 원본 Source Reference는 유지하지 않는다(ADR-042). Working Media Codec / Container, 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 아직 확정하지 않는다.
 
 1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source의 Upscaling 여부는 아직 확정하지 않는다.
 
@@ -707,6 +707,14 @@ MVP에서 중요한 것은 기능의 양이 아니라
 - 사진 Export
 
 Mellow는 초기 제품에서 사진 앱을 목표로 하지 않는다.
+
+### Long Photos Video Segment Import
+
+- 5초를 초과하는 Photos 영상의 Import
+- 긴 원본 영상에서 최대 5초 구간을 골라 가져오는 Segment Selection
+- 원본 영상 Reference 유지와 원본 전체 범위 Re-trim
+
+ADR-042에 따라 Mellow는 전체 길이가 5초 이하인 Photos 영상만 받아들인다.
 
 ### Video Filters
 
@@ -975,7 +983,7 @@ Mellow는 Vertical Slice 방식으로 개발한다.
 
 →
 
-**Import Photos Video / Select up to 5-second Segment**
+**Import Photos Video (entire source ≤ 5 seconds)**
 
 →
 
@@ -1176,11 +1184,11 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Recording은 Project를 만들지 않고 Camera Clip은 Photos에 저장되며, Direct Capture 최소 길이는 1.0초다(ADR-033).
 - Recording Start에는 Project Orientation과 일치하는 Device Posture가 필요하며 Landscape Left / Right는 모두 Landscape Project에 유효하고 Face Up / Down / Unknown / Unstable 상태는 유효하지 않다.
 - Mid-record Device Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation / Clip Aspect Ratio를 변경하지 않고 Rear Zoom을 회전만으로 Reset하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
-- Recording Interruption은 Successful Manual / Auto-stop으로 표시하지 않고 Media Safety 계약을 따르며 Valid Partial Clip의 최종 처리와 Minimum Valid Clip Duration은 Pending이다.
+- Recording Interruption은 Successful Manual / Auto-stop으로 표시하지 않고 Media Safety 계약을 따르며 Valid Partial Clip의 최종 처리(1.0초 이상 + Finalization 성공 시 저장, 미만 폐기)와 Direct Capture Minimum Valid Clip Duration(1.0초)은 ADR-033으로 확정되었다.
 - Photos Video Import는 MVP 필수 기능이다.
-- Source Video의 전체 길이는 제한하지 않으며 프로젝트에 사용할 최대 5초 Segment를 선택한다.
+- Photos Source는 전체 길이가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 가져오며 1.0초 미만 / 5.0초 초과 Source는 거부하고 Segment Selection은 제공하지 않는다(ADR-042).
 - SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용하며 Photos 원본은 수정하거나 삭제하지 않는다.
-- 선택된 최대 5초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
+- 5초 이하 전체 Source의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
 - Project Fill + Crop을 Working Media에 미리 적용하여 저장하지 않으며 이후 사용자 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
 - Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 프로젝트는 Portrait 9:16과 Landscape 16:9를 모두 지원한다.
@@ -1258,14 +1266,14 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Rear Zoom Interaction / Indicator — Resolved: 1.0×–2.0× Pinch, Gesture 중 Transient Numeric Indicator 허용, Persistent Button / Slider 없음
 - 정확한 Orientation Detection API / Threshold / Debounce
 - Camera / Microphone Permission 안내의 정확한 화면 구성과 Copy
-- Minimum Valid Clip Duration
-- Recording Interruption에서 Valid Partial Clip의 최종 보존 / Commit / 폐기 정책
+- Minimum Valid Clip Duration — Direct Capture는 Resolved by ADR-033(1.0초); Imported Photos Source는 Resolved by ADR-042(1.0초)
+- Recording Interruption에서 Valid Partial Clip의 최종 보존 / Commit / 폐기 정책 — Resolved by ADR-033
 - Recording Error / Interruption Haptic 정책
 - Post-MVP Front Camera Zoom 및 Advanced Lens Control 도입 시점과 지원 범위
 - Post-MVP Flash / Torch 도입 시점 및 세부 동작
 - Post-MVP Tap to Focus 도입 시점 및 세부 동작
 - Post-MVP Exposure Control 도입 시점 및 세부 동작
-- Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부
+- Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만 Re-trim, Source Reference 없음
 - Crop UI와 Pinch to Zoom 지원 여부
 - Working Media Codec / Container 및 정확한 SDR Color Profile / Tagging
 - HDR / Dolby Vision Source의 SDR 변환을 위한 Tone-mapping 구현 방법

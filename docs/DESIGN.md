@@ -431,25 +431,25 @@ Rear Zoom은 Front / Rear Camera Switching과 다른 Interaction이며 Recording
 
 ## 15. Import Video
 
-사용자는 Camera 또는 Project 화면에서 기존 Photos Library 영상을 추가할 수 있어야 한다.
+사용자는 Projects 화면(`새 프로젝트 시작`, ADR-035 / ADR-036)과 Project Editor(`+` Add / `클립 교체` Replace, ADR-037 / ADR-040)에서 System PhotosPicker로 기존 Photos Library 영상을 추가한다. Camera Chrome에는 별도 Import Control이 없다(ADR-041).
 
 Import 기능은 Camera 촬영보다 숨겨져서는 안 되지만 Record Button보다 높은 시각적 우선순위를 갖지 않는다.
 
-Photos에서 영상을 선택하면 원본 영상의 길이에 관계없이 사용할 수 있어야 한다.
+ADR-042에 따라 Photos에서 선택한 영상은 전체 길이가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 받아들인다.
 
-5초보다 긴 영상은 Import 이후 사용할 최대 5초 구간을 선택한다.
+1.0초보다 짧거나 5.0초보다 긴 영상은 가져오지 않으며 Segment Selection 화면을 두지 않는다. System PhotosPicker는 길이로 항목을 미리 숨기지 못하므로 사용자가 범위 밖 영상을 탭할 수 있고, Mellow는 Metadata 검사 후 거부하며 프로젝트와 Photos 원본을 변경하지 않는다. 5.0초 초과 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`이며 1.0초 미만 안내의 Presentation / Copy는 Phase 6 Structural UX Gate에서 결정한다. 안내는 Select Clips / Add / Replace 세 경로에서 동일하다.
 
-5초보다 짧은 영상은 전체 영상을 기본 선택 상태로 보여줄 수 있다.
+범위 안의 영상은 전체 영상이 그대로 Clip이 된다.
+
+Phase-5-ready가 아닌 5초 이하 영상(4K / HDR / Dolby Vision / 30 fps 초과 / Landscape)의 Normalization-required Import 진입 / 진행 / 실패 표현은 Phase 6 Structural UX Gate에서 결정한다.
 
 ---
 
 ## 16. Imported Video Trim
 
-Imported Video의 Trim 화면은 원본 전체 영상에서 사용할 구간을 선택하는 역할을 한다.
+ADR-042에 따라 Imported Video에는 원본 전체 영상에서 구간을 고르는 별도 Selection 화면이 없다. Imported Clip의 Trim은 Recorded Clip과 같은 Phase 7 Trim 화면에서 Project-owned Clip Media(5초 이하 전체 Source) 범위 안의 시작점과 종료점을 비파괴적으로 조절하는 역할을 한다.
 
-사용자는 시작점과 종료점을 조절할 수 있어야 한다.
-
-Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
+Trim 결과는 `0 < trimDuration <= 5 seconds`를 만족하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다. 원본 Source 전체 범위로 확장하는 Re-trim은 존재하지 않는다.
 
 Trim UI는 전문 Timeline Editor처럼 복잡하게 보이지 않아야 한다.
 
@@ -539,6 +539,8 @@ Font 선택, Position, Size, Text Duration과 Animation 세부 정책은 Phase 7
 Unavailable Clip은 숨기지 않고 기존 Timeline Position을 차지하며 Healthy Clip과 구분할 수 있고 Replace와 Delete Action에 접근할 수 있어야 한다.
 
 Unavailable 상태의 정확한 Icon, Thumbnail Placeholder, Label, Color, Button Layout, Modal 또는 Sheet와 Copy는 Phase 5 Structural UX Gate에서 결정한다. — Resolved by ADR-040 (아래 STEP 13 항목).
+
+아래 Phase 5 STEP 항목의 "Physical Review Pending" 표기는 각 STEP 구현 시점의 역사 기록이다. Phase 5는 2026-09-17 `main`(`ff42ad2`)에 병합되어 완료되었으며 이 표기는 Active Blocker가 아니다.
 
 Phase 5 STEP 8 Editor Baseline(V4.1 Full-canvas Timeline, 승인 2026-09-15 — Simulator Visual Review + LunaTestphone Physical Review): ProjectEditor는 앱의 Light / Dark Appearance와 무관하게 Editor 전용 Dark Media Workspace(Black Canvas, Dark Elevated Dock, Light Foreground)를 사용한다 — Projects는 일반 App Surface, Editor는 집중형 작업 공간이며 Global Appearance는 바꾸지 않는다. 구성은 Native Navigation(`Back` / `Project`) → Navigation과 Dock 사이의 모든 Flexible 공간을 차지하는 Full Preview Canvas(Workspace와 같은 Black, Card / 가시 경계 없음, 좌우 Inset ≈ 4pt, 상하 Gap 8pt) → Compact Bottom Timeline Dock(≈100pt, 좌우 여백 10pt, Radius 20, Bottom Safe-area 위 6pt)이다. Canvas는 Overlay 가능한 ZStack이며 이후 Project Media는 Canvas 안에 9:16 `aspectRatio(.fit)`으로 놓이고, 이후 Text / Sticker 등 Editor Control은 Canvas 위에 Overlay로 얹혀 Preview 크기를 줄이지 않는다(이번 STEP에서는 어떤 Control도 렌더링하지 않으며 Text / Sticker 기능은 존재하지 않는다). STEP 8의 Canvas는 Placeholder Shell로 희미한 `film` Glyph만 보이고 Engineering Copy가 없으며 Accessibility는 `Preview, selected clip N`이다. Dock 안의 Clip Navigation은 Leading 정렬 Ordered Timeline / Filmstrip으로 좌 → 우 논리 순서를 유지하고 짧은 Project를 중앙 정렬하지 않으며 넘치면 Horizontal Scroll한다. Dock에는 Heading이 없고 `Total 7.0s`는 Dock 우상단의 Caption2 Secondary Metadata다. Cell은 44 × 78pt 9:16(Radius 7, 간격 4pt) Aspect Fill Thumbnail이고 Duration은 Cell 우하단의 작은 불투명 Near-black Tag(`3.0s`, Caption2 Monospaced, Decorative — Accessibility Label이 Duration을 말함)로 표시한다. 선택 Clip은 Mellow Signature Orange 500 Outline 2pt + Accessibility Selected State(Checkmark / Scale / Lift / Glow 없음, Geometry 고정), 비선택은 Quiet Hairline이다. Production Timeline은 Dock의 Leading Inset(10pt)에서 바로 시작하며 Dead Add Control이나 빈 Slot을 두지 않는다. 이후 Leading `+`(Add Clip, 40pt Circle)은 ADR-037에 따라 System PhotosPicker로 Media 선택을 열어 Phase-5-ready Clip을 현재 Project 끝에 추가하며, 기능이 구현된 뒤에만 Production에 나타나고 같은 Timeline HStack 앞에 Prepend된다(DEBUG Build만 `+` Reference Visual을 Staging하며 `-uiTestProductionTimeline`이 Release 표현을 재현한다). Reorder는 같은 Timeline에서 Long Press + Horizontal Drag로 구현하며(아래 STEP 9 Reorder Interaction) Clip Identity는 Stable Clip ID, Cell Geometry는 고정이다. Thumbnail 생성 실패 Cell은 같은 크기 / Radius / 위치에 Neutral Dark Surface + `film` Symbol + Duration Tag를 유지한다(ADR-026 Unavailable Replace / Delete UX는 별도 Slice).
 
@@ -870,7 +872,7 @@ Camera와 Video Preview 위의 Control도 접근 가능한 Label을 가져야 �
 
 이 기준은 Phase 12에서 처음 적용하지 않으며 각 관련 UI Phase의 Implementation, Acceptance Criteria와 Exit Criteria에 처음부터 연결한다.
 
-최소한 Phase 2의 Home / Recent, Phase 3 / 4의 Camera / Recording, Phase 5의 Clip Management, Phase 6의 Import Selection, Phase 7의 Trim / Framing, Phase 8의 Preview와 Phase 9의 Export에서 해당 화면에 적용 가능한 위 기준을 구현하고 검증한다.
+최소한 Phase 2의 Home / Recent, Phase 3 / 4의 Camera / Recording, Phase 5의 Clip Management, Phase 6의 Normalization-required Import Presentation, Phase 7의 Trim / Framing, Phase 8의 Preview와 Phase 9의 Export에서 해당 화면에 적용 가능한 위 기준을 구현하고 검증한다.
 
 각 Phase는 Touch Target, VoiceOver Label과 Control 식별, Dynamic Type에서의 핵심 Flow, Color만으로 상태를 전달하지 않는지와 Contrast를 확인하고 해당 Motion이 있다면 Reduce Motion 대응을 검토·검증한다.
 
@@ -933,8 +935,8 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 - Camera 또는 Microphone Permission이 없으면 Direct Recording을 시작하거나 무음 Video로 대체하지 않고 Photos Import는 계속 사용할 수 있다.
 - Project Orientation mismatch, Face Up / Down / Unknown / Unstable 상태에서는 새 Recording을 시작하지 않고 quiet Rotate Device Guidance를 제공한다.
 - Mid-record Rotation은 현재 Recording을 자동 Stop / Restart하거나 Project Orientation을 변경하지 않으며 다음 Recording 전에 Orientation을 다시 확인한다.
-- Photos에서 가져온 영상 원본 길이는 제한하지 않는다.
-- Imported Video에서 사용할 구간은 최대 5초다.
+- Photos에서 가져온 영상은 원본 전체 길이가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 받아들이며 1.0초 미만 / 5.0초 초과 영상은 거부하고 Segment Selection 화면을 두지 않는다(ADR-042).
+- Imported Clip의 Trim은 Project-owned Clip Media 범위 안에서만 가능하다.
 - Project Orientation과 다른 Imported Video는 기본적으로 Fill + Crop 처리한다.
 - 사용자가 Imported Video의 Framing을 조절할 수 있어야 한다.
 - Clip 삭제는 즉시 적용하고 Undo를 제공한다.
@@ -976,8 +978,8 @@ Landscape 지원을 단순히 Portrait UI를 회전한 형태로 처리하지 �
 | Phase 2 — Home / Recent / New Vlog | Resolved by ADR-028: Adaptive Thumbnail Grid, 최소 Item 정보, Format-first Launch, 전용 Orientation 화면, Item Menu → System Alert, 동일 Item의 0 clips 표현 | 승인된 Layout의 Spacing, 시각적 균형, 기존 Placeholder의 Visual Tuning |
 | Phase 3 — Camera Foundation | Resolved 2026-09-13: Full-bleed Camera Preview, UI-only 1–5s Selector / 기본 3s, Flip / Compact Content, 조용한 Mismatch, Camera-only Permission 안내와 Rear 1.0×–2.0× Pinch / Transient Indicator. ADR-032로 Portrait-only V1, Splash 진입과 Camera Chrome Projects Access가 추가되고 Landscape Camera Layout / Control Rail은 V1 범위에서 제외 | Control의 비구조적인 시각 조정과 Portrait Visual Polish |
 | Phase 4 — Recording | 확정된 Circular Progress Ring 안에서의 Layout-level 표현, 현재 녹화 시간 표시의 구체적인 배치와 저장 완료 Feedback의 비 Haptic Presentation 구조 | 승인된 Recording 구조의 Visual / Motion Refinement |
-| Phase 5 — Clip Management | Resolved by ADR-034 / ADR-035 / ADR-036: Projects 전용 Pushed 화면(ADR-035, Bottom Sheet 아님)에 항상 두 중앙 Action `Start New Project` / `Load Existing Project`(ADR-036, List / Card 없음)와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar(ADR-038로 Navigation Bar 상시 Undo / Redo History로 대체), 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격 | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
-| Phase 6 — Import Selection | 이 Phase가 이미 구현하는 최대 5초 Segment Selection의 최소 Control / Interaction 구조와 그 구조에 영향을 주는 Trim / Crop 화면 분리 결정 | 승인된 Import Selection의 비구조적 Visual Tuning |
+| Phase 5 — Clip Management | Resolved by ADR-034 / ADR-035 / ADR-036: Projects 전용 Pushed 화면(ADR-035, Bottom Sheet 아님)에 항상 두 중앙 Action `Start New Project` / `Load Existing Project`(ADR-036, List / Card 없음)와 대체 확인, Ordered Thumbnail Strip(Thumbnail + Compact Duration, Color-only 아닌 Selected State), Long Press + Drag / Move Earlier·Later Reorder, 선택 Clip Delete + Bottom `Clip deleted` + `Undo` Snackbar(ADR-038로 Navigation Bar 상시 Undo / Redo History로 대체), 조용한 Project Duration과 명시적 `Add Clips`, Unavailable Clip Placeholder + 명시적 Replace / Delete, Large Preview Shell(실제 Playback은 Phase 8), Camera Content Slot의 저장 Project Representative Thumbnail 승격(ADR-041로 폐기 — Slot은 Direct-capture 피드백, Representative는 Projects 화면) | 승인된 Delete / Undo Surface와 Clip 표현의 Visual Tuning, Localization Copy, Undo Window |
+| Phase 6 — Normalization-required Import | ADR-042로 Segment Selection Gate는 제거됨. 1.0–5.0초이지만 Phase-5-ready가 아닌 Source의 Import 진입 / 진행 / 실패 Presentation 구조, 1.0초 미만 거부 Presentation / Copy, Import Storage 부족 / Retry Presentation 구조 | 승인된 Import Presentation의 비구조적 Visual Tuning |
 | Phase 7 — Trim / Framing / Text | 명시적 T Tool의 세부 UX와 Text 정책, Trim / Crop 화면 구성, Primary Trim Interaction, Thumbnail Filmstrip / Scrubbing 구조와 Time Precision 표현, Drag / Position Framing 세부 구조, Pinch 포함 여부, Crop Reset 필요 여부, Portrait / Landscape Editing Control 배치 | 승인된 구조의 Trim Handle Visual과 Spacing Refinement |
 | Phase 8 — Full Vlog Preview | Playback Control Structure / Hierarchy, Preview 진입·종료와 Project 화면 복귀 Navigation, Scrubber와 Empty / Unavailable Project Preview Block의 상태 표현이 해당 UI 구현에 영향을 주는 부분 | 승인된 Control의 Visual Hierarchy 미세 조정 |
 | Phase 9 — Export | Export Action 배치, Exporting / local result ready / Saved to Photos / Photos save failed / Sharing / Share cancelled or returned Result State Presentation, Save Retry Placement, Share / Done 배치와 unsaved Discard Confirmation, Storage Preflight와 Render Failure 및 Empty / Unavailable Project Export Block의 상태 표현이 UI 구조에 영향을 주는 부분 | 승인된 Export UI의 Visual Balance와 Spacing Refinement |
@@ -986,7 +988,7 @@ Phase 3은 Camera Shell과 현재 Phase의 Control 구조만 구현하며 이후
 
 Phase 4 전용 표현이 Phase 3 Layout 구조에 이미 영향을 준다면 필요한 공통 구조 결정만 Phase 3 이전에 해결한다.
 
-Phase 6에서 구간 선택을 실제로 구현하므로 그 최소 구조를 Phase 7이나 Phase 12까지 미루지 않으며 Phase 7은 이미 승인된 부분을 재사용하고 나머지 Trim / Framing 구조를 구현 전에 결정한다.
+ADR-042에 따라 Phase 6은 구간 선택을 구현하지 않으며 Trim / Framing Interaction 구조 전체는 Phase 7 구현 전에 결정한다. Phase 6의 Normalization-required Import Presentation 구조는 Phase 6 구현 전에 결정한다.
 
 이미 확정된 New Vlog의 Primary Action 역할, Project Orientation 고정, Front / Rear Camera, 최대 5초 Recording과 Circular Progress Ring, Drag Framing / Reorder, Share / Done 및 Draft 유지 동작은 다시 Open으로 만들지 않는다.
 

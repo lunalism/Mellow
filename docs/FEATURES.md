@@ -54,7 +54,7 @@ Mellow의 핵심 사용자 흐름은 다음과 같다.
 
 ↓
 
-**각 Clip의 사용할 구간 선택 및 Trim**
+**각 Clip의 사용 구간 Trim(Project-owned Clip Media 범위 안)**
 
 ↓
 
@@ -452,34 +452,41 @@ Camera 또는 Microphone Permission 상태와 관계없이 Photos Video Import�
 
 사용자는 iPhone Photos Library의 기존 영상을 현재 Vlog 프로젝트에 추가할 수 있어야 한다.
 
-Photos에서 가져오는 원본 영상 자체의 길이에는 제한을 두지 않는다.
+ADR-042에 따라 Photos에서 가져오는 원본 영상은 **전체 길이가 `1.0s <= sourceDuration <= 5.0s`(양 끝 포함)일 때만** 받아들인다. 1.0초 미만이거나 5.0초를 초과하는 영상은 프로젝트에 가져오지 않으며 긴 영상에서 최대 5초 구간을 선택하는 기능은 제공하지 않는다.
 
 4K를 포함한 고해상도 Source Video를 Import할 수 있다.
 
 SDR 및 HDR / Dolby Vision Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
 
-HDR / Dolby Vision Source도 선택된 Segment를 SDR Working Media로 정규화하며 Photos 원본은 변경하지 않는다.
+HDR / Dolby Vision Source도 5초 이하 전체 Source를 SDR Working Media로 정규화하며 Photos 원본은 변경하지 않는다.
 
 ---
 
 ## F-MVP-019 — Imported Video Duration Policy
 
-가져온 원본 영상의 길이가 5초를 초과하더라도 Import 자체를 제한하지 않는다.
+ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDuration <= 5.0s`(양 끝 포함)일 때만 가져올 수 있다.
 
-사용자는 원본 영상 안에서 최대 5초 길이의 원하는 구간을 선택하여 프로젝트에 추가한다.
+1.0초 미만이거나 5.0초를 초과하는 원본 영상은 Import를 거부하며 원본 영상 안에서 최대 5초 구간을 선택하는 Segment Selection은 제공하지 않는다.
 
 ### Required
 
-- 원본 영상의 전체 길이와 관계없이 Import 가능
-- 사용 구간의 시작점 선택
-- 사용 구간의 종료점 선택
-- 선택 가능한 최대 구간 길이 5초
-- 5초보다 짧은 영상은 전체 길이 사용 가능
+- 전체 길이가 1.0초 이상 5.0초 이하(양 끝 포함)인 원본 영상만 Import 가능; 정확히 1.0초와 정확히 5.0초는 허용
+- 범위 안의 원본 영상은 전체 길이가 그대로 Clip이 된다
+- 1.3초, 2.7초, 4.5초, 5.0초 같은 비정수 길이 허용(정수 불필요), Camera Preset과 무관
+- 0.4초 / 0.8초 등 1.0초 미만 거부, 5.0초 초과 거부, 0 이하 / 읽을 수 없음 Invalid
+- 범위 밖 영상 거부 시 Materialize / Normalize / Persist / Append / Replace 미수행, Project-owned Media 미생성, Clip Metadata 미Commit, 부분 Project 변경 없음, Photos 원본 불변
+- 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 사용하며 Select Clips / Add / Replace 세 경로가 동일; 1.0초 미만 거부 안내는 Phase 6 Structural UX Gate에서 결정
+- Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분
+- 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시킨다)
 - 원본 영상의 비파괴적 처리
+
+### PhotosPicker 제약
+
+System PhotosPicker는 길이로 항목을 미리 숨기거나 비활성화하지 못하므로 사용자가 1.0초 미만 또는 5.0초 초과 영상을 탭할 수 있다. Mellow는 Metadata Validation 후 해당 항목을 거부하고 Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않는다. Broad Photos Read 권한을 요구하지 않는다.
 
 ### Example
 
-원본 영상 길이가 2분 14초라면 사용자는 `00:37.2 → 00:45.8` 구간을 선택하여 8.6초 Clip으로 프로젝트에 추가할 수 있다.
+원본 영상 길이가 4.5초라면 전체 4.5초가 그대로 Clip으로 추가되고, 정확히 1.0초 또는 5.0초여도 추가된다. 원본 영상 길이가 0.8초라면 Below-minimum으로 거부되고, 2분 14초라면 `영상이 너무 길어요` 안내와 함께 거부되며 두 경우 모두 프로젝트는 변경되지 않는다.
 
 ---
 
@@ -487,7 +494,7 @@ HDR / Dolby Vision Source도 선택된 Segment를 SDR Working Media로 정규화
 
 Mellow 프로젝트에서 사용하는 하나의 최종 Clip은 촬영 방식과 관계없이 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
 
-Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택하며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다.
+Imported Clip은 전체 Source Duration이 `1.0s <= duration <= 5.0s`인 Photos Video 전체이며 1.3초, 2.7초, 4.5초, 5.0초처럼 정수가 아니어도 되고 Camera Preset에 맞출 필요가 없다(ADR-042).
 
 직접 촬영한 Clip과 Photos에서 가져온 Clip은 이후 Clip 관리, Preview, Trim, Export 단계에서 가능한 한 동일한 구조로 취급한다.
 
@@ -497,7 +504,7 @@ Imported Segment는 `0 < duration <= 5 seconds` 범위에서 자유롭게 선택
 
 사용자가 Imported Clip 추가를 확정하면 프로젝트에서 사용할 Project-owned Local Media를 생성한다.
 
-SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 선택된 최대 5초 Segment를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 전체 Source를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다. Normalization은 전체 Source Duration Eligibility(F-MVP-019) 검사 이후에만 시작한다.
 
 1080p-class는 고해상도 Source의 Working Target이며 저해상도 Source의 Upscaling 여부와 정확한 Raster Dimension Rule은 아직 확정하지 않는다.
 
@@ -663,11 +670,9 @@ Trim 작업은 원본 Clip을 직접 수정하지 않는 비파괴 방식으로 
 
 ## F-MVP-028 — Trim Imported Clip
 
-사용자는 Photos에서 가져온 영상에서 프로젝트에 사용할 최대 5초의 구간을 선택할 수 있어야 한다.
+사용자는 Photos에서 가져온 Clip(전체 길이 5초 이하, F-MVP-019)의 시작점과 종료점을 Recorded Clip과 같은 방식으로 조정할 수 있어야 한다.
 
-프로젝트에 추가한 이후에도 허용된 범위 내에서 선택 구간을 다시 조정할 수 있는 방향을 우선한다.
-
-Re-trim을 Materialized Segment 내부로 제한할지 원본 Source 전체 범위까지 허용할지와 Source Reference 유지 여부는 아직 확정하지 않는다.
+ADR-042에 따라 Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며(`0 < trimDuration <= 5 seconds`, `trimStart + trimDuration <= sourceDuration`) 원본 Source 전체 범위로 확장할 수 없고 Source Reference를 유지하지 않는다.
 
 ---
 
@@ -1201,6 +1206,7 @@ Clip 사이에 간단한 Transition을 적용할 수 있는 기능을 검토한�
 - Clip Duplicate
 - Fit Layout
 - Background Blur
+- 5초 초과 Photos 영상 Import와 긴 원본에서의 최대 5초 Segment Selection, 원본 Source Reference 유지 / 원본 범위 Re-trim(ADR-042)
 
 위 기능의 향후 도입 여부와 세부 범위는 별도 결정 대상이다.
 
@@ -1273,9 +1279,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 5. 사용자가 원하는 시점에 녹화를 종료하거나 선택한 최대 Duration에 도달하여 자동 종료된다.
 6. 추가 Clip을 촬영할 수 있다.
 7. Photos Library에서 기존 영상을 가져올 수 있다.
-8. 긴 Imported Video에서 최대 5초의 원하는 구간을 선택할 수 있다.
+8. 5초 이하 Imported Video는 전체가 Clip이 되며 5초 초과 영상은 거부 안내를 받는다(ADR-042).
 9. 촬영 또는 Import한 Clip을 확인할 수 있다.
-10. 불필요한 Clip 삭제가 즉시 UI에 반영되고 F-MVP-025의 확정된 연속 삭제·재정렬·Process 종료 기준에 따라 가장 최근 삭제 한 건의 Undo를 사용할 수 있다.
+10. 불필요한 Clip 삭제가 즉시 UI에 반영되고 ADR-038의 Editor Session Undo / Redo History(시간순 LIFO, Process 종료 후 미유지)로 되돌릴 수 있다.
 11. Clip의 순서를 변경할 수 있다.
 12. 각 Clip의 시작점과 종료점을 Trim할 수 있다.
 13. 전체 Vlog를 Preview할 수 있다.
@@ -1320,10 +1326,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Successful Manual Stop과 Successful selected-maximum Auto-stop에는 동일한 Recording 종료 의미의 subtle completion haptic을 제공한다.
 - Recording Haptic은 보조 Feedback이며 기존 Visual Recording State / Circular Progress / Completion State를 대체하지 않는다.
 - Photos Library의 기존 영상을 프로젝트에 Import할 수 있다.
-- Imported Video 원본의 길이는 제한하지 않는다.
-- Imported Video에서는 프로젝트에 사용할 최대 5초 구간을 선택한다.
+- Imported Video는 원본 전체 길이가 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 가져오며 1.0초 미만 / 5.0초 초과 원본은 거부하고 Segment Selection은 제공하지 않는다(ADR-042).
 - SDR, HDR / Dolby Vision, 4K / High-resolution 및 30 fps 초과 Source Import를 허용한다.
-- 선택된 최대 5초 Segment의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Photos 원본은 변경하지 않는다.
+- 5초 이하 전체 Source의 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 하며 Photos 원본은 변경하지 않는다.
 - Project Fill + Crop을 Working File에 bake-in하지 않고 이후 Framing에 필요한 Source의 유효 화면 영역을 보존한다.
 - Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 편집으로 유지한다.
 - 정상적으로 추가된 Project-owned Clip은 이후 Photos 원본이 삭제되어도 Draft에 유지한다.
@@ -1397,12 +1402,12 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 ## Recording
 
-- 최소 Clip 길이 제한 여부
+- 최소 Clip 길이 제한 여부 — Direct Capture는 Resolved by ADR-033(1.0초); Imported Photos Source는 Resolved by ADR-042(1.0초)
 - Recording Error / Interruption의 Haptic 정책
 - 승인된 Completion 의미 안의 정확한 Haptic API / Style / Intensity / Pattern / Duration / Generator 구현 및 Tuning
 - 선택한 최대 Duration 자동 종료 직전 Visual Feedback 방식
-- 앱이 Background로 이동할 때 촬영 중 Clip 처리 정책
-- Recording Interruption에서 Valid Partial Clip의 최종 처리
+- 앱이 Background로 이동할 때 촬영 중 Clip 처리 정책 — Resolved by ADR-033(즉시 정지 / Finalize, 1.0초 이상이면 저장)
+- Recording Interruption에서 Valid Partial Clip의 최종 처리 — Resolved by ADR-033
 
 ## Orientation
 
@@ -1415,7 +1420,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 
 - Trim과 Crop의 세부 화면 구성
 - Crop 시 Pinch to Zoom 지원 여부
-- Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부
+- Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만 Re-trim, Source Reference 없음
 - Working Media Codec / Container
 - 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법
 - 저해상도 Source의 Upscaling 정책
