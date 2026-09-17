@@ -1996,7 +1996,7 @@ Project Editor의 Add Clip(`+`)은 Project Composition(Select Clips)과 같은 B
 
 Operation Semantics만 다르다: CREATE / REPLACE-project가 아니라 **APPEND-to-current-project**다. 새 Clip은 현재 Persisted Project의 논리적 마지막 Clip 뒤에 Picker 선택 순서로 `sortOrder`를 부여받으며 기존 Clip Identity / 순서 / Trim / Framing / Orientation은 변하지 않는다. 대체 Project, Safe Atomic Replacement, 두 번째 Current Project를 만들지 않는다.
 
-All-or-nothing: 선택 항목 중 하나라도 `invalid` 또는 `requiresImportPreparation`이면 Materialize / Persist 없이 현재 Project를 그대로 두고 Workspace를 폐기한다. Commit 순서는 Workspace → Validate All → Admission → Materialize → Appended Project State → Persist → Read-back Verify → Cleanup이며, Persist 실패 시 부분 Append된 논리 Project를 노출하지 않고 Materialize된 새 Copy만 정리한다. Photos 원본은 어떤 경로에서도 수정 / 삭제하지 않는다.
+All-or-nothing: 선택 항목 중 하나라도 `invalid` 또는 `requiresImportPreparation`이면 Materialize / Persist 없이 현재 Project를 그대로 두고 Workspace를 폐기한다. (**ADR-042 Revision 3, 2026-09-17 — Phase 6 구현 요구:** Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)은 Transaction 전에 Per-item으로 제외되고 통합 안내로 알리며, 남은 Accepted Set(Phase-5-ready + Normalization-required 혼재 가능)에 이 Atomicity가 적용된다 — Accepted Set 안의 실패는 여전히 부분 Append를 남기지 않는다. 현재 Phase 5 코드는 첫 Non-ready 항목에서 전체를 거부한다.) Commit 순서는 Workspace → Validate All → Admission → Materialize → Appended Project State → Persist → Read-back Verify → Cleanup이며, Persist 실패 시 부분 Append된 논리 Project를 노출하지 않고 Materialize된 새 Copy만 정리한다. Photos 원본은 어떤 경로에서도 수정 / 삭제하지 않는다.
 
 Phase 6 소유 준비(4K → 1080p, HDR → SDR, Frame-rate Normalization, Landscape / Transform; Long-source Segment는 ADR-042로 제외)는 이 계약에 포함되지 않으며 Camera Recording은 계속 Photos에만 저장되고 어떤 Project에도 자동으로 붙지 않는다.
 

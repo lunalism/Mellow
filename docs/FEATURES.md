@@ -475,7 +475,8 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - 1.3초, 2.7초, 4.5초, 5.0초 같은 비정수 길이 허용(정수 불필요), Camera Preset과 무관
 - 0.4초 / 0.8초 등 1.0초 미만 거부, 5.0초 초과 거부, 0 이하 / 읽을 수 없음 Invalid
 - 범위 밖 영상 거부 시 Materialize / Normalize / Persist / Append / Replace 미수행, Project-owned Media 미생성, Clip Metadata 미Commit, 부분 Project 변경 없음, Photos 원본 불변
-- 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 사용하며 Select Clips / Add / Replace 세 경로가 동일; 1.0초 미만 거부 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(ADR-042 Revision 2)이며 세 경로 동일
+- 단일 항목 / Replace 후보의 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`, 1.0초 미만 거부 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(ADR-042 Revision 2); Replace 후보 거부 시 기존 Clip 보존
+- 다중 선택(Select Clips / Editor Add)은 ADR-042 Revision 3에 따라 Duration-ineligible 항목만 제외하고 유효 항목으로 계속 진행하며 통합 안내를 한 번 표시: 짧은 항목만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`, 긴 항목만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`, 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 전부 Ineligible이면 아무것도 추가하지 않음; Normalization-required 항목은 제외되지 않음; Accepted Set의 Commit은 Atomic
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분
 - 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시킨다)
 - 원본 영상의 비파괴적 처리
@@ -590,7 +591,7 @@ Unavailable Clip은 자동으로 삭제하거나 숨기거나 Healthy Clip으로
 
 새로운 Clip은 Mellow Camera로 촬영하거나 Photos Library에서 Import할 수 있다.
 
-ADR-037에 따라 Editor의 Add Clip은 System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다. Mellow Camera로 촬영한 Clip은 Photos에 저장된 뒤 같은 경로로 추가한다.
+ADR-037에 따라 Editor의 Add Clip은 System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 Atomic하게 Append하며 Camera를 열지 않는다. ADR-042 Revision 3에 따라 다중 선택의 Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)은 Transaction 전에 제외되고 통합 안내로 알리며 나머지 Accepted Set이 Atomic하게 Append된다(Phase 6 구현 요구). Mellow Camera로 촬영한 Clip은 Photos에 저장된 뒤 같은 경로로 추가한다.
 
 Unavailable Clip은 사용자가 기존 Media Acquisition Capability를 통해 Replace할 수 있으며 성공한 Replace는 Unrelated Clip Reorder 없이 기존 Logical Slot을 복구한다.
 

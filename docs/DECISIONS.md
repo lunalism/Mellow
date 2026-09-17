@@ -2148,6 +2148,8 @@ Select-Clips / PhotosPicker / Project 생성 / Replacement Transaction 구현, L
 
 **Implementation Note (Phase 5 STEP 11, 2026-09-16):** Editor `+`(`클립 추가`)는 Editor 전용 `PhotosVideoSelector` Session(Projects 화면의 Picker Host와 분리) → 기존 Pre-copy Admission / `Phase5ReadyMediaValidator` / `ProjectMediaStore` Workspace → `ProjectClipAppendCoordinator`(Validate ALL → Materialize ALL into `Projects/<현재 pid>/Media/`) → `VlogProject.appendClips`(마지막 Active Clip 뒤, Picker 순서, sortOrder 0…n-1) → `ProjectEditorModel.commitEdit(.add)`(한 번 Autosave + Read-back)로 구현되었다. 한 Picker Session의 Multi-select는 하나의 Atomic Edit이자 하나의 History Entry이며 첫 번째 새 Clip이 선택된다. Cancel / Non-ready / Transfer / Materialize / Persist 실패는 모두 All-or-nothing으로 현재 Project · History · Selection · 기존 Media를 그대로 두고 이 Operation이 만든 파일만 제거한다. Undo / Redo는 ADR-038을 따른다.
 
+**Clarification (ADR-042 Revision 3, 2026-09-17):** 아래 "하나라도 Ready가 아니면 아무것도 Append하지 않고(All-or-nothing)"는 Phase 5 STEP 11 구현 당시의 기록이다. ADR-042 Revision 3 이후 Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)은 Transaction 전에 제외되고 나머지 Accepted Set이 Atomic하게 Append된다(Phase 6 구현 요구); Accepted Set 안의 실패는 여전히 부분 Append를 남기지 않는다.
+
 **Partially Supersedes:** ADR-030 Lightweight Editor의 "Camera / Photos Library를 지원하는 Add Clip"과 ADR-034 §3의 "Direct Camera 취득과 Photos 취득을 각각의 Boundary로 라우팅"하는 Add Clips 문구 중 **Editor Add Clip의 Acquisition Source만**. ROADMAP Phase 5의 "Add Clip Action으로 Camera에 다시 진입" 구현 과제를 대체한다. Lightweight Editor 구조, Ordered Timeline, Delete / Undo, Unavailable Replace, ADR-033의 Capture-first / Single-project 정책과 ADR-034 §2 Select-Clips Media Boundary는 변경하지 않으며 역사적 기록을 다시 쓰지 않는다.
 
 ## Context
@@ -2228,7 +2230,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Imported Clip의 최소 길이 — Resolved by ADR-042(2026-09-17 사용자 승인): 1.0초. Phase 6 구현 요구사항(현재 Phase 5 구현은 미강제).
 - 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
-- Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation 구조, 다중 선택 Invalid 항목 요약 / 혼합 Session Presentation, Storage 부족 Presentation — Pending, Phase 6 Structural UX Gate(Segment Selection 아님).
+- 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
+- Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation 구조, Storage 부족 Presentation, Duration 외 Invalid Media의 다중 선택 처리 — Pending, Phase 6 Structural UX Gate(Segment Selection 아님).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
 
 ### Camera
@@ -2290,7 +2293,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Camera Projects Entry(`Select Clips` / `Load Last Saved` / 대체 확인)의 정확한 Copy와 Presentation — Structural UX Resolved by ADR-034(`Start New Project` / `Continue Editing` Hierarchy, 대체 확인 Cancel / Create New Project); Presentation은 ADR-035로 전용 Pushed `프로젝트` 화면(`Camera → 프로젝트 → ProjectEditor`)으로 확정, Bottom Sheet 아님; 화면 Content는 ADR-036으로 항상 두 개의 중앙 Action(`새 프로젝트 시작` / `기존 프로젝트 불러오기`, 후자는 저장 Project 있을 때만 Enabled, List / Card / Metadata 없음)으로 확정; 정확한 Localization Copy만 Polish로 Pending.
 - Phase 5 `Select Clips` Project Composition과 Phase 6 Photos Video Import의 Media 소유 경계 — Resolved by ADR-034: Phase 5는 Phase-5-ready media만 Bootstrap하며 Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리하고 Segment Selection / Normalization / Trim은 Phase 6 / 7 소유로 유지.
 - Phase 5 Project Editor Structural UX(Preview Shell, Ordered Thumbnail Strip, Selection, Delete / Undo Snackbar, Unavailable Clip 표현, Add Clips, Project Duration 배치) — Resolved by ADR-034.
-- Editor Add Clip의 Acquisition Source — Resolved 2026-09-15 by ADR-037: System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다.
+- Editor Add Clip의 Acquisition Source — Resolved 2026-09-15 by ADR-037: System PhotosPicker로 Phase-5-ready Media를 현재 Project 끝에 All-or-nothing Append하며 Camera를 열지 않는다. (ADR-042 Revision 3: 다중 선택의 Duration-ineligible 항목은 Transaction 전에 제외되고 Accepted Set이 Atomic하게 Append된다 — Phase 6 구현 요구.)
 - Camera Bottom-left Content Slot Phase 4 → Phase 5 소유 전환 — Resolved by ADR-034, **Superseded by ADR-041 (2026-09-17):** Slot은 Direct-capture 피드백에 남고 Project Representative는 Projects 화면이 표시한다; Editor 진입 승격은 폐기.
 - Unavailable-Clip Replacement Metadata Migration(Clip Identity / Trim / Framing / Transform Preserve vs Reset, Thumbnail Regeneration, Reset 전달) — Resolved 2026-09-16 by ADR-040.
 - Multi-project 복원 시점 — Pending, Post-V1 Product Decision.
@@ -2496,6 +2499,8 @@ Phase 5 STEP 14는 ADR-034 §6 문구대로 Camera 좌하단 Slot을 "저장 Pro
 
 **Revision 2 (2026-09-17, 사용자 승인 — Below-minimum Copy):** 1.0초 미만 Photos Source 거부의 Canonical 사용자 안내가 Title `영상이 너무 짧아요` / Message `1초 이상의 영상을 선택해주세요.`로 확정되었다. 5.0초 초과 안내(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 변경 없이 유지되며 두 안내는 의미상 구분된다. 이 Revision은 ADR-042 아래 명시적으로 Pending이던 UX 세부 하나를 완료할 뿐 Canonical Duration Policy를 바꾸지 않으므로 새 ADR을 만들지 않는다. 이 Copy는 아직 Production 코드에 존재하지 않으며(1.0초 미만 Validator / Alert 미구현) Phase 6 구현 요구사항이다. 다중 선택에서 Invalid 항목의 요약 / 혼합 Session Presentation, Normalization-required 진입 / 진행 / 실패 / Retry, Storage 부족 Presentation, 부분 성공 정책, Duration 비교 Tolerance는 이 Revision이 결정하지 않는다.
 
+**Revision 3 (2026-09-17, 사용자 승인 — Multi-selection Per-item Duration Filtering):** Select Clips / Editor Add의 다중 선택에서는 선택 항목마다 전체 Source Duration을 검사하여 **Duration-ineligible 항목(1.0초 미만 또는 5.0초 초과)만 제외**하고 나머지 Duration-eligible 항목(Phase-5-ready와 Normalization-required 항목이 함께 있을 수 있음)으로 계속 진행한다. 제외 항목은 Materialize / Normalize / Persist / Append / Commit되지 않고 Photos 원본은 변경되지 않으며, 다른 항목이 Duration-ineligible이라는 이유만으로 사용자에게 유효 항목의 재선택을 강요하지 않는다. 선택 결과 안내는 항목별 반복 Alert가 아니라 **하나의 통합 안내**다 — 1.0초 미만만 제외: `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` · 5.0초 초과만 제외: `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` · 둘 다 제외: `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` (항목 개수 표현은 정하지 않는다). 모든 선택 항목이 Duration-ineligible이면 아무것도 추가하지 않고(Select Clips: Project 미생성, Add: 기존 Project 무변경) 해당 통합 안내를 표시한다. **Replace는 단일 후보 Operation**이므로 이 Filtering 대상이 아니며 후보가 Duration-ineligible이면 Revision 2의 개별 안내(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` / `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로 거부하고 기존 Clip과 Media를 그대로 보존한다(제거 / 교체로 표현하지 않는다). Transactional 경계: Duration-ineligible 항목은 Preparation / Commit Transaction에 들어가기 전에 걸러지고, 남은 **Accepted Set**에는 승인된 Atomicity 계약이 그대로 적용된다 — Accepted Set 안의 어떤 항목이라도 Preparation / Normalization / Materialize / Persist에 실패하면 부분 Project Mutation 없이 전체를 되돌린다(ADR-020 / ADR-037). 이 결정은 Duration-ineligible Photos Video에만 적용되며 Malformed / Unreadable / Unsupported 등 다른 Invalid Media 범주의 다중 선택 처리, Normalization 진행 / 실패 / Retry Presentation, Storage 부족 Presentation은 결정하지 않는다. Phase 6 구현 요구사항이며 현재 Phase 5 코드(`ProjectCompositionCoordinator` / `ProjectClipAppendCoordinator`: 첫 Non-ready 항목에서 전체 거부, 1.0초 최소 미강제)는 이를 아직 구현하지 않는다.
+
 **Supersedes:** ADR-029 "Imported Video" 항목 중 **"Photos Source Video의 전체 Duration은 제한하지 않으며 2분 또는 20분 Source도 선택할 수 있다"**와 **"사용자는 Source에서 원하는 구간을 자유롭게 선택 / Trim하며"**(Long-source Segment Selection) 및 ADR-029 Consequences의 "Phase 6 Import와 Phase 7 Trim은 길이 제한 없는 Source … Segment를 구현·검증한다". ADR-006(이미 ADR-029로 Superseded)의 "10초보다 긴 Source Video에서는 … 구간을 선택한다"는 역사 기록 그대로 두되 현재 정책이 아님을 이 ADR이 다시 확인한다.
 
 **Partially Supersedes / Clarifies:**
@@ -2506,7 +2511,7 @@ Phase 5 STEP 14는 ADR-034 §6 문구대로 Camera 좌하단 Slot을 "저장 Pro
 - ADR-034 §2 / ADR-037의 "Long-source Segment Selection … Phase 6 / 7 소유 유지" — 해당 항목은 어느 Phase도 소유하지 않는 **제외 기능**이 된다. Phase 5 Select-Clips Media Boundary(Phase-5-ready media만 Bootstrap, Non-ready는 Typed `requires import preparation`)는 변경하지 않는다.
 - `RULES.md` 6절 "Imported Video Source는 길이 제한 없이 선택할 수 있다", `AGENTS.md` Confirmed MVP Guardrails "Imported source video duration is unrestricted", PRODUCT / FEATURES(F-MVP-018 / F-MVP-019 / F-MVP-028) / DESIGN(15–16절) / ARCHITECTURE(5, 25, 37, 38, 40절) / ROADMAP(Phase 6–7, §10 Traceability, Before Phase 6–7 Gate)의 동일 취지 문장은 이 ADR과 같은 작업에서 정렬한다.
 
-**Explicitly Unchanged:** ADR-029 Direct Capture(1s–5s Preset, 기본 3s, Manual Early Stop)와 Canonical Invariant `0 < effectiveClipDuration <= 5 seconds`, ADR-033 Direct Capture 1.0초 최소(별개 규칙) / Photos Add-only 권한 / Capture ≠ Project, ADR-020 / ADR-021 / ADR-024 / ADR-026 / ADR-039 / ADR-040의 Media Commit / Deletion / Storage / Unavailable / Cleanup / Replace 계약, ADR-016 Non-destructive Editing, ADR-034 §2의 Phase 5 Media Boundary, ADR-037 Editor Add Acquisition, Phase 5 Select Clips / Editor Add의 기존 Multi-select Session과 All-or-nothing Project Mutation 안전성(사라지거나 부분 성공으로 바뀌지 않는다), ADR-041의 Latest Capture Review / Gallery 별도 Gate.
+**Explicitly Unchanged:** ADR-029 Direct Capture(1s–5s Preset, 기본 3s, Manual Early Stop)와 Canonical Invariant `0 < effectiveClipDuration <= 5 seconds`, ADR-033 Direct Capture 1.0초 최소(별개 규칙) / Photos Add-only 권한 / Capture ≠ Project, ADR-020 / ADR-021 / ADR-024 / ADR-026 / ADR-039 / ADR-040의 Media Commit / Deletion / Storage / Unavailable / Cleanup / Replace 계약, ADR-016 Non-destructive Editing, ADR-034 §2의 Phase 5 Media Boundary, ADR-037 Editor Add Acquisition, Phase 5 Select Clips / Editor Add의 기존 Multi-select Session과 Accepted Set에 대한 Atomic Project Mutation 안전성(Revision 3: Duration-ineligible 항목은 Transaction 전에 제외되고 Accepted Set 안의 실패는 부분 Mutation을 남기지 않는다), ADR-041의 Latest Capture Review / Gallery 별도 Gate.
 
 ## Context
 
@@ -2541,7 +2546,7 @@ System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 �
 
 - Project-owned Media를 만들지 않는다.
 - Clip Metadata를 Commit하지 않는다.
-- 부분 Project Mutation이 없다(다중 선택은 All-or-nothing: 하나라도 초과면 전체 거부).
+- 부분 Project Mutation이 없다. 다중 선택(Select Clips / Add)에서는 Revision 3에 따라 Duration-ineligible 항목만 제외하고 Accepted Set으로 계속 진행하며 Accepted Set의 Commit은 Atomic이다(Revision 3 이전 초안의 "하나라도 초과면 전체 거부"는 대체되었다).
 - Photos 원본은 변경되지 않는다.
 - 5.0초 초과: 기존 안내 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`를 그대로 사용한다. 1.0초 미만: Canonical 안내 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(Revision 2)를 사용한다. 두 안내는 별개의 의미이며 그 밖의 다른 Duration 정책이나 제3의 Duration Alert를 만들지 않는다.
 - Select Clips / Add / Replace 세 경로가 같은 Canonical Rule과 같은 Copy를 따른다.
@@ -2561,14 +2566,14 @@ System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 �
 
 Phase 6은 더 이상 무제한 길이 Source, Long-source Segment Selection, Segment Selection Structural UX Gate, 원본 전체 범위 Re-trim Decision, 선택 Segment 기반 Normalization / Storage Estimate / Recovery를 소유하지 않는다.
 
-Phase 6은 새로운 별도의 Multi-selection Import 기능을 만들지 않는다. 기존 Select Clips / Editor Add Multi-select Session 안에서 Eligible 항목 일부가 Normalization을 필요로 하는 경우에도 기존 All-or-nothing이 적용되며(하나라도 Invalid / Ineligible / Normalization 실패면 Project 무변경) 부분 성공 정책은 별도 승인 없이 도입하지 않는다. 혼합 Session의 Presentation은 Phase 6 Structural UX Gate에 속한다.
+Phase 6은 새로운 별도의 Multi-selection Import 기능을 만들지 않는다. 기존 Select Clips / Editor Add Multi-select Session에는 Revision 3의 Per-item Duration Filtering이 적용된다: Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)은 Transaction 전에 제외되고 통합 안내로 알리며, Duration-eligible 항목(Phase-5-ready + Normalization-required 혼재 가능)은 Accepted Set으로 계속 진행한다. Accepted Set 안에서 하나라도 Preparation / Normalization / Materialize / Persist에 실패하면 Project는 무변경이다(Accepted Set Atomicity). Duration 외 Invalid Media 범주의 다중 선택 처리는 결정되지 않았다.
 
 Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Phase-5-ready 경계를 벗어나는 Media**의 Normalization(1080p-class / 30 fps / SDR, Source Presentation Transform과 Framing 가능 영역 보존, Project Fill + Crop bake-in 금지)과 ADR-020 / ADR-021 / ADR-024 계약(Transactional Commit, Recovery, Project Validity, Active Usage, Storage Safety)의 Import 적용을 소유한다. Normalization은 Duration Eligibility 검사 **이후**에만 시작한다.
 
 ### Phase 5 / Phase 7 Consequences
 
-- Phase 5(현재 구현): 5.0초 초과 `.tooLong` 거부, 세 경로의 공통 Validator / Copy, All-or-nothing, Photos 원본 불변은 그대로 유효하다. **현재 Phase 5 구현은 1.0초 미만 Source를 거부하지 않고 받아들인다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사). 이 문서 작업은 코드를 바꾸지 않는다.
-- Phase 6(구현 요구): 세 경로(Select Clips / Add / Replace)에 1.0초 미만 거부를 추가하고 Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Below-minimum의 Canonical Copy는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(Revision 2)이며 세 경로가 같은 Copy를 사용한다. 5.0초 초과 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 그대로 유지한다. 개별 검출된 1.0초 미만 항목의 안내만 확정되었고, 다중 선택 결과의 요약 / 혼합 Session Presentation은 Structural UX Gate에 남는다.
+- Phase 5(현재 구현): 5.0초 초과 `.tooLong` 거부, 세 경로의 공통 Validator / Copy, Photos 원본 불변은 그대로 유효하다. 현재 구현의 다중 선택은 첫 Non-ready 항목에서 선택 전체를 거부한다(Revision 3의 Per-item Filtering 미구현). **현재 Phase 5 구현은 1.0초 미만 Source를 거부하지 않고 받아들인다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사). 이 문서 작업은 코드를 바꾸지 않는다.
+- Phase 6(구현 요구): 세 경로(Select Clips / Add / Replace)에 1.0초 미만 거부를 추가하고 Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Below-minimum의 Canonical Copy는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(Revision 2)이며 세 경로가 같은 Copy를 사용한다. 5.0초 초과 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 그대로 유지한다. 다중 선택(Select Clips / Add)에서는 Revision 3에 따라 Duration-ineligible 항목만 제외하고 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)를 한 번 표시하며 Accepted Set으로 계속 진행한다; 개별 안내는 단일 항목 선택과 Replace에 쓰인다.
 - Phase 7: Imported Clip Trim은 Recorded Clip Trim과 같은 모델(`trimStart` / `trimDuration`, Project-owned Media 범위 안)이며 "원본 Source 전체 범위 Re-trim" 선택지는 존재하지 않는다. F-MVP-028의 Pending은 해소된다.
 
 ## Rationale
@@ -2600,7 +2605,8 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 만족하는 Source의 Re-encode vs Transform 보존 Copy) — Landscape Source가 Phase 6 경로로 들어온다는 사실은 ADR-034 §2로 확정
-- Phase 6 Normalization-required Media의 Import 진입 / 진행 / 실패 / Retry Presentation 구조, 다중 선택에서 하나 이상의 Invalid / Ineligible 항목을 요약하는 방식과 혼합 Session Presentation, Import Storage 부족 Presentation(Structural UX Gate — Segment Selection 아님; 1.0초 미만 개별 안내 Copy는 Revision 2로 확정되어 제외)
+- Phase 6 Normalization-required Media의 Import 진입 / 진행 / 실패 / Retry Presentation 구조와 Import Storage 부족 Presentation(Structural UX Gate — Segment Selection 아님; 1.0초 미만 개별 안내 Copy는 Revision 2, 다중 선택 Duration Filtering과 통합 안내는 Revision 3으로 확정되어 제외)
+- Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 다중 선택에 섞였을 때의 처리와 안내(Revision 3은 Duration-ineligible 항목만 다룬다)
 
 ## Non-goals
 

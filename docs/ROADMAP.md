@@ -627,7 +627,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | 1–5-second Maximum Presets / Recording / Audio | Phase 4 |
 | Clip List / Reorder / Delete / Undo | Phase 5 |
 | Photos Video Import | Phase 6 |
-| Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + Normalization) |
+| Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization) |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
 | Full Vlog Preview | Phase 8 |
@@ -1803,7 +1803,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Imported Clip 생성(`sourceKind = .imported`, `trimStart = 0`, `trimDuration = sourceDuration = Working Media Duration`, `framing = nil`)
 - 공통 Media Commit Recovery 적용
 - Phase 5 Select Clips / Add / Replace 세 경로가 같은 Eligibility Rule과 같은 Normalization 경로를 사용
-- 기존 Multi-select Session(Select Clips / Add) 안의 Normalization-required 항목 처리: 기존 All-or-nothing 유지(하나라도 Invalid / Ineligible / Normalization 실패면 전체 미변경); 혼합 Session의 Presentation은 Structural UX Gate 대상
+- 기존 Multi-select Session(Select Clips / Add)의 Per-item Duration Filtering(ADR-042 Revision 3): Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)만 Transaction 전에 제외하고 통합 안내 1회 표시, Duration-eligible 항목(Phase-5-ready + Normalization-required 혼재 가능)은 Accepted Set으로 계속, Accepted Set의 Preparation / Commit은 Atomic(실패 시 부분 Mutation 없음), 전부 Ineligible이면 무변경 + 통합 안내
 
 ## Explicitly Excluded
 
@@ -1815,7 +1815,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Advanced Crop
 - Fit Layout
 - Blur Background
-- 새로운 별도의 Multi-selection Import 기능(Phase 5 Select Clips / Editor Add의 기존 Multi-select Session은 그대로 유지되며 사라지지 않는다. 그 Session 안에서 Eligible 항목 일부가 Phase 6 Normalization을 필요로 해도 기존 All-or-nothing Project Mutation 안전성이 그대로 적용되며 부분 성공 정책은 별도 승인 없이 도입하지 않는다.)
+- 새로운 별도의 Multi-selection Import 기능(Phase 5 Select Clips / Editor Add의 기존 Multi-select Session은 그대로 유지되며 사라지지 않는다. Duration-ineligible 항목의 Per-item 제외와 Accepted Set Atomicity는 ADR-042 Revision 3을 따르며, Duration 외 Invalid Media 범주에 대한 부분 성공 정책은 별도 승인 없이 도입하지 않는다.)
 
 ## Decision Gate Before Implementation
 
@@ -1866,17 +1866,18 @@ Import Storage Estimate는 5초 이하 전체 Source와 승인된 Pipeline이 Op
 
 Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다음 Presentation 구조를 Phase 6 구현 전에 사용자 승인으로 결정한다.
 
-- Duration-eligible이지만 Normalization이 필요한 Source(4K / HDR / Dolby Vision / >30 fps / Landscape)를 선택했을 때 기존 `이 영상은 바로 사용할 수 없어요` / `세로 영상을 선택해주세요` 거부를 어떤 진입 / 진행(Normalization Progress) / 완료 / 실패 표현으로 대체할지, Select Clips / Add / Replace 세 경로에서의 일관된 구조, 그리고 기존 Multi-select Session에서 Ready 항목과 Normalization-required 항목이 섞였을 때의 Presentation(All-or-nothing 동작 자체는 이 Gate에서 바꾸지 않는다).
+- Duration-eligible이지만 Normalization이 필요한 Source(4K / HDR / Dolby Vision / >30 fps / Landscape)를 선택했을 때 기존 `이 영상은 바로 사용할 수 없어요` / `세로 영상을 선택해주세요` 거부를 어떤 진입 / 진행(Normalization Progress) / 완료 / 실패 표현으로 대체할지, Select Clips / Add / Replace 세 경로에서의 일관된 구조, 그리고 Accepted Set 안에 Ready 항목과 Normalization-required 항목이 섞였을 때의 진행 / 완료 Presentation(Accepted Set Atomicity 자체는 이 Gate에서 바꾸지 않는다).
 - Import Storage 부족으로 Materialization / Normalization을 시작할 수 없고 Photos 원본과 기존 Project Media는 유지되며 공간 확보 후 재시도할 수 있다는 상태의 Presentation 구조(기존 `저장 공간이 부족해요` / `공간을 확보한 뒤 다시 시도해 주세요.` Copy 재사용 여부 포함).
 - 5초 초과 Source 거부 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 유지하며 이 Gate에서 다시 결정하지 않는다.
-- 1.0초 미만 Source 거부의 개별 안내 Copy — **Resolved by ADR-042 Revision 2(2026-09-17):** `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, Above-maximum 안내와 별개, Select Clips / Add / Replace 동일. 다중 선택에서 하나 이상의 Invalid / Ineligible 항목을 어떻게 요약할지(단일 Alert / 집계 / 기타)와 혼합 Session Presentation은 여전히 이 Gate의 Pending이다.
+- 1.0초 미만 Source 거부의 개별 안내 Copy — **Resolved by ADR-042 Revision 2(2026-09-17):** `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, Above-maximum 안내와 별개, 단일 항목 선택과 Replace에 사용.
+- 다중 선택의 Duration-ineligible 항목 처리 — **Resolved by ADR-042 Revision 3(2026-09-17):** Per-item Filtering + 하나의 통합 안내(1.0초 미만만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 5.0초 초과만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`), 항목 개수 표현 없음, 전부 Ineligible이면 무변경 + 통합 안내, Select Clips / Add 동일. Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 섞인 다중 선택의 처리 / 안내는 여전히 이 Gate의 Pending이다.
 
 이 Gate는 Full Trim UX를 Phase 6으로 옮기거나 Working Media Technical Pending을 확정하지 않는다.
 
 ## Implementation Tasks
 
 1. 기존 PhotosPicker 기반 Video Selection(`PhotosVideoSelector`, Broad Photos Read Permission 없음)을 재사용한다.
-2. 선택 항목마다 전체 Source Duration Eligibility(`1.0s <= duration <= 5.0s`, 양 끝 포함)를 먼저 검사한다. 5.0초 초과는 기존 `.tooLong` 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로, 1.0초 미만은 새 Below-minimum 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, ADR-042 Revision 2)로 종료하며(Select Clips / Add / Replace 세 경로 동일 Copy, Materialize / Normalize / Persist / Append / Replace / 부분 Commit 없음) Validation 결과 모델이 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Normalization은 이 검사를 통과한 Source에만 적용한다.
+2. 선택 항목마다 전체 Source Duration Eligibility(`1.0s <= duration <= 5.0s`, 양 끝 포함)를 먼저 검사한다. 단일 항목 선택과 Replace(단일 후보)에서 5.0초 초과는 기존 `.tooLong` 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로, 1.0초 미만은 새 Below-minimum 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, ADR-042 Revision 2)로 종료하며(Select Clips / Add / Replace 세 경로 동일 Copy, Materialize / Normalize / Persist / Append / Replace / 부분 Commit 없음) Validation 결과 모델이 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분하게 한다. Normalization은 이 검사를 통과한 Source에만 적용한다.
 3. Source Video Duration, Display Transform, Resolution, Frame Rate, Color / Dynamic Range를 읽는다.
 4. SDR / HDR / Dolby Vision, 4K / High-resolution, Portrait / Landscape 및 Project Aspect와 다른 5초 이하 Source를 정상적으로 다룰 수 있게 한다.
 5. Duration-eligible이지만 Phase-5-ready가 아닌 Source를 위한 Normalization-required Import 상태를 준비한다(Segment Selection 없음).
@@ -1897,7 +1898,8 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
 21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
 22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
-23. Select Clips / Add / Replace 세 경로가 같은 Eligibility → Phase-5-ready Pass-through 또는 Normalization → Commit 경로를 공유하도록 하며 Phase 5의 All-or-nothing / Undo · Redo / Cleanup / Unavailable 계약을 바꾸지 않는다.
+23. Select Clips / Add / Replace 세 경로가 같은 Eligibility → Phase-5-ready Pass-through 또는 Normalization → Commit 경로를 공유하도록 하며 Phase 5의 Accepted Set Atomicity / Undo · Redo / Cleanup / Unavailable 계약을 바꾸지 않는다.
+24. 다중 선택(Select Clips / Editor Add)에 ADR-042 Revision 3의 Per-item Duration Filtering을 구현한다: 모든 항목의 전체 Duration 검사 → Duration-ineligible(1.0초 미만 / 5.0초 초과) 항목만 제외(Materialize / Normalize / Persist / Append 없음, Photos 원본 불변) → 남은 Accepted Set(Phase-5-ready + Normalization-required 혼재 가능)만 Workspace / Validate / Admission / Materialize / Persist Transaction에 투입 → 하나의 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)를 항목별 반복 Alert 대신 한 번 표시 → 전부 Ineligible이면 Select Clips는 Project 미생성, Add는 기존 Project 무변경. Accepted Set 안의 어떤 실패도 부분 Project Mutation을 남기지 않는다. Replace는 단일 후보이므로 Filtering 대상이 아니며 Ineligible 후보는 개별 안내로 거부하고 기존 Clip / Media를 보존한다. 현재 Phase 5 구현(첫 Non-ready 항목에서 전체 거부)을 이 정책으로 교체한다.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 원본 Source Reference는 유지하지 않는다(ADR-042).
 
@@ -1907,6 +1909,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 - 전체 Source Duration Eligibility Validation: 정확히 1.0초 허용, 1.3초 / 2.7초 / 4.5초 허용, 정확히 5.0초 허용, 0.4초 / 0.8초 등 1.0초 미만 Below-minimum 거부, 5.0초 초과 Above-maximum 거부, 0 이하 / 읽을 수 없음 Invalid; Verdict 모델이 네 경우를 구분
 - 1.0초 미만 / 5.0초 초과 거부 시 Materialize / Normalize / Persist / Append / Replace 미호출과 Project 무변경
 - Below-minimum 안내 Copy가 정확히 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`이고 Above-maximum Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)와 구분되며 세 경로가 같은 Copy Source를 사용
+- 다중 선택 Per-item Duration Filtering(Revision 3): 짧은 항목만 제외 → `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 긴 항목만 제외 → `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 → `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 통합 안내는 선택당 1회이며 항목별 반복 Alert 없음; 제외 항목은 Accepted Set에 포함되지 않음; 전부 Ineligible이면 빈 Accepted Set + 통합 안내; Normalization-required 항목은 Accepted Set에 남음; Replace 후보 Ineligible은 개별 안내로 거부되고 기존 Clip 불변
 - Select Clips / Add / Replace 세 경로가 같은 Eligibility Verdict와 Copy를 사용
 - Source Metadata Mapping
 - Imported Clip SourceKind와 Metadata(`trimStart = 0`, `trimDuration = sourceDuration`, `framing = nil`)
@@ -1929,7 +1932,9 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었다. 대신 다�
 - 정확히 5.0초 Source(허용, 전체 사용; 경계 비교 정책은 Technical Gate 결정에 따라 검증)
 - 1.0초 미만 Source(예: 0.4초 / 0.8초): Select Clips / Add / Replace 각각에서 Below-minimum 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`), Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
 - 5.0초 초과 Source: Select Clips / Add / Replace 각각에서 `.tooLong` 거부, Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
-- Multi-select에 1.0초 미만 또는 5.0초 초과 항목이 하나라도 포함되면 전체 거부(All-or-nothing)
+- 다중 선택 Per-item Duration Filtering(ADR-042 Revision 3, Select Clips와 Editor Add 각각): 1.0초 미만 항목만 섞인 선택 → 해당 항목 제외 + `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` + 나머지 계속; 5.0초 초과 항목만 섞인 선택 → 제외 + `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` + 나머지 계속; 둘 다 섞인 선택 → 제외 + `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` + 나머지 계속; 유효 항목이 제외 뒤에도 Commit됨(재선택 강요 없음); 전부 Ineligible → Select Clips는 Project 미생성, Add는 기존 Project 무변경 + 통합 안내; Phase-5-ready와 Normalization-required 항목이 함께 Accepted Set으로 Commit됨; 제외 항목의 Project-owned Media / Clip Metadata 부재; 통합 안내 1회(반복 Alert 없음)와 정확한 Copy
+- Accepted Set Atomicity: Accepted Set 안의 한 항목이 Normalization / Materialize / Persist에 실패하면 부분 Project Mutation 없이 전체 미변경(제외 항목과 무관)
+- Replace 후보가 1.0초 미만 / 5.0초 초과이면 개별 안내(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` / `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로 거부되고 기존 Clip / Media / 위치가 그대로 보존됨(제거 / 교체 표현 없음)
 - SDR / HDR / Dolby Vision Source 각각의 SDR Working Media 생성
 - 4K / High-resolution → 1080p-class / 30 fps / SDR Working Media
 - 30 fps 초과 Source의 Working Media Frame Rate 확인
@@ -1960,6 +1965,8 @@ iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
 5.0초 초과 Source를 System PhotosPicker에서 실제로 탭하여 Select Clips / Add / Replace 세 경로 모두에서 `영상이 너무 길어요` 거부, Project-owned Media / Clip Metadata 미생성, Photos 원본 불변을 확인한다. 1.0초 미만 Source(예: 0.4초 / 0.8초)를 실제로 탭하여 같은 세 경로에서 정확히 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` 안내로 거부되고 Project-owned Media / Clip Metadata 미생성, Photos 원본 불변임을 확인하고, 정확히 1.0초와 정확히 5.0초 Source가 Import되는지 확인한다.
 
+다중 선택(Select Clips와 Editor Add 각각)에서 유효 항목과 1.0초 미만 항목, 유효 항목과 5.0초 초과 항목, 세 종류가 섞인 선택, 전부 Ineligible인 선택을 실제 Photos Library로 검증하여 각각 정확히 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` 통합 안내가 한 번만 표시되고 유효 항목만 Project에 들어가며 제외 항목의 Project-owned Media가 없고 전부 Ineligible이면 Project가 생성 / 변경되지 않음을 확인한다. Replace에서 Ineligible 후보를 골랐을 때 기존 Clip이 그대로 남는지 확인한다.
+
 특히 HDR / Dolby Vision Source의 SDR 변환 결과와 Source Orientation을 확인하며 Test Asset 확보 방식은 별도 준비 과정에서 결정한다.
 
 Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
@@ -1980,7 +1987,7 @@ Evidence에는 Scenario, Build / Commit, Test Asset Identity(Source Duration 포
 
 ## UI Accessibility Verification
 
-Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거부 안내(`영상이 너무 길어요` / `영상이 너무 짧아요`)에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
+Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거부 안내(`영상이 너무 길어요` / `영상이 너무 짧아요`)와 다중 선택 통합 안내(`짧은 영상이 제외되었어요` / `긴 영상이 제외되었어요` / `일부 영상이 제외되었어요`)에서 3.11절의 Touch Target, VoiceOver Label / 식별, Dynamic Type, Color 이외 상태 표현과 Contrast를 검증하고 해당 Motion의 Reduce Motion 대응을 검토·검증한다.
 
 현재 Phase에서 지원하는 Orientation을 기준으로 기존 Safe Area 요구사항을 확인하고 적용 범위와 실제 검증 결과를 기록하며 기존 iPhone 12 Device Gate를 유지한다.
 
@@ -1990,6 +1997,9 @@ Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거
 - 5.0초 초과 Photos Source는 Select Clips / Add / Replace 어느 경로에서도 Import되지 않고 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.` 안내를 받으며 Project-owned Media, Clip Metadata, 부분 Project Mutation이 발생하지 않는다.
 - 1.0초 미만 Photos Source(예: 0.4초 / 0.8초)는 Select Clips / Add / Replace 어느 경로에서도 Import되지 않고 정확히 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` 안내를 받으며 Project-owned Media, Clip Metadata, 부분 Project Mutation이 발생하지 않는다.
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분한다.
+- 다중 선택(Select Clips / Editor Add)에서는 Duration-ineligible 항목만 제외되고 유효 항목은 재선택 없이 계속 Commit되며, 정확히 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` 중 해당 통합 안내가 한 번 표시된다(반복 Alert 없음). 전부 Ineligible이면 Project가 생성 / 변경되지 않는다. Normalization-required 항목은 제외되지 않는다.
+- Accepted Set의 Commit은 Atomic이며 제외 항목의 Project-owned Media / Clip Metadata는 존재하지 않는다.
+- Replace 후보가 Duration-ineligible이면 개별 안내로 거부되고 기존 Clip과 Media는 그대로 보존된다.
 - Segment Selection UI, Source Reference, 원본 범위 Re-trim이 존재하지 않는다.
 - SDR / HDR / Dolby Vision Source와 4K / High-resolution Source를 허용하고 승인된 1080p-class / 30 fps / SDR Working Pipeline을 사용한다.
 - Normalization은 전체 Source Duration Eligibility 검사 이후에만 시작한다.
@@ -2008,7 +2018,7 @@ Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거
 - Runtime Disk Full 또는 Storage로 인한 Metadata Persistence 실패를 성공으로 표시하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호한다.
 - Storage 부족 때문에 승인된 1080p-class / 30 fps / SDR Working Media 방향을 자동으로 낮추지 않는다.
 - 공간 확보 후 Import를 안전하게 재시도할 수 있다.
-- Phase 5의 Phase-5-ready Pass-through, All-or-nothing, Undo / Redo, Cleanup, Unavailable / Replace 동작이 회귀하지 않는다.
+- Phase 5의 Phase-5-ready Pass-through, Accepted Set Atomicity, Undo / Redo, Cleanup, Unavailable / Replace 동작이 회귀하지 않는다.
 - iPhone 12 Import / Normalization Baseline Measurement Evidence가 재현 가능한 Scenario와 Environment를 식별하며 Phase 13 Profile Approval의 Input으로 보존된다.
 
 - 해당 UI의 기존 Accessibility 기준 적용과 위 검증이 완료되며 미해결 사항을 Phase 12의 최초 구현 작업으로 미루지 않는다.
@@ -2019,7 +2029,7 @@ Normalization-required Import의 진입 / 진행 / 실패 표현과 Duration 거
 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
-ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)가 세 경로에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
+ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)가 세 경로에서 검증되고, Revision 3의 다중 선택 Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Replace 보존이 Select Clips · Add · Replace에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
 
 ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
@@ -3439,7 +3449,7 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
 
-1.0초 미만 거부의 개별 안내 Copy(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`)는 ADR-042 Revision 2로 확정되었다.
+1.0초 미만 거부의 개별 안내 Copy(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`)는 ADR-042 Revision 2로, 다중 선택의 Per-item Duration Filtering과 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)는 ADR-042 Revision 3으로 확정되었다.
 
 Photos Source Eligibility `1.0s <= entire source duration <= 5.0s`(ADR-042, Imported 최소 1.0초 사용자 승인 — Phase 6 구현 요구), HDR / Dolby Vision Source 허용, SDR / 30 fps / 1080p-class Working 방향과 Project Crop bake-in 금지 / Framing 영역 보존은 ADR-022 / ADR-042 Accepted 기준이다.
 
