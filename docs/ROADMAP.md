@@ -630,6 +630,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization + Preparation Sheet / 취소 / Retry / Storage 부족 / Invalid Filtering Presentation) |
 | Portrait-only Photos Import (ADR-043 + Revision 1) | Phase 5(Non-portrait = Non-ready, 선택 전체 거부 구현) / Phase 6(Per-item Non-portrait 제외 + Canonical 안내, 미구현) |
 | Phase 6 Working Media Technical Gate (ADR-045) | Resolved / PASS(Spike Evidence `04d83612`) — Production 구현 미완: `ImportPreflightClassifier` / `WorkingMediaNormalizer` / `SDRWorkingMediaContract` Phase 6 구현 대상 |
+| Capture Codec Invariant + Import Codec Boundary (ADR-046) | Phase 4 코드는 Codec 미명시(Default 의존) → Phase 6 Task 29b Enforcement 미구현 / Phase 6 Task 29a Codec Family Preflight 미구현 |
 | QuickTime-only Photos Import Container (ADR-044) | Phase 5(Container 미검사) / Phase 6(신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외, 미구현; MP4 Remux 없음) |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
@@ -1423,7 +1424,7 @@ Media Commit의 주요 Failure Boundary에 기본 Failure Injection Integration 
 | G. Metadata Save 성공 직후 UI Update 전 중단 | Persisted Metadata로 Clip을 한 번만 복구한다. |
 | H. Cleanup 실패 | Committed Clip을 유지하고 반복 Cleanup에서 이미 정리된 Artifact로 인한 오류를 반복하지 않는다. |
 
-Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의 Codec / HDR 정책을 추가하지 않고 공통 실패 처리 계약을 검증하며 실제 Import Normalization Pipeline은 Phase 6에서 검증한다.
+Phase 4에서 Normalization이 필요하지 않은 Recording 경로는 임의의 Codec / HDR 정책을 추가하지 않고 공통 실패 처리 계약을 검증하며 실제 Import Normalization Pipeline은 Phase 6에서 검증한다. — **ADR-046(2026-09-18):** Capture Codec은 이후 H.264 · SDR · QuickTime으로 확정되었고 Phase 4 구현은 아직 Default Codec에 의존한다(Phase 6 Task 29b에서 명시 적용).
 
 ADR-033에 따라 Recording은 Project를 만들거나 참조하지 않으므로 Project Delete / Late Commit 경합은 Recording 경로에 적용하지 않는다. 이 계약은 Phase 5의 Project Media Materialization(Select Clips)과 Photos Import에서 검증한다.
 
@@ -1796,6 +1797,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 ## Included
 
 - System Photos Picker(기존 `PhotosVideoSelector` 경로 재사용, Broad Photos Read 권한 없음)
+- Video Codec Family Preflight(ADR-046): Container 통과 후 Video Codec이 H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`) Family일 때만 계속; ProRes / ProRes RAW / MJPEG / 기타 / Unknown Codec은 Preflight Unsupported(기존 Invalid / Unsupported 안내, Codec별 문구 없음, Fast Path / Normalization / Materialize / Persist / Append / Replace 없음, Photos 원본 · 기존 Clip 보존); Codec Family 자체는 Normalization 사유가 아니다(Ready HEVC = Fast Path). Preflight 순서: Duration → Invalid → Container → Codec → Orientation → Normalization.
 - Source Container Preflight(ADR-044): 실제 Container가 QuickTime Movie인 Source만 Container-eligible(H.264 / HEVC 모두 가능, Container Eligibility ≠ 자동 수락); MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Media / Container Inspection(File Type / Brand — 확장자만으로 판정 금지, `.mp4`→`.mov` 개명은 Eligible이 되지 않고 `.mov`→`.mp4` 개명은 QuickTime 증명 시 Ineligible이 되지 않음)으로 Per-item 제외(Copy / Remux / Normalize / Persist / Append / Replace 없음), 남은 QuickTime 후보로 계속, 전부 제외 시 Select Clips 미생성 / Add 무변경, Replace 후보 거부 시 기존 Clip · Media · Metadata · Slot 보존; 기존 Invalid / Unsupported 범주 안내(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), MP4 전용 Alert 없음
 - Video Selection과 전체 Source Duration Eligibility 검사(`1.0s <= duration <= 5.0s`; 기존 5.0초 초과 `.tooLong` 거부 유지 + 1.0초 미만 거부 신규 구현; Validation 결과가 최소한 Below-minimum / Above-maximum / Normalization 필요 / Invalid Media를 구분)
 - Source Metadata Load(Duration, Display Transform, Resolution, Frame Rate, Color / Dynamic Range)
@@ -1816,6 +1818,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 
 - 5초 초과 Photos Source의 Import(ADR-042)
 - MP4 / ISO BMFF / 기타 non-QuickTime / Unknown Container Source의 Import, MP4 → QuickTime Remux, Passthrough / 임의 Container 변환, Container 변환 안내 / 옵션, 사용자 선택 출력 Container(ADR-044)
+- ProRes / ProRes RAW / Motion JPEG / 기타 / Unknown Video Codec Source의 Import 또는 Transcode, Codec 변환 옵션, Codec별 안내 문구, Capture Codec 설정 UI(ADR-046)
 - Non-portrait Presentation(Landscape / Square) Photos Source의 Import / Normalization / Crop-to-portrait / Padding / Rotation 안내 / 변환 옵션 / Transform Bake / Framing 준비(ADR-043 Revision 1)
 - Long-source Segment Selection / Import Editing State / Segment Selection UI(ADR-042)
 - Source Reference(Photos Asset Identity, App-owned 원본 복사본) 유지(ADR-042)
@@ -1828,13 +1831,14 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 
 ## Decision Gate Before Implementation
 
-### Accepted Direction — ADR-022 / ADR-042 / ADR-043 / ADR-044
+### Accepted Direction — ADR-022 / ADR-042 / ADR-043 / ADR-044 / ADR-046
 
 다음 방향은 이미 Accepted이며 Phase 6 Definition of Ready에서 확인한다.
 
 - Photos Source Eligibility `1.0s <= entire source duration <= 5.0s`(양 끝 포함, ADR-042 사용자 승인)
 - Portrait Presentation Source만 Import 허용 — preferredTransform 적용 후 `presentationHeight > presentationWidth`만 Eligible, Landscape / Square(Non-portrait Presentation)는 Preflight Per-item 제외, Media Operation 없음(ADR-043 + Revision 1 사용자 승인)
 - 실제 Container가 QuickTime Movie인 Source만 Import 허용(H.264 / HEVC), 확장자 비권위, MP4 / 기타 / Unknown Container는 Preflight Per-item 제외 + Remux 없음(ADR-044 사용자 승인)
+- Video Codec Family H.264(`avc1` / `avc3`) / HEVC(`hvc1` / `hev1`)만 Import 허용, 그 밖(ProRes / ProRes RAW / MJPEG / 기타 / Unknown)은 Preflight Per-item 제외 + Transcode 없음; Mellow 직접 촬영은 QuickTime `.mov` · H.264 · SDR을 명시 요청(ADR-046 사용자 승인)
 - SDR / HDR / Dolby Vision Source Import 허용
 - 4K / High-resolution Source Import 허용
 - HDR / Dolby Vision → SDR Working Media
@@ -1896,6 +1900,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - **통합 안내 우선순위:** 완료된 Operation당 최대 1회 — Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 항목 개수 없음; 취소 / 실패가 제외 성공 안내보다 우선.
 - 5초 초과 Source 거부 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 유지하며 이 Gate에서 다시 결정하지 않는다.
 - 1.0초 미만 Source 거부의 개별 안내 Copy — **Resolved by ADR-042 Revision 2(2026-09-17):** `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, Above-maximum 안내와 별개, 단일 항목 선택과 Replace에 사용.
+- Photos Source Video Codec Eligibility 및 Mellow Capture Codec — **Resolved by ADR-046(2026-09-18):** Import는 H.264 / HEVC Family만(Unknown 포함 그 밖은 Preflight Unsupported, 기존 Invalid / Unsupported Copy), Codec Family는 Normalization 사유 아님, Preflight 순서에 Codec 단계(Container 다음 · Orientation 이전) 삽입; Mellow 촬영은 H.264 QuickTime SDR을 명시 요청하고 불가 시 안전 실패(Fallback 없음).
 - Photos Source Container Eligibility — **Resolved by ADR-044(2026-09-18):** 실제 QuickTime Movie Container만 허용(H.264 / HEVC), 확장자 비권위, MP4 / 기타 / Unknown은 기존 Preflight Invalid / Unsupported 범주로 Per-item 제외(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음.
 - 단일 후보 선택 / Replace 후보의 Unsupported-media 안내 — **Resolved by ADR-044 Revision 1(2026-09-18):** 정확히 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(MP4 전용 문구 없음; 다중 선택 통합 안내와 구분), Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존, Copy / Materialize / Normalize / Persist / 부분 교체 없음.
 - 다중 선택의 Duration-ineligible 항목 처리 — **Resolved by ADR-042 Revision 3(2026-09-17):** Per-item Filtering + 하나의 통합 안내(1.0초 미만만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 5.0초 초과만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`), 항목 개수 표현 없음, 전부 Ineligible이면 무변경 + 통합 안내, Select Clips / Add 동일. Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 섞인 다중 선택의 처리 / 안내 — **Resolved by ADR-042 Revision 4:** Preflight 판별 항목 Per-item 제외 + `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 사유 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`.
@@ -1935,6 +1940,8 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 27. Runtime Preparation / Normalization 실패를 Operation 실패로 구현한다: Accepted Set Atomicity 유지(성공 부분 집합 미Commit), 임시 / 부분 파일 제거, 무변경(Select Clips 미생성, Replace 기존 Clip 보존), `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + `다시 시도`(Source Handle이 Live Session에서 유효할 때 같은 Accepted Set 재시도) + `취소`(Cleanup 후 종료); Source 접근 무효 시 Mutation 없이 안전 실패, Broad Photos 권한 미도입. Runtime 실패를 Per-item 제외로 바꾸지 않는다.
 28. Storage 부족 Preflight Presentation을 구현한다: Materialization / Normalization 전 Estimate + Reserve 검사 → 부족 시 Media 미생성 / Project 무변경(Replace 기존 Clip 보존) → `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`(Settings Deep Link 없음). 현재 Phase 5 Message `공간을 확보한 뒤 다시 시도해 주세요.`를 승인 Message로 교체한다.
 29. Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 항목(ADR-044: 실제 Container Inspection으로 판별된 MP4 / ISO BMFF / 기타 / Unknown Container 포함 — 확장자만으로 판정하지 않으며 Remux / Container 변환 경로 없음)의 Per-item 제외를 구현한다: 해당 항목만 제외, 나머지 계속, 전부 제외 시 Select Clips 미생성 / Add 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; 단일 항목 / Replace 후보 거부는 정확히 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(ADR-044 Revision 1; 기존 Clip · Media · Metadata · 순서 · Slot 보존, 부분 교체 없음). 모든 Corruption을 Preflight에서 발견한다고 가정하지 않는다.
+29a. (ADR-046) Preflight Codec Family 판정을 구현한다: Video Track Format Description Media Subtype(필요 시 `avcC` / `hvcC`)으로 H.264(`avc1` / `avc3`) / HEVC(`hvc1` / `hev1`) Family를 식별하고 ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Container 판정 다음 · Orientation 판정 이전에 Unsupported로 거부한다(기존 Invalid / Unsupported 범주 · Copy 재사용, 새 안내 문구 없음, Fast Path / Normalization 진입 없음, Media Operation / Project 변경 없음). 파일 확장자 · 파일명 · Container Brand는 Codec 판정에 쓰지 않는다.
+29b. (ADR-046, 별도의 좁은 Production 변경) Direct-camera H.264 Enforcement: `CameraSessionWorker`가 Session 구성 시 Video Connection의 `availableVideoCodecTypes`에서 H.264를 요구하고 `setOutputSettings([AVVideoCodecKey: .h264], for:)`를 명시 적용한 뒤 Recording 전 검증하며, 불가 시 기존 Typed Failure로 안전 실패한다(HEVC / ProRes Fallback 없음, Unknown / Default Codec Recording 없음); SDR Capture Format을 보장하고 QuickTime `.mov` 출력 · 1080p 30 fps · 선택적 Audio · Duration / Orientation / Permission / Interruption / Staging / Photos Save / Cleanup / Media Safety 동작을 회귀 Test로 보존한다. Codec 설정 UI는 만들지 않는다.
 30. 통합 제외 안내 우선순위를 구현한다: 완료된 Operation당 최대 1회, Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`, 항목 개수 없음, 취소 / 실패 시 제외 성공 안내 미표시.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 원본 Source Reference는 유지하지 않는다(ADR-042).
@@ -1947,6 +1954,8 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - Below-minimum 안내 Copy가 정확히 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`이고 Above-maximum Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)와 구분되며 세 경로가 같은 Copy Source를 사용
 - 다중 선택 Per-item Duration Filtering(Revision 3): 짧은 항목만 제외 → `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 긴 항목만 제외 → `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 → `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 통합 안내는 선택당 1회이며 항목별 반복 Alert 없음; 제외 항목은 Accepted Set에 포함되지 않음; 전부 Ineligible이면 빈 Accepted Set + 통합 안내; Normalization-required 항목은 Accepted Set에 남음; Replace 후보 Ineligible은 개별 안내로 거부되고 기존 Clip 불변
 - Select Clips / Add / Replace 세 경로가 같은 Eligibility Verdict와 Copy를 사용
+- Codec Family Eligibility(ADR-046, 결정적): `avc1` / `avc3` → H.264 지원 Family; `hvc1` / `hev1` → HEVC 지원 Family; SDR Ready H.264 → Fast Path; SDR Ready HEVC → Fast Path; HDR / High Bit Depth H.264 또는 HEVC → Normalize; 30 fps 초과 / 1080p-class 초과 H.264 또는 HEVC → Normalize; ProRes 계열 → Unsupported; ProRes RAW 계열 → Unsupported; MJPEG → Unsupported; 기타 / Unknown Codec → Unsupported; Unsupported Codec은 Orientation 및 Normalization 사유보다 우선(문서화된 Preflight 순서 위치); Unsupported Codec은 Media Operation / Project 변경을 만들지 않음; Unsupported Codec은 절대 Normalization에 도달하지 않음; 새 거부 Copy가 도입되지 않음
+- Direct-camera Codec(ADR-046): H.264가 가능하면 명시 요청됨; Default Codec에 의존하지 않음; H.264 불가 → 안전한 Setup 실패; HEVC / ProRes로 조용히 Fallback하지 않음; QuickTime `.mov` 출력; 기존 Capture Duration / Orientation / Audio / Photos Save / Cleanup 동작 보존
 - Container Eligibility(ADR-044, 결정적): 실제 QuickTime Brand → Container-eligible(H.264와 HEVC 모두); MP4 / ISO BMFF Brand → Unsupported; Unknown / non-ISO → Unsupported; `.mov` 확장자 + MP4 Brand → Unsupported; `.mp4` 확장자 + QuickTime Brand → Eligible; Unsupported-container 항목은 Copy / Remux / Normalize / Persist / Append / Replace 미호출; Container-eligible이라도 Duration / Orientation / Invalid 규칙은 독립 적용; Container 제외만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; Duration 또는 Non-portrait와 복합 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`
 - Source Metadata Mapping
 - Imported Clip SourceKind와 Metadata(`trimStart = 0`, `trimDuration = sourceDuration`, `framing = nil`)
@@ -2069,6 +2078,7 @@ Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주�
 - Normalization은 전체 Source Duration Eligibility 검사 이후에만 시작한다.
 - 저해상도 Source는 Phase 6 전에 승인된 Upscaling / Raster 정책을 따르며 임의의 확대 여부를 가정하지 않는다.
 - Project Crop이 Working File에 bake-in되지 않고 Phase 7에서 Framing할 Source의 유효 영역과 Presentation Aspect Ratio / Orientation이 보존된다.
+- Video Codec이 H.264 / HEVC Family가 아닌 QuickTime Source(ProRes / ProRes RAW / MJPEG / 기타 / Unknown, ADR-046)는 Preflight에서 Per-item 제외되어 Fast Path / Normalization / Materialize / Persist / Append / Replace 어느 것에도 들어가지 않으며 기존 Invalid / Unsupported 안내만 사용한다(Codec별 문구 없음); Mellow 직접 촬영은 H.264 QuickTime SDR을 명시 요청하며 Default / HEVC / ProRes로 기록되지 않는다.
 - 실제 Container가 QuickTime Movie가 아닌 Source(MP4 / ISO BMFF / 기타 / Unknown, ADR-044)는 확장자와 무관하게 Preflight에서 Per-item 제외되고 어떤 Media Operation(Copy / Remux / Normalize / Persist / Append / Replace)도 받지 않으며, 남은 QuickTime 후보로 계속하고 전부 제외 시 Project가 생성 / 변경되지 않고 Replace 후보 거부 시 기존 Clip이 보존된다; 안내는 기존 Invalid / Unsupported 범주(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)이며 MP4 전용 Alert가 없다. QuickTime Source의 H.264 / HEVC는 모두 Container-eligible이다.
 - Non-portrait Presentation Source(Landscape / Square, ADR-043 Revision 1)는 Select Clips / Add에서 Per-item 제외되고 Portrait 항목은 계속 진행되며 Non-portrait만 제외 시 정확히 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.`가 1회 표시된다; 전부 Non-portrait이면 Project가 생성 / 변경되지 않는다; 단일 후보 / Replace 후보가 Non-portrait이면 `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.`로 거부되고 기존 Clip이 보존된다; 어떤 Non-portrait 항목에도 Media Operation이 없다. Eligibility는 `presentationHeight > presentationWidth`만 사용하며 자연 크기 기준으로 세로 영상을 오분류하지 않는다.
 - Normalization Output Validation을 통과한 Media만 등록하며 명백한 색 변환 실패나 Orientation 손상을 정상 Clip으로 취급하지 않는다.
@@ -2101,7 +2111,7 @@ Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주�
 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
-ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)와 ADR-043 Revision 1의 Non-portrait(Landscape / Square) Preflight 제외, ADR-044의 QuickTime-only Container Preflight 제외(MP4 Import / Remux 없음)가 세 경로에서 검증되고, Revision 3의 다중 선택 Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Replace 보존이 Select Clips · Add · Replace에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
+ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)와 ADR-043 Revision 1의 Non-portrait(Landscape / Square) Preflight 제외, ADR-044의 QuickTime-only Container Preflight 제외(MP4 Import / Remux 없음), ADR-046의 Codec Family Preflight 제외(Unsupported Codec의 Normalization 미도달)와 Direct-camera H.264 Enforcement 회귀가 세 경로에서 검증되고, Revision 3의 다중 선택 Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Replace 보존이 Select Clips · Add · Replace에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다.
 
 ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 

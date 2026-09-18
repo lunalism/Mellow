@@ -1803,6 +1803,8 @@ Phase 3의 Landscape Camera Layout, Control Rail, Landscape 전용 Physical Vali
 
 # ADR-033 — Capture-First Recording, Photos Save, and Single-Project V1 Policy
 
+> **Clarification (ADR-046, 2026-09-18):** Mellow 직접 촬영의 출력 Format은 QuickTime `.mov` · H.264 · SDR · 1080p 30 fps로 고정되며 Capture Session 구성 시 H.264를 명시 요청하고 불가 시 안전 실패한다(HEVC / ProRes Fallback 없음). 이 ADR의 Recording / Photos Save / Single-Project 정책은 변경되지 않는다.
+
 **Date:** 2026-09-14
 **Status:** Accepted
 
@@ -2187,7 +2189,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042`, `Resolved by ADR-043`, `Resolved by ADR-044` 또는 `Resolved by ADR-045`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042`, `Resolved by ADR-043`, `Resolved by ADR-044`, `Resolved by ADR-045` 또는 `Resolved by ADR-046`으로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -2234,6 +2236,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
+- Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.
 - Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완.
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
@@ -2741,7 +2744,7 @@ Select Clips / Add의 Accepted Set은 Duration-eligible이고 Preflight-invalid�
 
 ## Consequences
 
-- Phase 6 Normalization 대상은 Portrait Presentation Source의 4K / High-resolution, HDR / Dolby Vision, >30 fps, 기타 Codec 사유로 좁혀진다(ADR-044: Source Container는 Normalization 사유가 아니라 Preflight Container Eligibility — QuickTime만 허용). Landscape Device Normalization Test는 요구되지 않는다.
+- Phase 6 Normalization 대상은 Portrait Presentation Source의 4K / High-resolution, HDR / Dolby Vision, >30 fps, ~~기타 Codec 사유~~로 좁혀진다(ADR-044: Source Container는 Normalization 사유가 아니라 Preflight Container Eligibility — QuickTime만 허용; **ADR-046:** Codec도 Normalization 사유가 아니라 Preflight Codec Family Eligibility — H.264 / HEVC만, 그 밖은 Unsupported). Landscape Device Normalization Test는 요구되지 않는다.
 - Phase 7 Framing은 Accepted Portrait Project-owned Media의 비율 불일치(예: 4:3 Portrait)에 대해서만 Fill + Crop을 다룬다(Revision 1: Square는 Import 대상이 아니다).
 - Validation 결과 모델은 Non-portrait Presentation(Landscape / Square)을 Duration / Invalid와 구분되는 Preflight 제외 사유로 표현해야 한다(Revision 1).
 
@@ -2820,11 +2823,11 @@ Mellow V1의 설계 Workflow는 **iPhone에서 촬영 → Photos에서 선택 �
 
 ### 3. QuickTime ≠ H.264-only
 
-QuickTime Container-eligible Source는 지원되는 **H.264 또는 HEVC** Media를 담을 수 있다. Container Eligibility를 Codec 제한으로 해석하지 않는다. Codec / 색 / 해상도 / 프레임레이트 적합성은 Phase-5-ready / Normalization-required 판정이 따로 다룬다.
+QuickTime Container-eligible Source는 지원되는 **H.264 또는 HEVC** Media를 담을 수 있다. Container Eligibility를 Codec 제한으로 해석하지 않는다(**ADR-046:** Codec Family Eligibility는 Container 다음의 별도 Preflight 단계이며 H.264 / HEVC 외 Codec은 Unsupported). Codec / 색 / 해상도 / 프레임레이트 적합성은 Phase-5-ready / Normalization-required 판정이 따로 다룬다.
 
 ### 4. Eligibility는 자동 수락이 아니다
 
-Container-eligible QuickTime Source도 다음 독립 Preflight 규칙을 모두 통과해야 한다: 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042), Portrait Presentation `presentationHeight > presentationWidth`(ADR-043 Revision 1), Readable / Usable, Protected 아님, 지원되는 Video / Audio 특성. 통과한 Source는 **Phase-5-ready**(Project-owned Media로 복사) 또는 **Phase-6 Normalization-required**(4K / High raster, 30 fps 초과, HDR / Dolby Vision, 기타 승인된 Working-media 불일치)다.
+Container-eligible QuickTime Source도 다음 독립 Preflight 규칙을 모두 통과해야 한다: 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042), Portrait Presentation `presentationHeight > presentationWidth`(ADR-043 Revision 1), Readable / Usable, Protected 아님, 지원되는 Video / Audio 특성(**ADR-046:** Video Codec Family = H.264 / HEVC만; ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported). 통과한 Source는 **Phase-5-ready**(Project-owned Media로 복사) 또는 **Phase-6 Normalization-required**(4K / High raster, 30 fps 초과, HDR / Dolby Vision, 기타 승인된 Working-media 불일치)다.
 
 ### 5. V1이 제공하지 않는 것
 
@@ -2911,12 +2914,13 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 1. 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042)
 2. Readable / Video Track 존재 / Protected 아님(Preflight Invalid)
 3. 실제 Container Brand — QuickTime Movie(`qt  `)만 허용, MP4 / ISO BMFF / 기타 / Unknown은 Unsupported(ADR-044; 확장자 비권위)
-4. Presentation Orientation — `preferredTransform` 적용 후 `presentationHeight > presentationWidth`만 허용(ADR-043 Revision 1)
-5. Normalization 사유 판정(아래 §2) — 위 1–4는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다.
+4. **(ADR-046 삽입)** Video Codec Family — H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`)만 허용, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Unsupported
+5. Presentation Orientation — `preferredTransform` 적용 후 `presentationHeight > presentationWidth`만 허용(ADR-043 Revision 1)
+6. Normalization 사유 판정(아래 §2) — 위 1–5는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다. *(최초 본문은 1–5 순서였으며 ADR-046이 Codec 단계를 삽입했다.)*
 
 ### 2. Fast Path vs Normalization
 
-- **Phase-5-ready SDR QuickTime**(H.264 또는 HEVC, Rec.709 / Rec.709 / Rec.709, ≤ 8-bit, ≤ 1080p-class, ≤ 30 fps): Project-owned Media로 **복사(Fast Path)**, 재인코딩 없음.
+- **Phase-5-ready SDR QuickTime**(H.264 또는 HEVC — ADR-046의 Codec Family 정의, Rec.709 / Rec.709 / Rec.709, ≤ 8-bit, ≤ 1080p-class, ≤ 30 fps): Project-owned Media로 **복사(Fast Path)**, 재인코딩 없음. Codec Family 자체는 Normalization 사유가 아니며 H.264 / HEVC 외 Codec은 ADR-046에 따라 Preflight Unsupported다.
 - **Normalization-required**: HDR / >8-bit(HLG 또는 PQ Transfer, Rec.2020 Primaries **또는** Matrix, bitsPerComponent > 8, 10-bit Profile(hvcC Main10 / avcC High10 계열), Dolby Vision `dvcC` / `dvvC` / `dvwC` Atom), 30 fps 초과, 1080p-class 초과 Raster.
 - **AmbientViewingEnvironment / MasteringDisplayColorVolume / ContentLightLevel 단독은 HDR 판별 신호가 아니다.** AVE는 iPhone SDR 촬영본에도 존재한다.
 
@@ -2999,3 +3003,139 @@ Evidence Branch: `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec29728
 ## Non-goals
 
 - Phase 6 Production 구현 자체, Export Codec / Container, Post-V1 Container / Orientation 확장, Tone-mapping 품질 계량화.
+
+---
+
+# ADR-046 — Canonical Capture Codec and Photos Import Codec Boundary
+
+**Date:** 2026-09-18
+**Status:** Accepted (사용자 승인)
+
+**Clarifies:** ADR-033(Capture-first Recording — 촬영 출력 Codec 불변조건 추가), ADR-044 Revision 1(Container Eligibility와 Codec Eligibility의 분리), ADR-045 §1 / §2(Preflight 순서에 Codec Family 단계 삽입, "H.264 또는 HEVC" Fast Path 조건의 정확한 의미), ADR-043 Consequences의 "기타 Codec 사유" 표현(Codec은 Normalization 사유가 아니라 Preflight Eligibility).
+
+**Explicitly Unchanged:** ADR-042 Duration / Per-item Filtering / Structural UX, ADR-043 Revision 1 Portrait-only, ADR-044 Revision 1 QuickTime-only 및 모든 승인 Copy, ADR-045의 Working Media 출력 계약 · Tone-mapping · Duration 허용 범위 · Cancellation / Ownership · `.current` 전제 · AVE 규칙 · Evidence, ADR-029 / ADR-033의 Recording Duration · Orientation · Permission · Interruption · Staging · Photos Save · Cleanup · Media Safety 계약, Export Codec(Phase 9, 별도 결정), Low-resolution Upscaling / Storage Formula / Recovery 깊이 / Retry · Progress 메커니즘(Pending 유지).
+
+## 1. Context
+
+Phase 6 Step 1(순수 Preflight Classifier)은 "그 밖의 조건은 모두 만족하지만 Video Codec이 H.264 / HEVC가 아닌 QuickTime Source"의 처리가 문서에서 정의되지 않아 BLOCKED되었다(ADR-043 Consequences는 "기타 Codec 사유"를 Normalization 대상으로, ADR-044 §4는 "지원되는 Video / Audio 특성"을 Preflight 규칙으로 서술). 동시에 Mellow 자체 Camera 촬영은 Codec을 명시하지 않아 기기 기본값에 의존하고 있었다. 승인된 V1 Workflow는 **Mellow / iPhone 촬영 → 짧은 세로 QuickTime Clip → Mellow 준비 / 편집**이며 Mellow는 범용 Media Transcoder로 확장하지 않는다.
+
+## 2. Canonical Direct-Camera Invariant
+
+Mellow가 제어하는 Camera Recording은 하나의 정본 Capture Format만 생성한다.
+
+- 실제 Container: QuickTime Movie, 확장자 `.mov`
+- Video Codec: **H.264**
+- SDR(HDR / 10-bit Capture Format 사용 안 함)
+- 이미 승인된 Capture Resolution / Frame Rate 계약(1080p, 30 fps)
+- 호환되는 녹음 Audio를 승인된 Capture Format에 유지
+
+Capture Session 구성 시 다음을 수행한다.
+
+1. 실제 Video Connection의 `availableVideoCodecTypes`를 조회한다.
+2. H.264 지원을 요구한다.
+3. 그 Video Connection에 H.264 Output Settings를 **명시적으로** 적용한다.
+4. Recording 시작 전에 설정이 적용되었음을 검증한다.
+5. H.264를 구성할 수 없으면 Capture Setup을 **안전하게 실패**시킨다(기존 Typed Failure 경로).
+6. HEVC / ProRes / ProRes RAW / 기타 Codec으로 **조용히 Fallback하지 않는다.**
+7. Unknown / Default Codec으로 Recording을 시작하지 않는다.
+8. 기존 Recording Duration · Orientation · Permission · Interruption · Staging · Photos Save · Cleanup · Media Safety 동작을 모두 보존한다.
+
+이는 내부 불변조건이며 사용자 선택 설정이 아니다. Codec Picker나 Settings UI를 추가하지 않는다.
+
+**근거:** 승인된 H.264 Working Media 방향과 일치; 기기 의존 Capture 기본값 제거; Mellow 촬영 Clip의 불필요한 Normalization 회피; Preview / 편집 / Export 호환 단순화; Clip이 최대 5초라 HEVC 대비 저장 공간 불이익이 실질적으로 작음.
+
+## 3. Canonical Photos-Import Codec Eligibility
+
+Photos Import는 실제 QuickTime Container(ADR-044) Source 중 Video Codec이 다음 Family에 속하는 것만 지원한다.
+
+- **H.264 Family:** `avc1`, `avc3`, 신뢰성 있게 식별된 동등 H.264 Sample Entry
+- **HEVC Family:** `hvc1`, `hev1`, 신뢰성 있게 식별된 동등 HEVC Sample Entry
+
+그 밖에 적합한(QuickTime · Portrait · Duration · Readable) Source에 대해:
+
+- 지원 SDR H.264 또는 SDR HEVC가 Ready 경계(Rec.709 / 709 / 709, ≤ 8-bit, ≤ 1080p-class, ≤ 30 fps) 안이면 **Fast Path**(복사).
+- 지원 H.264 / HEVC에 승인된 Normalization 사유(HDR / Dolby Vision, High Bit Depth, 30 fps 초과, 1080p-class 초과 Raster)가 있으면 **Normalization**.
+- **Codec Family 자체는 Normalization을 강제하지 않는다.** Ready 계약을 만족하는 HEVC는 그대로 Fast Path다.
+
+iPhone Camera의 "High Efficiency" 설정이 HEVC를 만들므로 HEVC Import 지원을 유지한다.
+
+## 4. Reliable Codec-Family Identification
+
+- Codec Family는 Video Track Format Description의 Media Subtype(FourCC)과, 필요 시 Sample Description Extension Atom(`avcC` / `hvcC`)으로 판정한다.
+- 파일 확장자, 파일명, Container Brand, Photos Metadata는 Codec 판정에 참여하지 않는다.
+- 신뢰성 있게 식별할 수 없는 Codec(Format Description 없음, 알 수 없는 FourCC)은 **Unknown**으로 취급하며 Unknown은 Unsupported다.
+- Profile / Bit Depth(`avcC` profile_idc 110 / 122 / 244, `hvcC` Main10 등)는 Codec Family 판정이 아니라 ADR-045 §2의 HDR / >8-bit Normalization 사유 판정에 사용한다.
+
+## 5. Unsupported-Codec Filtering Semantics
+
+V1에서 지원하지 않는 Import Codec: Apple ProRes 계열(`apch` / `apcn` / `apcs` / `apco` / `ap4h` / `ap4x` 등), Apple ProRes RAW 계열(`aprn` / `aprh` 등), Motion JPEG(`jpeg` / `mjpa` / `mjpb` 등), 기타 Codec Family, Unknown / 신뢰성 없이 식별된 Codec.
+
+Unsupported Codec 항목은:
+
+- Preflight에서 거부된다(Unsupported / Invalid Media 범주).
+- Fast-path Copy에 들어가지 않는다.
+- Normalization에 들어가지 않는다.
+- Materialize / Persist / Append / Replace에 사용되지 않는다.
+- 기존 승인 Invalid / Unsupported Media UX 계약을 사용한다: 다중 선택 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`(복합 사유 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), 단일 후보 / Replace `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(ADR-044 Revision 1).
+- Photos 원본을 보존한다.
+- Replace에서는 기존 Clip · Media · Metadata · 순서 · Slot을 보존한다.
+
+**Codec별 사용자 안내 문구는 도입하지 않는다.**
+
+## 6. Select Clips / Add / Replace
+
+- **Select Clips / Editor Add:** 후보마다 독립 판정; Unsupported-codec 항목만 제외하고 지원 항목으로 계속; 전부 제외되면 Select Clips는 Project 미생성, Add는 무변경; 완료된 Operation당 통합 안내 최대 1회(ADR-042 Revision 4 우선순위 유지).
+- **Replace(단일 후보):** Unsupported-codec 후보는 거부하고 기존 Clip을 보존하며 부분 교체 없음.
+- Accepted Set Atomicity(ADR-042 Revision 3 / 4)는 모든 Preflight 제외(Duration / Invalid / Container / Codec / Non-portrait) 이후의 Accepted Set에 그대로 적용된다.
+
+## 7. Relationship to ADR-044 (Container)
+
+Container Eligibility(실제 `ftyp` Brand = QuickTime)와 Codec Family Eligibility는 **서로 다른 독립 검사**다. QuickTime Container 안에 ProRes가 있으면 Container는 통과하고 Codec에서 거부된다. MP4 안에 H.264가 있으면 Container에서 거부된다(Codec 판정에 도달하지 않음). 어느 쪽도 Remux / Transcode 경로를 만들지 않는다.
+
+## 8. Relationship to ADR-045 (Normalization) — Canonical Preflight Order
+
+ADR-045 §1의 순서에 Codec Family 단계를 삽입하여 **하나의 순서**를 모든 문서와 구현에 적용한다.
+
+1. 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042)
+2. Readable / Video Track / Protected 아님(Preflight Invalid)
+3. 실제 Container Brand — QuickTime만(ADR-044)
+4. **Video Codec Family — H.264 또는 HEVC만(ADR-046); 그 밖은 Unsupported**
+5. Presentation Orientation — `presentationHeight > presentationWidth`(ADR-043 Revision 1)
+6. Normalization 사유 판정(ADR-045 §2: HDR / >8-bit, > 30 fps, > 1080p-class)
+
+앞선 단계의 거부가 뒤 단계보다 우선하며, 1–5는 어느 것도 Normalization 사유가 아니다. Unsupported Codec은 Orientation 및 Normalization 사유보다 앞서 결정된다. ADR-045 §2의 "Phase-5-ready SDR QuickTime(H.264 또는 HEVC …)"는 이 Family 정의를 따른다.
+
+## 9. Explicitly Unchanged
+
+§상단 목록 참조. 특히 Working Media 출력은 여전히 H.264 High 8-bit 709 QuickTime이며 Export Codec은 별도 Phase 9 결정이다.
+
+## 10. Current Implementation Audit (2026-09-18, 읽기 전용)
+
+- Recording 메커니즘: `AVCaptureSession` + **`AVCaptureMovieFileOutput`**(`CameraSessionWorker.swift`), `movieFragmentInterval` 1 s, `maxRecordedDuration` 설정, `startRecording(to:recordingDelegate:)`.
+- 출력 Container / 확장자: Staging URL은 `RecordingStagingStore`가 `<UUID>.mov`로 생성; `AVCaptureMovieFileOutput`은 QuickTime Movie를 기록한다.
+- Video Codec: **명시적으로 구성하지 않는다.** `availableVideoCodecTypes` 조회, `setOutputSettings(_:for:)`, `AVVideoCodecKey` 어느 것도 없음 → `AVCaptureMovieFileOutput`의 기본 동작(`availableVideoCodecTypes.first`, 최신 iPhone에서 HEVC)에 의존하므로 **기기 기본값에 따라 HEVC가 기록될 수 있다.**
+- HDR / Color: `isVideoHDREnabled` / `automaticallyAdjustsVideoHDREnabled` / `activeColorSpace` 미설정 → Session Preset `hd1920x1080`이 고른 Format에 따라 10-bit HDR이 기록될 가능성을 배제하지 못한다(검증 필요).
+- Video Connection: `movieOutput.connection(with: .video)`는 `startRecording` 직전에만 얻어 `videoRotationAngle = 90` / Mirroring을 설정한다. Output Settings는 `configure(position:)`의 `session.addOutput(movieOutput)` 이후(Session Configuration 안, Recording 시작 전)에 같은 Connection에 적용하는 것이 자연스럽다.
+- 실패 경로: `fail(.cameraUnavailable / .unsupportedConfiguration / .configurationFailed)` Typed Failure가 이미 존재하여 "H.264 불가 → 안전 실패"에 재사용할 수 있다.
+- Resolution / Frame Rate / Audio: Preset `hd1920x1080`, `activeVideoMin/MaxFrameDuration = 1/30`, Zoom 1, Microphone Input 선택적(`attachAudioInputLocked`, 무음 Track 생성 없음).
+- Tests: Capture Codec / 출력 Media를 검사하는 Test는 없음(`RecordingCoordinatorTests` / `CameraModelTests`는 `FakeCameraCaptureService` 기반).
+- 촬영 결과의 이후 취급: Recording은 Photos에만 저장되고 Project에 붙지 않는다(ADR-033 / ADR-041). Mellow 촬영 Clip이 Project에 들어오는 유일한 경로는 Photos Import Preflight이며, 현재 `RecordingMediaInspector`는 Playable / Video Track / Duration만 검사하고 Codec을 가정하지 않는다.
+
+**결론:** 현재 구현은 Codec 기본값에 의존하며 §2 불변조건을 만족하지 않는다 → ROADMAP Phase 6에 좁은 범위의 Direct-camera H.264 Enforcement Task와 회귀 Test를 추가한다.
+
+## 11. Consequences for Phase 6
+
+- Step 1 Blocker 해소: `ImportPreflightClassifier`는 Codec Family 단계(§8 4단계)를 갖고 Unsupported Codec을 Preflight 거부로 매핑한다.
+- Facts Model은 Video Codec FourCC / Family / Profile Bit Depth를 표현한다(ADR-045 §11 `ImportSourceFacts`).
+- Direct-camera H.264 Enforcement는 Step 1 검토 / 커밋 후 별도의 좁은 Production 변경으로 구현한다(Camera Behavior 회귀 Test 포함).
+- Preparation Presentation, Copy, Accepted Set 계약은 변경 없음.
+
+## 12. Post-V1 Non-goals
+
+ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, Capture Codec 설정 UI, HEVC Capture 복원 — 모두 Post-V1이며 Phase 6 Blocker가 아니다.
+
+## 13. Remaining Technical Implementation Details (Product 정책 재개방 아님)
+
+- `AVCaptureMovieFileOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.h264], for: connection)` 적용 시점(Configuration 안 vs Recording 직전)과 `outputSettings(for:)` 재검증 방법.
+- SDR Capture Format 보장 방법(`automaticallyAdjustsVideoHDREnabled = false` + `isVideoHDREnabled = false` 또는 Format 선택)과 iPhone 12에서의 실제 Format 확인.
+- Codec Family 동등 Sample Entry 목록의 정확한 FourCC 집합(구현 상수; Unknown은 항상 Unsupported).
