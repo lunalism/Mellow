@@ -2310,7 +2310,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Portrait Composition
 - Landscape Composition(Landscape Project 복원 이후; ADR-043 Revision 1: V1 Photos Import는 Landscape / Square Source를 받지 않음)
 - Non-portrait Presentation Source(Landscape / Square)의 Preflight 제외 및 Portrait 항목 계속 진행(ADR-043 Revision 1; `presentationHeight > presentationWidth` Presentation Geometry 기반 결정적 Test)
-- Unsupported Container Source(MP4 / ISO BMFF / Unknown)의 Preflight 제외 및 QuickTime 항목 계속 진행, 확장자 비권위, Remux 경로 없음(ADR-044; 실제 Brand 기반 결정적 Test)
+- Unsupported Container Source(MP4 / ISO BMFF / Unknown)의 Preflight 제외 및 QuickTime 항목 계속 진행, 확장자 비권위, Remux 경로 없음(ADR-044; 실제 Brand 기반 결정적 Test); 단일 항목 / Replace 후보 거부 시 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.` + 기존 Clip · Media · Metadata · 순서 · Slot 보존(ADR-044 Revision 1)
 - Audio Track 유지
 - Fill + Crop
 - 4K Input to 1080p Output

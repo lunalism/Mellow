@@ -453,7 +453,8 @@ Phase-5-ready가 아닌 1.0–5.0초 세로 영상(4K / HDR / Dolby Vision / 30 
 - `취소`: Operation을 취소하고 임시 / 부분 생성 파일을 모두 제거하며 Project를 만들거나 바꾸지 않고(Replace의 기존 Clip 보존) 제외 성공 안내를 보이지 않은 채 사전 Operation UI로 복귀한다.
 - Runtime Preparation 실패(Preflight를 통과한 뒤 실패): Alert Title `영상을 준비하지 못했어요`, Message `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`, Primary `다시 시도`, Secondary `취소`. 부분 집합을 Commit하지 않고 파일을 정리하며 Project는 무변경이다. `다시 시도`는 같은 Accepted Set을 다시 시도하고 `취소`는 정리 후 종료한다.
 - Storage 부족 Preflight(Media 생성 전): Alert Title `저장 공간이 부족해요`, Message `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.`, Action `확인`. Settings Deep Link 없음. Project / Media 무변경.
-- Preflight에서 판별된 Unreadable / Unsupported 항목(ADR-044: 실제 Container가 QuickTime이 아닌 MP4 등 포함 — MP4 전용 Alert 없음)만 제외되었을 때: `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`. Duration 사유와 복합이면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`(Revision 3의 Duration 복합 안내와 Title이 같고 Message가 다르다).
+- 단일 항목 / Replace 후보가 Preflight에서 판별된 Unreadable / Unsupported(실제 Container가 QuickTime이 아닌 MP4 등 포함)일 때: `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(ADR-044 Revision 1; Replace는 기존 Clip 보존, MP4 전용 Alert 없음, 승인 · 미구현).
+- 다중 선택에서 Preflight에서 판별된 Unreadable / Unsupported 항목(ADR-044: 실제 Container가 QuickTime이 아닌 MP4 등 포함 — MP4 전용 Alert 없음)만 제외되었을 때: `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`. Duration 사유와 복합이면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`(Revision 3의 Duration 복합 안내와 Title이 같고 Message가 다르다).
 - 우선순위: 완료된 선택 Operation당 통합 제외 안내는 최대 1회이며 항목 개수 표현이 없다. 취소 / 실패가 발생하면 제외 성공 안내를 표시하지 않는다.
 - Accessibility: Sheet / Alert / 통합 안내는 33절 기준을 따른다 — Title / Message / Button의 VoiceOver Label, Sheet 표시 · Progress 갱신 · 완료 / 실패의 Announcement, `2/5`의 읽기 가능한 Label, 44pt Touch Target, Dynamic Type, Color-only가 아닌 상태 표현, Reduce Motion 시 Progress Animation 축소.
 

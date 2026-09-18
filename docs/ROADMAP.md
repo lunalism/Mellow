@@ -1883,11 +1883,12 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - **취소:** Operation 취소, 임시 / 부분 생성 후보 파일 전부 제거, Select Clips 미생성 / Add · Replace 무변경(기존 Clip 보존), 부분 Metadata / Media 없음, 제외 성공 안내 없음, 사전 Operation UI 복귀.
 - **Runtime 실패:** Operation 실패(Per-item 제외 아님), Accepted Set Atomicity, 부분 집합 미Commit, 파일 정리, 무변경, `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + Primary `다시 시도`(Source Handle이 Live Session에서 유효할 때 같은 Accepted Set 재시도) + Secondary `취소`; Source 접근 무효 시 Mutation 없이 안전 실패, Broad Photos 권한 없음.
 - **Storage 부족 Preflight:** Media 생성 전 Estimate + Reserve 검사, 부족하면 Media / Project 무변경(Replace 기존 Clip 보존), `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`; Settings Deep Link 없음(Formula / Reserve / API / Race는 Technical Gate).
-- **Preflight 판별 Invalid Media:** Malformed / Unreadable / Unsupported로 신뢰성 있게 분류되는 항목만 Per-item 제외, 나머지 계속, 전부 제외 시 미생성 / 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; Preparation 중 발견된 실패는 Runtime 실패 정책.
+- **Preflight 판별 Invalid Media:** Malformed / Unreadable / Unsupported로 신뢰성 있게 분류되는 항목만 Per-item 제외, 나머지 계속, 전부 제외 시 미생성 / 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; 단일 항목 / Replace 후보는 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(ADR-044 Revision 1); Preparation 중 발견된 실패는 Runtime 실패 정책.
 - **통합 안내 우선순위:** 완료된 Operation당 최대 1회 — Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 항목 개수 없음; 취소 / 실패가 제외 성공 안내보다 우선.
 - 5초 초과 Source 거부 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 유지하며 이 Gate에서 다시 결정하지 않는다.
 - 1.0초 미만 Source 거부의 개별 안내 Copy — **Resolved by ADR-042 Revision 2(2026-09-17):** `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`, Above-maximum 안내와 별개, 단일 항목 선택과 Replace에 사용.
-- Photos Source Container Eligibility — **Resolved by ADR-044(2026-09-18):** 실제 QuickTime Movie Container만 허용(H.264 / HEVC), 확장자 비권위, MP4 / 기타 / Unknown은 기존 Preflight Invalid / Unsupported 범주로 Per-item 제외(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 Copy는 유일하게 남은 좁은 UX 질문(미승인, 발명하지 않음).
+- Photos Source Container Eligibility — **Resolved by ADR-044(2026-09-18):** 실제 QuickTime Movie Container만 허용(H.264 / HEVC), 확장자 비권위, MP4 / 기타 / Unknown은 기존 Preflight Invalid / Unsupported 범주로 Per-item 제외(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음.
+- 단일 후보 선택 / Replace 후보의 Unsupported-media 안내 — **Resolved by ADR-044 Revision 1(2026-09-18):** 정확히 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(MP4 전용 문구 없음; 다중 선택 통합 안내와 구분), Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존, Copy / Materialize / Normalize / Persist / 부분 교체 없음.
 - 다중 선택의 Duration-ineligible 항목 처리 — **Resolved by ADR-042 Revision 3(2026-09-17):** Per-item Filtering + 하나의 통합 안내(1.0초 미만만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`; 5.0초 초과만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`; 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`), 항목 개수 표현 없음, 전부 Ineligible이면 무변경 + 통합 안내, Select Clips / Add 동일. Duration 외 Invalid Media(Malformed / Unreadable / Unsupported)가 섞인 다중 선택의 처리 / 안내 — **Resolved by ADR-042 Revision 4:** Preflight 판별 항목 Per-item 제외 + `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 사유 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`.
 
 - Landscape / Square(Non-portrait Presentation) Photos Source 처리 — **Resolved by ADR-043 + Revision 1(2026-09-18):** `presentationHeight > presentationWidth`만 Eligible, V1 미지원 Non-portrait은 Preflight Per-item 제외 + Portrait 항목 계속, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.`, 단일 후보 / Replace 후보 Non-portrait은 `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` 거부 + 기존 Clip 보존, 복합 사유는 기존 통합 안내; Square Open Question 없음.
@@ -1924,7 +1925,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 26. `취소` 취소를 구현한다: Operation 취소 → 그 Operation의 임시 / 부분 생성 Project-owned 후보 파일 전부 제거 → Select Clips 미생성 / Add · Replace 무변경(기존 Clip 보존) → 부분 Metadata / Media 없음 → 제외 성공 안내 없이 사전 Operation UI로 복귀. 저수준 취소 메커니즘은 Technical Gate.
 27. Runtime Preparation / Normalization 실패를 Operation 실패로 구현한다: Accepted Set Atomicity 유지(성공 부분 집합 미Commit), 임시 / 부분 파일 제거, 무변경(Select Clips 미생성, Replace 기존 Clip 보존), `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` + `다시 시도`(Source Handle이 Live Session에서 유효할 때 같은 Accepted Set 재시도) + `취소`(Cleanup 후 종료); Source 접근 무효 시 Mutation 없이 안전 실패, Broad Photos 권한 미도입. Runtime 실패를 Per-item 제외로 바꾸지 않는다.
 28. Storage 부족 Preflight Presentation을 구현한다: Materialization / Normalization 전 Estimate + Reserve 검사 → 부족 시 Media 미생성 / Project 무변경(Replace 기존 Clip 보존) → `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`(Settings Deep Link 없음). 현재 Phase 5 Message `공간을 확보한 뒤 다시 시도해 주세요.`를 승인 Message로 교체한다.
-29. Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 항목(ADR-044: 실제 Container Inspection으로 판별된 MP4 / ISO BMFF / 기타 / Unknown Container 포함 — 확장자만으로 판정하지 않으며 Remux / Container 변환 경로 없음)의 Per-item 제외를 구현한다: 해당 항목만 제외, 나머지 계속, 전부 제외 시 Select Clips 미생성 / Add 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`. 모든 Corruption을 Preflight에서 발견한다고 가정하지 않는다.
+29. Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 항목(ADR-044: 실제 Container Inspection으로 판별된 MP4 / ISO BMFF / 기타 / Unknown Container 포함 — 확장자만으로 판정하지 않으며 Remux / Container 변환 경로 없음)의 Per-item 제외를 구현한다: 해당 항목만 제외, 나머지 계속, 전부 제외 시 Select Clips 미생성 / Add 무변경, Replace 후보 거부 시 기존 Clip 보존, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; 단일 항목 / Replace 후보 거부는 정확히 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`(ADR-044 Revision 1; 기존 Clip · Media · Metadata · 순서 · Slot 보존, 부분 교체 없음). 모든 Corruption을 Preflight에서 발견한다고 가정하지 않는다.
 30. 통합 제외 안내 우선순위를 구현한다: 완료된 Operation당 최대 1회, Duration만 → Revision 3 안내, Invalid만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 둘 다 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`, 항목 개수 없음, 취소 / 실패 시 제외 성공 안내 미표시.
 
 복구를 위한 Valid Source 보존은 진행 중이거나 복구 가능한 Operation에 대한 계약이며 Commit 이후 원본 Source Reference는 유지하지 않는다(ADR-042).
@@ -1952,7 +1953,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 
 ## Integration Tests
 
-- Unsupported Container Source(ADR-044): Select Clips / Add에서 MP4 항목 Per-item 제외 + QuickTime 항목 계속 + `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; 전부 MP4면 Project 미생성 / 무변경; Replace 후보 MP4면 거부 + 기존 Clip 보존; 제외 항목의 임시 / Project-owned Media 0; MP4 → QuickTime Remux 경로 없음
+- Unsupported Container Source(ADR-044): Select Clips / Add에서 MP4 항목 Per-item 제외 + QuickTime 항목 계속 + `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; 전부 MP4면 Project 미생성 / 무변경; 단일 선택 / Replace 후보 MP4면 `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.` 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존(ADR-044 Revision 1); 제외 항목의 임시 / Project-owned Media 0; MP4 → QuickTime Remux 경로 없음
 - 720p Source(5초 이하)
 - 1080p Source(5초 이하)
 - 4K Source(5초 이하)
@@ -3507,7 +3508,6 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
-- 단일 후보 선택 / Replace 후보가 Preflight Unsupported / Invalid Media(Unsupported Container 포함)일 때의 정확한 안내 Copy(ADR-044 Still Pending; 다중 선택 통합 안내는 확정)
 - Preparation의 구체적 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항; 관찰 가능한 UX는 ADR-042 Revision 4로 확정)
 
 1.0초 미만 거부의 개별 안내 Copy(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`)는 ADR-042 Revision 2로, 다중 선택의 Per-item Duration Filtering과 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)는 ADR-042 Revision 3으로 확정되었다.
