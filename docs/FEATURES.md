@@ -477,8 +477,8 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - 범위 밖 영상 거부 시 Materialize / Normalize / Persist / Append / Replace 미수행, Project-owned Media 미생성, Clip Metadata 미Commit, 부분 Project 변경 없음, Photos 원본 불변
 - 단일 항목 / Replace 후보의 5.0초 초과 거부 안내는 기존 `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`, 1.0초 미만 거부 안내는 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`(ADR-042 Revision 2); Replace 후보 거부 시 기존 Clip 보존
 - 다중 선택(Select Clips / Editor Add)은 ADR-042 Revision 3에 따라 Duration-ineligible 항목만 제외하고 유효 항목으로 계속 진행하며 통합 안내를 한 번 표시: 짧은 항목만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`, 긴 항목만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`, 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 전부 Ineligible이면 아무것도 추가하지 않음; Normalization-required 항목은 제외되지 않음; Accepted Set의 Commit은 Atomic
-- Validation 결과는 최소한 Below-minimum / Above-maximum / Landscape(미지원) / Normalization 필요 / Invalid Media를 구분
-- ADR-043: preferredTransform 적용 후 Presentation이 가로(`width > height`)인 영상은 V1 미지원으로 Preflight에서 제외한다 — 다중 선택은 가로 항목만 제외하고 세로 항목으로 계속(가로가 유일한 사유면 `가로 영상이 제외되었어요` / `세로 영상만 추가할 수 있어요.` 1회), 모두 가로면 프로젝트 미생성 / 무변경, Replace 후보가 가로면 `가로 영상은 사용할 수 없어요` / `세로 영상을 선택해주세요.`로 거부하고 기존 Clip 보존, 복합 사유는 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 가로 영상에는 어떤 Media 작업도 없음; 자연 크기 1920×1080 + 세로 Transform 영상은 세로로 허용
+- Validation 결과는 최소한 Below-minimum / Above-maximum / Non-portrait Presentation(미지원, 가로 / 정사각형 공용) / Normalization 필요 / Invalid Media를 독립적으로 구분
+- ADR-043 Revision 1: preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`일 때만 Orientation-eligible이며 가로(`<`)와 정사각형(`==`)은 하나의 Non-portrait Presentation으로 V1 미지원 → Preflight에서 제외한다 — 다중 선택은 해당 항목만 제외하고 세로 항목으로 계속(유일한 사유면 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` 1회, 개수 표시 없음), 모두 Non-portrait이면 프로젝트 미생성 / 무변경, 단일 후보 / Replace 후보가 Non-portrait이면 `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.`로 거부하고 기존 Clip · Media · Metadata · Slot 보존, 복합 사유는 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 제외 항목에는 임시 / Project-owned Media 생성 포함 어떤 Media 작업도 없음; 자연 크기 1920×1080 + 90° Transform 영상과 좌우 반전 세로 영상은 세로로 허용, naturalSize 단독 판정 금지; 승인되었으나 미구현
 - 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부 · Per-item Filtering · Preparation Sheet · 취소 · Retry · Storage Preflight Presentation · Invalid Filtering · 새 안내는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시키고 첫 Non-ready 항목에서 선택 전체를 거부한다)
 - 원본 영상의 비파괴적 처리
 
@@ -546,7 +546,7 @@ Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-map
 
 Photos에서 가져오는 영상의 원본 화면 비율이 현재 프로젝트의 화면 비율과 다를 수 있다.
 
-ADR-043에 따라 V1 Photos Import는 세로(Portrait Presentation) 영상만 받아들이므로 16:9 가로 영상은 Preflight에서 제외된다. 비율 불일치는 세로 영상 사이에서만 발생한다(예: 4:3 세로 영상을 9:16 프로젝트에 가져오는 경우; 정사각 영상의 취급은 ADR-043 Open Question).
+ADR-043 Revision 1에 따라 V1 Photos Import는 세로(Portrait Presentation, `presentationHeight > presentationWidth`) 영상만 받아들이므로 16:9 가로 영상과 1:1 정사각형 영상은 Preflight에서 제외된다. 비율 불일치는 세로 영상 사이에서만 발생한다(예: 4:3 세로 영상을 9:16 프로젝트에 가져오는 경우).
 
 이 경우 Mellow는 프로젝트 화면 비율에 맞게 해당 영상을 처리해야 한다.
 
@@ -1345,7 +1345,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Direct Capture 최소 길이는 1.0초이며 Microphone은 선택 권한이다(ADR-033).
 - V1은 편집 가능한 저장 Project를 하나만 유지하고 대체는 Safe Atomic Replacement를 따르며 Photos 원본을 삭제하지 않는다(ADR-033).
 - 하나의 프로젝트에서는 하나의 Orientation을 유지한다.
-- Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다(ADR-043: 세로 Presentation 영상에 한하며 가로 영상은 V1 Photos Import에서 Preflight 제외된다).
+- Imported Video의 Aspect mismatch 기본 정책은 Fill + Crop이며 사용자가 Framing 위치를 조정할 수 있다(ADR-043 Revision 1: 세로 Presentation 영상에 한하며 가로 / 정사각형 영상은 V1 Photos Import에서 Preflight 제외된다).
 - Fit과 Background Blur는 MVP에서 제공하지 않는다.
 - 개별 Clip 삭제는 즉시 UI에 반영하고 짧은 Undo Opportunity를 제공한다.
 - 사용자-visible Undo / Redo는 ADR-038의 Editor Session History(시간순 LIFO)를 따른다.
