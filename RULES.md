@@ -155,6 +155,8 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - Mellow 직접 촬영은 QuickTime `.mov` · H.264 · SDR · 1080p 30 fps를 명시 요청하며 H.264를 구성할 수 없으면 안전 실패한다 — HEVC / ProRes / Default Codec으로 Fallback하지 않고 Codec 설정 UI를 만들지 않는다(ADR-046).
 - Photos Video 획득(`PhotosPicker`)의 `preferredItemEncoding`은 `.current`를 유지한다 — `.automatic`은 HEVC / HDR 원본 대신 호환 Transcode를 전달하여 Preflight를 무력화한다(ADR-045).
 - AmbientViewingEnvironment 단독은 HDR 판별 신호가 아니며, Normalization 출력 SDR Contract는 Fast-path Copy에 적용하지 않는다(ADR-045).
+- Working Media는 절대 Upscale하지 않는다 — `scale = min(1.0, 1080 / width, 1920 / height)`로 축소만 하고 각 변을 짝수로 내림하며 최소 출력 크기 · 해상도 선택 · Upscale 옵션이 없다(ADR-047).
+- Normalization 도중 Process가 종료되면 재개하지 않는다 — Durable Resumable Operation ID · Checkpoint · Background Continuation을 두지 않고 Workspace UUID는 Ephemeral이며 버려진 Workspace는 기존 시작 시 Sweep이 정리하고 사용자는 Import를 다시 시작한다(ADR-047).
 - V1 Photos Import는 preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`인 Source만 받아들이며 가로(`<`) / 정사각형(`==`) Non-portrait Source는 Preflight에서 제외하고 어떤 Media Operation도 하지 않는다. naturalSize만으로 Orientation을 판정하지 않는다(ADR-043 Revision 1).
 - Imported Clip은 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.

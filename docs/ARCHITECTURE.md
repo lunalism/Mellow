@@ -120,7 +120,7 @@ Imported Video는 ADR-042에 따라 전체 길이가 5초 이하인 Source 전�
 
 1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source를 무조건 Upscale하라는 요구사항은 아니다.
 
-Source Presentation Aspect Ratio와 이후 Framing 가능한 영역을 보존하며 정확한 Raster Dimension Rule과 Low-resolution Upscaling Policy는 Phase 6 구현 전 Technical Gate로 남긴다.
+Source Presentation Aspect Ratio와 이후 Framing 가능한 영역을 보존한다. Raster Dimension Rule은 ADR-045 / ADR-047로 확정되었다: 절대 Upscale하지 않으며 `scale = min(1.0, 1080 / width, 1920 / height)`로 Scale-down만 수행하고 각 변을 짝수로 내림한다(720×1280 → 720×1280, 1080×1440 → 1080×1440, 2160×3840 → 1080×1920).
 
 사용자의 Photos Library에 존재하는 원본 Video는 Resolution 변환 과정에서도 수정하지 않는다.
 
@@ -586,6 +586,8 @@ Recording과 Import는 다음 Media Commit Lifecycle을 공통으로 따른다.
 
 Process Death 이후에도 Operation과 Media의 관계를 식별하고 처리 완료 지점을 확인할 수 있는 Durable Operation Identity가 필요하다.
 
+**ADR-039 / ADR-047 Clarification(V1 Project Media):** Phase 5 Composition / Add / Replace와 Phase 6 Import Normalization은 Repository Row 자체가 Commit이며 별도의 Durable Resumable Operation ID를 두지 않는다. Operation Workspace UUID는 Ephemeral이고 Process 종료 이후 Operation-owned Artifact는 Discardable Temporary Media로 분류되어 다음 시작의 Workspace Sweep이 정리한다(Resume 없음). Boundary C / E / F의 Recovery Candidate 보존은 Live Process 안의 같은 Accepted Set Retry를 위한 것이다.
+
 Operation Identity, 대상 Project Identity, Clip Identity와 관련 Media의 연결은 재실행 후에도 복구와 중복 Commit 방지에 사용할 수 있어야 한다.
 
 Operation 정보의 Persistence는 정상 Clip Metadata의 등록과 구별하며 Media 생성 전에 Operation 정보를 남기는 것이 Committed Clip 생성을 의미하지 않는다.
@@ -1004,9 +1006,11 @@ Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른�
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
 
-이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다. — **ADR-045(2026-09-18):** Working Media Codec / Container / SDR Tagging / Raster Scale-down Rule / Tone-mapping 메커니즘은 확정되었다(Phase 6 Production 구현은 미완). Upscaling Policy와 Storage Formula는 여전히 Pending.
+이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다. — **ADR-045(2026-09-18):** Working Media Codec / Container / SDR Tagging / Raster Scale-down Rule / Tone-mapping 메커니즘은 확정되었다(Phase 6 Production 구현은 미완). — **ADR-047(2026-09-18):** Upscaling Policy(No Upscaling)와 Recovery 깊이(No Resume)도 확정되었다. Storage Formula / Reserve는 여전히 Pending.
 
-1080p-class는 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 뜻하지 않으며 임의 Raster Formula를 추가하지 않는다. ADR-045는 Scale-down 규칙만 확정한다(Presentation 전체를 담는 긴 변 ≤ 1920 / 짧은 변 ≤ 1080 Bounding Box, Crop / Pad 없음, 각 변 짝수 내림).
+**Canonical Raster Rule(ADR-045 + ADR-047):** Portrait Presentation Raster `(width, height)`에 대해 `scale = min(1.0, 1080 / width, 1920 / height)`, 출력은 `(width × scale, height × scale)`을 각 변 짝수로 내림한 크기다. Source를 절대 확대하지 않으며 Envelope 안의 Source는 Presentation 크기를 유지하고(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920), 초과 Source만 비율을 보존하며 축소한다(2160×3840 → 1080×1920, 1620×2160 → 1080×1440). 짝수 정렬은 변당 최대 1 Pixel 제거이며 Upscale · Crop · Aspect-fill이 아니다. 최소 출력 크기는 없다. Classifier의 Raster 사유는 초과 Raster에만 적용되며 HDR / >30 fps 사유로 정규화되는 저해상도 Source는 크기를 유지한 채 정규화된다.
+
+**Interrupted-Normalization Recovery(ADR-047):** Normalization 도중 Process가 종료되면 재개하지 않는다(Checkpoint · Durable Resumable ID · Background Continuation 없음). Workspace UUID는 Ephemeral이며 Source 복사본과 모든 Normalization 출력은 Accepted Set 전체 준비 완료 + Durable Commit 경계 도달까지 Operation Workspace 소유다. Process 종료는 Append / Replace / Metadata 변경 / 부분 결과 노출을 만들지 않으며 Replace는 기존 Clip을 보존한다. 다음 시작의 STEP 12B Workspace Sweep이 버려진 Workspace와 부분 출력을 Idempotent하게 정리한다(Resumable Job Database 없음; Committed Media / Photos 원본 미삭제; Symlink / Containment 보호 유지). Phase 6 구현 요구: Normalizer의 중간 · 출력 파일은 Operation Workspace Directory 안에서만 생성하고 Materialize는 Accepted Set 전체 준비 뒤에만 시작한다. Foreground `취소`는 기존 Cancellation Token 경로로 즉시 정리하며, 시작 시 Sweep은 Process 종료의 Safety Net이다.
 
 **Import / Preflight / Normalization 경계(ADR-045 §11, ADR-046 §8):** `ImportSourceInspector`(AVURLAsset → Facts, Video Codec FourCC / Family 포함) → `ImportPreflightClassifier`(순수 `Sendable`, Duration → Readable / Video / Protected → 실제 Container Brand → **Video Codec Family(H.264 / HEVC만)** → Presentation Orientation → Normalization 사유의 독립 Verdict) → Fast-path Copy 또는 `WorkingMediaNormalizer` → `SDRWorkingMediaContract`(Normalization 출력에만 적용; Fast-path Copy는 Phase-5-ready 규칙으로 검증) → Commit. Spike 코드를 Rename / Copy하지 않고 이 Abstraction으로 재구현한다.
 
@@ -2496,7 +2500,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - MVP Export는 `AVAssetExportSession`을 우선 사용한다.
 - Media File Operation은 Actor 기반으로 관리한다.
 - Core Media Processing은 Local-first로 구현한다.
-- Recording과 Import는 Durable Operation Identity를 사용하는 공통 Media Commit Lifecycle을 따른다.
+- Recording과 Import는 공통 Media Commit Lifecycle을 따른다(ADR-039 / ADR-047: V1 Project Media는 Repository Row가 Commit이며 별도의 Durable Resumable Operation ID 없이 Ephemeral Workspace + 시작 시 Sweep으로 Process 종료를 처리한다).
 - Clip Commit 완료는 Valid Project-owned Final Media와 성공한 Clip Metadata Persistence 및 유효한 Project를 모두 요구한다.
 - Recording / Import Media Cleanup은 Recovery Classification 이후 수행하며 Metadata 부재만으로 Confirmed Orphan을 판정하지 않는다.
 - Recovery와 Reconciliation은 Idempotent하며 Operation / Clip Identity로 Duplicate Commit을 방지한다.
@@ -2672,14 +2676,14 @@ HDR / Dolby Vision Source 허용, SDR Working Media / Preview / Export 방향은
 - Imported Clip의 Re-trim 범위 — Resolved by ADR-042: Project-owned Clip Media 범위 안.
 - Imported Clip의 최소 길이 — Resolved by ADR-042: 1.0초(Phase 6 구현 요구).
 - 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate.
-- Import Durable Operation Identity / Recovery 깊이와 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization.
+- Import Durable Operation Identity / Recovery 깊이와 STEP 12B Orphan Predicate 확장 — Resolved by ADR-047(2026-09-18): No Resume, Ephemeral Workspace UUID, 기존 Sweep 재사용, Predicate 확장 없음.
 - Source Video Transcoding 세부 정책
-- 매우 낮은 Resolution Source의 Upscaling 정책
-- Working Media Codec
-- Working Media Container
-- 1080p-class Working Media의 정확한 Raster Dimension Rule
+- 매우 낮은 Resolution Source의 Upscaling 정책 — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음.
+- Working Media Codec — Resolved by ADR-045: H.264 High 8-bit.
+- Working Media Container — Resolved by ADR-045: QuickTime `.mov`.
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045 + ADR-047: `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림.
 
-Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dimension Rule은 Phase 6 구현 전 Gate이며 Export Codec / Container와 별개로 결정한다.
+Working Media Codec / Container, SDR Profile / Tagging, Upscaling과 Raster Dimension Rule은 ADR-045 / ADR-047로 확정되었으며 Export Codec / Container와 별개로 결정한다.
 
 ### Preview
 
