@@ -139,7 +139,7 @@ Mellow는 다음과 같은 Source Media를 받아들일 수 있는 구조를 가
 - SDR Video
 - HDR / Dolby Vision Video
 - Portrait Video
-- Landscape Video
+- Landscape Video(ADR-043: V1 Photos Import에서는 Preflight 제외 — 구조적 허용 범위이지 V1 지원 입력이 아님)
 - 서로 다른 Frame Rate의 Video
 
 입력 포맷이 다양하더라도 Mellow Project 내부에서는 가능한 한 일관된 Working Media를 사용한다.
@@ -401,7 +401,7 @@ Camera의 Compact Project-content Access는 Project Review로 연결하는 UI �
 
 ADR-041에 따라 Camera Bottom-left Content Slot은 저장 Project 유무와 무관하게 Phase 4의 Session-only Latest-recording 피드백(Project Identity / Playable URL 없음, Non-navigable)에 속하며 Project Representative나 Editor 진입으로 승격하지 않는다. Project 접근은 Upper-trailing `Projects` Control이고 Project Representative Thumbnail은 Projects 화면 Visual이 표시한다. Latest Capture Review는 Playback / Media Lifetime / Permission Architecture 승인 전까지 구현하지 않으며 이 Control을 위해 Camera Staging Media를 보관하지 않는다.
 
-ADR-034에 따라 Phase 5 `Select Clips`는 Phase-5-ready media(Phase 6 편집 / Normalization 없이 Project 요구사항을 이미 만족하는 Media)만 App-managed Project Storage로 Materialize / Copy(ADR-020)하여 단일 저장 Project를 Bootstrap한다. HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization과 Landscape / Transform 처리는 Phase 6 소유, Trim은 Phase 7 소유이며, Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리한다. ADR-042에 따라 Long-source Segment Selection과 원본 범위 Re-trim은 어느 Phase도 소유하지 않는 제외 기능이며 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다.
+ADR-034에 따라 Phase 5 `Select Clips`는 Phase-5-ready media(Phase 6 편집 / Normalization 없이 Project 요구사항을 이미 만족하는 Media)만 App-managed Project Storage로 Materialize / Copy(ADR-020)하여 단일 저장 Project를 Bootstrap한다. HDR / Dolby Vision → SDR, 4K → 1080p-class Normalization, Frame-rate Normalization과 Portrait Source의 Transform 처리는 Phase 6 소유, Trim은 Phase 7 소유이며(ADR-043: Landscape Presentation Source는 V1 미지원으로 Preflight 제외), Non-ready Media는 부분 Commit 없이 Typed `requires import preparation` 결과로 처리한다. ADR-042에 따라 Long-source Segment Selection과 원본 범위 Re-trim은 어느 Phase도 소유하지 않는 제외 기능이며 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다.
 
 Ordered Strip의 Clip Selection은 명시적인 Clip Identity를 대상으로 하며 Reorder는 기존 Project Order / Persistence 경계를 사용하고 Preview / Export도 같은 순서를 반영한다.
 
@@ -964,7 +964,7 @@ Normalization standardizes media characteristics, but does not commit the user's
 - Source Rotation / Presentation Transform을 올바르게 해석한다.
 - Working Representation은 이후 Framing Metadata를 적용할 수 있어야 한다.
 
-16:9 Source를 9:16 Project에 가져온다는 이유로 Import 때 중앙 9:16 영역만 잘라 저장하지 않으며 이후 좌우 Framing에 필요한 Source 영역을 유지한다.
+비율이 다른 Portrait Source(예: 4:3 Portrait)를 9:16 Project에 가져온다는 이유로 Import 때 중앙 9:16 영역만 잘라 저장하지 않으며 이후 Framing에 필요한 Source 영역을 유지한다. (ADR-043: 16:9 Landscape Source는 V1 Import 대상이 아니므로 이전의 "16:9 Source → 9:16 Project" 예시는 적용되지 않는다.)
 
 실제 Crop Region, Position과 Scale은 Editing Metadata로 유지하고 Preview / Export Composition에서 적용한다.
 
@@ -984,8 +984,8 @@ Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p
 
 Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른다(Phase 6 구현 요구; 정확한 Copy는 ADR-042 Revision 4 / DESIGN 15절).
 
-1. **Preflight 분류:** 선택 항목마다 전체 Source Duration Eligibility(ADR-042)와 Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 여부를 검사하고 Phase-5-ready / Normalization-required를 판정한다.
-2. **제외 경계:** Duration-ineligible 항목과 Preflight 판별 Invalid 항목은 Per-item으로 제외되며 Workspace / Materialize / Normalize / Persist 어느 Transaction에도 들어가지 않는다. 남은 항목이 **Accepted Set**이고 Phase-5-ready와 Normalization-required 항목이 공존할 수 있다. Replace는 후보가 하나이며 Preflight 거부 시 기존 Clip / Media를 보존한다.
+1. **Preflight 분류:** 선택 항목마다 전체 Source Duration Eligibility(ADR-042), Presentation Orientation(ADR-043: `naturalSize`에 `preferredTransform`을 적용한 Presentation Geometry에서 `presentationWidth > presentationHeight`이면 Landscape = V1 미지원; 자연 크기 1920×1080 + 90° Transform = Portrait), Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 여부를 검사하고 Portrait 항목에 대해 Phase-5-ready / Normalization-required를 판정한다.
+2. **제외 경계:** Duration-ineligible 항목, Landscape 항목, Preflight 판별 Invalid 항목은 Per-item으로 제외되며 Workspace / Materialize / Normalize / Persist 어느 Transaction에도 들어가지 않는다. 남은 항목이 **Accepted Set**이고 Phase-5-ready와 Normalization-required 항목이 공존할 수 있다. Replace는 후보가 하나이며 Preflight 거부 시 기존 Clip / Media를 보존한다.
 3. **Storage Preflight:** Accepted Set의 Materialization / Normalization을 시작하기 전에 Estimated Required Space + Safety Reserve를 검사한다(62절). 부족하면 어떤 Media도 생성하지 않고 Project를 변경하지 않는다. Formula / Reserve / Free-space API / Race 처리는 Technical Gate다.
 4. **Preparation Operation:** Accepted Set에 Normalization-required 항목이 있으면 자동으로 하나의 취소 가능한 Preparation Operation을 시작하고(Feature Layer는 Blocking Sheet와 `current/total` Progress를 표시) Workspace 안에서 Materialize / Normalize한다. 전부 Phase-5-ready이면 기존 Copy 경로만 사용한다.
 5. **취소:** Cooperative Cancellation 요청 후 그 Operation이 만든 임시 / 부분 생성 파일을 모두 제거하고 Project / Clip Metadata를 변경하지 않는다(Replace 기존 Clip 보존). ADR-021의 Active Usage 원칙에 따라 실제 Release 이후 정리한다. 구체적 API는 Technical Gate다.
@@ -1085,9 +1085,9 @@ MVP에서 Pinch Zoom을 지원하지 않는 경우 Scale은 Aspect Fill 기준�
 
 Imported Video의 Project Layout 기본값은 Fill + Crop이다.
 
-16:9 Source를 9:16 Project에 추가하면 Preview / Export Composition에서 9:16 Canvas를 가득 채운 후 초과 영역을 Crop한다.
+비율이 다른 Portrait Source(예: 4:3 Portrait)를 9:16 Project에 추가하면 Preview / Export Composition에서 9:16 Canvas를 가득 채운 후 초과 영역을 Crop한다. (ADR-043: Landscape 16:9 Source는 V1 Photos Import에서 Preflight 제외되므로 "16:9 Source → 9:16 Project" 예시는 V1에 존재하지 않는다.)
 
-9:16 Source를 16:9 Project에 추가하는 경우에도 동일한 Aspect Fill 원칙을 사용한다.
+9:16 Source를 16:9 Project에 추가하는 경우에도 동일한 Aspect Fill 원칙을 사용한다(16:9 Project는 V1 이후).
 
 사용자가 Framing 위치를 조절할 수 있어야 한다.
 
@@ -2012,7 +2012,7 @@ Operation Semantics만 다르다: CREATE / REPLACE-project가 아니라 **APPEND
 
 All-or-nothing: 선택 항목 중 하나라도 `invalid` 또는 `requiresImportPreparation`이면 Materialize / Persist 없이 현재 Project를 그대로 두고 Workspace를 폐기한다. (**ADR-042 Revision 3, 2026-09-17 — Phase 6 구현 요구:** Duration-ineligible 항목(1.0초 미만 / 5.0초 초과)은 Transaction 전에 Per-item으로 제외되고 통합 안내로 알리며, 남은 Accepted Set(Phase-5-ready + Normalization-required 혼재 가능)에 이 Atomicity가 적용된다 — Accepted Set 안의 실패는 여전히 부분 Append를 남기지 않는다. 현재 Phase 5 코드는 첫 Non-ready 항목에서 전체를 거부한다.) Commit 순서는 Workspace → Validate All → Admission → Materialize → Appended Project State → Persist → Read-back Verify → Cleanup이며, Persist 실패 시 부분 Append된 논리 Project를 노출하지 않고 Materialize된 새 Copy만 정리한다. Photos 원본은 어떤 경로에서도 수정 / 삭제하지 않는다.
 
-Phase 6 소유 준비(4K → 1080p, HDR → SDR, Frame-rate Normalization, Landscape / Transform; Long-source Segment는 ADR-042로 제외)는 이 계약에 포함되지 않으며 Camera Recording은 계속 Photos에만 저장되고 어떤 Project에도 자동으로 붙지 않는다.
+Phase 6 소유 준비(4K → 1080p, HDR → SDR, Frame-rate Normalization, Portrait Source의 Transform Bake; Long-source Segment는 ADR-042로, Landscape Source는 ADR-043으로 제외)는 이 계약에 포함되지 않으며 Camera Recording은 계속 Photos에만 저장되고 어떤 Project에도 자동으로 붙지 않는다.
 
 Phase 5 STEP 13 Implementation — Replace Transaction (ADR-040): `ProjectEditorModel.replaceSelectedClip()`은 Add와 같은 Acquisition 경로(`acquireClips` — Workspace → Selector Session `selectionLimit: 1` → `prepareClips` Validate / Materialize)를 공유하고 `acquisitionMode = .replace(clipID)`로 Add와 하나의 Transaction State를 쓴다(진행 중 Add / Delete / Reorder / Undo / Redo / 두 번째 Replace 거부, Picker 1개). 반환 Source가 정확히 1개가 아니면 실패다. `VlogProject.replaceClip(id:with:)`(B → `deleteClip` 규칙으로 Pending, D를 B의 Index에 삽입, `sortOrder` 정규화)를 적용해 `commitEdit(.replace)`(Persist 1회 + Read-back, Selection D)로 커밋하며, 실패 시 D 파일만 `discard`한다. Undo / Redo는 일반 `commitHistory` 경로(D는 Pending 유지, B / D Identity 교대)이고, Media Lifetime은 Pending Retention + STEP 12A(Final: B Metadata Finalize / Undone: D 파일 삭제 + Finalize) + STEP 12B(Commit 전 Crash로 남은 D 파일 회수)로 완결된다 — 새 Cleanup 경로 없음. 하나의 `EditorPhotosPickerHost`가 `PhotosVideoSelector.maxSelectionCount`(Session별, Resolve 시 nil)로 Add / Replace를 구분한다. DEBUG Seam: `-uiTestUnavailableClips=<positions>`(Fake Checker), `-uiTestRemoveActiveClipMedia=<clipUUID>`(Active Clip 하나의 Canonical 파일만 제거하는 실기기 Fixture Primitive, Metadata 불변).
 
@@ -2308,7 +2308,8 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Multiple Clip Composition
 - Clip Order
 - Portrait Composition
-- Landscape Composition
+- Landscape Composition(Landscape Project 복원 이후; ADR-043: V1 Photos Import는 Landscape Source를 받지 않음)
+- Landscape Presentation Source의 Preflight 제외 및 Portrait 항목 계속 진행(ADR-043)
 - Audio Track 유지
 - Fill + Crop
 - 4K Input to 1080p Output
@@ -2446,6 +2447,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - MVP에서 60 fps Export를 제공하지 않는다.
 - 4K를 포함한 고해상도 Photos Video를 Import할 수 있다.
 - SDR, HDR / Dolby Vision 및 30 fps 초과 Source Import를 허용한다.
+- V1 Photos Import는 Portrait Presentation Source만 받아들이며 Landscape Presentation Source는 Preflight에서 제외한다(ADR-043).
 - Photos Video는 전체 Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 Import하며(ADR-042) 범위 안의 Source 전체를 1080p-class / 30 fps / SDR Working Media로 정규화한다. Segment Selection과 Source Reference는 없다.
 - Working Media는 Source Presentation Aspect Ratio와 Framing 가능 영역을 보존하며 Project Fill + Crop을 bake-in하지 않는다.
 - MVP Preview와 Export는 SDR이며 HDR Export는 MVP에서 제공하지 않는다.

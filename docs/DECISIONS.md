@@ -1766,8 +1766,8 @@ Mellow의 핵심 가치는 앱을 열고 바로 짧은 순간을 촬영하는 �
 ### Imported Media Orientation
 
 - Portrait-only Capture는 Source Media의 Portrait 제한을 의미하지 않는다.
-- 이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 Source 길이를 제한하지 않으며 선택 Segment는 `0 < duration <= 5 seconds`를 만족한다. — **ADR-042 (2026-09-17):** "Source 길이를 제한하지 않으며 선택 Segment" 부분은 대체되었다. Photos Source는 전체 Duration이 `1.0s <= duration <= 5.0s`일 때만 받아들이며 Portrait / Landscape 허용은 유지한다.
-- Portrait 9:16 Project에 삽입할 때 비율 불일치는 승인된 Fill + Crop과 조정 가능한 Framing을 사용한다.
+- 이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 Source 길이를 제한하지 않으며 선택 Segment는 `0 < duration <= 5 seconds`를 만족한다. — **ADR-042 (2026-09-17):** "Source 길이를 제한하지 않으며 선택 Segment" 부분은 대체되었다. Photos Source는 전체 Duration이 `1.0s <= duration <= 5.0s`일 때만 받아들인다. — **ADR-043 (2026-09-18):** "Landscape Source 허용"은 대체되었다. V1 Photos Import는 Presentation Geometry(preferredTransform 적용 후)가 Portrait인 Source만 받아들이며 Landscape(`presentationWidth > presentationHeight`)는 Preflight에서 제외한다.
+- Portrait 9:16 Project에 삽입할 때 비율 불일치는 승인된 Fill + Crop과 조정 가능한 Framing을 사용한다. (ADR-043: Portrait Presentation Source의 비율 불일치에 한한다.)
 
 ### Editor / Preview / Export
 
@@ -1949,6 +1949,8 @@ Recent Projects Browser와 Multi-project Domain 구조는 V1 Primary Flow에서 
 **Date:** 2026-09-14
 **Status:** Accepted
 **Partial Supersession:** 이 ADR의 §1 Projects Entry Presentation(Compact Native Bottom Sheet)만 ADR-035에 의해 전용 Pushed Projects 화면으로 Superseded되었으며, §3 `Add Clips`의 "Direct Camera 취득 / Photos 취득 각각 라우팅" 문구 중 Editor Add Clip의 Acquisition Source는 ADR-037에 의해 System PhotosPicker(현재 Project Append)로 확정되었다. §1의 Semantic Hierarchy(`Start New Project` / `Continue Editing` / 대체 확인)와 §2–§7의 나머지는 그대로 유효하다. 아래 원문은 당시 기준의 기록이다.
+
+**Clarification (ADR-043, 2026-09-18):** §2의 "Phase 6 / 7 소유 유지" 목록 중 Landscape Presentation Source의 Crop / Framing / Transform 준비는 어느 Phase도 소유하지 않는다 — Landscape는 V1 미지원 입력으로 Preflight에서 Per-item 제외된다(Phase 6 구현 요구). Portrait 요구 자체(Non-portrait = Non-ready)는 유지된다.
 
 **Clarification (ADR-042, 2026-09-17):** §2의 "Phase 6 / 7 소유 유지" 목록 중 **Long-source Segment Selection과 임의 Source Trim / Re-trim(원본 범위)**은 어느 Phase도 소유하지 않는 제외 기능이 되었다. Photos Source는 전체 Duration `1.0s <= duration <= 5.0s`일 때만 받아들이며(1.0초 미만 거부는 Phase 6 구현 요구) 5초 초과 Source의 Typed `requires import preparation(.tooLong)` 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)는 Phase 6 이후에도 **최종 사용자 동작**이다(Phase 6이 이를 Segment Selection으로 바꾸지 않는다). HDR / Dolby Vision → SDR, 4K → 1080p-class, Frame-rate Normalization, Landscape / Transform 처리는 여전히 Phase 6 소유이며 §2의 Phase-5-ready Boundary 자체는 변경되지 않는다.
 
@@ -2160,7 +2162,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 - Editor `+`는 **"이 Project에 Clip 추가"**를 뜻하며 System PhotosPicker를 연다. Camera를 열지 않는다.
 - Flow: `ProjectEditor → + → PhotosPicker → 하나 이상 Video 선택 → 선택 항목 전부 Inspect / Validate → 모두 Phase-5-ready이면 Project-owned Copy Materialize → 현재 Project 끝에 Picker 선택 순서대로 Append → Persist / Autosave → Editor Timeline 갱신`. 하나라도 Ready가 아니면 **아무것도 Append하지 않고** 현재 Project는 변경되지 않는다(All-or-nothing).
-- Phase-5-ready 규칙은 ADR-034 §2 / STEP 6 계약을 그대로 재사용한다(0 < duration ≤ 5s, Portrait, ≤1080p-class, ≤30 fps, SDR, Audio 선택; **ADR-042 이후** Import Eligibility 하한은 1.0초이며 1.0초 미만 거부는 Phase 6 구현 요구 — 현재 Validator는 미강제). Non-ready Media는 기존 `requires import preparation` UX를 받으며 조용한 Trim / Crop / Transcode / Normalize / HDR 변환 / Frame-rate 변경을 하지 않는다. Long-source Segment Selection, 4K → 1080p, HDR → SDR, Frame-rate Normalization, Import 편집 준비는 Phase 6 소유로 유지되며 Phase 5가 완전한 Photos Import를 구현했다고 주장하지 않는다. (**ADR-042:** Long-source Segment Selection은 이후 제외되었고 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다; 나머지 Phase 6 소유 항목은 유지.)
+- Phase-5-ready 규칙은 ADR-034 §2 / STEP 6 계약을 그대로 재사용한다(0 < duration ≤ 5s, Portrait, ≤1080p-class, ≤30 fps, SDR, Audio 선택; **ADR-042 이후** Import Eligibility 하한은 1.0초이며 1.0초 미만 거부는 Phase 6 구현 요구 — 현재 Validator는 미강제). Non-ready Media는 기존 `requires import preparation` UX를 받으며 조용한 Trim / Crop / Transcode / Normalize / HDR 변환 / Frame-rate 변경을 하지 않는다. Long-source Segment Selection, 4K → 1080p, HDR → SDR, Frame-rate Normalization, Import 편집 준비는 Phase 6 소유로 유지되며 Phase 5가 완전한 Photos Import를 구현했다고 주장하지 않는다. (**ADR-042:** Long-source Segment Selection은 이후 제외되었고 5초 초과 Source의 `.tooLong` 거부가 최종 동작이다; **ADR-043:** Landscape Presentation Source의 준비도 제외되어 Preflight Per-item 제외가 최종 동작이다; 나머지 Phase 6 소유 항목은 유지.)
 - Append는 현재 Persisted Project P에 대한 **APPEND** Operation이다: 대체 Project 생성, Safe Atomic Replacement, 또 다른 Current Project 생성, 기존 Clip 삭제, 순서 Reset, Orientation 변경을 하지 않는다. 새 Clip은 현재 논리적 마지막 Clip 뒤에 Picker 선택 순서로 붙는다(`A → B → C` + `D → E` = `A → B → C → D → E`).
 - Transaction 안전성은 STEP 6와 같은 원칙을 따른다: Workspace → Validate → Storage Admission → Materialize → Appended Project State 구성 → Persist → Read-back Verify → Cleanup. Commit 전 실패 시 P는 변경되지 않으며, Persistence 실패 시 부분 Append된 논리 Project를 노출하지 않고, Photos 원본은 건드리지 않는다.
 - Picker Cancel: Project Mutation 없음, 새 Clip 없음, Error 없음, 이전 Selection 재사용 없음, Media 잔여물 없음. STEP 6의 Real-picker Session Isolation 수정을 유지한다.
@@ -2185,7 +2187,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028` 또는 `Resolved by ADR-042`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042` 또는 `Resolved by ADR-043`으로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -2231,6 +2233,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
+- Landscape Photos Source 처리 — Resolved by ADR-043(2026-09-18): V1 미지원, Presentation Geometry 기준 Preflight Per-item 제외, `가로 영상이 제외되었어요` / `세로 영상만 추가할 수 있어요.` / Replace `가로 영상은 사용할 수 없어요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Presentation은 Pending.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
@@ -2569,7 +2572,7 @@ System PhotosPicker는 Mellow가 Duration으로 항목을 미리 숨기거나 �
 | Direct Camera Capture | ADR-029 / ADR-033: 선택 Preset(1–5s) 이하, 1.0초 이상, 자동 / 수동 정지 |
 | Photos Source Eligibility | 이 ADR: `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함), Preset 무관, 비정수 허용; 1.0초 미만 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`), 5.0초 초과 거부(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`) |
 | Phase-5-ready Media | ADR-034 §2: 위 Eligibility를 만족하고 Portrait / ≤1080p-class / ≤30 fps / SDR이어서 Normalization 없이 그대로 Materialize 가능 |
-| Phase-6 Normalization-required Media | Eligibility(Duration)는 만족하지만 4K / High-resolution, HDR / Dolby Vision, >30 fps, Landscape / Presentation Transform 등으로 Phase-5-ready 경계를 벗어나는 Media — Phase 6이 정규화 |
+| Phase-6 Normalization-required Media | Eligibility(Duration)는 만족하지만 4K / High-resolution, HDR / Dolby Vision, >30 fps 등으로 Phase-5-ready 경계를 벗어나는 **Portrait Presentation** Media — Phase 6이 정규화 (ADR-043: Landscape Presentation은 Normalization-required가 아니라 Preflight 제외) |
 | Invalid Media | 읽을 수 없음 / Video Track 없음 / Duration 0 이하 → 거부(Below-minimum / Above-maximum 거부와 구분) |
 | Phase 7 Trim | Project-owned Clip Media 범위 안에서의 비파괴 Metadata Trim(`0 < trimDuration <= 5s`, `trimStart + trimDuration <= sourceDuration`) |
 
@@ -2615,7 +2618,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source 기준)
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
-- Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(예: Landscape이지만 그 밖의 Working Contract를 만족하는 Source의 Re-encode vs Transform 보존 Copy) — Landscape Source가 Phase 6 경로로 들어온다는 사실은 ADR-034 §2로 확정
+- Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함; Landscape 예시는 ADR-043으로 해소 — Landscape는 Preflight 제외)
 - 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 최종 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(Revision 4의 관찰 가능한 UX / Cleanup / 무변경 보장은 확정, 메커니즘만 Pending)
 
 ## Non-goals
@@ -2623,3 +2626,82 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - Phase 6 Production 구현(이 ADR은 문서 정렬이며 Swift / Xcode 변경이 없고 Normalization 구현을 시작하지 않는다).
 - Photos Read 권한 도입, PhotosPicker 대체, Camera Preset 변경, Direct Capture 규칙 변경.
 - Phase 7 Trim UX / Phase 8 Preview / Phase 9 Export 결정.
+
+---
+
+# ADR-043 — Portrait-Only Photos Import Eligibility
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+**Supersedes / Clarifies:**
+- ADR-032 "Imported Media Orientation"의 "이후 Photos Import는 Portrait / Landscape Source를 모두 허용하고 …"와 "Portrait 9:16 Project에 삽입할 때 비율 불일치는 승인된 Fill + Crop과 조정 가능한 Framing을 사용한다" 중 **Landscape Source 허용** 부분. Fill + Crop / Framing은 Portrait Presentation Source의 비율 불일치(예: 4:3 Portrait)에 대해 유지된다.
+- ADR-034 §2 "Phase 5가 구현하지 않는 것(Phase 6 / 7 소유 유지)" 중 Landscape Presentation Source의 **Crop / Framing / Source Transform 준비**: Landscape Source는 이제 어느 Phase도 준비하지 않는 V1 미지원 입력이다. `Phase5ReadyMediaValidator`의 Portrait 요구 자체(Non-portrait = Non-ready)는 유지된다.
+- ADR-037의 Phase-5-ready 규칙 인용 "(… Portrait …)"과 "Import 편집 준비는 Phase 6 소유" 중 Landscape 준비 부분.
+- ADR-042 Revision 1 "Phase-6 Normalization-required Media" 표의 "Landscape / Presentation Transform"과 Revision 4 §1 / §5 / §7 및 "Still Pending"의 "Landscape이지만 그 밖의 Working Contract를 만족하는 Source의 Re-encode vs Transform 보존 Copy": Landscape는 Normalization-required가 아니라 **Preflight 제외**이며 해당 Pending은 해소된다. ADR-042의 Duration Eligibility, Per-item Filtering, 통합 안내, Accepted Set Atomicity, Preparation Sheet / 취소 / Runtime 실패 / Storage 계약은 그대로 유효하다.
+- ADR-022 / ARCHITECTURE 38절의 "16:9 Source를 9:16 Project에 가져온다는 이유로 … 잘라 저장하지 않으며" 예시와 ADR-011 / FEATURES F-MVP-022 / DESIGN 17절의 "9:16 프로젝트에 16:9 영상" 예시: V1에는 해당 입력이 존재하지 않는다. Fill + Crop bake-in 금지, Framing 가능 영역 보존, Presentation Transform 해석 원칙은 Portrait Source에 대해 그대로 유지된다.
+- ROADMAP Phase 6 Included "Landscape / Presentation Transform이 다른 Source 허용", Implementation Task 4 / 7, Integration Test "Landscape Source", "16:9 Source → 9:16 Project …", Physical / Measurement Scenario "Landscape, Aspect Mismatch", Technical Gate의 Landscape Re-encode 항목: 같은 작업에서 정렬한다.
+
+**Explicitly Unchanged:** ADR-032 / ADR-033의 Portrait-only Direct Capture, ADR-042의 `1.0s <= entire Photos source duration <= 5.0s`, Portrait Source의 Raster Downscale / HDR → SDR / Frame-rate 변환 / MP4 Remux / Transform Bake / Audio 보존 / Transactional Safety / Photos 원본 불변, Landscape 16:9 Project의 Domain / Schema 표현(V1 이후 복원 결정).
+
+## Context
+
+Mellow V1은 Portrait 9:16 Project만 생성하고(ADR-032) Direct Capture도 Portrait으로 고정된다(ADR-033). 그동안 Photos Import 문서는 Landscape Source를 허용하고 Phase 6이 이를 Normalization-required 입력으로 준비(Transform Bake, Framing 가능 영역 보존)한 뒤 Phase 7 Framing으로 넘기도록 계획했다. Phase 6 Technical Device Spike(2026-09-18, LunaTestphone)에서 Landscape 처리는 Re-encode 여부 등 별도 결정을 필요로 하고 Portrait Project에서의 Fill + Crop 결과가 Mini Vlog 의도와 맞지 않음이 확인되었다. 사용자는 **Mellow V1이 Landscape Photos 영상을 지원하지 않는다**는 Product 결정을 승인했다.
+
+## Decision
+
+### Landscape 정의
+
+Orientation은 Source의 `preferredTransform`을 적용한 **Presentation Geometry**로 판정한다. `presentationWidth > presentationHeight`이면 Landscape이며 V1 미지원 입력이다. 인코딩된 `naturalSize`가 `1920×1080`이라도 Transform 적용 후 `1080×1920`으로 표시되는 일반 iPhone 세로 영상은 Portrait이며 거부하지 않는다(ARCHITECTURE 44절 "naturalSize만으로 Orientation을 판단하지 않는다").
+
+### Landscape Preflight 규칙
+
+Landscape 항목에 대해서는 Materialize / Remux / Normalize / Project-owned Media 생성 / Clip Metadata Persist / Append / Replace 어느 것도 하지 않으며 Accepted Set Transaction에 들어가지 않고 Photos 원본은 변경되지 않는다. Landscape는 **Normalization-required가 아니라 Preflight 제외(Unsupported)**다.
+
+### Select Clips / Editor Add (다중 선택)
+
+Preflight에서 Landscape 항목만 제외하고 지원되는 Portrait 항목으로 계속 진행한다(재선택 강요 없음). 전부 Landscape이면 Select Clips는 Project를 만들지 않고 Add는 기존 Project를 변경하지 않는다. 완료된 선택 Operation당 통합 안내는 최대 1회이며, **Landscape가 유일한 제외 사유**이면 정확히 `가로 영상이 제외되었어요` / `세로 영상만 추가할 수 있어요.`를 사용한다.
+
+### Replace 및 단일 후보 선택
+
+후보가 Landscape이면 Preflight에서 거부하고 기존 Clip · Media · 순서 · Metadata를 그대로 보존하며 정확히 `가로 영상은 사용할 수 없어요` / `세로 영상을 선택해주세요.`를 사용한다(제거 / 교체로 표현하지 않는다).
+
+### 복합 제외 사유
+
+Landscape가 Duration-ineligible 또는 다른 Preflight-invalid 항목과 함께 제외되면 기존 승인 통합 안내 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`를 그대로 사용한다. 취소 / Runtime 실패는 여전히 제외 성공 안내보다 우선한다.
+
+### Accepted Set
+
+Select Clips / Add의 Accepted Set은 Duration-eligible이고 Preflight-invalid가 아니며 **Portrait Presentation**인 항목으로만 구성된다(Phase-5-ready + Normalization-required 혼재 가능). Accepted Set Atomicity(ADR-042 Revision 3 / 4)는 변경되지 않는다.
+
+### 범위
+
+- V1 Photos Import에만 적용된다. Portrait-only Direct Capture 정책은 그대로다.
+- Phase 6에서 Landscape Import Normalization을 제거한다.
+- 1.0–5.0초 Duration 경계, Portrait Source의 Raster Downscale / HDR 변환 / Frame-rate 변환 / MP4 Remux / Transform 처리 / Audio 보존 / Transactional Safety / Photos 원본 불변은 바꾸지 않는다.
+- **Square(정사각) Presentation은 이 ADR이 정하지 않는다.** `presentationWidth == presentationHeight`는 위 Landscape 규칙에 해당하지 않으며, 현재 Phase 5 구현(`Phase5ReadyMediaValidator`)은 `height > width`가 아니면 Non-ready로 판정한다. Square를 Portrait로 허용할지 별도 미지원으로 볼지는 좁은 Open Question으로 남긴다.
+
+### 구현 상태
+
+현재 Phase 5 구현은 Landscape Presentation을 `requires import preparation(.orientation)`으로 판정하고 첫 Non-ready 항목에서 선택 전체를 거부하며(`세로 영상을 선택해주세요` / `현재 프로젝트에서는 세로 영상을 바로 사용할 수 있어요.`) Replace도 같은 경로로 거부한다. Per-item Landscape Filtering과 위 전용 안내는 **승인된 Phase 6 구현 요구사항**이며 아직 구현되지 않았다. 이 ADR은 Swift / Test를 변경하지 않는다.
+
+## Rationale
+
+- V1 Project는 Portrait뿐이며 Direct Capture도 Portrait으로 고정되어 Landscape Source는 제품 흐름에 자연스러운 자리가 없다.
+- Landscape를 Portrait Canvas에 Fill + Crop하면 대부분의 화면 영역을 잃어 Mini Vlog 의도와 어긋나며, Phase 6 / 7에 Re-encode 여부 · Framing 초기값 등 추가 결정을 요구한다.
+- Preflight 제외는 이미 승인된 Per-item Filtering / 통합 안내 모델(ADR-042 Revision 3 / 4)에 그대로 얹히므로 Transaction 경계를 바꾸지 않는다.
+
+## Consequences
+
+- Phase 6 Normalization 대상은 Portrait Presentation Source의 4K / High-resolution, HDR / Dolby Vision, >30 fps, 기타 Codec / 컨테이너 사유로 좁혀진다. Landscape Device Normalization Test는 요구되지 않는다.
+- Phase 7 Framing은 Portrait Source의 비율 불일치(예: 4:3 Portrait, 향후 Square 결정)에 대해서만 Fill + Crop을 다룬다.
+- Validation 결과 모델은 Landscape를 Duration / Invalid와 구분되는 Preflight 제외 사유로 표현해야 한다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Square Presentation의 취급.
+- ADR-042 Still Pending의 나머지 Technical Gate(Codec / Container / SDR Tagging / Tone-mapping / Upscaling / Raster / Storage / Recovery / API / Progress / Retry) — 변경 없음.
+
+## Non-goals
+
+- Landscape Project 복원 시점(Post-V1), Landscape Import의 향후 지원 방식, Phase 7 Framing UX, 구현.

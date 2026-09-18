@@ -443,7 +443,9 @@ ADR-042에 따라 Photos에서 선택한 영상은 전체 길이가 `1.0s <= dur
 
 ### Normalization-required Import Presentation — ADR-042 Revision 4 (2026-09-17 승인, Phase 6 구현 요구)
 
-Phase-5-ready가 아닌 1.0–5.0초 영상(4K / HDR / Dolby Vision / 30 fps 초과 / Landscape)이 Accepted Set에 하나라도 있으면 선택 / 제외 직후 확인 화면 없이 Preparation을 자동으로 시작하고 **Blocking Preparation Sheet**를 표시한다.
+ADR-043에 따라 가로 영상(preferredTransform 적용 후 가로 > 세로)은 V1 미지원이며 Preflight에서 제외된다: 다중 선택에서 가로만 제외되었으면 `가로 영상이 제외되었어요` / `세로 영상만 추가할 수 있어요.`를 한 번, Replace 후보가 가로면 `가로 영상은 사용할 수 없어요` / `세로 영상을 선택해주세요.`를 표시하고 기존 Clip을 보존하며, 가로 + 길이 / Invalid 복합 사유는 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`를 사용한다. 취소 / 실패는 여전히 제외 안내보다 우선한다. 일반 iPhone 세로 촬영본은 자연 크기가 가로여도 세로 영상이다.
+
+Phase-5-ready가 아닌 1.0–5.0초 세로 영상(4K / HDR / Dolby Vision / 30 fps 초과)이 Accepted Set에 하나라도 있으면 선택 / 제외 직후 확인 화면 없이 Preparation을 자동으로 시작하고 **Blocking Preparation Sheet**를 표시한다.
 
 - Sheet Title `영상을 준비하고 있어요`, Message `잠시만 기다려주세요.`, 가시적 Progress, 다중 항목이면 현재 위치를 `2/5` 형태로 표시, Button `취소` 하나.
 - Accepted Set 전체가 Phase-5-ready이면 Sheet를 표시하지 않는다.
@@ -477,7 +479,7 @@ Imported Video의 원본 화면 비율과 현재 Project Orientation이 다를 �
 
 MVP의 기본 동작은 **Fill + Crop**을 사용한다.
 
-예를 들어 16:9 영상을 9:16 프로젝트에 가져오면 9:16 Canvas를 채우도록 확대하고 필요한 영역을 Crop한다.
+예를 들어 4:3 세로 영상을 9:16 프로젝트에 가져오면 9:16 Canvas를 채우도록 확대하고 필요한 영역을 Crop한다. (ADR-043: 16:9 가로 영상은 V1 Photos Import에서 Preflight 제외되므로 이전의 가로 영상 예시는 적용되지 않는다.)
 
 사용자는 영상의 위치를 Drag하여 Framing을 조정할 수 있어야 한다.
 
