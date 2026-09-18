@@ -8,11 +8,28 @@ struct MellowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView(model: environment.home)
-                .environment(environment)
-                .preferredColorScheme(uiTestColorScheme)
+            if isPhase6MediaSpike {
+                #if DEBUG
+                // Phase 6 Technical Device Spike: DEBUG-only diagnostic surface, reachable solely via
+                // `-Phase6MediaSpike`. Replaces the root so no Camera / Projects UI is entered; never
+                // touches Project media, SwiftData rows or Photos originals. Remove with `Spike/`.
+                Phase6MediaSpikeView()
+                #endif
+            } else {
+                HomeView(model: environment.home)
+                    .environment(environment)
+                    .preferredColorScheme(uiTestColorScheme)
+            }
         }
         .modelContainer(environment.modelContainer)
+    }
+
+    private var isPhase6MediaSpike: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-Phase6MediaSpike")
+        #else
+        return false
+        #endif
     }
 
     /// UI-test appearance seam (`-uiTestAppearance=dark|light`): pins the scene's colour scheme so an

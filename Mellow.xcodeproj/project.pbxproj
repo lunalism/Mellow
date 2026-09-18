@@ -97,6 +97,13 @@
 		000000000000000000000264 /* ProjectEditorReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000164 /* ProjectEditorReplaceTests.swift */; };
 		000000000000000000000265 /* ProjectRepresentativeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000165 /* ProjectRepresentativeModel.swift */; };
 		000000000000000000000266 /* ProjectRepresentativeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000166 /* ProjectRepresentativeModelTests.swift */; };
+		000000000000000000000267 /* Phase6SpikePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000167 /* Phase6SpikePolicy.swift */; };
+		000000000000000000000268 /* Phase6SpikeInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000168 /* Phase6SpikeInspector.swift */; };
+		000000000000000000000269 /* Phase6SpikeConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000169 /* Phase6SpikeConverter.swift */; };
+		00000000000000000000026A /* Phase6MediaSpikeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016A /* Phase6MediaSpikeView.swift */; };
+		00000000000000000000026B /* Phase6MediaSpikeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016B /* Phase6MediaSpikeTests.swift */; };
+		00000000000000000000026C /* Phase6SpikePlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016C /* Phase6SpikePlayback.swift */; };
+		00000000000000000000026D /* Phase6SpikeResultLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016D /* Phase6SpikeResultLog.swift */; };
 		00000000000000000000023A /* RecordingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013A /* RecordingPolicyTests.swift */; };
 		00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* RecordingRecoveryTests.swift */; };
 		00000000000000000000023C /* PermissionOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013C /* PermissionOnboardingModel.swift */; };
@@ -214,6 +221,13 @@
 		000000000000000000000164 /* ProjectEditorReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorReplaceTests.swift; sourceTree = "<group>"; };
 		000000000000000000000165 /* ProjectRepresentativeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepresentativeModel.swift; sourceTree = "<group>"; };
 		000000000000000000000166 /* ProjectRepresentativeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepresentativeModelTests.swift; sourceTree = "<group>"; };
+		000000000000000000000167 /* Phase6SpikePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6SpikePolicy.swift; sourceTree = "<group>"; };
+		000000000000000000000168 /* Phase6SpikeInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6SpikeInspector.swift; sourceTree = "<group>"; };
+		000000000000000000000169 /* Phase6SpikeConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6SpikeConverter.swift; sourceTree = "<group>"; };
+		00000000000000000000016A /* Phase6MediaSpikeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6MediaSpikeView.swift; sourceTree = "<group>"; };
+		00000000000000000000016B /* Phase6MediaSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6MediaSpikeTests.swift; sourceTree = "<group>"; };
+		00000000000000000000016C /* Phase6SpikePlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6SpikePlayback.swift; sourceTree = "<group>"; };
+		00000000000000000000016D /* Phase6SpikeResultLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase6SpikeResultLog.swift; sourceTree = "<group>"; };
 		00000000000000000000013A /* RecordingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013B /* RecordingRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRecoveryTests.swift; sourceTree = "<group>"; };
 		00000000000000000000013C /* PermissionOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingModel.swift; sourceTree = "<group>"; };
@@ -278,6 +292,7 @@
 				000000000000000000000314 /* Core */,
 				00000000000000000000031C /* DesignSystem */,
 				00000000000000000000031D /* Resources */,
+				000000000000000000000320 /* Spike */,
 			);
 			path = MellowApp;
 			sourceTree = "<group>";
@@ -303,6 +318,7 @@
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
 				000000000000000000000164 /* ProjectEditorReplaceTests.swift */,
 				000000000000000000000166 /* ProjectRepresentativeModelTests.swift */,
+				00000000000000000000016B /* Phase6MediaSpikeTests.swift */,
 				00000000000000000000013D /* PermissionOnboardingModelTests.swift */,
 				00000000000000000000013A /* RecordingPolicyTests.swift */,
 				00000000000000000000013B /* RecordingRecoveryTests.swift */,
@@ -591,6 +607,27 @@
 			path = Logging;
 			sourceTree = "<group>";
 		};
+		000000000000000000000320 /* Spike */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000321 /* Phase6MediaSpike */,
+			);
+			path = Spike;
+			sourceTree = "<group>";
+		};
+		000000000000000000000321 /* Phase6MediaSpike */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000167 /* Phase6SpikePolicy.swift */,
+				000000000000000000000168 /* Phase6SpikeInspector.swift */,
+				000000000000000000000169 /* Phase6SpikeConverter.swift */,
+				00000000000000000000016A /* Phase6MediaSpikeView.swift */,
+				00000000000000000000016C /* Phase6SpikePlayback.swift */,
+				00000000000000000000016D /* Phase6SpikeResultLog.swift */,
+			);
+			path = Phase6MediaSpike;
+			sourceTree = "<group>";
+		};
 		CCAE2539305599AC0044B382 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
@@ -758,6 +795,12 @@
 				000000000000000000000221 /* HomeView.swift in Sources */,
 				000000000000000000000220 /* HomeModel.swift in Sources */,
 				000000000000000000000265 /* ProjectRepresentativeModel.swift in Sources */,
+				000000000000000000000267 /* Phase6SpikePolicy.swift in Sources */,
+				000000000000000000000268 /* Phase6SpikeInspector.swift in Sources */,
+				000000000000000000000269 /* Phase6SpikeConverter.swift in Sources */,
+				00000000000000000000026A /* Phase6MediaSpikeView.swift in Sources */,
+				00000000000000000000026C /* Phase6SpikePlayback.swift in Sources */,
+				00000000000000000000026D /* Phase6SpikeResultLog.swift in Sources */,
 				000000000000000000000202 /* AppEnvironment.swift in Sources */,
 				000000000000000000000203 /* AppRouter.swift in Sources */,
 				000000000000000000000204 /* MellowLog.swift in Sources */,
@@ -803,6 +846,7 @@
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,
 				000000000000000000000264 /* ProjectEditorReplaceTests.swift in Sources */,
 				000000000000000000000266 /* ProjectRepresentativeModelTests.swift in Sources */,
+				00000000000000000000026B /* Phase6MediaSpikeTests.swift in Sources */,
 				00000000000000000000023D /* PermissionOnboardingModelTests.swift in Sources */,
 				00000000000000000000023A /* RecordingPolicyTests.swift in Sources */,
 				00000000000000000000023B /* RecordingRecoveryTests.swift in Sources */,
