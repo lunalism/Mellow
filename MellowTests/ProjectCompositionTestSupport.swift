@@ -28,8 +28,15 @@ actor TestMediaFixtures {
 }
 
 enum TestSupport {
+    /// A fresh media root in the same path form production uses. On a physical iPhone
+    /// `temporaryDirectory` is reported as `/private/var/...` while `Application Support` (the
+    /// production root) is `/var/...`; `standardizedFileURL` strips `/private` only for paths that
+    /// exist, so a raw `/private/var` root would make every *missing* in-root candidate look like it
+    /// escaped the root. Standardizing the (existing) temp directory once, up front, keeps root and
+    /// candidates in one alias form exactly like production.
     static func temporaryRoot(_ label: String = "root") -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
+        FileManager.default.temporaryDirectory.standardizedFileURL
+            .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
     }
 
     /// Copies a fixture to a fresh temporary URL (the "picker transfer"), leaving the fixture intact.
