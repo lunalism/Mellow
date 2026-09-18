@@ -55,7 +55,8 @@ final class FakeCameraCaptureService: CameraCaptureService {
         guard rearWideAvailable else { state.phase = .unavailable; return }
         if let preparationFailure { state.phase = .failed(preparationFailure); return }
         if state.phase == .running || state.phase == .interrupted || state.phase == .prepared { return }
-        state = CameraSessionState(phase: .prepared, canSwitch: frontAvailable, deviceKind: .wideAngle)
+        state = CameraSessionState(phase: .prepared, canSwitch: frontAvailable, deviceKind: .wideAngle,
+                                   captureFormat: CaptureFormatVerification.verifiedForTests)
     }
     func start() async {
         calls.append("start")

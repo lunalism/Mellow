@@ -37,6 +37,9 @@ struct CameraSessionState: Equatable, Sendable {
     var recordingRequested = false
     /// True from the file output's didStart callback until its didFinish callback.
     var isRecording = false
+    /// ADR-046: the verified QuickTime / H.264 / SDR / 1080p / 30 fps capture contract for the
+    /// prepared session; nil until verified. Recording never starts without it.
+    var captureFormat: CaptureFormatVerification?
     var revision = 0
     var isRunning: Bool { phase == .running }
 }

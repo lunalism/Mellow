@@ -59,6 +59,8 @@
 		000000000000000000000268 /* ImportPreflightClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000168 /* ImportPreflightClassifier.swift */; };
 		000000000000000000000269 /* ImportPreflightClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000169 /* ImportPreflightClassifierTests.swift */; };
 		00000000000000000000026A /* ProjectMediaPathContainmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016A /* ProjectMediaPathContainmentTests.swift */; };
+		00000000000000000000026B /* CaptureFormatPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016B /* CaptureFormatPolicy.swift */; };
+		00000000000000000000026C /* CaptureFormatPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016C /* CaptureFormatPolicyTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -180,6 +182,8 @@
 		000000000000000000000168 /* ImportPreflightClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreflightClassifier.swift; sourceTree = "<group>"; };
 		000000000000000000000169 /* ImportPreflightClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreflightClassifierTests.swift; sourceTree = "<group>"; };
 		00000000000000000000016A /* ProjectMediaPathContainmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaPathContainmentTests.swift; sourceTree = "<group>"; };
+		00000000000000000000016B /* CaptureFormatPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFormatPolicy.swift; sourceTree = "<group>"; };
+		00000000000000000000016C /* CaptureFormatPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFormatPolicyTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -308,6 +312,7 @@
 				000000000000000000000158 /* PhotosVideoSelectorTests.swift */,
 				000000000000000000000169 /* ImportPreflightClassifierTests.swift */,
 				00000000000000000000016A /* ProjectMediaPathContainmentTests.swift */,
+				00000000000000000000016C /* CaptureFormatPolicyTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -494,6 +499,7 @@
 			children = (
 				00000000000000000000012B /* FakeCameraCaptureService.swift */,
 				00000000000000000000012A /* CameraSessionWorker.swift */,
+				00000000000000000000016B /* CaptureFormatPolicy.swift */,
 				000000000000000000000129 /* AVFoundationCameraService.swift */,
 				000000000000000000000128 /* CameraCaptureService.swift */,
 			);
@@ -770,6 +776,7 @@
 				00000000000000000000022C /* CameraModel.swift in Sources */,
 				00000000000000000000022B /* FakeCameraCaptureService.swift in Sources */,
 				00000000000000000000022A /* CameraSessionWorker.swift in Sources */,
+				00000000000000000000026B /* CaptureFormatPolicy.swift in Sources */,
 				000000000000000000000229 /* AVFoundationCameraService.swift in Sources */,
 				000000000000000000000228 /* CameraCaptureService.swift in Sources */,
 				000000000000000000000201 /* MellowApp.swift in Sources */,
@@ -822,6 +829,7 @@
 				000000000000000000000258 /* PhotosVideoSelectorTests.swift in Sources */,
 				000000000000000000000269 /* ImportPreflightClassifierTests.swift in Sources */,
 				00000000000000000000026A /* ProjectMediaPathContainmentTests.swift in Sources */,
+				00000000000000000000026C /* CaptureFormatPolicyTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,
