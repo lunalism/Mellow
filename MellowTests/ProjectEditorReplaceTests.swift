@@ -157,7 +157,8 @@ final class ProjectEditorReplaceTests: XCTestCase {
         let h = try await makeEditor()
         await h.model.loadThumbnails(displayScale: 2)
         let requests = await h.provider.requests
-        XCTAssertEqual(requests.map(\.clipID), [h.ids[0], h.ids[2]], "only available Clips are requested, in order")
+        XCTAssertEqual(requests.count, 2, "only available Clips are requested")
+        XCTAssertEqual(TestSupport.sortedClipIDs(requests), TestSupport.sortedIDs([h.ids[0], h.ids[2]]), "B is never requested")
         await h.model.loadThumbnails(displayScale: 2)
         let again = await h.provider.requests
         XCTAssertEqual(again.count, 2, "no retry storm for the missing Clip")
@@ -180,7 +181,8 @@ final class ProjectEditorReplaceTests: XCTestCase {
         h.model.select(h.ids[0])
         XCTAssertFalse(h.model.canReplaceSelectedClip, "a thumbnail failure never exposes Replace")
         let requests = await h.provider.requests
-        XCTAssertEqual(requests.map(\.clipID), [h.ids[0], h.ids[2]])
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(TestSupport.sortedClipIDs(requests), TestSupport.sortedIDs([h.ids[0], h.ids[2]]), "B (missing media) is never requested; A's failed thumbnail was")
     }
 
     func testUnavailableClipReordersThroughTheExistingPath() async throws {
@@ -339,7 +341,8 @@ final class ProjectEditorReplaceTests: XCTestCase {
         XCTAssertEqual(h.model.availability(for: d.id), .available)
         XCTAssertEqual(h.model.availability(for: b.id), .unavailable(.mediaMissing))
         let requests = await h.provider.requests
-        XCTAssertEqual(requests.map(\.clipID), [h.ids[0], h.ids[2], d.id])
+        XCTAssertEqual(requests.count, 3, "A, C and the replacement D — B never")
+        XCTAssertEqual(TestSupport.sortedClipIDs(requests), TestSupport.sortedIDs([h.ids[0], h.ids[2], d.id]))
         XCTAssertTrue(isReady(h.model.thumbnail(for: d.id)))
         let entry = try XCTUnwrap(h.model.undoStack.last)
         XCTAssertEqual(entry.before.clips.map(\.id), h.ids); XCTAssertTrue(entry.before.deletedClips.isEmpty); XCTAssertEqual(entry.before.selectedClipID, b.id)

@@ -39,6 +39,13 @@ enum TestSupport {
             .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
     }
 
+    /// Thumbnail / availability requests are issued from a `withTaskGroup` fan-out, so the order in
+    /// which a test double records them is not a production contract (ARCHITECTURE: the consumer
+    /// gate observes no request ordering). Compare *membership and multiplicity* instead: a sorted
+    /// list of identifiers keeps duplicates visible where a `Set` would hide them.
+    static func sortedIDs(_ ids: [UUID]) -> [String] { ids.map(\.uuidString).sorted() }
+    static func sortedClipIDs(_ requests: [ClipThumbnailRequest]) -> [String] { sortedIDs(requests.map(\.clipID)) }
+
     /// Copies a fixture to a fresh temporary URL (the "picker transfer"), leaving the fixture intact.
     static func transferCopy(of fixture: URL) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")

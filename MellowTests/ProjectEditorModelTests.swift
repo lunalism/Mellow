@@ -94,19 +94,25 @@ final class ProjectEditorModelTests: XCTestCase {
 
     // MARK: - Thumbnails (STEP 8)
 
-    func testThumbnailRequestsFollowLogicalOrderAndCarryClipIdentity() async throws {
+    func testThumbnailRequestsCoverEveryClipOnceAndCarryClipIdentity() async throws {
         let project = try makeProject(clipSeconds: [2, 3, 1])
         let provider = FakeClipThumbnailProvider()
         let model = ProjectEditorModel(project: project, repository: InMemoryProjectRepository(), thumbnails: provider)
 
         await model.loadThumbnails(displayScale: 3)
 
+        // Requests are issued concurrently (task group); arrival order is not a contract, but
+        // membership and multiplicity are: exactly one request per clip, each carrying its identity.
         let requests = await provider.requests
-        XCTAssertEqual(requests.map(\.clipID), project.clips.map(\.id), "one request per clip, in logical order")
-        XCTAssertEqual(requests.map(\.projectID), Array(repeating: project.id, count: 3))
-        XCTAssertEqual(requests.map(\.mediaRelativePath), project.clips.map(\.mediaRelativePath))
+        XCTAssertEqual(requests.count, project.clips.count, "one request per clip")
+        XCTAssertEqual(TestSupport.sortedClipIDs(requests), TestSupport.sortedIDs(project.clips.map(\.id)))
         let expectedPixels = ClipThumbnailPixelSize(points: ProjectEditorModel.thumbnailPointSize, scale: 3)
-        XCTAssertEqual(requests.first?.maximumPixelSize, expectedPixels)
+        for clip in project.clips {
+            let request = try XCTUnwrap(requests.first { $0.clipID == clip.id }, "\(clip.id)")
+            XCTAssertEqual(request.projectID, project.id)
+            XCTAssertEqual(request.mediaRelativePath, clip.mediaRelativePath)
+            XCTAssertEqual(request.maximumPixelSize, expectedPixels)
+        }
         for clip in project.clips { XCTAssertTrue(isReady(model.thumbnail(for: clip.id))) }
     }
 
@@ -190,7 +196,12 @@ final class ProjectEditorModelTests: XCTestCase {
         let again = ProjectEditorModel(project: project, repository: InMemoryProjectRepository(), thumbnails: provider)
         await again.loadThumbnails(displayScale: 2)
         let third = await provider.requests
-        XCTAssertEqual(Array(third.suffix(2)), first)
+        XCTAssertEqual(third.count, first.count + 2, "the second model requests each clip exactly once")
+        // The new model's two requests (the last two arrivals, in any order) are identity-equal to the
+        // first model's: same clip, path, trim and pixel size → same cache identity.
+        let byIdentity = { (requests: ArraySlice<ClipThumbnailRequest>) in Dictionary(requests.map { ($0, 1) }, uniquingKeysWith: +) }
+        XCTAssertEqual(byIdentity(third.suffix(2)), byIdentity(first[...]))
+        XCTAssertEqual(Set(first).count, 2, "two distinct identities, no duplicates")
     }
 
     func testLateResultForStaleRequestIdentityIsDropped() async throws {
@@ -205,9 +216,14 @@ final class ProjectEditorModelTests: XCTestCase {
         let current = Task { await model.loadThumbnails(displayScale: 3) }
         await provider.waitForRequests(count: 4)
         let requests = await provider.requests
-        let staleRequest = requests[0], currentRequest = requests[2]
-        XCTAssertEqual(staleRequest.clipID, ids[0])
-        XCTAssertEqual(currentRequest.clipID, ids[0])
+        // Select by identity, not by arrival position: the stale request is clip 1 at scale 2, the
+        // current one is clip 1 at scale 3 (each load issues its two requests in any order).
+        let stalePixels = ClipThumbnailPixelSize(points: ProjectEditorModel.thumbnailPointSize, scale: 2)
+        let currentPixels = ClipThumbnailPixelSize(points: ProjectEditorModel.thumbnailPointSize, scale: 3)
+        let staleRequest = try XCTUnwrap(requests.first { $0.clipID == ids[0] && $0.maximumPixelSize == stalePixels })
+        let currentRequest = try XCTUnwrap(requests.first { $0.clipID == ids[0] && $0.maximumPixelSize == currentPixels })
+        XCTAssertEqual(requests.count, 4, "two loads × two clips")
+        XCTAssertEqual(TestSupport.sortedClipIDs(requests), TestSupport.sortedIDs(ids + ids))
         XCTAssertNotEqual(staleRequest, currentRequest)
 
         let staleImage = SyntheticThumbnailImage.make(seed: 1, size: CGSize(width: 4, height: 8))
@@ -259,7 +275,8 @@ final class ProjectEditorModelTests: XCTestCase {
 
         let load = Task { await model.loadThumbnails(displayScale: 2) }
         await provider.waitForRequests(count: 2)
-        let request = await provider.requests[0]
+        let requestsSoFar = await provider.requests
+        let request = try XCTUnwrap(requestsSoFar.first { $0.clipID == ids[0] })
 
         // The screen went away (Project change / navigation): the load is stopped, then a result lands.
         model.stopThumbnailLoading()
