@@ -537,7 +537,7 @@ Photos 원본은 Import, 정규화 또는 편집 과정에서도 수정하거나
 
 미디어 저장은 `ARCHITECTURE.md`와 ADR-020 / ADR-021의 확정된 기준을 따르며 SDR 정규화 방향은 ADR-022를 따른다.
 
-Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Upscaling과 Raster Dimension Rule의 미결 세부값은 임의로 확정하지 않는다.
+Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Scale-down Rule은 ADR-045(2026-09-18)로 확정되었다(QuickTime · H.264 8-bit · Rec.709 · 1080p-class 세로 · ≤ 30 fps · AAC 유지; Phase 6 Production 구현은 미완). 지원되는 원본은 사용자가 고른 Photos 영상을 바꾸지 않고 내부 Working Media 계약으로 변환될 수 있으며, 지원하지 않는 Container / 방향은 명확히 거절된다. Low-resolution Upscaling 여부는 여전히 확정하지 않는다.
 
 ---
 

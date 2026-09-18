@@ -1004,11 +1004,21 @@ Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른�
 - Low-resolution Source Upscaling Policy
 - 1080p-class Working Media의 정확한 Raster Dimension Rule
 
-이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다.
+이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다. — **ADR-045(2026-09-18):** Working Media Codec / Container / SDR Tagging / Raster Scale-down Rule / Tone-mapping 메커니즘은 확정되었다(Phase 6 Production 구현은 미완). Upscaling Policy와 Storage Formula는 여전히 Pending.
 
-1080p-class는 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 뜻하지 않으며 임의 Raster Formula를 추가하지 않는다.
+1080p-class는 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 뜻하지 않으며 임의 Raster Formula를 추가하지 않는다. ADR-045는 Scale-down 규칙만 확정한다(Presentation 전체를 담는 긴 변 ≤ 1920 / 짧은 변 ≤ 1080 Bounding Box, Crop / Pad 없음, 각 변 짝수 내림).
 
-Tone-mapping 구현 방법과 Variable Frame Rate 처리의 구체적인 Apple API 조합은 이 문서에서 강제하지 않으며 필요한 미결정 사항을 구현 전에 해결한다.
+**Import / Preflight / Normalization 경계(ADR-045 §11):** `ImportSourceInspector`(AVURLAsset → Facts) → `ImportPreflightClassifier`(순수 `Sendable`, Duration → Readable / Video / Protected → 실제 Container Brand → Presentation Orientation → Normalization 사유의 독립 Verdict) → Fast-path Copy 또는 `WorkingMediaNormalizer` → `SDRWorkingMediaContract`(Normalization 출력에만 적용; Fast-path Copy는 Phase-5-ready 규칙으로 검증) → Commit. Spike 코드를 Rename / Copy하지 않고 이 Abstraction으로 재구현한다.
+
+**Tone-mapping 메커니즘(ADR-045 §4):** `AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(colorPrimaries / TransferFunction / YCbCrMatrix = ITU_R_709_2, renderSize = Bounding Box, Layer Instruction으로 Transform Bake) → AVFoundation 내장 Compositor가 8-bit 420 Video-range Rec.709 Pixel Buffer를 제공 → `AVAssetWriterInput`(H.264 High, `AVVideoColorPropertiesKey` 709 / 709 / 709, Identity Transform) 기록; Audio는 AAC Passthrough. 공개 메타데이터는 출력 형식과 HLG / PQ / Rec.2020 / Dolby Vision / MDCV / CLLI / AVE 신호 제거를 증명하지만 Tone-curve 품질은 증명하지 못하므로 기기 A/B가 Acceptance Evidence다. AmbientViewingEnvironment 단독은 HDR 판별 신호가 아니다.
+
+**출력 Duration 허용 범위(ADR-045 §7):** 30 fps 재타이밍으로 `source duration <= output duration <= source duration + 1/30 s`를 허용하며 범위 밖은 Validation 실패다.
+
+**Cancellation / Output Ownership(ADR-045 §8):** Idempotent Cancellation Token 하나를 사용자 취소와 내부 Trigger가 공유; `cancelReading` / `cancelWriting`; Partial Output 제거는 그 파일을 만든 Normalization Operation의 책임(반환 전 제거 + 제거 후 존재 재확인); `finishWriting` 이후 취소도 Publish 없음; 실패 경로도 같은 Cleanup Evidence를 남긴다; 진행률 최종값은 Operation Result가 직접 전달한다(UI State에서 읽지 않음).
+
+**원본 획득 불변조건(ADR-045 §5):** `PhotosPicker` `preferredItemEncoding`은 `.current`여야 하며(`.automatic`은 HEVC / HDR 원본 대신 H.264 Rec.709 호환 Transcode를 전달), Operation 후 Source Byte / mtime 불변을 확인한다.
+
+Variable Frame Rate 처리의 구체적인 Apple API 조합은 이 문서에서 강제하지 않으며(Metadata `minFrameDuration` 불일치는 VFR 증거가 아니다) 필요한 미결정 사항을 구현 전에 해결한다.
 
 Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개로 결정할 수 있으며 자동으로 동일하게 설정하지 않는다.
 
@@ -2324,6 +2334,9 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Recording / Import Media Commit의 Failure Boundary A–H
 - Materialization 이후 Metadata Persistence 실패와 Relaunch Recovery
 - Normalization 실패 시 Valid Source 보존
+- Normalization 출력의 SDR Working Media Contract(QuickTime · avc1 8-bit · 709 / 709 / 709 · HDR 신호 없음 · Identity · Portrait · ≤ 30 fps · Duration `source..source + 1/30 s`) 수락 / 거부와 Fast-path Copy 비적용(ADR-045)
+- Cancellation Token Idempotency, `finishWriting` 이후 취소의 미Publish, Partial Output Cleanup Idempotency(ADR-045)
+- `PhotosPicker` `preferredItemEncoding == .current` 불변조건(ADR-045)
 - Reconciliation 반복 시 Duplicate Commit 방지
 - Recovery Classification 이후 Cleanup과 Cleanup Idempotency
 - Missing / Corrupt Media와 Multiple Draft Isolation

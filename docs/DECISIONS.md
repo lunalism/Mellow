@@ -2187,7 +2187,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042`, `Resolved by ADR-043` 또는 `Resolved by ADR-044`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042`, `Resolved by ADR-043`, `Resolved by ADR-044` 또는 `Resolved by ADR-045`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -2234,6 +2234,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
+- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완.
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
@@ -2885,3 +2886,116 @@ ADR-044 이후 남은 Phase 6 Technical Device Spike Gate는 (1) Mid-run Cancell
 ## Non-goals
 
 - Post-V1 MP4 / 기타 Container Import, Container 변환 UX, Export Container, 구현.
+
+---
+
+# ADR-045 — Phase 6 Working Media Technical Gate Resolution
+
+**Date:** 2026-09-18
+**Status:** Accepted (사용자 승인 — Phase 6 Final Device Gate PASS, Phase 6 Ready to Close)
+
+**Resolves:** ADR-022 / ADR-042 "Still Pending"의 Working Media Codec / Container(출력), 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Dimension Rule(Scale-down 범위), ROADMAP Phase 6 "Pending Technical Gate"의 동일 항목, Technical Device Spike의 남은 기기 Gate(Cancellation Cleanup, HDR / Dolby Vision → SDR).
+
+**Explicitly Unchanged:** ADR-042 Duration / Per-item Filtering / Structural UX, ADR-043 Revision 1 Portrait-only, ADR-044 Revision 1 QuickTime-only 및 Copy, ADR-020 / 024 / 037 / 039 Commit · Storage · Recovery 계약, Low-resolution Upscaling Policy(Pending 유지), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Recovery 깊이, Progress / Retry 메커니즘(Pending 유지), Export Codec / Container(Phase 9).
+
+**이 ADR은 Phase 6 Production 구현 완료를 의미하지 않는다.** Technical Gate가 해결되어 구현을 시작할 수 있다는 결정이며, Production Pipeline · Per-item Filtering · Preparation Presentation은 여전히 미구현이다.
+
+## Context
+
+Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical Device Spike(LunaTestphone iPhone 12, iOS 27.0, 2026-09-18)로 조사했다. Spike는 실제 AVFoundation Reader / Composition / Writer Pipeline, 결정적 Cancellation, 지속 JSON 기록, A/B 재생을 갖춘 일회용 진단 Harness이며 `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec2972836a331d95fe7` 에 Evidence Baseline으로 보존된다(main에 병합하지 않음). 다섯 시나리오가 모두 PASS했고 사용자가 최종 HDR 결과를 A/B 시각 검증했다.
+
+## Decision
+
+### 1. Input Admission (독립 Preflight 판정 순서)
+
+1. 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042)
+2. Readable / Video Track 존재 / Protected 아님(Preflight Invalid)
+3. 실제 Container Brand — QuickTime Movie(`qt  `)만 허용, MP4 / ISO BMFF / 기타 / Unknown은 Unsupported(ADR-044; 확장자 비권위)
+4. Presentation Orientation — `preferredTransform` 적용 후 `presentationHeight > presentationWidth`만 허용(ADR-043 Revision 1)
+5. Normalization 사유 판정(아래 §2) — 위 1–4는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다.
+
+### 2. Fast Path vs Normalization
+
+- **Phase-5-ready SDR QuickTime**(H.264 또는 HEVC, Rec.709 / Rec.709 / Rec.709, ≤ 8-bit, ≤ 1080p-class, ≤ 30 fps): Project-owned Media로 **복사(Fast Path)**, 재인코딩 없음.
+- **Normalization-required**: HDR / >8-bit(HLG 또는 PQ Transfer, Rec.2020 Primaries **또는** Matrix, bitsPerComponent > 8, 10-bit Profile(hvcC Main10 / avcC High10 계열), Dolby Vision `dvcC` / `dvvC` / `dvwC` Atom), 30 fps 초과, 1080p-class 초과 Raster.
+- **AmbientViewingEnvironment / MasteringDisplayColorVolume / ContentLightLevel 단독은 HDR 판별 신호가 아니다.** AVE는 iPhone SDR 촬영본에도 존재한다.
+
+### 3. Working Media Output Contract
+
+- QuickTime Movie `.mov`
+- H.264 High Profile, 8-bit(High 10 / 4:2:2 / 4:4:4 아님)
+- Color Primaries / Transfer / Matrix = Rec.709 / Rec.709 / Rec.709, Video Range
+- Raster: Presentation Frame 전체를 담는 1080p-class Bounding Box(긴 변 ≤ 1920, 짧은 변 ≤ 1080, Scale-down만, Crop / Pad 없음, 각 변 짝수 내림). Low-resolution Source의 Upscale 여부는 여전히 Pending(Spike는 Upscale하지 않음).
+- Frame Rate ≤ 30 fps(`frameDuration = max(source minFrameDuration, 1/30)`)
+- Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity, 출력 Presentation은 Portrait
+- Audio: AAC Passthrough(재인코딩 없음, Source Format Hint)
+- 출력에 HLG / PQ / Rec.2020 / Dolby Vision / MDCV / CLLI / AVE 신호가 남지 않는다.
+
+### 4. Tone-mapping Mechanism
+
+`AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(colorPrimaries / colorTransferFunction / colorYCbCrMatrix = ITU_R_709_2, renderSize = Bounding Box, Layer Instruction으로 Transform Bake) → AVFoundation 내장 Compositor가 각 Frame을 Rec.709 SDR Working Color Space로 렌더링해 8-bit 420 Video-range Pixel Buffer를 제공 → `AVAssetWriterInput`(H.264, `AVVideoColorPropertiesKey` 709 / 709 / 709)이 태깅해 기록. **공개 메타데이터는 출력 형식과 HDR 신호 제거를 증명하지만 Tone-curve 품질은 증명하지 못한다** — 기기 A/B 시각 검증이 Acceptance Evidence다.
+
+### 5. 원본 획득 전제
+
+`PhotosPicker`의 `preferredItemEncoding`은 반드시 `.current`다. `.automatic`이면 Photos가 HEVC / HDR 원본 대신 H.264 Rec.709 호환 Transcode를 전달하여 HDR 입력이 Preflight에 도달하지 못한다(Spike Run `C4DCC2C1`로 증명). Production Selector는 이미 `.current`이며 이는 테스트로 고정되는 불변조건이다.
+
+### 6. SDR Output Contract 적용 범위
+
+§3 Contract는 **Normalization 출력에만** 적용한다. Verbatim Fast-path Copy는 Phase-5-ready 규칙으로 이미 검증되었고 Source Transform / AVE를 그대로 보존하므로 Contract 대상이 아니다.
+
+### 7. Duration 허용 범위
+
+30 fps 재타이밍은 출력 Duration을 최대 1 Frame 늘릴 수 있다. 허용 범위: **`source duration <= output duration <= source duration + 1/30 s`**. 범위 밖은 Validation 실패다. 이 허용치는 Product Duration 경계(ADR-042)를 재정의하지 않는다.
+
+### 8. Cancellation / Output Ownership
+
+- 취소 신호는 Idempotent Token 하나(사용자 취소와 내부 Trigger가 같은 경로)로 전달하며 첫 요청이 기록되고 이후 요청은 무해하다.
+- Reader / Writer는 `cancelReading` / `cancelWriting`으로 종료한다.
+- **Partial Output 제거는 그 파일을 만든 Normalization Operation의 책임**이며 반환 전에 수행하고 제거 후 존재 여부를 다시 확인한다.
+- `finishWriting` 이후에 도착한 취소도 "취소됨 · Publish 없음"으로 처리하며 성공으로 바뀌지 않는다.
+- 실패 경로도 동일한 Cleanup Evidence(Partial 존재 여부 / 제거 성공 / 제거 후 존재 여부)를 남긴다.
+
+### 9. 원본 불변
+
+모든 Operation 후 Source(앱이 받은 Transient 복사본)의 Byte 수와 Modification Time이 변하지 않았음을 확인한다. Photos 원본은 어떤 경우에도 변경되지 않는다.
+
+### 10. Spike 처분
+
+Spike는 일회용 진단 코드다. main에 병합하지 않으며 `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec2972836a331d95fe7` 로 보존한다. Spike 파일을 Rename / Copy하여 Production 코드로 쓰지 않고 §11의 새 Abstraction으로 계약을 재구현한다.
+
+### 11. Production 이관
+
+**구현할 Abstraction(제안 위치 `MellowApp/Core/Projects/Import/`):**
+- `ImportPreflightClassifier` — 순수(`Sendable`) 분류기. 입력은 `ImportSourceInspector`가 `AVURLAsset`에서 만든 Facts(Container Brand, Duration, Natural Size / Transform, Codec / Profile / bpc, Color Tags, HDR Atoms, Frame Rate, Readable / Playable / Protected). 출력은 Duration / Invalid / Container / Orientation / Normalization-required / Ready의 독립 Verdict.
+- `WorkingMediaNormalizer` — §3 / §4 Pipeline. 주입된 Cancellation Token, 진행률은 Operation Result가 최종값을 직접 전달, 실패 · 취소 경로 모두 Cleanup Evidence 완성.
+- `SDRWorkingMediaContract` — §3의 순수 검증기(§6 범위, §7 Duration 허용 범위 포함).
+
+**Spike에서 복사하지 않을 설계(주의):** 진행률을 UI 상태에서 읽는 Race(Spike M1) 대신 Result가 최종값을 전달; Session UUID 대신 안정적 Clip / Media Identity; Non-Sendable Converter를 `Task.detached`에 그대로 캡처하지 않음; 실패 경로에서도 Cleanup Evidence 완성; Test Storage Directory를 명시 주입; 복원된 출력에 Classifier 문자열을 Verdict로 쓰지 않음; JSON 진단 기록 · A/B 재생 · Metrics Sampling · 35% Auto-cancel Toggle은 이관하지 않음.
+
+**이관할 Production Test:** Duration 경계(1.0 / 5.0 포함, 허용치 없음); Orientation 6 Case + 혼합; Container 7 Case(개명 2 + HEVC); HDR Trigger Matrix + 709 HEVC Fast Path; Raster 짝수 내림 / No-upscale; frameDuration Ceiling; SDR Contract 수락 / 거부 Matrix; Cancellation Token Idempotency · 완료 후 취소 미Publish · Partial Cleanup Idempotency; Duration 허용 범위 경계; `.current` 불변조건.
+
+## Device Gate Evidence (요약과 해시만 — Raw Media / JSON / Screenshot은 저장소에 넣지 않음)
+
+Evidence Branch: `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec2972836a331d95fe7`. 기기: LunaTestphone iPhone 12 (iPhone13,2), iOS 27.0. 모든 시나리오에서 Source Byte / mtime 불변, 이전 Evidence 보존.
+
+| # | 시나리오 | Run / Record | Source → Output | 판정 · 실행 | 결과 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 4K30 SDR Raster Normalization | 기록 이전 Run(JSON 없음) | `F1DA0428-….mov` 11,531,294 B → `D7586D27-…-h264.mov` 4,355,325 B | Normalize(raster > 1080p) · Reader / Writer 108 v / 7 a · 0.88 s | **PASS** — 2160×3840 → 1080×1920, Transform Bake |
+| 2 | 1080p60 → ≤30 fps Normalization | `2372D4D3-C1B3-4146-A343-D7D94F12901D` (schema 1, SHA-1 `e1367132…`) | `83E7CA5A-….mov` 9,300,189 B → `E3018749-…-h264.mov` 4,298,935 B | Normalize(frame rate > 30) · 94 v / 6 a · 0.78 s | **PASS** — 1872/600 → 1880/600 s(+0.4 Frame) |
+| 3 | 결정적 35% Cancellation Cleanup | `CDA8EBBF-9756-461C-A9A0-1CD50BEE6041` (schema 2, SHA-1 `a591371b…`) | `F1DA0428-….mov` → 후보 `5DF56325-…-h264.mov` | Normalize + Auto-cancel 0.35 · 취소 요청 진행률 0.35185(39번째 Sample) · Reader / Writer `cancelled` | **PASS** — success=false, cancelled=true, Partial 없음, 후보 파일 부재, Run Leftover 0, Source 불변 |
+| 4 | SDR H.264 QuickTime Fast-path Copy | `C4DCC2C1-0262-40D9-8AA8-4F937F9DC2C2` (schema 3, SHA-1 `e653c33b…`) | `C37B4967-….mov` 4,776,723 B → `C87C4FD7-…-copy.mov` 4,776,723 B, 양쪽 SHA-256 `b0fb3119…` | Ready QuickTime · Copy · 0.003 s | **PASS** — Byte-identical. 이 Source는 `.automatic` Picker가 HDR 촬영본을 H.264 709로 호환 Transcode한 것으로 §5의 근거. 기록의 `outputIsValidSDR=false`는 Copy에 Normalization Contract를 잘못 적용한 진단 결과이며 Copy 실패가 아니다(§6). |
+| 5 | HEVC Main10 HLG Rec.2020 Dolby Vision → H.264 8-bit Rec.709 | `0A6A18C4-DA65-4FD7-B791-0B13120D8330` · Result JSON 7,620 B · SHA-256 `8e8aefe83184d90963e37f0ceaaff19ac71173cd87b33edb0e7dfec103af8b59` | `8AC82D3F-AD04-4762-907D-7CBDF3D1C360.mov` 3,978,911 B · SHA-256 `1c1466cf3464359894f5c31e62f11017020a5ffa14c25a2190b72911ee6c6dbf` → `CB748153-EF96-4011-9294-02402FB4002D-h264.mov` 4,684,006 B · SHA-256 `44c124b8363e624768b5df330a09e14ec0fb6b729fe7e4cf2fee905c9e584908` | Normalize(HLG transfer, Rec.2020 primaries / matrix, 10-bit, 10-bit profile, Dolby Vision `dvvC`) · Reader / Writer completed · 106 v / 10 a · 2.13 s | **PASS** — 출력 avc1 High L4.0, bpc n/a(8-bit), 709 / 709 / 709, MDCV / CLLI / AVE / DV 없음, Identity Transform, 1080×1920 Portrait, 29.72 fps, 2140/600 s(+1 Frame), AAC 48 kHz Stereo Passthrough, `outputIsValidSDR=true`, `outputSDRProblems=[]`, **사용자 A/B 전 항목 PASS**(방향 · Crop / 늘어짐 없음 · 구도 동일 · 하이라이트 · 그림자 · 색 · 피부 / 중립 · 움직임 · 오디오) |
+
+관측 시간(0.78 / 0.88 / 2.13 s)은 Phase 13 Baseline Input이며 Threshold가 아니다.
+
+## Remaining Non-blocking Items
+
+- Tone-curve 품질은 단일 기기 · 단일 사용자 A/B로만 검증됨.
+- 출력 Duration은 최대 +1 Frame(§7).
+- Resource Metrics(Thermal / Footprint / Capacity)는 0.25 s Sampling Lower Bound.
+- Storage Estimate Formula / Safety Reserve, Recovery 깊이, Retry / Progress UX 메커니즘, Low-resolution Upscaling Policy는 후속 구현 Gate.
+- 알려진 `ProjectEditorModelTests` Thumbnail Request-order Flake는 Phase 6 Spike와 무관하다.
+
+## Non-goals
+
+- Phase 6 Production 구현 자체, Export Codec / Container, Post-V1 Container / Orientation 확장, Tone-mapping 품질 계량화.

@@ -488,7 +488,7 @@ Working Media를 만들 때 프로젝트 비율에 맞춘 Fill + Crop을 미리 
 
 Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 수정하거나 삭제하지 않는다.
 
-Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 원본 Source Reference는 유지하지 않는다(ADR-042). Working Media Codec / Container, 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 아직 확정하지 않는다.
+Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 원본 Source Reference는 유지하지 않는다(ADR-042). Working Media Codec / Container, SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 ADR-045(2026-09-18)로 확정되었다: 사용자가 고른 Photos 원본은 변경하지 않고, 지원되는 영상은 필요 시 내부 Working Media(세로 1080p급, 30 fps 이하, SDR QuickTime)로 변환되어 프로젝트에 들어가며, 지원하지 않는 Container나 가로 / 정사각형 영상은 명확히 거절된다. 이는 기술 결정이며 Phase 6 구현 완료를 뜻하지 않는다.
 
 1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source의 Upscaling 여부는 아직 확정하지 않는다.
 

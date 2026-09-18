@@ -629,6 +629,7 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | Photos Video Import | Phase 6 |
 | Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization + Preparation Sheet / 취소 / Retry / Storage 부족 / Invalid Filtering Presentation) |
 | Portrait-only Photos Import (ADR-043 + Revision 1) | Phase 5(Non-portrait = Non-ready, 선택 전체 거부 구현) / Phase 6(Per-item Non-portrait 제외 + Canonical 안내, 미구현) |
+| Phase 6 Working Media Technical Gate (ADR-045) | Resolved / PASS(Spike Evidence `04d83612`) — Production 구현 미완: `ImportPreflightClassifier` / `WorkingMediaNormalizer` / `SDRWorkingMediaContract` Phase 6 구현 대상 |
 | QuickTime-only Photos Import Container (ADR-044) | Phase 5(Container 미검사) / Phase 6(신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외, 미구현; MP4 Remux 없음) |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
@@ -1843,15 +1844,23 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역 보존
 - Segment Selection 없음, Source Reference 없음, 원본 범위 Re-trim 없음 (ADR-042)
 
+### Technical Gate — Resolved by ADR-045 (2026-09-18, Final Device Gate PASS)
+
+**상태: Resolved / PASS.** Technical Device Spike(LunaTestphone, Evidence Branch `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec2972836a331d95fe7`, main에 병합하지 않음)로 다섯 시나리오가 PASS했다: 4K30 SDR Raster Normalization, 1080p60 → ≤ 30 fps Normalization, 결정적 35% Cancellation Cleanup, SDR H.264 QuickTime Fast-path Copy, HEVC Main10 HLG Rec.2020 Dolby Vision → H.264 8-bit Rec.709(사용자 A/B PASS). 요약 · 해시는 ADR-045에만 기록하며 Raw Media / JSON / Screenshot은 저장소에 넣지 않는다. **이 PASS는 Phase 6 Production 구현 완료가 아니다** — Production Pipeline, Per-item Filtering, Preparation Presentation은 아래 Implementation Tasks대로 여전히 구현 대상이다.
+
+ADR-045로 확정된 항목(Working Media = QuickTime `.mov` · H.264 High 8-bit · Rec.709 / 709 / 709 Video Range · 1080p-class Portrait Bounding Box(Scale-down만, Crop / Pad 없음, 짝수 내림) · ≤ 30 fps(`max(minFrameDuration, 1/30)`) · Transform Bake + Identity 출력 · AAC Passthrough; Tone-mapping = `AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition` Rec.709 Working Color Space + `AVAssetWriter`; 공개 메타데이터는 형식 / HDR 신호 제거만 증명하고 Tone-curve 품질은 기기 A/B가 Acceptance Evidence; `preferredItemEncoding .current`는 HEVC / HDR 원본 Preflight 도달의 필수 전제; AVE 단독은 HDR 신호 아님; SDR Output Contract는 Normalization 출력에만 적용; 출력 Duration 허용 `source <= output <= source + 1/30 s`; Partial Output Cleanup은 생성 Operation 책임; Idempotent Cancellation Token + 완료 후 취소도 Publish 금지; Source Byte / mtime 불변 확인).
+
+**Production 구현 대상 Abstraction(ADR-045 §11, Spike 코드 Rename / Copy 금지):** `ImportPreflightClassifier`(+ `ImportSourceInspector` Facts), `WorkingMediaNormalizer`, `SDRWorkingMediaContract`. **이관할 Production Test:** Duration 경계 · Orientation 6 Case + 혼합 · Container 7 Case · HDR Trigger Matrix + 709 HEVC Fast Path · Raster 짝수 내림 / No-upscale · frameDuration Ceiling · SDR Contract Matrix · Cancellation Token Idempotency / 완료 후 취소 / Partial Cleanup Idempotency · Duration 허용 범위 경계 · `.current` 불변조건. **Spike에서 복사하지 않을 설계:** 진행률 UI-state Race(Result가 최종값 전달), Session UUID Identity(안정 Clip / Media Identity), Non-Sendable Converter의 `Task.detached` 캡처, 실패 경로 Cleanup Evidence 누락, 암묵적 Test Storage Directory, 복원 출력의 Classifier 문자열을 Verdict로 사용.
+
 ### Pending Technical Gate
 
-실제 Phase 6 Normalization Pipeline 구현 전에 다음 항목을 사용자 승인으로 확정해야 한다.
+실제 Phase 6 Normalization Pipeline 구현 전에 다음 항목을 사용자 승인으로 확정해야 한다(ADR-045 이후 남은 항목).
 
-- Working Media Codec
-- Working Media Container(출력; Source Container Eligibility는 ADR-044로 QuickTime-only 확정 — 별개 Decision)
-- 정확한 SDR Color Profile / Tagging
-- Low-resolution Source Upscaling Policy
-- 1080p-class Working Media의 정확한 Raster Dimension Rule
+- ~~Working Media Codec~~ — Resolved by ADR-045(H.264 High 8-bit)
+- ~~Working Media Container(출력)~~ — Resolved by ADR-045(QuickTime `.mov`; Source Container Eligibility는 ADR-044)
+- ~~정확한 SDR Color Profile / Tagging~~ — Resolved by ADR-045(Rec.709 / 709 / 709 Video Range, HDR 신호 없음)
+- Low-resolution Source Upscaling Policy(ADR-045: Scale-down Rule만 확정, Upscale 여부 Pending)
+- ~~1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(1080p-class Bounding Box, 짝수 내림, Crop / Pad 없음)
 - 5초 이하 전체 Source, Picker Transient 복사본, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
 - Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식
@@ -1861,13 +1870,13 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 
 이 Gate가 해결되지 않으면 실제 Normalization 구현을 시작하지 않는다.
 
-Technical Device Spike(2026-09-18, LunaTestphone)의 남은 기기 Gate는 (1) Mid-run Cancellation + 임시 / Partial File 완전 Cleanup, (2) HDR / Dolby Vision → SDR 변환 검증뿐이다. MP4 → QuickTime Passthrough Remux 기기 Test는 ADR-044로 제거되었고(Spike의 Remux 경로는 일회용 진단 코드), Landscape / Square 변환 Test는 ADR-043으로 요구되지 않는다.
+Technical Device Spike(2026-09-18, LunaTestphone)의 기기 Gate는 모두 해결되었다(ADR-045): Mid-run Cancellation + Partial File Cleanup PASS, HDR / Dolby Vision → SDR PASS. MP4 → QuickTime Passthrough Remux 기기 Test는 ADR-044로 제거되었고(Spike의 Remux 경로는 일회용 진단 코드로 제거됨), Landscape / Square 변환 Test는 ADR-043으로 요구되지 않는다.
 
 1080p-class를 Project Output Canvas로 미리 Crop하거나 저해상도 Source를 무조건 확대한다는 의미로 해석하지 않으며 정확한 Raster Formula와 Upscaling 여부를 임의로 정하지 않는다.
 
 Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개의 Decision일 수 있다.
 
-Tone-mapping 구현 방법은 여전히 Pending이며 필요한 결정은 관련 Normalization 구현 전에 해결하되 여기서 특정 Algorithm이나 Apple API 조합을 강제하지 않는다.
+Tone-mapping 구현 방법은 ADR-045로 확정되었다(AVFoundation Compositor의 Rec.709 Working Color Space; 품질은 기기 A/B가 Acceptance Evidence).
 
 Import Storage Estimate는 5초 이하 전체 Source와 승인된 Pipeline이 Operation lifetime에 추가로 요구하는 Peak Storage를 기준으로 한다. System PhotosPicker는 Photos Read 권한 없이 선택 File 전체를 Mellow 임시 영역으로 전송하므로 그 Transient 복사본은 Peak에 포함하되 Commit 이후 보관하지 않는다.
 
@@ -3499,11 +3508,8 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 
 - Imported Clip Re-trim 범위 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만(원본 범위 Re-trim 없음).
 - Source Reference 유지 여부 — Resolved by ADR-042: 유지하지 않는다.
-- Working Media Codec
-- Working Media Container
-- 정확한 SDR Color Profile / Tagging
+- Working Media Codec / Container / SDR Tagging / Raster Dimension Rule / Tone-mapping 메커니즘 — Resolved by ADR-045(2026-09-18, Final Device Gate PASS; Production 구현은 별도).
 - Low-resolution Source Upscaling Policy
-- 1080p-class Working Media의 정확한 Raster Dimension Rule
 - 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
