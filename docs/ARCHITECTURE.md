@@ -984,8 +984,8 @@ Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p
 
 Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른다(Phase 6 구현 요구; 정확한 Copy는 ADR-042 Revision 4 / DESIGN 15절).
 
-1. **Preflight 분류:** 선택 항목마다 전체 Source Duration Eligibility(ADR-042), Presentation Orientation(ADR-043 Revision 1: `naturalSize`에 `preferredTransform`을 적용한 Presentation Geometry에서 `presentationHeight > presentationWidth`일 때만 Eligible; Landscape(`<`)와 Square(`==`)는 Non-portrait Presentation = V1 미지원; 자연 크기 1920×1080 + 90° Transform = Portrait, Mirroring은 Orientation을 바꾸지 않음; naturalSize 단독 판정 금지), Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 여부를 검사하고 Portrait 항목에 대해 Phase-5-ready / Normalization-required를 판정한다.
-2. **제외 경계:** Duration-ineligible 항목, Non-portrait Presentation 항목, Preflight 판별 Invalid 항목(서로 독립적인 Preflight 분류)은 Per-item으로 제외되며 임시 / Project-owned Media를 만들지 않고 Workspace / Materialize / Normalize / Persist 어느 Transaction에도 들어가지 않는다. 남은 항목이 **Accepted Set**이고 Phase-5-ready와 Normalization-required 항목이 공존할 수 있다. Replace는 후보가 하나이며 Preflight 거부 시 기존 Clip / Media를 보존한다.
+1. **Preflight 분류:** 선택 항목마다 전체 Source Duration Eligibility(ADR-042), Source Container Eligibility(ADR-044: 신뢰성 있는 Media / Container Inspection — 실제 File Type / Brand — 으로 QuickTime Movie만 Container-eligible, MP4 / ISO BMFF / 기타 / Unknown은 Unsupported; 확장자만으로 판정 금지; H.264 / HEVC 모두 가능), Presentation Orientation(ADR-043 Revision 1: `naturalSize`에 `preferredTransform`을 적용한 Presentation Geometry에서 `presentationHeight > presentationWidth`일 때만 Eligible; Landscape(`<`)와 Square(`==`)는 Non-portrait Presentation = V1 미지원; 자연 크기 1920×1080 + 90° Transform = Portrait, Mirroring은 Orientation을 바꾸지 않음; naturalSize 단독 판정 금지), Preflight에서 신뢰성 있게 판별되는 Malformed / Unreadable / Unsupported 여부를 검사하고 Portrait 항목에 대해 Phase-5-ready / Normalization-required를 판정한다.
+2. **제외 경계:** Duration-ineligible 항목, Non-portrait Presentation 항목, Preflight 판별 Invalid / Unsupported 항목(Unsupported Container 포함; 서로 독립적인 Preflight 분류)은 Per-item으로 제외되며 Remux / Container 변환 경로 없이 임시 / Project-owned Media를 만들지 않고 Workspace / Materialize / Normalize / Persist 어느 Transaction에도 들어가지 않는다. 남은 항목이 **Accepted Set**이고 Phase-5-ready와 Normalization-required 항목이 공존할 수 있다. Replace는 후보가 하나이며 Preflight 거부 시 기존 Clip / Media를 보존한다.
 3. **Storage Preflight:** Accepted Set의 Materialization / Normalization을 시작하기 전에 Estimated Required Space + Safety Reserve를 검사한다(62절). 부족하면 어떤 Media도 생성하지 않고 Project를 변경하지 않는다. Formula / Reserve / Free-space API / Race 처리는 Technical Gate다.
 4. **Preparation Operation:** Accepted Set에 Normalization-required 항목이 있으면 자동으로 하나의 취소 가능한 Preparation Operation을 시작하고(Feature Layer는 Blocking Sheet와 `current/total` Progress를 표시) Workspace 안에서 Materialize / Normalize한다. 전부 Phase-5-ready이면 기존 Copy 경로만 사용한다.
 5. **취소:** Cooperative Cancellation 요청 후 그 Operation이 만든 임시 / 부분 생성 파일을 모두 제거하고 Project / Clip Metadata를 변경하지 않는다(Replace 기존 Clip 보존). ADR-021의 Active Usage 원칙에 따라 실제 Release 이후 정리한다. 구체적 API는 Technical Gate다.
@@ -2310,6 +2310,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Portrait Composition
 - Landscape Composition(Landscape Project 복원 이후; ADR-043 Revision 1: V1 Photos Import는 Landscape / Square Source를 받지 않음)
 - Non-portrait Presentation Source(Landscape / Square)의 Preflight 제외 및 Portrait 항목 계속 진행(ADR-043 Revision 1; `presentationHeight > presentationWidth` Presentation Geometry 기반 결정적 Test)
+- Unsupported Container Source(MP4 / ISO BMFF / Unknown)의 Preflight 제외 및 QuickTime 항목 계속 진행, 확장자 비권위, Remux 경로 없음(ADR-044; 실제 Brand 기반 결정적 Test)
 - Audio Track 유지
 - Fill + Crop
 - 4K Input to 1080p Output
@@ -2448,6 +2449,7 @@ Third-party Dependency 도입 전 이유를 `DECISIONS.md`에 기록한다.
 - 4K를 포함한 고해상도 Photos Video를 Import할 수 있다.
 - SDR, HDR / Dolby Vision 및 30 fps 초과 Source Import를 허용한다.
 - V1 Photos Import는 `presentationHeight > presentationWidth`인 Portrait Presentation Source만 받아들이며 Landscape / Square(Non-portrait Presentation) Source는 Preflight에서 제외한다(ADR-043 Revision 1).
+- V1 Photos Import는 실제 Container가 QuickTime Movie인 Source만 받아들이며(H.264 / HEVC) MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Container Inspection으로 Preflight에서 제외하고 Remux / Container 변환을 제공하지 않는다(ADR-044).
 - Photos Video는 전체 Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 Import하며(ADR-042) 범위 안의 Source 전체를 1080p-class / 30 fps / SDR Working Media로 정규화한다. Segment Selection과 Source Reference는 없다.
 - Working Media는 Source Presentation Aspect Ratio와 Framing 가능 영역을 보존하며 Project Fill + Crop을 bake-in하지 않는다.
 - MVP Preview와 Export는 SDR이며 HDR Export는 MVP에서 제공하지 않는다.

@@ -225,6 +225,7 @@ The following guardrails must not be changed without an approved decision and co
 - Duration selection is a camera/capture-level setting changeable between clips, not an immutable project property.
 - A Photos source video is accepted only when its entire duration satisfies 1.0 second <= sourceDuration <= 5.0 seconds (inclusive; exact 1.0 s and 5.0 s accepted, noninteger allowed); sources shorter than 1.0 s or longer than 5.0 s are rejected after metadata validation and there is no long-source segment selection, source reference, or full-range re-trim (ADR-042).
 - Any Mellow clip must satisfy 0 < duration <= 5 seconds; imported clips may have noninteger durations and do not follow camera presets.
+- V1 Photos import accepts only sources whose actual container is QuickTime Movie (H.264 or HEVC inside); MP4 / ISO BMFF, other and unknown containers are excluded during preflight by reliable container inspection (never by file extension alone), with no remux or container conversion (ADR-044).
 - V1 Photos import accepts only sources whose presentation (after the preferred transform) satisfies `presentationHeight > presentationWidth`; landscape and square presentations are one non-portrait category, excluded during preflight with no media operation and no conversion (ADR-043 Revision 1). Never classify orientation from naturalSize alone; mirroring alone does not change orientation.
 - Photos original media must not be modified or deleted by Mellow.
 - Multiple local drafts are supported.

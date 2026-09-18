@@ -150,6 +150,7 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - 선택한 Maximum에서 Auto Stop하며 Manual Early Stop을 허용하고 정확한 정수 Output 길이를 강제하지 않는다.
 - 모든 Source의 Clip은 `0 < effectiveClipDuration <= 5 seconds`를 만족한다.
 - Photos Video Source는 전체 Duration이 `1.0s <= duration <= 5.0s`(양 끝 포함)일 때만 받아들이며 1.0초 미만 / 5.0초 초과 Source는 거부하고 Segment Selection을 제공하지 않는다(ADR-042).
+- V1 Photos Import는 실제 Container가 QuickTime Movie인 Source만 받아들이며(H.264 / HEVC 모두) MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Container Inspection(확장자만으로 판정 금지)으로 Preflight에서 제외하고 Remux / Container 변환을 제공하지 않는다(ADR-044).
 - V1 Photos Import는 preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`인 Source만 받아들이며 가로(`<`) / 정사각형(`==`) Non-portrait Source는 Preflight에서 제외하고 어떤 Media Operation도 하지 않는다. naturalSize만으로 Orientation을 판정하지 않는다(ADR-043 Revision 1).
 - Imported Clip은 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.

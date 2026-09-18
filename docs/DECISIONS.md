@@ -2187,7 +2187,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 
 다음 목록은 Pending Decision과 이후 해결된 항목의 이력을 함께 유지한다.
 
-`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042` 또는 `Resolved by ADR-043`으로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
+`Resolved by ADR-022`, `Resolved by ADR-023`, `Resolved by ADR-024`, `Resolved by ADR-025`, `Resolved by ADR-026`, `Resolved by ADR-028`, `Resolved by ADR-042`, `Resolved by ADR-043` 또는 `Resolved by ADR-044`로 표시된 Policy / UX Structure는 확정되었으며 나머지 Pending Technical Detail은 임의로 구현 기준을 결정하지 않는다.
 
 ### HDR and Color
 
@@ -2234,6 +2234,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
+- Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; **Pending:** 단일 후보 / Replace의 Unsupported-media 안내 Copy.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
@@ -2688,7 +2689,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - ADR-022 / ARCHITECTURE 38절의 "16:9 Source를 9:16 Project에 가져온다는 이유로 … 잘라 저장하지 않으며" 예시와 ADR-011 / FEATURES F-MVP-022 / DESIGN 17절의 "9:16 프로젝트에 16:9 영상" 예시: V1에는 해당 입력이 존재하지 않는다. Fill + Crop bake-in 금지, Framing 가능 영역 보존, Presentation Transform 해석 원칙은 Portrait Source에 대해 그대로 유지된다.
 - ROADMAP Phase 6 Included "Landscape / Presentation Transform이 다른 Source 허용", Implementation Task 4 / 7, Integration Test "Landscape Source", "16:9 Source → 9:16 Project …", Physical / Measurement Scenario "Landscape, Aspect Mismatch", Technical Gate의 Landscape Re-encode 항목: 같은 작업에서 정렬한다.
 
-**Explicitly Unchanged:** ADR-032 / ADR-033의 Portrait-only Direct Capture, ADR-042의 `1.0s <= entire Photos source duration <= 5.0s`, Portrait Source의 Raster Downscale / HDR → SDR / Frame-rate 변환 / MP4 Remux / Transform Bake / Audio 보존 / Transactional Safety / Photos 원본 불변, Landscape 16:9 Project의 Domain / Schema 표현(V1 이후 복원 결정).
+**Explicitly Unchanged:** ADR-032 / ADR-033의 Portrait-only Direct Capture, ADR-042의 `1.0s <= entire Photos source duration <= 5.0s`, Portrait Source의 Raster Downscale / HDR → SDR / Frame-rate 변환 / ~~MP4 Remux~~(ADR-044로 제거) / Transform Bake / Audio 보존 / Transactional Safety / Photos 원본 불변, Landscape 16:9 Project의 Domain / Schema 표현(V1 이후 복원 결정).
 
 ## Context
 
@@ -2724,7 +2725,7 @@ Select Clips / Add의 Accepted Set은 Duration-eligible이고 Preflight-invalid�
 
 - V1 Photos Import에만 적용된다. Portrait-only Direct Capture 정책은 그대로다.
 - Phase 6에서 Landscape Import Normalization을 제거한다.
-- 1.0–5.0초 Duration 경계, Portrait Source의 Raster Downscale / HDR 변환 / Frame-rate 변환 / MP4 Remux / Transform 처리 / Audio 보존 / Transactional Safety / Photos 원본 불변은 바꾸지 않는다.
+- 1.0–5.0초 Duration 경계, Portrait Source의 Raster Downscale / HDR 변환 / Frame-rate 변환 / ~~MP4 Remux~~(ADR-044: V1에서 제거) / Transform 처리 / Audio 보존 / Transactional Safety / Photos 원본 불변은 바꾸지 않는다.
 - ~~Square(정사각) Presentation은 이 ADR이 정하지 않는다.~~ — **Revision 1로 해소:** Square(`presentationHeight == presentationWidth`)는 Landscape와 함께 Non-portrait Presentation으로 Unsupported이며 Canonical Predicate는 `presentationHeight > presentationWidth`이다.
 
 ### 구현 상태
@@ -2739,15 +2740,117 @@ Select Clips / Add의 Accepted Set은 Duration-eligible이고 Preflight-invalid�
 
 ## Consequences
 
-- Phase 6 Normalization 대상은 Portrait Presentation Source의 4K / High-resolution, HDR / Dolby Vision, >30 fps, 기타 Codec / 컨테이너 사유로 좁혀진다. Landscape Device Normalization Test는 요구되지 않는다.
+- Phase 6 Normalization 대상은 Portrait Presentation Source의 4K / High-resolution, HDR / Dolby Vision, >30 fps, 기타 Codec 사유로 좁혀진다(ADR-044: Source Container는 Normalization 사유가 아니라 Preflight Container Eligibility — QuickTime만 허용). Landscape Device Normalization Test는 요구되지 않는다.
 - Phase 7 Framing은 Accepted Portrait Project-owned Media의 비율 불일치(예: 4:3 Portrait)에 대해서만 Fill + Crop을 다룬다(Revision 1: Square는 Import 대상이 아니다).
 - Validation 결과 모델은 Non-portrait Presentation(Landscape / Square)을 Duration / Invalid와 구분되는 Preflight 제외 사유로 표현해야 한다(Revision 1).
 
 ## Still Pending (이 ADR이 확정하지 않음)
 
 - ~~Square Presentation의 취급.~~ — Revision 1(2026-09-18)로 해소(Unsupported, Non-portrait Presentation).
-- ADR-042 Still Pending의 나머지 Technical Gate(Codec / Container / SDR Tagging / Tone-mapping / Upscaling / Raster / Storage / Recovery / API / Progress / Retry) — 변경 없음.
+- ADR-042 Still Pending의 나머지 Technical Gate(Codec / Container / SDR Tagging / Tone-mapping / Upscaling / Raster / Storage / Recovery / API / Progress / Retry) — 변경 없음(ADR-044: Source Container Eligibility는 해소, Working Media Container(출력)는 여전히 Pending).
 
 ## Non-goals
 
 - Landscape Project 복원 시점(Post-V1), Landscape / Square Import의 향후 지원 방식, Phase 7 Framing UX, 구현.
+
+---
+
+# ADR-044 — QuickTime-Only Photos Import Container Eligibility
+
+**Date:** 2026-09-18
+**Status:** Accepted (사용자 승인)
+
+**Supersedes / Clarifies:**
+- ADR-043 "Explicitly Unchanged"와 "범위"의 "Portrait Source의 … MP4 Remux …" 언급: MP4 Remux는 더 이상 Phase 6 범위가 아니다. Portrait-only 원칙(ADR-043 Revision 1)은 변경되지 않는다.
+- ADR-043 Consequences의 "기타 Codec / 컨테이너 사유로 좁혀진다": Source **Container**는 Normalization 사유가 아니라 Preflight Container Eligibility다. Codec / Working-media 사유는 유지된다.
+- ADR-042의 "Preflight에서 판별 가능한 Duration 외 Invalid Media"(Revision 4 §5): Unsupported Container는 이 기존 범주에 속한다(새 범주 아님).
+- ROADMAP Phase 6 Technical Gate / Spike 계획 중 "MP4 → QuickTime Passthrough Remux" 기기 검증 항목: 제거(역사 기록은 보존하고 로컬 표시).
+
+**Explicitly Unchanged:** ADR-042 Duration Eligibility / Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Preparation Sheet / 취소 / Runtime 실패 / Storage 계약, ADR-043 Revision 1 Non-portrait Preflight, Phase 6 Normalization(4K / High raster, >30 fps, HDR / Dolby Vision → SDR, 기타 승인된 Working-media 불일치), Storage / Cancellation / HDR / Recovery Technical Gate, **Working Media Codec / Container(출력) Pending**(Source Container 결정과 별개), Export Codec / Container Pending, Photos 원본 불변.
+
+## Context
+
+Mellow V1의 설계 Workflow는 **iPhone에서 촬영 → Photos에서 선택 → Mellow 안에서 준비**다. iPhone Camera / Photos가 만드는 영상은 QuickTime Movie Container(H.264 또는 HEVC)이며 Mellow의 Project-owned Media도 QuickTime(`.mov`)이다. Phase 6 Technical Device Spike(2026-09-18, LunaTestphone)는 MP4 → QuickTime Passthrough Remux 경로를 후보로 조사했으나, 이 경로는 V1 Workflow 밖의 입력(타 기기 / 메신저 / 데스크톱 Export)을 위한 추가 Pipeline · 검증 · 실패 모드를 요구한다. 사용자는 **V1 Photos Import를 실제 Container가 QuickTime Movie인 영상으로 한정**하는 Product 결정을 승인했다.
+
+## Decision
+
+### 1. Actual-container Eligibility Rule
+
+- 실제 Container가 **QuickTime Movie**이면 Container-eligible이며 다른 독립 Preflight 규칙으로 계속 진행한다.
+- 실제 Container가 **MP4 / ISO Base Media**이면 V1 미지원이다.
+- 그 밖의 non-QuickTime 또는 알 수 없는 Container도 V1 미지원이다.
+
+### 2. File Extension Non-authority
+
+- 파일 확장자만으로 Eligibility를 결정하지 않는다. Container 판정은 실제 File Type / Brand 등 신뢰성 있는 Media / Container Inspection으로 한다.
+- `.mp4` → `.mov` 이름 변경은 파일을 Eligible로 만들지 않는다.
+- `.mov` → `.mp4` 이름 변경은 신뢰성 있는 Inspection이 QuickTime임을 증명하면 파일을 Ineligible로 만들지 않는다.
+
+### 3. QuickTime ≠ H.264-only
+
+QuickTime Container-eligible Source는 지원되는 **H.264 또는 HEVC** Media를 담을 수 있다. Container Eligibility를 Codec 제한으로 해석하지 않는다. Codec / 색 / 해상도 / 프레임레이트 적합성은 Phase-5-ready / Normalization-required 판정이 따로 다룬다.
+
+### 4. Eligibility는 자동 수락이 아니다
+
+Container-eligible QuickTime Source도 다음 독립 Preflight 규칙을 모두 통과해야 한다: 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042), Portrait Presentation `presentationHeight > presentationWidth`(ADR-043 Revision 1), Readable / Usable, Protected 아님, 지원되는 Video / Audio 특성. 통과한 Source는 **Phase-5-ready**(Project-owned Media로 복사) 또는 **Phase-6 Normalization-required**(4K / High raster, 30 fps 초과, HDR / Dolby Vision, 기타 승인된 Working-media 불일치)다.
+
+### 5. V1이 제공하지 않는 것
+
+MP4 → QuickTime Remux, Passthrough Container 변환, 임의 Container 변환, Container 변환 안내 / 옵션, 사용자 선택 출력 Container. Unsupported-container 항목은 Copy / Remux / Normalize / Persist / Append / Replace 어느 Media Operation에도 들어가지 않는다.
+
+### 6. Unsupported-container 동작
+
+- **Select Clips / Editor Add:** 후보마다 독립 분류; MP4 · 기타 non-QuickTime · 신뢰성 있게 판별된 Unsupported-container 항목은 어떤 Media Operation / Project 변경보다 먼저 제외; 남은 Accepted QuickTime 후보로 계속; 남는 항목이 없으면 Select Clips는 Project 미생성, Editor Add는 무변경.
+- **Replace:** Unsupported-container 후보는 거부하고 기존 Clip · Media · Metadata · Slot을 보존하며 부분 교체 없음.
+- Photos 원본은 변경되지 않는다.
+- **Accepted Set Atomicity**(ADR-042 Revision 3 / 4)는 신뢰성 있게 Preflight 판별되는 모든 제외(Duration / Non-portrait / Invalid-or-Unsupported) 이후의 Accepted Set에 그대로 적용된다.
+
+### 7. Presentation Copy (기존 승인 범주 재사용, MP4 전용 Alert 없음)
+
+| 상황 | Title | Message |
+| --- | --- | --- |
+| Select Clips / Editor Add에서 Unsupported-container(및 기타 Preflight Invalid / Unsupported)만 제외 | `일부 영상을 추가할 수 없어요` | `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` |
+| Duration / Non-portrait 등 다른 제외 사유와 복합 | `일부 영상이 제외되었어요` | `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.` |
+| 단일 후보 선택 / Replace 후보가 Unsupported-container | **미확정** — 아래 Still Pending | |
+
+완료된 Operation당 통합 안내 최대 1회, 항목 수 표시 없음, 취소 / Runtime 실패 우선(ADR-042 Revision 4). 승인된 Duration / Non-portrait Copy는 다시 열지 않는다.
+
+### 8. ADR-042 / ADR-043과의 관계
+
+Duration(ADR-042), Orientation(ADR-043 Revision 1), Container(ADR-044), Preflight Invalid Media는 서로 독립적인 Preflight 분류이며 어느 것도 Normalization 사유가 아니다. Unsupported Container는 ADR-042 Revision 4 §5의 "Preflight에서 판별 가능한 Invalid / Unsupported Media" 범주에 속한다.
+
+### 9. 제거되는 계획
+
+Phase 6 Included / Technical Gate / 구현 Task / Unit · Integration · Physical Device Test / Acceptance / Exit / Measurement Evidence / Traceability에서 MP4 Import와 MP4 → QuickTime Passthrough Remux를 제거한다. 역사 기록(Spike 조사, 이전 ADR 언급)은 보존하고 "ADR-044로 대체"를 로컬 표시한다.
+
+### 10. 구현 상태
+
+- **승인된 Product 정책:** 위 1–7항.
+- **현재 Phase 5 동작:** `Phase5ReadyMediaValidator`는 Container를 검사하지 않으며(AVFoundation이 열 수 있는 파일을 그대로 판정) 첫 Non-ready / Invalid 항목에서 선택 전체를 거부한다. 단일 항목 Invalid는 `영상을 열 수 없어요` / `선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요.`를 표시한다(구현 사실이며 이 ADR이 승인 Copy로 채택하지 않는다).
+- **DEBUG Spike:** 현재 Spike는 `ftyp` Brand Sniffing과 MP4 → QuickTime Passthrough Remux 경로를 포함한다. 이는 Technical Gate 조사를 위한 **일회용 진단 코드**이며 Product 동작이 아니다; Spike 정리에서 제거될 예정이다.
+- **미래 Phase 6 Production:** 신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외 + 위 Copy는 **승인되었으나 미구현**인 Phase 6 요구사항이다. 이 ADR은 Swift / Test / Spike를 변경하지 않는다.
+
+### 11. 남은 Technical Device Spike Gate
+
+ADR-044 이후 남은 Phase 6 Technical Device Spike Gate는 (1) Mid-run Cancellation과 임시 / Partial File 완전 Cleanup, (2) LunaTestphone에서 HDR / Dolby Vision → SDR 변환 검증뿐이다. MP4 Remux 기기 Test는 요구되지 않으며 Landscape / Square 변환 Test도(ADR-043) 요구되지 않는다.
+
+## Rationale
+
+- V1 입력원은 iPhone 촬영본이며 그 Container는 QuickTime이다. MP4 지원은 Workflow 밖 입력을 위한 별도 Pipeline과 검증을 요구한다.
+- Remux는 Metadata / Transform / Audio 보존 증명이 필요한 추가 실패 표면이며 Phase 6 핵심(Normalization, Storage, Cancellation, HDR)에 집중하기 위해 제외한다.
+- Unsupported Container를 기존 Invalid / Unsupported 범주로 다루면 새 Alert · 상태 · Transaction 경계가 생기지 않는다.
+
+## Consequences
+
+- Validation 결과 모델은 Unsupported Container를 Preflight Invalid / Unsupported 범주로 표현하되 확장자가 아닌 실제 Container Inspection에 근거해야 한다.
+- Phase 6 Working Media는 QuickTime Source에서만 생성된다; Working Media Codec / Container(출력)의 Technical Gate는 그대로 Pending이다.
+- Post-V1에서 MP4 / 기타 Container Import 재검토는 Out of Scope이며 Phase 6 Blocker가 아니다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- **단일 후보 선택 / Replace 후보가 Unsupported-container(또는 기타 Preflight Invalid / Unsupported)일 때의 정확한 안내 Copy** — 문서에 승인된 단일 항목 Unsupported-media Copy가 없어 이 ADR이 발명하지 않는다(유일하게 남은 좁은 UX 질문).
+- Working Media Codec / Container(출력), SDR Tagging / Tone-mapping, Upscaling / Raster, Storage Formula / Reserve, Recovery, API / Progress / Retry — 변경 없음.
+
+## Non-goals
+
+- Post-V1 MP4 / 기타 Container Import, Container 변환 UX, Export Container, 구현.
