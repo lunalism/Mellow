@@ -55,6 +55,9 @@
 		00000000000000000000023F /* ProjectCompositionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013F /* ProjectCompositionCoordinator.swift */; };
 		00000000000000000000024A /* ProjectMediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014A /* ProjectMediaStore.swift */; };
 		00000000000000000000024B /* Phase5ReadyMediaValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014B /* Phase5ReadyMediaValidator.swift */; };
+		000000000000000000000267 /* ImportSourceFacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000167 /* ImportSourceFacts.swift */; };
+		000000000000000000000268 /* ImportPreflightClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000168 /* ImportPreflightClassifier.swift */; };
+		000000000000000000000269 /* ImportPreflightClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000169 /* ImportPreflightClassifierTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -172,6 +175,9 @@
 		00000000000000000000013F /* ProjectCompositionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCompositionCoordinator.swift; sourceTree = "<group>"; };
 		00000000000000000000014A /* ProjectMediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaStore.swift; sourceTree = "<group>"; };
 		00000000000000000000014B /* Phase5ReadyMediaValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase5ReadyMediaValidator.swift; sourceTree = "<group>"; };
+		000000000000000000000167 /* ImportSourceFacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSourceFacts.swift; sourceTree = "<group>"; };
+		000000000000000000000168 /* ImportPreflightClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreflightClassifier.swift; sourceTree = "<group>"; };
+		000000000000000000000169 /* ImportPreflightClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreflightClassifierTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -298,6 +304,7 @@
 				000000000000000000000156 /* ProjectStorageGateTests.swift */,
 				000000000000000000000157 /* SavedProjectIdentityTests.swift */,
 				000000000000000000000158 /* PhotosVideoSelectorTests.swift */,
+				000000000000000000000169 /* ImportPreflightClassifierTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -547,6 +554,15 @@
 			path = Thumbnails;
 			sourceTree = "<group>";
 		};
+		000000000000000000000320 /* Import */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000167 /* ImportSourceFacts.swift */,
+				000000000000000000000168 /* ImportPreflightClassifier.swift */,
+			);
+			path = Import;
+			sourceTree = "<group>";
+		};
 		00000000000000000000031F /* Projects */ = {
 			isa = PBXGroup;
 			children = (
@@ -562,6 +578,7 @@
 				00000000000000000000014D /* ProjectMediaSelection.swift */,
 				00000000000000000000014E /* PhotosVideoSelector.swift */,
 				00000000000000000000014F /* ProjectCompositionTestDoubles.swift */,
+				000000000000000000000320 /* Import */,
 			);
 			path = Projects;
 			sourceTree = "<group>";
@@ -724,6 +741,8 @@
 				000000000000000000000263 /* ClipAvailability.swift in Sources */,
 				00000000000000000000024A /* ProjectMediaStore.swift in Sources */,
 				00000000000000000000024B /* Phase5ReadyMediaValidator.swift in Sources */,
+				000000000000000000000267 /* ImportSourceFacts.swift in Sources */,
+				000000000000000000000268 /* ImportPreflightClassifier.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,
 				00000000000000000000024D /* ProjectMediaSelection.swift in Sources */,
 				00000000000000000000024E /* PhotosVideoSelector.swift in Sources */,
@@ -798,6 +817,7 @@
 				000000000000000000000256 /* ProjectStorageGateTests.swift in Sources */,
 				000000000000000000000257 /* SavedProjectIdentityTests.swift in Sources */,
 				000000000000000000000258 /* PhotosVideoSelectorTests.swift in Sources */,
+				000000000000000000000269 /* ImportPreflightClassifierTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,
