@@ -510,7 +510,7 @@ Imported Clip은 전체 Source Duration이 `1.0s <= duration <= 5.0s`인 Photos 
 
 SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 전체 Source를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다. Normalization은 전체 Source Duration Eligibility(F-MVP-019) 검사 이후에만 시작한다.
 
-1080p-class는 고해상도 Source의 Working Target이며 저해상도 Source의 Upscaling 여부와 정확한 Raster Dimension Rule은 아직 확정하지 않는다.
+1080p-class는 고해상도 Source의 Working Target이다. ADR-047에 따라 저해상도 Source는 절대 확대하지 않으며 Working Media 크기는 `scale = min(1.0, 1080 / width, 1920 / height)`로 축소만 하고 각 변을 짝수로 내림한다(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920, 2160×3840 → 1080×1920).
 
 ### Normalization Acceptance Criteria
 
@@ -521,6 +521,7 @@ SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 �
 - Source Rotation / Presentation Transform을 올바르게 반영하여 Framing 가능한 화면 영역이 손상되지 않는다.
 - Normalization Output은 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Orientation 손상 등 명백한 변환 실패를 정상 Media로 등록하지 않는다.
 - 실패와 취소 시 Valid Source / Staging 및 Recovery Candidate는 확정된 Media Safety 계약에 따라 보호한다.
+- ADR-047: Normalization 도중 앱이 종료되면 작업을 재개하지 않는다(Checkpoint · Resume · Background 계속 없음). 프로젝트와 기존 Clip은 변경되지 않고(Replace는 기존 Clip 보존) 남은 임시 파일은 다음 실행이 자동으로 정리하며 사용자는 원하면 영상을 다시 선택한다. 승인되었으나 미구현.
 - Import / Normalization의 Estimated Peak Additional Storage와 Safety Reserve를 충족하지 못하면 Materialization과 Normalization을 시작하지 않는다.
 - Storage 부족이나 Runtime Disk Full로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본과 기존 Project Media를 보호한다.
 - Storage 부족을 이유로 승인된 1080p-class / 30 fps / SDR Working Media 정책을 자동 하향하지 않는다.
@@ -1433,8 +1434,8 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - Imported Clip의 Re-trim 범위 및 Source Reference 유지 여부 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만 Re-trim, Source Reference 없음
 - Working Media Codec / Container
 - 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법
-- 저해상도 Source의 Upscaling 정책
-- 1080p-class Working Media의 정확한 Raster Dimension Rule
+- 저해상도 Source의 Upscaling 정책 — Resolved by ADR-047: 절대 Upscale하지 않음
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045 + ADR-047: `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
 - Post-MVP Fit 또는 Background Blur 도입 여부
 
 ## Project

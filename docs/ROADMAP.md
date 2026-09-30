@@ -1831,7 +1831,7 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 
 ## Decision Gate Before Implementation
 
-### Accepted Direction — ADR-022 / ADR-042 / ADR-043 / ADR-044 / ADR-046
+### Accepted Direction — ADR-022 / ADR-042 / ADR-043 / ADR-044 / ADR-046 / ADR-047
 
 다음 방향은 이미 Accepted이며 Phase 6 Definition of Ready에서 확인한다.
 
@@ -1847,6 +1847,8 @@ ADR-020의 공통 Media Commit Lifecycle(Phase 4 Recording 최소 Lifecycle, Pha
 - Project Fill + Crop을 Normalization에 bake-in하지 않음
 - Source Presentation Aspect Ratio와 이후 Framing 가능한 유효 영역 보존
 - Segment Selection 없음, Source Reference 없음, 원본 범위 Re-trim 없음 (ADR-042)
+- Working Media Raster는 절대 Upscale하지 않음 — `scale = min(1.0, 1080 / width, 1920 / height)`, 각 변 짝수 내림, 최소 출력 크기 없음(ADR-047 사용자 승인)
+- Normalization 도중 Process 종료 시 Resume 없음 — Durable Resumable Operation ID / Checkpoint / Background Continuation 없음, Workspace UUID는 Ephemeral, 다음 시작의 STEP 12B Workspace Sweep이 정리, 사용자는 Import를 다시 시작(ADR-047 사용자 승인)
 
 ### Technical Gate — Resolved by ADR-045 (2026-09-18, Final Device Gate PASS)
 
@@ -1863,11 +1865,11 @@ ADR-045로 확정된 항목(Working Media = QuickTime `.mov` · H.264 High 8-bit
 - ~~Working Media Codec~~ — Resolved by ADR-045(H.264 High 8-bit)
 - ~~Working Media Container(출력)~~ — Resolved by ADR-045(QuickTime `.mov`; Source Container Eligibility는 ADR-044)
 - ~~정확한 SDR Color Profile / Tagging~~ — Resolved by ADR-045(Rec.709 / 709 / 709 Video Range, HDR 신호 없음)
-- Low-resolution Source Upscaling Policy(ADR-045: Scale-down Rule만 확정, Upscale 여부 Pending)
+- ~~Low-resolution Source Upscaling Policy(ADR-045: Scale-down Rule만 확정, Upscale 여부 Pending)~~ — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
 - ~~1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(1080p-class Bounding Box, 짝수 내림, Crop / Pad 없음)
 - 5초 이하 전체 Source, Picker Transient 복사본, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
-- Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식
+- ~~Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식~~ — Resolved by ADR-047(2026-09-18): Relaunch에서 재개하는 범위 없음(No Resume), Predicate 확장 없음, 기존 Workspace Sweep 재사용
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(현재 5초 상한의 1-frame Quantization 허용치 / Clamp는 구현 세부사항이며 Product 경계를 재정의하지 않는다 — 검증 방식만 결정)
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함 — Non-portrait(Landscape / Square)은 ADR-043 Revision 1로 Preflight 제외가 확정되어 Re-encode / Transform 보존 Copy 질문이 사라졌다)
 - Preparation의 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(관찰 가능한 UX / Cleanup / 무변경 보장은 ADR-042 Revision 4로 확정)
@@ -1876,7 +1878,7 @@ ADR-045로 확정된 항목(Working Media = QuickTime `.mov` · H.264 High 8-bit
 
 Technical Device Spike(2026-09-18, LunaTestphone)의 기기 Gate는 모두 해결되었다(ADR-045): Mid-run Cancellation + Partial File Cleanup PASS, HDR / Dolby Vision → SDR PASS. MP4 → QuickTime Passthrough Remux 기기 Test는 ADR-044로 제거되었고(Spike의 Remux 경로는 일회용 진단 코드로 제거됨), Landscape / Square 변환 Test는 ADR-043으로 요구되지 않는다.
 
-1080p-class를 Project Output Canvas로 미리 Crop하거나 저해상도 Source를 무조건 확대한다는 의미로 해석하지 않으며 정확한 Raster Formula와 Upscaling 여부를 임의로 정하지 않는다.
+1080p-class를 Project Output Canvas로 미리 Crop하거나 저해상도 Source를 확대한다는 의미로 해석하지 않는다. — **ADR-047(2026-09-18):** Raster Formula는 `scale = min(1.0, 1080 / width, 1920 / height)` + 각 변 짝수 내림이며 Upscale은 절대 하지 않는다(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920, 2160×3840 → 1080×1920).
 
 Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개의 Decision일 수 있다.
 
@@ -1916,18 +1918,18 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 3. Source Video Duration, Display Transform, Resolution, Frame Rate, Color / Dynamic Range를 읽는다.
 4. SDR / HDR / Dolby Vision, 4K / High-resolution 및 Project Aspect와 다른 Portrait Presentation Source(5초 이하)를 정상적으로 다룰 수 있게 한다. Non-portrait Presentation Source(Landscape / Square, ADR-043 Revision 1)는 Preflight에서 Per-item 제외하며 어떤 Media Operation도 시작하지 않는다.
 5. Duration-eligible이지만 Phase-5-ready가 아닌 Source를 위한 Normalization-required Import 상태를 준비한다(Segment Selection 없음).
-6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Media 작성 전에 Durable Operation Identity를 확보하고 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
-7. 검증된 Portrait Source / Staged Media 전체에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다.
+6. Add Clip 확정 후 공통 Media Commit Lifecycle을 시작하며 Operation Workspace(Ephemeral UUID, ADR-047: Durable Resumable Operation ID 없음)에서 Source Ownership과 Staging Write 완료 상태를 추적한 뒤 Source / Staged Media를 검증한다.
+7. 검증된 Portrait Source / Staged Media 전체에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다. 출력 Raster는 ADR-047의 규칙을 따른다: `scale = min(1.0, 1080 / width, 1920 / height)`, 각 변 짝수 내림, 절대 Upscale 없음(720×1280 / 1080×1440 / 1080×1920은 그대로, 2160×3840 → 1080×1920), HDR / >30 fps 사유로 정규화되는 저해상도 Source도 크기 유지.
 8. 30 fps 초과 Source를 포함하여 Working Media를 30 fps 기준으로 정규화하고 Source FPS를 Photos 원본에서 변경하지 않으며 VFR 변환 구현은 승인된 기준을 따른다.
 9. Photos 원본을 변경하지 않는다.
 10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존, Duration(Working Media가 `0 < effectiveClipDuration <= 5 seconds` Domain Invariant를 만족하고 Source Eligibility 1.0–5.0초와 일관됨; 경계 비교 정책은 Technical Gate)을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
 11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
-13. Normalization 실패 시 Valid Source / Staging을 보존하고 Incomplete Derived Output을 Final Media로 취급하지 않는다(Relaunch 이후의 보존 범위는 Pending Technical Gate의 Recovery 깊이 결정을 따른다).
-14. Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다(ADR-039 STEP 12B Predicate 확장 포함).
-15. 동일 Operation의 반복 Recovery가 Duplicate Clip을 생성하지 않고 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
+13. Normalization 실패 시 Live Process 안에서는 Valid Source / Staging을 보존하여 `다시 시도`가 같은 Accepted Set을 재시도할 수 있게 하고 Incomplete Derived Output을 Final Media로 취급하지 않는다(ADR-047: Relaunch 이후에는 아무것도 보존 · 재개하지 않으며 Operation Workspace 전체가 시작 시 Sweep 대상이다).
+14. ~~Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다(ADR-039 STEP 12B Predicate 확장 포함).~~ — **ADR-047(2026-09-18)로 대체:** Materialization 이후 Metadata Persistence가 실패하면 Live Process 안에서 Operation 실패로 Rollback(Materialize된 파일 제거, Project 무변경)하며 Relaunch 재개는 없다. Process 종료로 Row 없이 남은 Project-owned 파일은 기존 STEP 12B Orphan Recovery(Row 없는 Directory / Durable 참조 없는 Media 제거)가 정리하고 Predicate는 확장하지 않는다.
+15. 반복 시작 시 Cleanup이 Idempotent하고(Resume가 없으므로 Duplicate Clip이 생성될 경로가 없음) 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
 16. Import / Normalization / Materialization 중 Project Delete / Replacement가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
-17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다.
+17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다. Normalizer의 중간 · 출력 파일은 Operation Workspace Directory 안에서만 생성하고(Project Directory 안에 임시 파일 없음) Fast-path / Normalized 출력의 Materialize는 Accepted Set 전체 준비 완료 뒤에만 시작한다(ADR-047).
 18. Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, Progress, `2/5`, `취소`), 실패 / Retry Alert, Storage 부족 Alert, 통합 제외 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준(Label, VoiceOver Announcement, Dynamic Type, Contrast, Reduce Motion)을 처음부터 적용한다.
 19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 5초 이하 전체 Source, Picker Transient 복사본, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
@@ -1959,7 +1961,8 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - Container Eligibility(ADR-044, 결정적): 실제 QuickTime Brand → Container-eligible(H.264와 HEVC 모두); MP4 / ISO BMFF Brand → Unsupported; Unknown / non-ISO → Unsupported; `.mov` 확장자 + MP4 Brand → Unsupported; `.mp4` 확장자 + QuickTime Brand → Eligible; Unsupported-container 항목은 Copy / Remux / Normalize / Persist / Append / Replace 미호출; Container-eligible이라도 Duration / Orientation / Invalid 규칙은 독립 적용; Container 제외만 → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; Duration 또는 Non-portrait와 복합 → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`
 - Source Metadata Mapping
 - Imported Clip SourceKind와 Metadata(`trimStart = 0`, `trimDuration = sourceDuration`, `framing = nil`)
-- 승인된 Working Media Profile과 Raster / Upscaling Policy의 Source Metadata Mapping
+- 승인된 Working Media Profile과 Raster Policy(ADR-047)의 Source Metadata Mapping: 720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920(변경 없음), 2160×3840 → 1080×1920 / 1620×2160 → 1080×1440(비율 보존 축소), 홀수 출력 변은 짝수로 내림(1080×1919 → 1080×1918), 어떤 입력에도 출력 > Source Presentation이 되지 않음, 저해상도 + HDR 또는 저해상도 + >30 fps는 크기 유지 정규화
+- Interrupted-Normalization Recovery 분류(ADR-047): Process 종료 후 Operation Workspace 전체가 Discardable, Resumable Operation Record 부재, Ephemeral Workspace UUID가 Durable 계약이 아님
 - 5초 이하 전체 Source와 승인된 Normalization Pipeline 기반 Import Estimated Peak Additional Storage 및 Safety Reserve 입력 적용
 - Import Storage Preflight 실패 시 Materialization / Normalization Operation 미시작
 - Storage 부족 시 Working Media Quality Silent Downgrade 금지
@@ -2003,15 +2006,16 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - SDR / HDR / Dolby Vision Source 각각의 SDR Working Media 생성
 - 4K / High-resolution → 1080p-class / 30 fps / SDR Working Media
 - 30 fps 초과 Source의 Working Media Frame Rate 확인
-- 승인된 Low-resolution Upscaling Policy와 Raster Dimension Rule 적용
+- ADR-047 Raster Rule 적용: 720×1280 / 1080×1440 / 1080×1920 Source의 정규화 출력이 같은 크기, 초과 Portrait Source가 비율을 보존하며 1080×1920 안으로 축소, 홀수 치수가 짝수로 내림, 저해상도 + HDR / >30 fps 정규화가 확대 없이 완료
 - Portrait Source(회전 / Mirror Transform 포함)의 Presentation Transform 보존과 비율 불일치(예: 4:3 Portrait) 시 Project Crop bake-in 없이 Phase 7 Framing에 필요한 Source 영역 보존(ADR-043: 16:9 Landscape Source 시나리오는 제거)
 - 심각한 Highlight Clipping / 잘못된 색 변환 / Orientation 손상 등 명백한 변환 실패를 Final Validation에서 정상 Media로 등록하지 않음
 - Phase-5-ready Source는 Normalization 없이 기존 Pass-through 경로를 유지
 - Import / Normalization 성공·실패·취소 후 Photos Source 불변
 - Source / Staged Media와 Normalized Output의 각각의 Validation
 - Normalization 도중 실패 후 Valid Source 보존과 Incomplete Derived Output 분류
-- Materialization 후 Metadata Failure 및 Relaunch에서 동일 Clip의 Commit 재개
-- Metadata Save 성공 후 UI Update 전 중단과 중복 없는 Recovery
+- 중단 시나리오(ADR-047, 각각 Relaunch 후): 출력 생성 전 중단, 부분 출력 생성 후 중단, Accepted Set 중 한 항목 완료 후 전체 Commit 전 중단 → Project 무변경 · Clip 없음 · Workspace / 부분 출력이 시작 시 Sweep으로 제거 · Resume 없음; Replace 중단 → 기존 Clip · Media · 순서 · Slot 보존
+- Materialization 후 Metadata Persistence 실패 → Live Process 안에서 Rollback(파일 제거, Project 무변경); Metadata Save 성공 후 UI Update 전 중단 → Relaunch에서 Persisted Row가 Source of Truth이며 중복 없음
+- 시작 시 Cleanup Idempotency: 두 번째 실행 무작업, Committed Media와 Photos 원본 미삭제, Missing 파일 안전 처리, Workspace 밖 · Root 밖 · Symlink · Traversal 경로 미삭제(기존 STEP 12B 보호 그대로)
 - Cancel / Failure 후 Discardable Temporary Artifact Cleanup과 Recoverable Media 보존
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
 - Import / Normalization / Materialization 각각에서 Project Delete / Replacement를 경합시켜 Metadata Commit과 Resurrection 차단
@@ -2040,7 +2044,7 @@ iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
 특히 HDR / Dolby Vision Source의 SDR 변환 결과와 Portrait Source Orientation을 확인하며 Test Asset 확보 방식은 별도 준비 과정에서 결정한다. Orientation Eligibility는 Presentation Geometry 기반 결정적 Unit / Integration Test로 검증하며 Landscape / Square Device Normalization 또는 Device 변환 Test는 ADR-043 Revision 1에 따라 요구되지 않는다. Container Eligibility(ADR-044)도 결정적 Unit / Integration Test로 검증하며 MP4 → QuickTime Remux 기기 Test는 요구되지 않는다; 남은 Technical Device Spike Gate는 Mid-run Cancellation Cleanup과 HDR / Dolby Vision → SDR 검증이다.
 
-Normalization 실패와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Valid Media 보존, 복구 및 Duplicate Clip 방지를 확인한다.
+Normalization 도중 강제 종료(출력 생성 전 / 부분 출력 후 / 한 항목 완료 후)와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Project 무변경, 버려진 Workspace / 부분 출력의 시작 시 정리, Resume 없음, Duplicate Clip 없음, Replace의 기존 Clip 보존을 확인한다(ADR-047).
 
 Import 중 Project Delete / Replacement와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
@@ -2076,7 +2080,7 @@ Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주�
 - Segment Selection UI, Source Reference, 원본 범위 Re-trim이 존재하지 않는다.
 - SDR / HDR / Dolby Vision Source와 4K / High-resolution Source를 허용하고 승인된 1080p-class / 30 fps / SDR Working Pipeline을 사용한다.
 - Normalization은 전체 Source Duration Eligibility 검사 이후에만 시작한다.
-- 저해상도 Source는 Phase 6 전에 승인된 Upscaling / Raster 정책을 따르며 임의의 확대 여부를 가정하지 않는다.
+- Working Media Raster는 ADR-047을 따른다: 절대 Upscale하지 않으며 `scale = min(1.0, 1080 / width, 1920 / height)`로 축소만 하고 각 변을 짝수로 내림한다(720×1280 / 1080×1440 / 1080×1920은 그대로, 초과 Source는 비율 보존 축소); 최소 출력 크기 · 해상도 선택 · Upscale 옵션은 없다.
 - Project Crop이 Working File에 bake-in되지 않고 Phase 7에서 Framing할 Source의 유효 영역과 Presentation Aspect Ratio / Orientation이 보존된다.
 - Video Codec이 H.264 / HEVC Family가 아닌 QuickTime Source(ProRes / ProRes RAW / MJPEG / 기타 / Unknown, ADR-046)는 Preflight에서 Per-item 제외되어 Fast Path / Normalization / Materialize / Persist / Append / Replace 어느 것에도 들어가지 않으며 기존 Invalid / Unsupported 안내만 사용한다(Codec별 문구 없음); Mellow 직접 촬영은 H.264 QuickTime SDR을 명시 요청하며 Default / HEVC / ProRes로 기록되지 않는다.
 - 실제 Container가 QuickTime Movie가 아닌 Source(MP4 / ISO BMFF / 기타 / Unknown, ADR-044)는 확장자와 무관하게 Preflight에서 Per-item 제외되고 어떤 Media Operation(Copy / Remux / Normalize / Persist / Append / Replace)도 받지 않으며, 남은 QuickTime 후보로 계속하고 전부 제외 시 Project가 생성 / 변경되지 않고 Replace 후보 거부 시 기존 Clip이 보존된다; 안내는 기존 Invalid / Unsupported 범주(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)이며 MP4 전용 Alert가 없다. QuickTime Source의 H.264 / HEVC는 모두 Container-eligible이다.
@@ -2086,7 +2090,8 @@ Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주�
 - Photos 원본 삭제가 Project-owned Media에 영향을 주지 않는다.
 - Import 취소 또는 실패 시 Project가 손상되지 않는다.
 - Normalization 실패가 Valid Source / Staging Media를 파괴하지 않는다.
-- Materialization 이후 Metadata Persistence 실패를 복구할 수 있으며 Commit 완료 전 Clip을 정상 UI에 표시하지 않는다.
+- Materialization 이후 Metadata Persistence 실패는 Live Process 안에서 Rollback되고 Commit 완료 전 Clip을 정상 UI에 표시하지 않는다.
+- Normalization 도중 Process 종료 후 Import는 재개되지 않으며(ADR-047) Project · Clip · Metadata가 변경되지 않고 Replace의 기존 Clip이 보존되며 버려진 Workspace / 부분 출력은 다음 시작의 Idempotent Sweep이 정리한다(Committed Media · Photos 원본 미삭제, Resumable Job / Checkpoint / Background Continuation 없음).
 - Cancel / Failure Cleanup은 확인된 Discardable Artifact에만 적용되며 반복 수행해도 정상 Media와 Recovery Candidate를 훼손하지 않는다.
 - Project Delete / Replacement 이후 Cancelled / Late Import가 Metadata를 등록하거나 Project를 재생성하지 않는다.
 - Import Operation이 사용하는 Media는 Cancellation 요청만으로 삭제되지 않으며 Release와 Safe Classification 이후 정리된다.
@@ -3519,10 +3524,10 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - Imported Clip Re-trim 범위 — Resolved by ADR-042: Project-owned Clip Media 범위 안에서만(원본 범위 Re-trim 없음).
 - Source Reference 유지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Working Media Codec / Container / SDR Tagging / Raster Dimension Rule / Tone-mapping 메커니즘 — Resolved by ADR-045(2026-09-18, Final Device Gate PASS; Production 구현은 별도).
-- Low-resolution Source Upscaling Policy
+- Low-resolution Source Upscaling Policy — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림.
 - 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
-- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식
+- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식 — Resolved by ADR-047(2026-09-18): No Resume, Ephemeral Workspace UUID, 기존 Sweep 재사용, Predicate 확장 없음.
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
 - Preparation의 구체적 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항; 관찰 가능한 UX는 ADR-042 Revision 4로 확정)
 

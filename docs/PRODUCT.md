@@ -490,7 +490,7 @@ Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 
 
 Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 원본 Source Reference는 유지하지 않는다(ADR-042). Working Media Codec / Container, SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 ADR-045(2026-09-18)로 확정되었다: 사용자가 고른 Photos 원본은 변경하지 않고, 지원되는 영상은 필요 시 내부 Working Media(세로 1080p급, 30 fps 이하, SDR QuickTime)로 변환되어 프로젝트에 들어가며, 지원하지 않는 Container나 가로 / 정사각형 영상은 명확히 거절된다. 이는 기술 결정이며 Phase 6 구현 완료를 뜻하지 않는다.
 
-1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 저해상도 Source의 Upscaling 여부는 아직 확정하지 않는다.
+1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 ADR-047에 따라 저해상도 Source는 절대 확대하지 않는다(1080p급 안의 영상은 원래 크기 그대로, 초과 영상만 비율을 유지하며 축소). 정규화 도중 앱이 종료되면 작업을 재개하지 않고 프로젝트는 변경되지 않으며 사용자는 영상을 다시 선택한다(ADR-047).
 
 #### Imported Orientation and Framing
 
@@ -1283,7 +1283,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - Crop UI와 Pinch to Zoom 지원 여부
 - Working Media Codec / Container 및 정확한 SDR Color Profile / Tagging
 - HDR / Dolby Vision Source의 SDR 변환을 위한 Tone-mapping 구현 방법
-- 저해상도 Source의 Upscaling 정책 및 1080p-class Working Media의 구체적인 크기 기준
+- 저해상도 Source의 Upscaling 정책 및 1080p-class Working Media의 구체적인 크기 기준 — Resolved by ADR-045 + ADR-047: 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
 - 정확한 Safety Reserve 크기와 Operation별 Storage Estimate Formula
 - Recording Estimate의 Capture Codec / Bitrate 상수와 Finalization Overhead
 - Import / Export의 Temporary 또는 Recovery-safe Overlap Multiplier

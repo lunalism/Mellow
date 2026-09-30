@@ -974,7 +974,7 @@ Normalization 구현은 Apple Native Framework를 우선하며 정확한 Tone-ma
 
 Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Low-resolution Upscaling Policy와 정확한 Raster Dimension Rule은 Pending이며 Phase 6 구현 전 Technical Gate에서 해결해야 한다.
 
-이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않으며 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 임의로 선택하지 않는다.
+이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않으며 저해상도 Source의 항상 Upscale 또는 절대 Upscale하지 않음을 임의로 선택하지 않는다. — **ADR-045(2026-09-18) / ADR-047(2026-09-18):** Codec / Container / SDR Tagging / Scale-down Rule은 ADR-045로, Upscaling Policy는 ADR-047로 확정되었다(절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림).
 
 Working Media Codec / Container와 Export Codec / Container는 별도 Decision이며 자동으로 동일하게 결정하지 않는다.
 
@@ -2203,8 +2203,8 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 - Working Media Codec — Pending, Before Phase 6.
 - Working Media Container — Pending, Before Phase 6.
 - 정확한 SDR Color Profile / Tagging — Pending, Before Phase 6.
-- Low-resolution Source Upscaling Policy — Pending, Before Phase 6.
-- 1080p-class Working Media의 정확한 Raster Dimension Rule — Pending, Before Phase 6.
+- Low-resolution Source Upscaling Policy — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음; Envelope 안의 Source는 Presentation 크기 유지(짝수 내림만).
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045(Scale-down Bounding Box) + ADR-047(2026-09-18): `scale = min(1.0, 1080 / width, 1920 / height)`, Aspect 보존, 각 변 짝수 내림, 최소 출력 크기 없음.
 - HDR / Dolby Vision Source의 Tone-mapping 구현 방법 — Pending, 관련 Normalization 구현 전 결정.
 
 Working Media Codec / Container를 Export Codec / Container와 자동으로 동일하게 결정하지 않는다.
@@ -2241,7 +2241,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
-- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Pending, Before Phase 6 Normalization 구현.
+- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Resolved by ADR-047(2026-09-18): Process 종료 후 Resume 없음, Durable Resumable Operation ID 없음, Workspace UUID는 Ephemeral, Repository Row가 Commit; 버려진 Workspace / 부분 출력은 기존 STEP 12B 시작 시 Sweep으로 정리(Predicate 확장 없음), 사용자는 Import를 다시 시작한다.
+- Phase 6 Working Media Raster / Interrupted-Normalization Recovery — Resolved by ADR-047(2026-09-18): No Upscaling + No Resume(위 두 항목 참조).
 
 ### Camera
 
@@ -2619,9 +2620,9 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 
 - Working Media Codec / Container
 - 정확한 SDR Color Profile / Tagging과 Tone-mapping 구현 방법
-- Low-resolution Source Upscaling Policy와 1080p-class Working Media의 정확한 Raster Dimension Rule
+- ~~Low-resolution Source Upscaling Policy와 1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(Scale-down) + ADR-047(No Upscaling, 2026-09-18)
 - Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source 기준)
-- Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식
+- ~~Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식~~ — Resolved by ADR-047(2026-09-18): No Resume, Predicate 확장 없음
 - 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함; Landscape 예시는 ADR-043으로 해소 — Non-portrait(Landscape / Square)은 Preflight 제외)
 - 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 최종 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(Revision 4의 관찰 가능한 UX / Cleanup / 무변경 보장은 확정, 메커니즘만 Pending)
@@ -2929,7 +2930,7 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 - QuickTime Movie `.mov`
 - H.264 High Profile, 8-bit(High 10 / 4:2:2 / 4:4:4 아님)
 - Color Primaries / Transfer / Matrix = Rec.709 / Rec.709 / Rec.709, Video Range
-- Raster: Presentation Frame 전체를 담는 1080p-class Bounding Box(긴 변 ≤ 1920, 짧은 변 ≤ 1080, Scale-down만, Crop / Pad 없음, 각 변 짝수 내림). Low-resolution Source의 Upscale 여부는 여전히 Pending(Spike는 Upscale하지 않음).
+- Raster: Presentation Frame 전체를 담는 1080p-class Bounding Box(긴 변 ≤ 1920, 짧은 변 ≤ 1080, Scale-down만, Crop / Pad 없음, 각 변 짝수 내림). ~~Low-resolution Source의 Upscale 여부는 여전히 Pending(Spike는 Upscale하지 않음).~~ — **ADR-047(2026-09-18):** 절대 Upscale하지 않는다(`scale = min(1.0, 1080 / width, 1920 / height)`, Envelope 안의 Source는 Presentation 크기 유지, 짝수 내림).
 - Frame Rate ≤ 30 fps(`frameDuration = max(source minFrameDuration, 1/30)`)
 - Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity, 출력 Presentation은 Portrait
 - Audio: AAC Passthrough(재인코딩 없음, Source Format Hint)
@@ -2997,7 +2998,7 @@ Evidence Branch: `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec29728
 - Tone-curve 품질은 단일 기기 · 단일 사용자 A/B로만 검증됨.
 - 출력 Duration은 최대 +1 Frame(§7).
 - Resource Metrics(Thermal / Footprint / Capacity)는 0.25 s Sampling Lower Bound.
-- Storage Estimate Formula / Safety Reserve, Recovery 깊이, Retry / Progress UX 메커니즘, Low-resolution Upscaling Policy는 후속 구현 Gate.
+- Storage Estimate Formula / Safety Reserve, Recovery 깊이, Retry / Progress UX 메커니즘, Low-resolution Upscaling Policy는 후속 구현 Gate. — **ADR-047(2026-09-18):** Recovery 깊이(No Resume)와 Upscaling Policy(No Upscaling)는 해소; Storage Formula / Reserve와 Progress / Retry 메커니즘은 여전히 Pending.
 - 알려진 `ProjectEditorModelTests` Thumbnail Request-order Flake는 Phase 6 Spike와 무관하다.
 
 ## Non-goals
@@ -3139,3 +3140,130 @@ ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, C
 - `AVCaptureMovieFileOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.h264], for: connection)` 적용 시점(Configuration 안 vs Recording 직전)과 `outputSettings(for:)` 재검증 방법.
 - SDR Capture Format 보장 방법(`automaticallyAdjustsVideoHDREnabled = false` + `isVideoHDREnabled = false` 또는 Format 선택)과 iPhone 12에서의 실제 Format 확인.
 - Codec Family 동등 Sample Entry 목록의 정확한 FourCC 집합(구현 상수; Unknown은 항상 Unsupported).
+
+---
+
+# ADR-047 — Working-Media Raster and Interrupted-Normalization Recovery
+
+**Date:** 2026-09-18
+**Status:** Accepted (사용자 승인)
+
+**Resolves:** ADR-045가 Pending으로 남긴 Phase 6 Step 4의 두 Blocker — (1) Low-resolution Source Upscaling Policy(1080p-class Working Media의 최종 Raster Sizing), (2) Import Durable Operation Identity / Recovery 깊이(Normalization 도중 Process 종료 이후의 복구 의미)와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식. ROADMAP Phase 6 "Pending Technical Gate", ARCHITECTURE 38절 / 84절, PRODUCT / FEATURES Open Question의 동일 항목.
+
+**Clarifies:** ADR-020 / ARCHITECTURE 25절 Failure Boundary C / E / F의 V1 Import 적용 범위(Live Process 안의 Retry만 Recovery이며 Process 종료 이후는 Cleanup), ADR-039 Implementation Note의 "Phase-5 Composition / Add는 Durable Operation Identity를 갖지 않는다(Repository Row 자체가 Commit)"를 Phase 6 Import Normalization까지 확장, ADR-045 §3 Raster 규칙의 Upscale 부분.
+
+**Explicitly Unchanged:** ADR-042의 `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함) Eligibility · Per-item Filtering · 통합 안내 · Preparation Sheet · 취소 · Runtime 실패 · `다시 시도`(Live Session 안 Source Handle 유효 시) · Storage 부족 Presentation, ADR-043 Revision 1 Portrait-only, ADR-044 Revision 1 QuickTime-only Container, ADR-046 H.264 / HEVC-only Codec Family와 Direct-camera H.264, ADR-045의 HDR / >8-bit · >30 fps · >1080p-class Normalization 사유 · SDR / H.264 High 8-bit / Rec.709 / QuickTime `.mov` 출력 · Transform Bake + Identity · AAC Passthrough · Duration 허용 범위 · Idempotent Cancellation Token · Partial Output 제거 책임, ADR-020 / ADR-037 / ADR-040의 Accepted Set Atomic Commit과 Replace 보존, Photos 원본 불변, Export Codec / Container(Phase 9), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Aggregate Progress / Retry Source-handle 메커니즘(Pending 유지).
+
+**이 ADR은 Phase 6 Step 4 Production 구현을 의미하지 않는다.** 두 Blocker를 해소하여 `WorkingMediaNormalizer` / `SDRWorkingMediaContract` 구현을 시작할 수 있게 하는 결정이며 Normalizer · Preparation Operation · Presentation · Storage Preflight는 여전히 미구현이다.
+
+## Context
+
+Phase 6 Step 3(`ImportSelectionPreflight`, `c570d5b`)까지 Preflight 계층은 완성되었고 다음 단위인 `WorkingMediaNormalizer`는 두 미결정에 막혀 있었다.
+
+첫째, ADR-045 §3은 Scale-down Bounding Box 규칙만 확정하고 "Low-resolution Source의 Upscale 여부는 여전히 Pending"으로 남겼다. 720×1280 60 fps처럼 1080p-class 안에 들어오지만 다른 사유로 Normalization이 필요한 Source의 출력 크기를 정할 수 없었다.
+
+둘째, ADR-020 / ARCHITECTURE 25절은 Media Commit Lifecycle에 Durable Operation Identity와 Relaunch 후 Recovery Candidate 보존을 요구하지만, Phase 5 STEP 12B(ADR-039)는 Composition / Add가 Durable Operation Identity를 갖지 않고 Repository Row가 곧 Commit이며 버려진 `ProjectWorkspace/<op>/`는 다음 시작에 Sweep된다는 모델을 확정했다. Phase 6 Normalization이 이 모델을 그대로 따를지(Cleanup) Relaunch 재개(Resume)를 추가할지가 결정되지 않았다.
+
+사용자는 두 항목을 다음과 같이 승인했다.
+
+## Decision 1 — Canonical Working-Media Raster (No Upscaling)
+
+### Upscale 금지
+
+- Phase 6 Normalization은 Source를 절대 확대하지 않는다.
+- Presentation Raster(`preferredTransform` 적용 후)가 이미 1080p-class Portrait Envelope(짧은 변 ≤ 1080, 긴 변 ≤ 1920) 안에 들어오는 Portrait Source는 Codec이 요구하는 짝수 정렬을 제외하고 Presentation 크기를 그대로 유지한다.
+- 예: 720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920.
+- 1080×1920을 만들기 위해 늘리거나 자르거나 채우거나 Pixel을 합성하지 않는다.
+- Project Presentation / Framing(Fill + Crop)은 이후 Composition의 책임이며 Normalized Media 파일은 전체 Portrait Frame을 보존한다(ADR-022 / ARCHITECTURE 38절 Spatial Normalization Contract 그대로).
+
+### Scale-down Only — Canonical Formula
+
+Portrait Presentation Raster `(width, height)`에 대해:
+
+- `scale = min(1.0, 1080 / width, 1920 / height)`
+- 출력 = `(width × scale, height × scale)`을 각 변 짝수로 **내림**한 양의 정수 크기
+- Aspect Ratio를 보존하고 Source Presentation 크기를 초과하지 않으며 짧은 변 1080 / 긴 변 1920을 초과하지 않는다.
+- Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity다(ADR-045 §3 유지).
+- 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다.
+- V1에는 별도의 "최소 출력 크기"가 없다.
+
+| Source Presentation | scale | 출력 |
+| --- | --- | --- |
+| 720×1280 | 1.0 | 720×1280 |
+| 1080×1440 | 1.0 | 1080×1440 |
+| 1080×1920 | 1.0 | 1080×1920 |
+| 2160×3840 | 0.5 | 1080×1920 |
+| 1440×2560 | 0.75 | 1080×1920 |
+| 1620×2160 | 0.6667 | 1080×1440 |
+| 1080×1919(홀수) | 1.0 | 1080×1918 |
+
+### Classifier와의 관계
+
+- `ImportPreflightClassifier`의 Raster Normalization 사유는 여전히 1080p-class를 **초과하는** Presentation Raster에만 적용된다.
+- 저해상도 자체는 거부 사유도 Normalization 사유도 아니다(Ready 조건을 만족하는 저해상도 SDR H.264 / HEVC는 Fast-path Copy).
+- HDR / >30 fps 등 다른 승인 사유로 Normalization하는 저해상도 Source는 Presentation 크기를 그대로 유지한 채 정규화된다(확대 없음).
+- 새 사용자 안내 · Alert · 해상도 선택 · Upscale 옵션 · 설정은 도입하지 않는다.
+
+## Decision 2 — Interrupted-Normalization Recovery (No Resume)
+
+### Resume 없음
+
+Normalization(또는 Import Preparation Operation의 어느 단계) 도중 App이 종료·강제 종료·Crash되거나 그 밖의 이유로 Process를 잃으면:
+
+- 중단된 Operation은 재개하지 않는다.
+- Checkpoint 기반 이어가기, Durable Resumable Operation ID, Background Continuation 약속은 없다.
+- 사용자가 그 Media를 여전히 원하면 Select Clips / Add / Replace를 다시 시작한다.
+- In-process Run / Workspace UUID(현재 `ProjectMediaStore.beginWorkspace`의 `ProjectWorkspace/<UUID>/`)는 격리와 파일명을 위한 Ephemeral 값으로 쓸 수 있으나 Durable Resume 계약이 되지 않는다.
+
+ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
+
+- Boundary C(Staged 완료 후 Crash) / E(Normalization 도중 실패) / F(Final Media 생성 후 Metadata Persistence 실패)에서 "Recovery Candidate 보존"은 **Live Process 안의 같은 Accepted Set Retry(ADR-042 Revision 4 `다시 시도`)**를 위한 것이다.
+- Process 종료 이후에는 Import Operation-owned Artifact 전체가 Recovery Classification상 Discardable Temporary Media이며 Recoverable Media 분류는 V1 Import에서 비어 있다.
+- Boundary G(Metadata Persistence 성공 후 UI 갱신 전 Crash)는 Row가 곧 Commit이므로 Relaunch에서 Persisted Metadata가 Source of Truth이며 Resume가 없으므로 중복 생성도 없다.
+- ADR-039 Implementation Note의 "Repository Row 자체가 Commit" 모델이 Phase 6 Import Normalization에도 그대로 적용되며 STEP 12B Orphan Predicate는 **확장하지 않는다**(Future Compatibility Caveat의 조건 — Row 밖의 복구 가능한 Durable State — 는 발생하지 않는다).
+
+### Ownership과 Atomicity
+
+- Operation Workspace로 복사된 Source 파일과 모든 Normalization 출력은 Accepted Set 전체의 준비가 성공하고 기존 Durable Project Commit 경계(Materialize → Project State → Persist → Read-back, ADR-020 / ADR-037)에 도달할 때까지 Operation Workspace 소유다.
+- 부분 · 임시 · 개별 완료 Workspace 출력은 어떤 경우에도 Committed Project-owned Media가 아니다.
+- Process 종료는 Clip을 Append하거나 기존 Clip을 Replace하거나 Project Metadata를 바꾸거나 부분 결과를 노출하지 않는다.
+- Replace는 전체 Replacement Operation이 승인된 Commit 경계에 도달하지 않는 한 기존 Clip · Media · Metadata · 순서 · Slot을 보존한다(ADR-040 / ADR-042 Revision 4 §7).
+- Photos 원본은 변경되지 않는다.
+- Operation에 영향을 주는 실패 또는 중단은 부분적으로 Commit된 Accepted Set을 남기지 않는다(ADR-042 Revision 3 / 4 Atomicity 그대로).
+
+### 다음 시작 Cleanup
+
+- 이후 시작에서 버려진 · 미Commit Normalization Workspace와 부분 출력은 Cleanup 후보다.
+- 기존 시작 시 Sweep 경계(ADR-039 STEP 12B `ProjectStartupRecoveryCoordinator`: `liveWorkspaceIDs`에 없는 Canonical `ProjectWorkspace/<UUID>/` 제거 → Row 없는 Canonical `Projects/<P>/` 제거 → Durable 참조 없는 Canonical `Projects/<P>/Media/<UUID>.mov` 제거)를 재사용하며 Resumable Job Database를 정의하지 않는다.
+- **이미 보장되는 것(구현 완료, Phase 5 STEP 12B):** Workspace 직속 파일을 포함한 버려진 Workspace Directory 전체 제거, Idempotency(Missing = 성공, 두 번째 실행 무작업), App-owned Root Containment · Canonical UUID Round-trip · Symlink 거부 · 기대 Type 일치 · Noncanonical 보존, Metadata 무변경, 후보별 Failure Isolation + Log + 다음 실행 Retry, Committed Media(Durable 참조) 보존, Photos / CaptureStaging / tmp 미열거.
+- **Phase 6이 추가로 만족해야 하는 요구(미구현):** Normalizer의 중간 · 출력 파일이 Operation Workspace Directory **안에서만** 만들어져 기존 Predicate로 Cleanup되게 할 것(Workspace 밖 · Project Directory 안에 Normalization 임시 파일을 두지 않는다), Workspace 안의 하위 Directory를 쓴다면 Sweep이 Directory 전체 제거로 이를 포함함을 Test로 고정할 것, Fast-path / Normalized 출력의 Materialize(Rename)는 Accepted Set 전체 준비 완료 뒤에만 시작할 것.
+- Cleanup은 Committed Project-owned Media나 Photos 원본을 절대 삭제하지 않으며 Missing 파일은 안전하게 처리한다.
+- Symbolic Link · Traversal · Containment · Ownership 보호는 변경하지 않는다.
+- Cleanup 실패는 기존 Recovery 메커니즘으로 Log / 다음 실행 Retry될 수 있으나 버려진 작업을 Resumable Import로 바꾸거나 Project를 변경하지 않는다.
+
+### Foreground 취소는 별개
+
+- Process가 살아 있는 동안의 사용자 `취소`는 기존 취소 경로(Idempotent Cancellation Token, `cancelReading` / `cancelWriting`, 만든 Operation의 Partial Output 즉시 제거 — ADR-045 §8, ADR-042 Revision 4 §2)를 사용한다.
+- Process 종료는 비동기 Cancellation Handler 완료에 의존할 수 없으므로 시작 시 Cleanup이 버려진 Workspace의 Safety Net이다.
+- 두 경로 모두 부분 출력을 Publish하지 않는다.
+
+## Rationale
+
+- Upscale은 Pixel을 합성할 뿐 정보가 늘지 않으며 iPhone 12 Encode 시간 · 저장 공간 · 열을 늘린다. Mini Vlog 의도에는 원본 화질 보존이 맞고 Project Canvas 적합은 Composition의 Fill + Crop이 이미 담당한다.
+- Resume는 Durable Operation Record · Source Handle 보존(Photos Read 권한 없이는 Picker Transient 복사본에 의존) · 중복 Commit 방지 · Predicate 확장을 요구하는 반면, Import Source는 5초 이하이고 Normalization은 기기 측정에서 수 초 안에 끝난다(ADR-045 Evidence 0.78–2.13 s). 다시 선택하는 비용이 Resume 인프라의 위험보다 작다.
+- 기존 STEP 12B Sweep이 이미 버려진 Workspace를 Idempotent하게 회수하므로 새 Recovery 메커니즘 없이 Media Safety 계약을 만족한다.
+
+## Consequences
+
+- `WorkingMediaNormalizer`의 `renderSize` 규칙과 `SDRWorkingMediaContract`의 기대 Raster 검증이 확정되어 Step 4를 시작할 수 있다.
+- ROADMAP Phase 6 Task 6 / 13 / 14 / 15와 관련 Unit · Integration · Physical Test, Acceptance Criteria는 Resume 대신 Cleanup 의미로 정렬된다.
+- Post-V1에서 Durable Resume / Background Normalization을 재검토할 수 있으나 V1 범위가 아니다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source + Picker Transient 복사본 + Normalization Peak 기준)
+- Implementation-specific Aggregate Progress 계산과 `다시 시도`의 Source-handle 유지 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항)
+
+## Non-goals
+
+- Phase 6 Step 4 Production 구현 자체, Export Codec / Container, Post-V1 Resume / Background 처리, 해상도 선택 UI.
