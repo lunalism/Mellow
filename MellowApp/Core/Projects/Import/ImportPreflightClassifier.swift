@@ -1,10 +1,10 @@
 import Foundation
 
 // Phase 6 Photos-import preflight decision core (ADR-042 R1–R4, ADR-043 R1, ADR-044 R1, ADR-045,
-// ADR-046 §8). Pure and deterministic: no I/O, no AVFoundation, no file URL. Verdict precedence is
-// exactly duration → readable / video / protected → container → codec family → orientation →
-// normalization reasons; an earlier rejection always wins and none of gates 1–5 is a
-// normalization reason.
+// ADR-046 §8, ADR-048). Pure and deterministic: no I/O, no AVFoundation, no file URL. Verdict
+// precedence is exactly duration → readable / video / protected → container → codec family →
+// orientation → working-raster feasibility → audio facts → normalization reasons; an earlier
+// rejection always wins and none of gates 1–7 is a normalization reason.
 
 /// One canonical reason a source is excluded before any media operation. User-facing copy is
 /// mapped elsewhere (ADR-042 R2–R4, ADR-043 R1, ADR-044 R1); this layer carries no strings.
@@ -18,6 +18,34 @@ enum ImportPreflightRejection: Hashable, Sendable {
     case unsupportedContainer(ImportContainer)
     case unsupportedCodec(ImportVideoCodec)
     case nonPortraitPresentation(ImportPresentationOrientation)
+    /// ADR-048: portrait by ADR-043, but the ADR-047 even-aligned output raster would not be
+    /// strictly portrait (e.g. 1080×1081 → 1080×1080). Not a non-portrait source.
+    case unsupportedWorkingRaster(presentationWidth: Int, presentationHeight: Int)
+    /// ADR-048: an audio track whose facts cannot be relied on.
+    case unsupportedAudioFacts(ImportAudioFactsProblem)
+}
+
+/// Why audio facts are unreliable (ADR-048 Decision 1). Diagnostic only; no user copy.
+enum ImportAudioFactsProblem: Hashable, Sendable, CaseIterable {
+    /// No audio track reported, yet audio format facts exist.
+    case contradictoryTrackFacts
+    /// An audio track exists but no format description could be read.
+    case missingFormatFacts
+    /// The subtype is absent or unavailable: all-zero, or not a faithful four-byte subtype.
+    case malformedFormatID
+    case invalidSampleRate
+    case invalidChannelCount
+}
+
+/// The ADR-048 audio verdict for one source. `.unreliable` is a preflight rejection; the other
+/// cases are eligible and tell the plan whether audio passes through or is transcoded.
+enum ImportAudioAssessment: Hashable, Sendable {
+    case noAudio
+    /// Format ID exactly `aac ` (`kAudioFormatMPEG4AAC`).
+    case passthroughAAC
+    /// Any other reliably inspected format ID, including other AAC-family IDs (`aach`, `aacp`, …).
+    case transcode(sourceChannelCount: Int)
+    case unreliable(ImportAudioFactsProblem)
 }
 
 /// Normalization-triggering HDR / high-bit-depth signals (ADR-045 §2). Ancillary metadata
@@ -38,11 +66,14 @@ enum ImportHDRSignal: String, Hashable, Sendable, CaseIterable, Comparable {
 }
 
 /// Why an eligible source must be normalized. Reasons are reported in canonical order:
-/// HDR / color → frame rate → raster.
+/// HDR / color → frame rate → raster → audio transcode (ADR-048).
 enum ImportNormalizationReason: Hashable, Sendable {
     case hdr(signals: [ImportHDRSignal])
     case frameRate(nominal: Float)
     case raster(presentationWidth: Int, presentationHeight: Int)
+    /// Reliably identified audio whose format ID is not `aac `. May be the only reason; the output
+    /// still satisfies the full working-media video contract (no audio-only remux path).
+    case audioTranscode
 }
 
 enum ImportPreflightVerdict: Hashable, Sendable {
@@ -63,6 +94,8 @@ enum ImportPreflightPolicy {
     static let maximumNominalFrameRate: Float = 30.5
     static let maximumLongEdge = 1920
     static let maximumShortEdge = 1080
+    /// ADR-048: the only audio format ID that passes through; exact, case-sensitive.
+    static let passthroughAudioFormatID = "aac "
 }
 
 enum ImportPreflightClassifier {
@@ -94,17 +127,28 @@ enum ImportPreflightClassifier {
         let orientation = facts.presentationOrientation
         guard orientation == .portrait else { return .rejected(.nonPortraitPresentation(orientation)) }
 
-        // 6. Normalization reasons (ADR-045 §2), canonical order.
+        // 6. Working-raster feasibility (ADR-048 Decision 2): the shared ADR-047 calculation must
+        //    yield a strictly portrait even-aligned output. Never repaired, never non-portrait.
+        let size = facts.presentationSize
+        guard let raster = WorkingMediaRasterPolicy.plan(forPresentation: WorkingMediaRaster(width: size.width, height: size.height)), raster.isFeasible else {
+            return .rejected(.unsupportedWorkingRaster(presentationWidth: size.width, presentationHeight: size.height))
+        }
+
+        // 7. Audio facts (ADR-048 Decision 1).
+        let audio = assessAudio(facts)
+        if case .unreliable(let problem) = audio { return .rejected(.unsupportedAudioFacts(problem)) }
+
+        // 8. Normalization reasons (ADR-045 §2, ADR-048), canonical order.
         var reasons: [ImportNormalizationReason] = []
         let signals = hdrSignals(in: facts)
         if !signals.isEmpty { reasons.append(.hdr(signals: signals)) }
         if facts.nominalFrameRate > ImportPreflightPolicy.maximumNominalFrameRate {
             reasons.append(.frameRate(nominal: facts.nominalFrameRate))
         }
-        let size = facts.presentationSize
         if exceeds1080pClass(width: size.width, height: size.height) {
             reasons.append(.raster(presentationWidth: size.width, presentationHeight: size.height))
         }
+        if case .transcode = audio { reasons.append(.audioTranscode) }
         return reasons.isEmpty
             ? .readyFastPath(sourceDuration: sourceDuration)
             : .normalizationRequired(reasons: reasons, sourceDuration: sourceDuration)
@@ -125,10 +169,37 @@ enum ImportPreflightClassifier {
     }
 
     /// 1080p-class bounding box on the transformed presentation raster: long edge ≤ 1920 and
-    /// short edge ≤ 1080. This only decides *whether* normalization is needed; output dimensions,
-    /// scaling and the pending upscaling policy belong to the normalizer.
+    /// short edge ≤ 1080. This only decides *whether* normalization is needed; output dimensions
+    /// come from `WorkingMediaRasterPolicy` (ADR-047: never upscaled).
     static func exceeds1080pClass(width: Int, height: Int) -> Bool {
         let long = max(width, height), short = min(width, height)
         return long > ImportPreflightPolicy.maximumLongEdge || short > ImportPreflightPolicy.maximumShortEdge
+    }
+
+    /// ADR-048 Decision 1. Checks run in a fixed order and nothing is repaired: contradictory track
+    /// facts, missing format facts, absent (all-zero) subtype, sample rate, channel count. The subtype
+    /// comparison is on the raw four bytes, so it is exact and case-sensitive; only `aac ` passes
+    /// through and every other nonzero subtype, printable or not, is transcoded.
+    static func assessAudio(_ facts: ImportSourceFacts) -> ImportAudioAssessment {
+        guard facts.hasAudioTrack else {
+            return facts.audio == nil ? .noAudio : .unreliable(.contradictoryTrackFacts)
+        }
+        guard let audio = facts.audio else { return .unreliable(.missingFormatFacts) }
+        guard let subtype = rawFormatID(audio.fourCC), subtype != 0 else { return .unreliable(.malformedFormatID) }
+        guard audio.sampleRate.isFinite, audio.sampleRate > 0 else { return .unreliable(.invalidSampleRate) }
+        guard audio.channelCount > 0 else { return .unreliable(.invalidChannelCount) }
+        return subtype == rawFormatID(ImportPreflightPolicy.passthroughAudioFormatID)
+            ? .passthroughAAC
+            : .transcode(sourceChannelCount: audio.channelCount)
+    }
+
+    /// The raw four-byte subtype behind a format ID string. The inspector renders each subtype byte
+    /// as one ISO Latin-1 scalar (U+0000–U+00FF), which is lossless, so any nonzero value is a
+    /// reliably identified format whether or not it is printable (ADR-048). `nil` when the string is
+    /// not exactly four such scalars; the caller treats `nil` and `0` as absent.
+    static func rawFormatID(_ fourCC: String) -> UInt32? {
+        let scalars = Array(fourCC.unicodeScalars)
+        guard scalars.count == 4, scalars.allSatisfy({ $0.value <= 0xFF }) else { return nil }
+        return scalars.reduce(0) { ($0 << 8) | $1.value }
     }
 }

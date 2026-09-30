@@ -82,7 +82,8 @@ enum ImportExclusionCategory: Hashable, Sendable, CaseIterable {
     case durationAboveMaximum
     /// Malformed / unreadable / unsupported media (ADR-042 R4 §5): invalid duration, unreadable,
     /// no video track, protected content, unsupported container (ADR-044), unsupported codec
-    /// (ADR-046). Deliberately one family — there is no container- or codec-specific category.
+    /// (ADR-046), infeasible working raster and unreliable audio facts (ADR-048). Deliberately one
+    /// family — there is no container-, codec-, raster- or audio-specific category.
     case invalidOrUnsupportedMedia
     /// Landscape and square are one non-portrait presentation (ADR-043 R1).
     case nonPortraitPresentation
@@ -91,7 +92,8 @@ enum ImportExclusionCategory: Hashable, Sendable, CaseIterable {
         switch rejection {
         case .durationBelowMinimum: self = .durationBelowMinimum
         case .durationAboveMaximum: self = .durationAboveMaximum
-        case .invalidDuration, .unreadable, .noVideoTrack, .protectedContent, .unsupportedContainer, .unsupportedCodec:
+        case .invalidDuration, .unreadable, .noVideoTrack, .protectedContent, .unsupportedContainer, .unsupportedCodec,
+             .unsupportedWorkingRaster, .unsupportedAudioFacts:
             self = .invalidOrUnsupportedMedia
         case .nonPortraitPresentation: self = .nonPortraitPresentation
         }

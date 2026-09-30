@@ -322,6 +322,161 @@ final class ImportPreflightClassifierTests: XCTestCase {
         XCTAssertEqual(verdict(g), verdict(f))
     }
 
+    // MARK: - 7. Working-raster feasibility (ADR-048 Decision 2)
+
+    private func audio(_ fourCC: String, rate: Double = 48_000, channels: Int = 2) -> ImportAudioFacts {
+        ImportAudioFacts(fourCC: fourCC, sampleRate: rate, channelCount: channels)
+    }
+
+    private func withAudio(_ base: ImportSourceFacts, track: Bool, _ facts: ImportAudioFacts?) -> ImportSourceFacts {
+        var f = base; f.hasAudioTrack = track; f.audio = facts; return f
+    }
+
+    func testNearSquarePortraitsWhoseAlignedRasterIsNotPortraitAreRejected() {
+        for (w, h) in [(1080, 1081), (1081, 1082), (2160, 2162)] {
+            let f = facts(natural: (w, h))
+            XCTAssertEqual(f.presentationOrientation, .portrait, "ADR-043 still calls \(w)×\(h) portrait")
+            assertRejected(f, .unsupportedWorkingRaster(presentationWidth: w, presentationHeight: h))
+        }
+    }
+
+    func testNearbyRastersThatStayPortraitAfterAlignmentAreAccepted() {
+        XCTAssertEqual(verdict(facts(natural: (1080, 1082))), .readyFastPath(sourceDuration: time(1200, 600)))
+        XCTAssertEqual(verdict(facts(natural: (1079, 1080))), .readyFastPath(sourceDuration: time(1200, 600)))
+        XCTAssertEqual(reasons(facts(natural: (2160, 2164))), [.raster(presentationWidth: 2160, presentationHeight: 2164)])
+        XCTAssertEqual(reasons(facts(natural: (1440, 1444))), [.raster(presentationWidth: 1440, presentationHeight: 1444)])
+    }
+
+    func testRasterFeasibilityUsesThePresentationAfterTheTransform() {
+        // Natural 1081×1080 rotated 90° presents as 1080×1081: portrait, infeasible once aligned.
+        let rotated = ImportAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0)
+        assertRejected(facts(natural: (1081, 1080), transform: rotated), .unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081))
+    }
+
+    func testRasterFeasibilityWinsOverAudioAndEveryNormalizationReason() {
+        var f = facts(natural: (1080, 1081), fps: 60, bpc: 10, transfer: .hlg)
+        f = withAudio(f, track: true, nil) // unreliable audio too: raster is gate 6, audio gate 7
+        assertRejected(f, .unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081))
+    }
+
+    func testEarlierGatesStillWinOverRasterFeasibility() {
+        assertRejected(facts(duration: .exact(time(6, 1)), natural: (1080, 1081)), .durationAboveMaximum)
+        assertRejected(facts(protected: true, natural: (1080, 1081)), .protectedContent)
+        assertRejected(facts(container: .isoBaseMedia(brands: ["mp42"]), natural: (1080, 1081)), .unsupportedContainer(.isoBaseMedia(brands: ["mp42"])))
+        assertRejected(facts(codec: .unsupported(fourCC: "apch"), natural: (1080, 1081)), .unsupportedCodec(.unsupported(fourCC: "apch")))
+        assertRejected(facts(natural: (1081, 1080)), .nonPortraitPresentation(.landscape))
+        assertRejected(facts(natural: (1080, 1080)), .nonPortraitPresentation(.square))
+    }
+
+    func testClassifierAndPlanShareOneRasterCalculation() {
+        for (w, h) in [(1080, 1081), (1080, 1082), (1079, 1080), (2160, 2162), (2160, 2164), (1440, 1444), (1620, 2160), (719, 1279)] {
+            let plan = WorkingMediaRasterPolicy.plan(forPresentation: WorkingMediaRaster(width: w, height: h))
+            let rejected = verdict(facts(natural: (w, h))) == .rejected(.unsupportedWorkingRaster(presentationWidth: w, presentationHeight: h))
+            XCTAssertEqual(plan?.isFeasible == false, rejected, "\(w)×\(h)")
+        }
+    }
+
+    // MARK: - 8. Audio facts (ADR-048 Decision 1)
+
+    func testNoAudioIsValidAndAddsNoReason() {
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(facts(audio: false)), .noAudio)
+        XCTAssertEqual(verdict(facts(audio: false)), .readyFastPath(sourceDuration: time(1200, 600)))
+        XCTAssertEqual(reasons(facts(audio: false, fps: 60)), [.frameRate(nominal: 60)])
+    }
+
+    func testAACPassesThroughAndIsNeverAReason() {
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(facts()), .passthroughAAC)
+        XCTAssertEqual(verdict(facts()), .readyFastPath(sourceDuration: time(1200, 600)))
+        XCTAssertEqual(reasons(facts(transfer: .hlg)), [.hdr(signals: [.hlgTransfer])])
+    }
+
+    func testKnownNonAACFormatsAddAudioTranscode() {
+        for id in ["lpcm", "alac", "apac", "aach", "aacp", "aacl", "aace", "ac-3", "opus", "AAC ", "aac_"] {
+            let f = withAudio(facts(), track: true, audio(id))
+            XCTAssertEqual(ImportPreflightClassifier.assessAudio(f), .transcode(sourceChannelCount: 2), id)
+            XCTAssertEqual(reasons(f), [.audioTranscode], "\(id) alone normalizes")
+        }
+    }
+
+    func testAudioTranscodeIsTheLastCanonicalReason() {
+        var f = facts(natural: (2160, 3840), fps: 60, bpc: 10, transfer: .hlg)
+        f = withAudio(f, track: true, audio("lpcm", channels: 6))
+        XCTAssertEqual(reasons(f), [
+            .hdr(signals: [.hlgTransfer, .bitDepthAbove8]),
+            .frameRate(nominal: 60),
+            .raster(presentationWidth: 2160, presentationHeight: 3840),
+            .audioTranscode,
+        ])
+        XCTAssertEqual(reasons(withAudio(facts(fps: 60), track: true, audio("alac"))), [.frameRate(nominal: 60), .audioTranscode])
+    }
+
+    func testUnreliableAudioFactsAreRejected() {
+        let cases: [(ImportSourceFacts, ImportAudioFactsProblem)] = [
+            (withAudio(facts(), track: false, audio("aac ")), .contradictoryTrackFacts),
+            (withAudio(facts(), track: true, nil), .missingFormatFacts),
+            (withAudio(facts(), track: true, audio("")), .malformedFormatID),
+            (withAudio(facts(), track: true, audio("aac")), .malformedFormatID),
+            (withAudio(facts(), track: true, audio("aac  ")), .malformedFormatID),
+            (withAudio(facts(), track: true, audio("\u{0}\u{0}\u{0}\u{0}")), .malformedFormatID),  // all-zero = absent
+            (withAudio(facts(), track: true, audio("a€ c")), .malformedFormatID),                  // U+20AC is not one subtype byte
+            (withAudio(facts(), track: true, audio("aac ", rate: 0)), .invalidSampleRate),
+            (withAudio(facts(), track: true, audio("aac ", rate: -48_000)), .invalidSampleRate),
+            (withAudio(facts(), track: true, audio("lpcm", rate: .nan)), .invalidSampleRate),
+            (withAudio(facts(), track: true, audio("lpcm", rate: .infinity)), .invalidSampleRate),
+            (withAudio(facts(), track: true, audio("aac ", channels: 0)), .invalidChannelCount),
+            (withAudio(facts(), track: true, audio("lpcm", channels: -1)), .invalidChannelCount),
+        ]
+        for (f, problem) in cases {
+            XCTAssertEqual(ImportPreflightClassifier.assessAudio(f), .unreliable(problem), "\(problem)")
+            assertRejected(f, .unsupportedAudioFacts(problem))
+        }
+    }
+
+    func testAudioRejectionWinsOverEveryNormalizationReason() {
+        let f = withAudio(facts(natural: (2160, 3840), fps: 60, transfer: .pq), track: true, nil)
+        assertRejected(f, .unsupportedAudioFacts(.missingFormatFacts))
+    }
+
+    func testEarlierGatesStillWinOverAudioFacts() {
+        let noFacts = { (f: ImportSourceFacts) in self.withAudio(f, track: true, nil) }
+        assertRejected(noFacts(facts(duration: .exact(time(599, 600)))), .durationBelowMinimum)
+        assertRejected(noFacts(facts(readable: false)), .unreadable)
+        assertRejected(noFacts(facts(container: .unknown)), .unsupportedContainer(.unknown))
+        assertRejected(noFacts(facts(codec: .unknown)), .unsupportedCodec(.unknown))
+        assertRejected(noFacts(facts(natural: (1920, 1080))), .nonPortraitPresentation(.landscape))
+    }
+
+    func testEveryNonzeroNonAACSubtypeTranscodesRegardlessOfPrintability() {
+        // Raw subtype bytes as the inspector renders them (one ISO Latin-1 scalar per byte).
+        let cases: [(String, UInt32)] = [
+            ("a\u{E9} c", 0x61E9_2063),              // high-bit byte
+            ("a\u{7}cc", 0x6107_6363),               // control byte
+            ("\u{0}\u{0}\u{0}\u{1}", 0x0000_0001),   // embedded NULs, nonzero overall
+            ("ac\u{0}3", 0x6163_0033),               // embedded NUL mid-subtype
+            ("    ", 0x2020_2020),                   // four spaces
+            ("\u{FF}\u{FF}\u{FF}\u{FF}", 0xFFFF_FFFF),
+        ]
+        for (fourCC, raw) in cases {
+            XCTAssertEqual(ImportPreflightClassifier.rawFormatID(fourCC), raw, "raw identity \(raw)")
+            let f = withAudio(facts(), track: true, audio(fourCC))
+            XCTAssertEqual(ImportPreflightClassifier.assessAudio(f), .transcode(sourceChannelCount: 2), "\(raw)")
+            XCTAssertEqual(reasons(f), [.audioTranscode], "\(raw)")
+        }
+        XCTAssertEqual(ImportPreflightClassifier.rawFormatID("aac "), 0x6161_6320)
+        XCTAssertEqual(ImportPreflightClassifier.rawFormatID("\u{0}\u{0}\u{0}\u{0}"), 0)
+        XCTAssertNil(ImportPreflightClassifier.rawFormatID(""))
+        XCTAssertNil(ImportPreflightClassifier.rawFormatID("a\u{100}cc"))
+        // A "\r\n" pair is one Character but two subtype bytes: identity is by scalar, not Character.
+        XCTAssertEqual(ImportPreflightClassifier.rawFormatID("a\r\nc"), 0x610D_0A63)
+    }
+
+    func testFourCCComparisonIsExactAndCaseSensitive() {
+        XCTAssertEqual(ImportPreflightPolicy.passthroughAudioFormatID, "aac ")
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(withAudio(facts(), track: true, audio("aac "))), .passthroughAAC)
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(withAudio(facts(), track: true, audio("AAC "))), .transcode(sourceChannelCount: 2))
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(withAudio(facts(), track: true, audio(" aac"))), .transcode(sourceChannelCount: 2))
+    }
+
     // MARK: - Value semantics
 
     func testFactsAreEquatableHashableAndPreserveUnknownStates() {

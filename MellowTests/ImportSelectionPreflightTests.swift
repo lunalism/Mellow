@@ -286,13 +286,72 @@ final class ImportSelectionPreflightTests: XCTestCase {
         let all: [ImportPreflightRejection] = [
             .durationBelowMinimum, .durationAboveMaximum, .invalidDuration, .unreadable, .noVideoTrack, .protectedContent,
             .unsupportedContainer(.unknown), .unsupportedCodec(.unknown),
-            .nonPortraitPresentation(.landscape), .nonPortraitPresentation(.square)
-        ]
-        XCTAssertEqual(all.map(ImportExclusionCategory.init), [
+            .nonPortraitPresentation(.landscape), .nonPortraitPresentation(.square),
+            .unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081)
+        ] + ImportAudioFactsProblem.allCases.map { .unsupportedAudioFacts($0) }
+        let expected: [ImportExclusionCategory] = [
             .durationBelowMinimum, .durationAboveMaximum, .invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia,
-            .invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia, .nonPortraitPresentation, .nonPortraitPresentation
-        ])
+            .invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia, .nonPortraitPresentation, .nonPortraitPresentation,
+            .invalidOrUnsupportedMedia
+        ] + Array(repeating: .invalidOrUnsupportedMedia, count: ImportAudioFactsProblem.allCases.count)
+        XCTAssertEqual(all.map(ImportExclusionCategory.init), expected)
         XCTAssertEqual(ImportExclusionCategory.allCases.count, 4)
+    }
+
+    // MARK: - 3a. ADR-048 raster feasibility and audio facts
+
+    private var nearSquare: ImportSourceFacts { facts(natural: (1080, 1081), fps: 60, transfer: .hlg) }
+    private var unknownAudio: ImportSourceFacts { var f = facts(natural: (2160, 3840), transfer: .pq); f.audio = nil; return f }
+    private var contradictoryAudio: ImportSourceFacts { var f = facts(); f.hasAudioTrack = false; return f }
+    private var lpcmOnly: ImportSourceFacts { var f = facts(); f.audio = ImportAudioFacts(fourCC: "lpcm", sampleRate: 48_000, channelCount: 2); return f }
+
+    func testInfeasibleRasterAndUnreliableAudioAreInvalidOrUnsupportedAndOthersContinue() async throws {
+        let outcome = try await run([ready, nearSquare, lpcmOnly, unknownAudio, contradictoryAudio, hdr])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
+            .fastPathCopy, .normalizationRequired(reasons: [.audioTranscode]), .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])])
+        ])
+        XCTAssertEqual(rejections(outcome), [
+            .unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081),
+            .unsupportedAudioFacts(.missingFormatFacts),
+            .unsupportedAudioFacts(.contradictoryTrackFacts),
+        ])
+        XCTAssertEqual(categories(outcome), Array(repeating: .invalidOrUnsupportedMedia, count: 3))
+        XCTAssertEqual(outcome.notice, .invalidOrUnsupportedItemsExcluded)
+        XCTAssertTrue(outcome.requiresNormalization)
+    }
+
+    func testAudioOnlyNormalizationStaysInTheAcceptedSet() async throws {
+        let outcome = try await run([lpcmOnly], .singleCandidate)
+        XCTAssertEqual(outcome.accepted.count, 1)
+        XCTAssertEqual(outcome.accepted.first?.preparationPath, .normalizationRequired(reasons: [.audioTranscode]))
+        XCTAssertTrue(outcome.requiresNormalization)
+        XCTAssertNil(outcome.notice)
+    }
+
+    func testNonPrintableNonzeroAudioSubtypeStaysAcceptedForTranscode() async throws {
+        var highBit = facts(); highBit.audio = ImportAudioFacts(fourCC: "a\u{E9} c", sampleRate: 48_000, channelCount: 2)
+        var control = facts(); control.audio = ImportAudioFacts(fourCC: "a\u{7}\u{0}c", sampleRate: 44_100, channelCount: 1)
+        var zero = facts(); zero.audio = ImportAudioFacts(fourCC: "\u{0}\u{0}\u{0}\u{0}", sampleRate: 48_000, channelCount: 2)
+        let outcome = try await run([highBit, zero, control])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
+            .normalizationRequired(reasons: [.audioTranscode]), .normalizationRequired(reasons: [.audioTranscode])
+        ])
+        XCTAssertEqual(rejections(outcome), [.unsupportedAudioFacts(.malformedFormatID)])
+        XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia])
+    }
+
+    func testAllInfeasibleOrUnreliableLeavesEmptyAcceptedSet() async throws {
+        let outcome = try await run([nearSquare, unknownAudio])
+        XCTAssertTrue(outcome.accepted.isEmpty)
+        XCTAssertEqual(outcome.notice, .invalidOrUnsupportedItemsExcluded)
+    }
+
+    func testADR048ExclusionsKeepExistingNoticeSemantics() async {
+        await assertNotice([nearSquare], .singleCandidate, is: .candidateInvalidOrUnsupported)
+        await assertNotice([unknownAudio], .singleCandidate, is: .candidateInvalidOrUnsupported)
+        await assertNotice([contradictoryAudio], .singleCandidate, is: .candidateInvalidOrUnsupported)
+        await assertNotice([ready, nearSquare, short], is: .mixedItemsExcluded)
+        await assertNotice([ready, unknownAudio, landscape], is: .mixedItemsExcluded)
     }
 
     // MARK: - 4. Orientation (ADR-043 R1; ROADMAP orientation cases 1–8, 10–13)

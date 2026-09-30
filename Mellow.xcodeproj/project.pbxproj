@@ -66,6 +66,10 @@
 		00000000000000000000026F /* ImportSourceInspectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000016F /* ImportSourceInspectorTests.swift */; };
 		000000000000000000000270 /* ImportSelectionPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000170 /* ImportSelectionPreflight.swift */; };
 		000000000000000000000271 /* ImportSelectionPreflightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000171 /* ImportSelectionPreflightTests.swift */; };
+		000000000000000000000272 /* SDRWorkingMediaContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000172 /* SDRWorkingMediaContract.swift */; };
+		000000000000000000000273 /* WorkingMediaNormalizationPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000173 /* WorkingMediaNormalizationPlan.swift */; };
+		000000000000000000000274 /* WorkingMediaNormalizationPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000174 /* WorkingMediaNormalizationPlanTests.swift */; };
+		000000000000000000000275 /* WorkingMediaRasterPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000175 /* WorkingMediaRasterPolicy.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -194,6 +198,10 @@
 		00000000000000000000016F /* ImportSourceInspectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSourceInspectorTests.swift; sourceTree = "<group>"; };
 		000000000000000000000170 /* ImportSelectionPreflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSelectionPreflight.swift; sourceTree = "<group>"; };
 		000000000000000000000171 /* ImportSelectionPreflightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSelectionPreflightTests.swift; sourceTree = "<group>"; };
+		000000000000000000000172 /* SDRWorkingMediaContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDRWorkingMediaContract.swift; sourceTree = "<group>"; };
+		000000000000000000000173 /* WorkingMediaNormalizationPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMediaNormalizationPlan.swift; sourceTree = "<group>"; };
+		000000000000000000000174 /* WorkingMediaNormalizationPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMediaNormalizationPlanTests.swift; sourceTree = "<group>"; };
+		000000000000000000000175 /* WorkingMediaRasterPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMediaRasterPolicy.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -325,6 +333,7 @@
 				00000000000000000000016C /* CaptureFormatPolicyTests.swift */,
 				00000000000000000000016F /* ImportSourceInspectorTests.swift */,
 				000000000000000000000171 /* ImportSelectionPreflightTests.swift */,
+				000000000000000000000174 /* WorkingMediaNormalizationPlanTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -583,6 +592,9 @@
 				00000000000000000000016D /* ImportContainerInspector.swift */,
 				00000000000000000000016E /* ImportSourceInspector.swift */,
 				000000000000000000000170 /* ImportSelectionPreflight.swift */,
+				000000000000000000000172 /* SDRWorkingMediaContract.swift */,
+				000000000000000000000173 /* WorkingMediaNormalizationPlan.swift */,
+				000000000000000000000175 /* WorkingMediaRasterPolicy.swift */,
 			);
 			path = Import;
 			sourceTree = "<group>";
@@ -770,6 +782,9 @@
 				00000000000000000000026D /* ImportContainerInspector.swift in Sources */,
 				00000000000000000000026E /* ImportSourceInspector.swift in Sources */,
 				000000000000000000000270 /* ImportSelectionPreflight.swift in Sources */,
+				000000000000000000000272 /* SDRWorkingMediaContract.swift in Sources */,
+				000000000000000000000273 /* WorkingMediaNormalizationPlan.swift in Sources */,
+				000000000000000000000275 /* WorkingMediaRasterPolicy.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,
 				00000000000000000000024D /* ProjectMediaSelection.swift in Sources */,
 				00000000000000000000024E /* PhotosVideoSelector.swift in Sources */,
@@ -850,6 +865,7 @@
 				00000000000000000000026C /* CaptureFormatPolicyTests.swift in Sources */,
 				00000000000000000000026F /* ImportSourceInspectorTests.swift in Sources */,
 				000000000000000000000271 /* ImportSelectionPreflightTests.swift in Sources */,
+				000000000000000000000274 /* WorkingMediaNormalizationPlanTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,

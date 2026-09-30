@@ -109,9 +109,7 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
             let descriptions = try? await audio.load(.formatDescriptions)
             try Task.checkCancellation()
             if let description = descriptions?.first {
-                let subtype = Self.fourCC(CMFormatDescriptionGetMediaSubType(description))
-                let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee
-                facts.audio = ImportAudioFacts(fourCC: subtype, sampleRate: basic?.mSampleRate ?? 0, channelCount: Int(basic?.mChannelsPerFrame ?? 0))
+                facts.audio = Self.audioFacts(from: description)
             }
         }
         return facts
@@ -144,6 +142,15 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
         let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any] ?? [:]
         facts.hasDolbyVisionConfiguration = ["dvcC", "dvvC", "dvwC"].contains { atoms[$0] != nil }
         facts.highBitDepthProfile = Self.highBitDepthProfile(atoms: atoms)
+    }
+
+    /// Audio facts exactly as the format description states them (ADR-048). A missing stream basic
+    /// description yields a zero rate / channel count and an absent subtype four NULs; preflight
+    /// rejects those rather than this adapter guessing.
+    static func audioFacts(from description: CMFormatDescription) -> ImportAudioFacts {
+        let subtype = fourCC(CMFormatDescriptionGetMediaSubType(description))
+        let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee
+        return ImportAudioFacts(fourCC: subtype, sampleRate: basic?.mSampleRate ?? 0, channelCount: Int(basic?.mChannelsPerFrame ?? 0))
     }
 
     private static func assetError(_ error: Error) -> ImportInspectionError {

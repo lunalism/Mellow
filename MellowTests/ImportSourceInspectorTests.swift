@@ -362,6 +362,73 @@ final class ImportSourceInspectorTests: XCTestCase {
         XCTAssertEqual(ImportPreflightClassifier.classify(ancillaryOnly), .readyFastPath(sourceDuration: try MediaTime(value: 1200, timescale: 600)))
     }
 
+    // MARK: - Audio format-description mapping (ADR-048; synthetic CMAudioFormatDescription)
+
+    private func audioDescription(formatID: AudioFormatID, sampleRate: Double, channels: UInt32) throws -> CMAudioFormatDescription {
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: sampleRate, mFormatID: formatID, mFormatFlags: 0, mBytesPerPacket: 0, mFramesPerPacket: 0,
+            mBytesPerFrame: 0, mChannelsPerFrame: channels, mBitsPerChannel: 0, mReserved: 0)
+        if formatID == kAudioFormatLinearPCM {
+            asbd.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
+            asbd.mBitsPerChannel = 16; asbd.mFramesPerPacket = 1
+            asbd.mBytesPerFrame = 2 * channels; asbd.mBytesPerPacket = 2 * channels
+        }
+        var description: CMAudioFormatDescription?
+        let status = CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
+        XCTAssertEqual(status, noErr)
+        return try XCTUnwrap(description)
+    }
+
+    func testAudioFormatIDsMapToExactFourCCsFromTheSDK() throws {
+        let cases: [(AudioFormatID, String)] = [
+            (kAudioFormatMPEG4AAC, "aac "), (kAudioFormatLinearPCM, "lpcm"), (kAudioFormatAppleLossless, "alac"), (kAudioFormatAPAC, "apac"),
+            (kAudioFormatMPEG4AAC_HE, "aach"), (kAudioFormatMPEG4AAC_HE_V2, "aacp"), (kAudioFormatMPEG4AAC_LD, "aacl"), (kAudioFormatMPEG4AAC_ELD, "aace"),
+            (kAudioFormatAC3, "ac-3"),
+        ]
+        for (formatID, expected) in cases {
+            let facts = AVAssetImportSourceInspector.audioFacts(from: try audioDescription(formatID: formatID, sampleRate: 48_000, channels: 2))
+            XCTAssertEqual(facts, ImportAudioFacts(fourCC: expected, sampleRate: 48_000, channelCount: 2), expected)
+        }
+    }
+
+    func testInspectedAudioFactsDriveTheADR048Assessment() throws {
+        func assess(_ formatID: AudioFormatID, _ rate: Double, _ channels: UInt32) throws -> ImportAudioAssessment {
+            var f = baseFacts()
+            f.hasAudioTrack = true
+            f.audio = AVAssetImportSourceInspector.audioFacts(from: try audioDescription(formatID: formatID, sampleRate: rate, channels: channels))
+            return ImportPreflightClassifier.assessAudio(f)
+        }
+        XCTAssertEqual(try assess(kAudioFormatMPEG4AAC, 44_100, 1), .passthroughAAC)
+        XCTAssertEqual(try assess(kAudioFormatLinearPCM, 48_000, 2), .transcode(sourceChannelCount: 2))
+        XCTAssertEqual(try assess(kAudioFormatAppleLossless, 48_000, 1), .transcode(sourceChannelCount: 1))
+        XCTAssertEqual(try assess(kAudioFormatAPAC, 48_000, 4), .transcode(sourceChannelCount: 4))
+        XCTAssertEqual(try assess(kAudioFormatMPEG4AAC_HE, 48_000, 2), .transcode(sourceChannelCount: 2))
+    }
+
+    func testAbsentAudioSubtypeRendersAsNULsAndIsMalformed() {
+        let rendered = AVAssetImportSourceInspector.fourCC(0)
+        XCTAssertEqual(rendered.unicodeScalars.map(\.value), [0, 0, 0, 0])
+        XCTAssertEqual(ImportPreflightClassifier.rawFormatID(rendered), 0)
+        var f = baseFacts()
+        f.hasAudioTrack = true
+        f.audio = ImportAudioFacts(fourCC: rendered, sampleRate: 0, channelCount: 0)
+        XCTAssertEqual(ImportPreflightClassifier.assessAudio(f), .unreliable(.malformedFormatID))
+    }
+
+    func testNonPrintableSubtypeBytesSurviveInspectionAndTranscode() throws {
+        for formatID: AudioFormatID in [0x61E9_2063, 0x6107_0063, 0x2020_2020, 0x0000_0001, 0x6162_6300, 0xFFFF_FFFF] {
+            let facts = AVAssetImportSourceInspector.audioFacts(from: try audioDescription(formatID: formatID, sampleRate: 48_000, channels: 2))
+            XCTAssertEqual(facts.fourCC.unicodeScalars.count, 4, "\(formatID)")
+            XCTAssertEqual(ImportPreflightClassifier.rawFormatID(facts.fourCC), formatID, "raw bytes preserved for \(formatID)")
+            var f = baseFacts()
+            f.hasAudioTrack = true
+            f.audio = facts
+            XCTAssertEqual(ImportPreflightClassifier.assessAudio(f), .transcode(sourceChannelCount: 2), "\(formatID)")
+        }
+        let aac = AVAssetImportSourceInspector.audioFacts(from: try audioDescription(formatID: kAudioFormatMPEG4AAC, sampleRate: 48_000, channels: 2))
+        XCTAssertEqual(ImportPreflightClassifier.rawFormatID(aac.fourCC), kAudioFormatMPEG4AAC)
+    }
+
     // MARK: - Structured cancellation
 
     /// A pre-cancelled task must throw `CancellationError` and never receive facts. The gate makes
