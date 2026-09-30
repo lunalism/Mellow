@@ -1880,7 +1880,7 @@ ADR-045로 확정된 항목(Working Media = QuickTime `.mov` · H.264 High 8-bit
 - ~~non-AAC Source Audio 처리(ADR-045 §3은 AAC Passthrough만 정의)~~ — Resolved by ADR-048(2026-09-30): `audioTranscode` → AAC-LC 48 kHz Mono 96 kbps / Stereo 128 kbps; 알 수 없거나 모순된 Audio Facts는 Preflight 거부
 - ~~짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source)~~ — Resolved by ADR-048(2026-09-30): Preflight Working-raster Feasibility 거부(기존 Invalid / Unsupported 범주)
 - ~~`minFrameDuration` 부재 시 출력 Frame Duration~~ — Resolved by ADR-048(2026-09-30): Nominal Frame Rate Fallback, 둘 다 없으면 30 fps
-- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(현재 5초 상한의 1-frame Quantization 허용치 / Clamp는 구현 세부사항이며 Product 경계를 재정의하지 않는다 — 검증 방식만 결정)
+- ~~정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(현재 5초 상한의 1-frame Quantization 허용치 / Clamp는 구현 세부사항이며 Product 경계를 재정의하지 않는다 — 검증 방식만 결정)~~ — Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함 — Non-portrait(Landscape / Square)은 ADR-043 Revision 1로 Preflight 제외가 확정되어 Re-encode / Transform 보존 Copy 질문이 사라졌다)
 - Preparation의 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(관찰 가능한 UX / Cleanup / 무변경 보장은 ADR-042 Revision 4로 확정)
 
@@ -1932,7 +1932,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 7. 검증된 Portrait Source / Staged Media 전체에서 승인된 Technical Gate를 적용하여 1080p-class / 30 fps / SDR Working Media를 생성하고 Project Crop을 bake-in하지 않으며 Source Presentation Transform과 Framing 가능 영역을 보존한다. 출력 Raster는 ADR-047의 규칙을 따른다: `scale = min(1.0, 1080 / width, 1920 / height)`, 각 변 짝수 내림, 절대 Upscale 없음(720×1280 / 1080×1440 / 1080×1920은 그대로, 2160×3840 → 1080×1920), HDR / >30 fps 사유로 정규화되는 저해상도 Source도 크기 유지. 짝수 정렬 후 Portrait이 아닌 Raster는 Preflight의 Working-raster Feasibility에서 이미 제외되어 이 단계에 도달하지 않는다(ADR-048).
 8. 30 fps 초과 Source를 포함하여 Working Media를 30 fps 기준으로 정규화하고 Source FPS를 Photos 원본에서 변경하지 않으며 VFR 변환 구현은 승인된 기준을 따른다. 출력 Frame Duration은 ADR-048을 따른다: 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`, 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`, 둘 다 없으면 `1/30`(24 fps / 29.97 fps는 유지, 59.94 / 60 fps는 30 fps로 제한, 30 fps 초과 출력 없음).
 9. Photos 원본을 변경하지 않는다.
-10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존, Duration(Working Media가 `0 < effectiveClipDuration <= 5 seconds` Domain Invariant를 만족하고 Source Eligibility 1.0–5.0초와 일관됨; 경계 비교 정책은 Technical Gate)을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
+10. Normalized Output의 SDR 해석, 30 fps, 승인된 1080p-class Target, Orientation 및 Framing 영역 보존, Duration(Working Media가 `0 < effectiveClipDuration <= 5 seconds` Domain Invariant를 만족하고 Source Eligibility 1.0–5.0초와 일관됨; ~~경계 비교 정책은 Technical Gate~~ — Source Eligibility 경계는 ADR-042 + ADR-045 §1 / §11의 정확한 Rational 비교이며 허용치 없음, 출력 Duration은 ADR-045 §7 허용 범위)을 Final Validation하고 명백한 변환 실패를 거부한 뒤 안전한 Materialization 및 Project 유효성 확인 후 Metadata를 Persist하여 Committed Clip만 UI에 추가한다.
 11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
 13. Normalization 실패 시 Live Process 안에서는 Valid Source / Staging을 보존하여 `다시 시도`가 같은 Accepted Set을 재시도할 수 있게 하고 Incomplete Derived Output을 Final Media로 취급하지 않는다(ADR-047: Relaunch 이후에는 아무것도 보존 · 재개하지 않으며 Operation Workspace 전체가 시작 시 Sweep 대상이다).
@@ -2013,7 +2013,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - 60 fps Source(5초 이하)
 - 1.0초 이상 5.0초 미만 Source(전체 사용, 비정수 포함)
 - 정확히 1.0초 Source(허용, 전체 사용)
-- 정확히 5.0초 Source(허용, 전체 사용; 경계 비교 정책은 Technical Gate 결정에 따라 검증)
+- 정확히 5.0초 Source(허용, 전체 사용; ~~경계 비교 정책은 Technical Gate 결정에 따라 검증~~ — ADR-042 + ADR-045 §1 / §11: 정확한 Rational 비교로 허용, Frame 기반 허용치 없음; 5.0초보다 한 Timescale 단위 긴 Source는 Above-maximum 거부)
 - 1.0초 미만 Source(예: 0.4초 / 0.8초): Select Clips / Add / Replace 각각에서 Below-minimum 거부(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`), Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
 - 5.0초 초과 Source: Select Clips / Add / Replace 각각에서 `.tooLong` 거부, Project-owned Media / Clip Metadata / 부분 Project Mutation 없음, Photos 원본 불변, Normalization 미시작
 - 다중 선택 Per-item Duration Filtering(ADR-042 Revision 3, Select Clips와 Editor Add 각각): 1.0초 미만 항목만 섞인 선택 → 해당 항목 제외 + `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` + 나머지 계속; 5.0초 초과 항목만 섞인 선택 → 제외 + `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` + 나머지 계속; 둘 다 섞인 선택 → 제외 + `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` + 나머지 계속; 유효 항목이 제외 뒤에도 Commit됨(재선택 강요 없음); 전부 Ineligible → Select Clips는 Project 미생성, Add는 기존 Project 무변경 + 통합 안내; Phase-5-ready와 Normalization-required 항목이 함께 Accepted Set으로 Commit됨; 제외 항목의 Project-owned Media / Clip Metadata 부재; 통합 안내 1회(반복 Alert 없음)와 정확한 Copy
@@ -3546,7 +3546,7 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
 - Photos Import / Normalization에 필요한 Safety Reserve 정책
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식 — Resolved by ADR-047(2026-09-18): No Resume, Ephemeral Workspace UUID, 기존 Sweep 재사용, Predicate 확장 없음.
-- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)
+- ~~정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)~~ — Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Preparation의 구체적 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항; 관찰 가능한 UX는 ADR-042 Revision 4로 확정)
 
 1.0초 미만 거부의 개별 안내 Copy(`영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`)는 ADR-042 Revision 2로, 다중 선택의 Per-item Duration Filtering과 통합 안내(`짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`)는 ADR-042 Revision 3으로 확정되었다.

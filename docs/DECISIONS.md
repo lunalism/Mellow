@@ -2232,7 +2232,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 현재 Materialized Segment 내부에서만 Re-trim할지 여부 — Resolved by ADR-042: Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하다(Phase 7).
 - Source Reference를 함께 유지할지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Imported Clip의 최소 길이 — Resolved by ADR-042(2026-09-17 사용자 승인): 1.0초. Phase 6 구현 요구사항(현재 Phase 5 구현은 미강제).
-- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
+- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — ~~Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).~~ Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
@@ -2626,7 +2626,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - ~~Low-resolution Source Upscaling Policy와 1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(Scale-down) + ADR-047(No Upscaling, 2026-09-18)
 - Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source 기준)
 - ~~Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식~~ — Resolved by ADR-047(2026-09-18): No Resume, Predicate 확장 없음
-- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
+- ~~정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)~~ — Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함; Landscape 예시는 ADR-043으로 해소 — Non-portrait(Landscape / Square)은 Preflight 제외)
 - 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 최종 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(Revision 4의 관찰 가능한 UX / Cleanup / 무변경 보장은 확정, 메커니즘만 Pending)
 

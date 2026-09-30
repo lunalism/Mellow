@@ -921,7 +921,7 @@ ADR-042에 따라 Photos에서 Import하는 원본 Video는 **전체 Duration**�
 
 1.0초 미만이거나 5.0초를 초과하는 원본 Video는 Import하지 않으며 긴 Source에서 최대 5초 Segment를 선택하는 기능, Segment Selection UI, 원본 Source Reference 유지는 존재하지 않는다.
 
-범위 안의 원본 Video는 전체가 하나의 Clip이 되며 정확히 1.0초 / 5.0초와 1.3초, 2.7초, 4.5초처럼 정수가 아닌 길이도 허용되고 Camera Preset에 맞출 필요가 없다. 0.4초 / 0.8초 같은 1.0초 미만은 Below-minimum 거부, 5.0초 초과는 Above-maximum 거부, 0 이하 / 읽을 수 없음은 Invalid Media다. Product 경계는 정확히 1.0초 / 5.0초이며 현재 구현의 1-frame Quantization 허용치 / 5초 Clamp는 구현 세부사항으로 Phase 6 Technical Gate에서 경계 비교 정책을 검증한다.
+범위 안의 원본 Video는 전체가 하나의 Clip이 되며 정확히 1.0초 / 5.0초와 1.3초, 2.7초, 4.5초처럼 정수가 아닌 길이도 허용되고 Camera Preset에 맞출 필요가 없다. 0.4초 / 0.8초 같은 1.0초 미만은 Below-minimum 거부, 5.0초 초과는 Above-maximum 거부, 0 이하 / 읽을 수 없음은 Invalid Media다. ~~Product 경계는 정확히 1.0초 / 5.0초이며 현재 구현의 1-frame Quantization 허용치 / 5초 Clamp는 구현 세부사항으로 Phase 6 Technical Gate에서 경계 비교 정책을 검증한다.~~ — **ADR-042 + ADR-045 §1 / §11로 해소:** Source Eligibility는 정확한 Rational(`MediaTime`) 비교로 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)를 판정하고 Frame 기반 허용치를 적용하지 않는다. 현재 Phase 5 Validator의 1-frame 허용치 / 5초 Clamp는 Phase 6 Preflight로 대체될 기존 구현 동작이며 Product 규칙이 아니다. ADR-045 §7의 출력 Duration 허용 범위는 Normalization 출력 Validation 규칙으로 Source Eligibility와 별개다.
 
 구현 상태: 5.0초 초과 거부(`.tooLong`)는 Phase 5가 구현했다. 1.0초 미만 거부는 아직 구현되지 않았으며(`Phase5ReadyMediaValidator`는 `0 < d`만 검사) Phase 6 구현 요구사항이다.
 
@@ -2678,7 +2678,7 @@ HDR / Dolby Vision Source 허용, SDR Working Media / Preview / Export 방향은
 - Materialized Segment 외 원본 Source Reference를 유지할지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Imported Clip의 Re-trim 범위 — Resolved by ADR-042: Project-owned Clip Media 범위 안.
 - Imported Clip의 최소 길이 — Resolved by ADR-042: 1.0초(Phase 6 구현 요구).
-- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate.
+- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — ~~Pending 구현 세부사항, Phase 6 Technical Gate.~~ Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Import Durable Operation Identity / Recovery 깊이와 STEP 12B Orphan Predicate 확장 — Resolved by ADR-047(2026-09-18): No Resume, Ephemeral Workspace UUID, 기존 Sweep 재사용, Predicate 확장 없음.
 - Source Video Transcoding 세부 정책
 - 매우 낮은 Resolution Source의 Upscaling 정책 — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음.

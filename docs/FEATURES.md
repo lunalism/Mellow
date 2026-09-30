@@ -541,7 +541,7 @@ Photos 원본은 Import, 정규화 또는 편집 과정에서도 수정하거나
 
 미디어 저장은 `ARCHITECTURE.md`와 ADR-020 / ADR-021의 확정된 기준을 따르며 SDR 정규화 방향은 ADR-022를 따른다.
 
-Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Scale-down Rule은 ADR-045(2026-09-18)로 확정되었다(QuickTime · H.264 8-bit · Rec.709 · 1080p-class 세로 · ≤ 30 fps · AAC 유지; Phase 6 Production 구현은 미완). 지원되는 원본은 사용자가 고른 Photos 영상을 바꾸지 않고 내부 Working Media 계약으로 변환될 수 있으며, 지원하지 않는 Container / 방향은 명확히 거절된다. Low-resolution Upscaling 여부는 여전히 확정하지 않는다. — **ADR-048(2026-09-30):** AAC 소리는 그대로 유지하고, AAC가 아닌 알려진 소리는 영상을 버리거나 거절하지 않고 내부 Working Media용 AAC로 변환하며, 소리 정보를 신뢰성 있게 읽을 수 없으면 기존 "읽을 수 없거나 지원하지 않는 영상"으로 제외한다. 승인되었으나 미구현.
+Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Scale-down Rule은 ADR-045(2026-09-18)로 확정되었다(QuickTime · H.264 8-bit · Rec.709 · 1080p-class 세로 · ≤ 30 fps · AAC 유지; Phase 6 Production 구현은 미완). 지원되는 원본은 사용자가 고른 Photos 영상을 바꾸지 않고 내부 Working Media 계약으로 변환될 수 있으며, 지원하지 않는 Container / 방향은 명확히 거절된다. ~~Low-resolution Upscaling 여부는 여전히 확정하지 않는다.~~ — **ADR-047(2026-09-18)로 해소:** Normalization은 절대 Upscale하지 않는다. 저해상도 Source가 다른 승인 사유(HDR / 30 fps 초과 등)로 정규화되어도 Presentation Raster를 그대로 유지하며, Raster Normalization 사유는 1080p-class를 초과하는 Presentation Raster에만 적용되고, 최종 크기는 `scale = min(1.0, 1080 / width, 1920 / height)` 적용 후 각 변 짝수 내림(ADR-047)을 따른다. — **ADR-048(2026-09-30):** AAC 소리는 그대로 유지하고, AAC가 아닌 알려진 소리는 영상을 버리거나 거절하지 않고 내부 Working Media용 AAC로 변환하며, 소리 정보를 신뢰성 있게 읽을 수 없으면 기존 "읽을 수 없거나 지원하지 않는 영상"으로 제외한다. 승인되었으나 미구현.
 
 ---
 
