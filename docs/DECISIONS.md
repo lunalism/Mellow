@@ -2232,17 +2232,20 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 현재 Materialized Segment 내부에서만 Re-trim할지 여부 — Resolved by ADR-042: Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하다(Phase 7).
 - Source Reference를 함께 유지할지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Imported Clip의 최소 길이 — Resolved by ADR-042(2026-09-17 사용자 승인): 1.0초. Phase 6 구현 요구사항(현재 Phase 5 구현은 미강제).
-- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).
+- 정확한 1.0초 / 5.0초 경계의 AVFoundation Duration 비교 정책 — ~~Pending 구현 세부사항, Phase 6 Technical Gate(Product 경계는 확정).~~ Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
-- Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.
-- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완.
+- Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. *(ADR-048(2026-09-30): Orientation 다음에 Working-raster Feasibility → Audio Facts 단계가 삽입되고 Normalization 사유 끝에 Audio Transcode가 추가되었다.)* Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.
+- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완. — **ADR-048(2026-09-30):** AAC Passthrough는 AAC Source에만 적용되고 non-AAC는 AAC-LC 변환, Cadence Fallback과 Working-raster Feasibility 추가.
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate 확장 — Resolved by ADR-047(2026-09-18): Process 종료 후 Resume 없음, Durable Resumable Operation ID 없음, Workspace UUID는 Ephemeral, Repository Row가 Commit; 버려진 Workspace / 부분 출력은 기존 STEP 12B 시작 시 Sweep으로 정리(Predicate 확장 없음), 사용자는 Import를 다시 시작한다.
 - Phase 6 Working Media Raster / Interrupted-Normalization Recovery — Resolved by ADR-047(2026-09-18): No Upscaling + No Resume(위 두 항목 참조).
+- non-AAC Source Audio 처리와 Working Media Audio 설정 — Resolved by ADR-048(2026-09-30): Audio 없음 → 출력 Audio 없음(무음 합성 없음); AAC → Passthrough(Normalization 사유 아님); 알려진 non-AAC → 새 사유 `audioTranscode`(순서 HDR → Frame Rate → Raster → Audio Transcode, 유일한 사유 가능)로 AAC-LC 48 kHz, Mono 96 kbps / 2채널 이상 Stereo 128 kbps(2채널 초과는 명시적 Stereo Downmix); 알 수 없거나 모순된 Audio Facts → Preflight 기존 Invalid / Unsupported 범주 거부. Export Audio 결정 아님.
+- 짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source) — Resolved by ADR-048(2026-09-30): Orientation 판정은 그대로, Orientation 다음 · Normalization 사유 이전의 Working-raster Feasibility 단계가 ADR-047 알고리즘 결과 `outputHeight > outputWidth`를 요구하고 실패 시(예: 1080×1081 → 1080×1080) Preflight 기존 Invalid / Unsupported 범주로 거부; Crop / Pad / 늘리기 / 여백 우회 없음, 새 안내 없음.
+- `minFrameDuration` 부재 시 출력 Frame Duration — Resolved by ADR-048(2026-09-30): 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 새 Normalization 사유 없음, 거부 사유 아님, 30 fps 초과 출력 없음.
 
 ### Camera
 
@@ -2623,7 +2626,7 @@ Phase 6은 **Duration Eligibility를 이미 통과한 5초 이하 Source 중 Pha
 - ~~Low-resolution Source Upscaling Policy와 1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(Scale-down) + ADR-047(No Upscaling, 2026-09-18)
 - Import Storage Estimate Formula와 Safety Reserve(5초 이하 전체 Source 기준)
 - ~~Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan Predicate의 확장 방식~~ — Resolved by ADR-047(2026-09-18): No Resume, Predicate 확장 없음
-- 정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)
+- ~~정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(Timescale / Frame-duration 허용치의 검증 방식 — 구현 세부사항, Product 경계는 확정)~~ — Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Phase-5-ready 경계를 벗어나는 항목별 Normalization 처리 범위(Portrait Presentation Source에 한함; Landscape 예시는 ADR-043으로 해소 — Non-portrait(Landscape / Square)은 Preflight 제외)
 - 구체적 Export Session / Cancellation API 조합, Implementation-specific Aggregate Progress 계산, `다시 시도`의 최종 Source-handle 유지 메커니즘, Filesystem Free-space API와 Race 처리(Revision 4의 관찰 가능한 UX / Cleanup / 무변경 보장은 확정, 메커니즘만 Pending)
 
@@ -2828,7 +2831,7 @@ QuickTime Container-eligible Source는 지원되는 **H.264 또는 HEVC** Media�
 
 ### 4. Eligibility는 자동 수락이 아니다
 
-Container-eligible QuickTime Source도 다음 독립 Preflight 규칙을 모두 통과해야 한다: 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042), Portrait Presentation `presentationHeight > presentationWidth`(ADR-043 Revision 1), Readable / Usable, Protected 아님, 지원되는 Video / Audio 특성(**ADR-046:** Video Codec Family = H.264 / HEVC만; ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported). 통과한 Source는 **Phase-5-ready**(Project-owned Media로 복사) 또는 **Phase-6 Normalization-required**(4K / High raster, 30 fps 초과, HDR / Dolby Vision, 기타 승인된 Working-media 불일치)다.
+Container-eligible QuickTime Source도 다음 독립 Preflight 규칙을 모두 통과해야 한다: 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042), Portrait Presentation `presentationHeight > presentationWidth`(ADR-043 Revision 1), Readable / Usable, Protected 아님, 지원되는 Video / Audio 특성(**ADR-046:** Video Codec Family = H.264 / HEVC만; ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported)(**ADR-048:** Audio Facts를 신뢰성 있게 검사할 수 있어야 하며 짝수 정렬 후 Working Raster가 Portrait이어야 한다). 통과한 Source는 **Phase-5-ready**(Project-owned Media로 복사) 또는 **Phase-6 Normalization-required**(4K / High raster, 30 fps 초과, HDR / Dolby Vision, 기타 승인된 Working-media 불일치)다.
 
 ### 5. V1이 제공하지 않는 것
 
@@ -2917,12 +2920,12 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 3. 실제 Container Brand — QuickTime Movie(`qt  `)만 허용, MP4 / ISO BMFF / 기타 / Unknown은 Unsupported(ADR-044; 확장자 비권위)
 4. **(ADR-046 삽입)** Video Codec Family — H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`)만 허용, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Unsupported
 5. Presentation Orientation — `preferredTransform` 적용 후 `presentationHeight > presentationWidth`만 허용(ADR-043 Revision 1)
-6. Normalization 사유 판정(아래 §2) — 위 1–5는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다. *(최초 본문은 1–5 순서였으며 ADR-046이 Codec 단계를 삽입했다.)*
+6. Normalization 사유 판정(아래 §2) — 위 1–5는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다. *(최초 본문은 1–5 순서였으며 ADR-046이 Codec 단계를 삽입했다.)* — **ADR-048(2026-09-30):** 5 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 단계(기존 Invalid / Unsupported 범주)가 삽입되어 Normalization 사유 판정은 7단계가 되었다(ADR-048 Canonical Preflight Order).
 
 ### 2. Fast Path vs Normalization
 
 - **Phase-5-ready SDR QuickTime**(H.264 또는 HEVC — ADR-046의 Codec Family 정의, Rec.709 / Rec.709 / Rec.709, ≤ 8-bit, ≤ 1080p-class, ≤ 30 fps): Project-owned Media로 **복사(Fast Path)**, 재인코딩 없음. Codec Family 자체는 Normalization 사유가 아니며 H.264 / HEVC 외 Codec은 ADR-046에 따라 Preflight Unsupported다.
-- **Normalization-required**: HDR / >8-bit(HLG 또는 PQ Transfer, Rec.2020 Primaries **또는** Matrix, bitsPerComponent > 8, 10-bit Profile(hvcC Main10 / avcC High10 계열), Dolby Vision `dvcC` / `dvvC` / `dvwC` Atom), 30 fps 초과, 1080p-class 초과 Raster.
+- **Normalization-required**: HDR / >8-bit(HLG 또는 PQ Transfer, Rec.2020 Primaries **또는** Matrix, bitsPerComponent > 8, 10-bit Profile(hvcC Main10 / avcC High10 계열), Dolby Vision `dvcC` / `dvvC` / `dvwC` Atom), 30 fps 초과, 1080p-class 초과 Raster. — **ADR-048(2026-09-30):** 신뢰성 있게 식별된 non-AAC Audio가 네 번째 사유 `audioTranscode`로 추가되었으며(순서: HDR → Frame Rate → Raster → Audio Transcode) Phase-5-ready는 Audio가 없거나 AAC인 경우만 해당한다.
 - **AmbientViewingEnvironment / MasteringDisplayColorVolume / ContentLightLevel 단독은 HDR 판별 신호가 아니다.** AVE는 iPhone SDR 촬영본에도 존재한다.
 
 ### 3. Working Media Output Contract
@@ -2931,9 +2934,9 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 - H.264 High Profile, 8-bit(High 10 / 4:2:2 / 4:4:4 아님)
 - Color Primaries / Transfer / Matrix = Rec.709 / Rec.709 / Rec.709, Video Range
 - Raster: Presentation Frame 전체를 담는 1080p-class Bounding Box(긴 변 ≤ 1920, 짧은 변 ≤ 1080, Scale-down만, Crop / Pad 없음, 각 변 짝수 내림). ~~Low-resolution Source의 Upscale 여부는 여전히 Pending(Spike는 Upscale하지 않음).~~ — **ADR-047(2026-09-18):** 절대 Upscale하지 않는다(`scale = min(1.0, 1080 / width, 1920 / height)`, Envelope 안의 Source는 Presentation 크기 유지, 짝수 내림).
-- Frame Rate ≤ 30 fps(`frameDuration = max(source minFrameDuration, 1/30)`)
+- Frame Rate ≤ 30 fps(`frameDuration = max(source minFrameDuration, 1/30)`) — **ADR-048(2026-09-30):** `minFrameDuration`이 없거나 0 이하이면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`, 둘 다 없으면 `1/30`.
 - Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity, 출력 Presentation은 Portrait
-- Audio: AAC Passthrough(재인코딩 없음, Source Format Hint)
+- Audio: AAC Passthrough(재인코딩 없음, Source Format Hint) — **ADR-048(2026-09-30):** Audio 없음 → 출력 Audio 없음(무음 합성 없음); AAC → Passthrough; 알려진 non-AAC → AAC-LC 48 kHz(Mono 96 kbps / 2채널 이상은 Stereo 128 kbps, 2채널 초과는 명시적 Stereo Downmix)로 변환; 알 수 없거나 모순된 Audio Facts → Preflight Invalid / Unsupported 거부.
 - 출력에 HLG / PQ / Rec.2020 / Dolby Vision / MDCV / CLLI / AVE 신호가 남지 않는다.
 
 ### 4. Tone-mapping Mechanism
@@ -3102,7 +3105,7 @@ ADR-045 §1의 순서에 Codec Family 단계를 삽입하여 **하나의 순서*
 3. 실제 Container Brand — QuickTime만(ADR-044)
 4. **Video Codec Family — H.264 또는 HEVC만(ADR-046); 그 밖은 Unsupported**
 5. Presentation Orientation — `presentationHeight > presentationWidth`(ADR-043 Revision 1)
-6. Normalization 사유 판정(ADR-045 §2: HDR / >8-bit, > 30 fps, > 1080p-class)
+6. Normalization 사유 판정(ADR-045 §2: HDR / >8-bit, > 30 fps, > 1080p-class) — **ADR-048(2026-09-30):** 5와 이 단계 사이에 Working-raster Feasibility → Audio Facts 신뢰성 단계가 삽입되었고 Normalization 사유 끝에 Audio Transcode(non-AAC)가 추가되었다. 현재 Canonical 순서는 ADR-048을 따른다.
 
 앞선 단계의 거부가 뒤 단계보다 우선하며, 1–5는 어느 것도 Normalization 사유가 아니다. Unsupported Codec은 Orientation 및 Normalization 사유보다 앞서 결정된다. ADR-045 §2의 "Phase-5-ready SDR QuickTime(H.264 또는 HEVC …)"는 이 Family 정의를 따른다.
 
@@ -3186,6 +3189,7 @@ Portrait Presentation Raster `(width, height)`에 대해:
 - Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity다(ADR-045 §3 유지).
 - 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다.
 - V1에는 별도의 "최소 출력 크기"가 없다.
+- **ADR-048(2026-09-30):** 짝수 정렬 결과가 엄격한 Portrait(`outputHeight > outputWidth`)이 아니면(예: 1080×1081 → 1080×1080) 그 Source는 Preflight의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부되며 Normalization Plan에 도달하지 않는다. 늘리기 · Crop · Padding · 여백으로 우회하지 않는다.
 
 | Source Presentation | scale | 출력 |
 | --- | --- | --- |
@@ -3267,3 +3271,153 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 ## Non-goals
 
 - Phase 6 Step 4 Production 구현 자체, Export Codec / Container, Post-V1 Resume / Background 처리, 해상도 선택 UI.
+
+---
+
+# ADR-048 — Normalization Audio, Raster Feasibility, and Cadence Fallback
+
+**Date:** 2026-09-30
+**Status:** Accepted (사용자 승인)
+
+**Resolves:** Phase 6 Step 4A(순수 SDR Working-media Contract와 Normalization Plan Builder) 구현 중 발견된 세 Blocker — (1) AAC가 아닌 Source Audio의 처리(ADR-045 §3은 "AAC Passthrough"만 정의), (2) ADR-043 Portrait이지만 ADR-047 짝수 정렬 후 출력이 Portrait이 아니게 되는 근사 정사각형 Source(예: 1080×1081 → 1080×1080)의 처리, (3) `minFrameDuration`이 없는 Source의 출력 Frame Duration 유도(ADR-045 §3 `max(minFrameDuration, 1/30)`의 입력 부재).
+
+**Clarifies:** ADR-043 Revision 1(Orientation 판정은 그대로 두고 별도의 Working-raster Feasibility 단계를 추가), ADR-045 §1 / §2 / §3(Canonical Preflight 순서, Phase-5-ready 조건과 Normalization 사유, Working Media Audio 계약, Frame Duration 유도), ADR-046 §8(Canonical Preflight 순서), ADR-047 Decision 1(짝수 정렬 결과가 Portrait이어야 한다는 요구의 소유 위치).
+
+**Explicitly Unchanged:** ADR-042의 `1.0s <= 전체 Source Duration <= 5.0s` Eligibility · Per-item Filtering · 통합 안내 · Preparation Sheet · 취소 · Runtime 실패 · `다시 시도` · Storage 부족 Presentation과 Accepted Set Atomicity, ADR-043 Revision 1의 Orientation 판정식 `presentationHeight > presentationWidth`와 Non-portrait Copy, ADR-044 Revision 1 QuickTime-only Container, ADR-046 H.264 / HEVC-only Video Codec Family와 Direct-camera H.264, ADR-045의 Video 출력 계약(QuickTime `.mov` · H.264 High 8-bit · Rec.709 / 709 / 709 · Video Range · Transform Bake + Identity · 1080p-class Portrait Bounding Box) · Tone-mapping 메커니즘 · 출력 Duration 허용 범위 · Cancellation / Output Ownership, ADR-045 §2의 기존 Normalization Trigger(HDR / >8-bit, Nominal Frame Rate 기준 30 fps 초과, 1080p-class 초과 Raster), ADR-047의 Raster 공식과 No Resume, ADR-020 / ADR-037 / ADR-040의 Atomic Commit과 Replace 보존, Photos 원본 불변, Export Codec / Container / Audio(Phase 9), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Aggregate Progress / Retry Source-handle 메커니즘(Pending 유지).
+
+**이 ADR은 Production 구현을 의미하지 않으며 Phase 6 Step 4B를 시작하지 않는다.** Step 4B(`WorkingMediaNormalizer` AVFoundation Adapter)가 추측 없이 구현될 수 있도록 세 정책을 확정하는 Product / Architecture 완결 결정이다. Classifier · Inspector · Selection Preflight · Plan Builder는 이 ADR에 맞추어 이후 구현 Step에서 조정되며 현재 구현은 이 ADR의 새 규칙을 아직 반영하지 않는다.
+
+## Context
+
+Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Normalization Plan을 만드는 순수 계층이다. 구현 중 세 입력이 기존 Accepted 문서로 결정되지 않음이 드러났다.
+
+첫째, ADR-045 §3은 Working Media Audio를 "AAC Passthrough"로만 정의했다. 일부 촬영본 · 편집본 · 외부 영상은 LPCM / ALAC / APAC 등 AAC가 아닌 Audio를 가진 QuickTime H.264 / HEVC일 수 있으며, 이런 Source를 거부할지 · Audio를 버릴지 · 변환할지가 정해지지 않았다.
+
+둘째, ADR-047의 각 변 짝수 내림은 변당 최대 1 Pixel을 제거하므로 높이와 너비의 차이가 1 Pixel 안팎인 Portrait Source를 정사각형으로 만들 수 있다. ADR-045 §3은 출력 Presentation이 Portrait이어야 한다고 요구하므로 이 Source를 어느 단계에서 어떻게 다룰지가 필요했다.
+
+셋째, ADR-045 §3의 `frameDuration = max(source minFrameDuration, 1/30)`은 `minFrameDuration`이 없는 Source의 출력 Cadence를 정의하지 않았다.
+
+사용자는 세 항목을 다음과 같이 승인했다.
+
+## Decision 1 — Working-Media Audio
+
+### Audio 없음
+
+- Source에 Audio Track이 없으면 Normalized Output에도 Audio Track이 없다.
+- 무음 Audio Track을 합성하지 않는다.
+
+### AAC Source Audio
+
+- 신뢰성 있게 AAC로 식별된 Source Audio(Audio Format ID `aac ` = `kAudioFormatMPEG4AAC`)는 Passthrough이며 재인코딩하지 않는다(ADR-045 §3 유지).
+- AAC 자체는 Normalization 사유가 아니다.
+- Video가 다른 승인 사유로 Normalization되더라도 AAC는 Passthrough한다.
+- Passthrough AAC의 Timing은 Video Operation과 정렬되어야 하며 출력은 ADR-045 §7의 Duration 허용 범위(`source <= output <= source + 1/30 s`)를 만족한다.
+
+### 알려진 non-AAC Source Audio
+
+- 그 밖의 조건을 모두 만족하는 QuickTime H.264 / HEVC Source의 신뢰성 있게 식별된 non-AAC Audio(예: LPCM, ALAC, APAC, 그리고 `aac `가 아닌 다른 AAC 계열 Format ID를 포함한 그 밖의 알려진 Format)는 거부하지 않고 버리지 않는다.
+- 이 Audio는 새 의미적 Normalization 사유 **`audioTranscode`**를 추가한다.
+- Canonical Normalization 사유 순서는 다음과 같다: 1. HDR, 2. Frame Rate, 3. Raster, 4. Audio Transcode.
+- non-AAC Audio는 유일한 Normalization 사유일 수 있다. 이 경우에도 출력은 ADR-045 §3의 Working Media 계약 전체를 만족한다(승인된 Audio-only Remux 경로는 없으며 Video도 Normalization Pipeline을 통과한다).
+- Normalized Working Media Audio는 다음과 같다.
+
+| 항목 | 값 |
+| --- | --- |
+| Codec | AAC-LC |
+| Sample Rate | 48,000 Hz |
+| Channel | 검사된 Source가 Mono(1채널)이면 Mono, 2채널 이상이면 Stereo(2채널 초과 Source는 명시적 Stereo Downmix) |
+| Bitrate | Mono 96 kbps, Stereo 128 kbps |
+
+- 이 규칙은 Working Media Normalization 규칙이며 Export Audio Format / Bitrate 결정(Phase 9)이 아니다.
+- Audio 설정 UI · Codec 이름 안내 · Audio 전용 Alert를 도입하지 않는다.
+
+### 알 수 없거나 모순된 Audio Facts
+
+- Audio Track이 있다고 보고되었지만 Format / Sample Rate / Channel Facts를 신뢰성 있게 검사할 수 없으면 해당 항목은 Preflight에서 기존 Invalid / Unsupported Media 범주로 거부된다.
+- 모순된 Inspection Facts(예: Audio Track이 없다고 보고되었는데 Audio Format Facts가 있음)는 조용히 보정하지 않고 같은 범주로 거부한다.
+- Audio 전용 사용자 안내 · Codec 이름을 도입하지 않고 기존 단일 / 다중 / Replace Invalid-or-Unsupported Copy를 재사용한다(ADR-044 Revision 1, ADR-042 Revision 4).
+- 거부된 항목은 Accepted Set에 들어가지 않으며 Source와 Replace 대상 기존 Clip은 변경되지 않는다.
+
+### Runtime 실패
+
+- 신뢰성 있는 Preflight를 통과한 뒤 실제 Decoder / Writer가 실패하면(AAC Passthrough 또는 AAC-LC 변환 포함) Operation 실패이며 ADR-042 Revision 4의 Accepted Set Atomicity를 따른다.
+- Runtime 실패는 부분 Commit을 허용하지 않으며 Per-item 제외로 바뀌지 않는다.
+
+## Decision 2 — Working-Raster Feasibility Gate
+
+- ADR-043 Revision 1의 Orientation 판정 `presentationHeight > presentationWidth`는 바뀌지 않는다. 기하학적으로 Portrait인 Source는 계속 Portrait으로 분류된다.
+- Orientation Eligibility 다음, Normalization 사유 판정 이전에 독립된 **Working-raster Feasibility** 단계를 둔다.
+- 이 단계는 ADR-047의 정확한 Raster 알고리즘을 사용한다: `scale = min(1.0, 1080 / width, 1920 / height)`로 확대 없이 비율을 보존하며 1080×1920 안에 맞추고, 각 Scaled 변을 내림한 뒤, 각 변을 양의 짝수로 내림 정렬한다.
+- 결과 출력 Raster는 엄격한 Portrait(`outputHeight > outputWidth`)이어야 한다.
+- 짝수 정렬 결과가 정사각형(또는 Landscape)이 되면 해당 항목은 Preflight에서 Unsupported Working-raster Geometry로 거부된다.
+- 이 거부는 기존 Invalid / Unsupported Media 범주로 분류되며 새 사용자 안내를 도입하지 않는다.
+- 거부된 항목은 Accepted Set에 들어가지 않고 Normalization Plan Builder(`WorkingMediaPlanBuilder`)에 도달하지 않는다.
+- 늘리기 · Crop · Padding · Upscale · 2 Pixel 여백 같은 우회를 하지 않는다.
+- 이 항목을 Non-portrait Source로 재정의하지 않는다(Non-portrait Copy를 쓰지 않는다).
+- 이 판정은 Fast-path 후보에도 동일하게 적용되는 독립 Preflight 단계다.
+
+| Source Presentation | ADR-043 | 정렬 후 출력 | 결과 |
+| --- | --- | --- | --- |
+| 1080×1081 | Portrait | 1080×1080 | 거부(Working-raster Feasibility) |
+| 1081×1082 | Portrait | 1080×1080 | 거부 |
+| 2160×2162 | Portrait | 1080×1080 | 거부 |
+| 1080×1082 | Portrait | 1080×1082 | 허용 |
+| 1079×1080 | Portrait | 1078×1080 | 허용 |
+| 2160×2164 | Portrait | 1080×1082 | 허용 |
+| 1440×1444 | Portrait | 1080×1082 | 허용 |
+
+## Decision 3 — Output Frame-Duration Derivation (Cadence Fallback)
+
+30 fps Ceiling은 `1/30 s`다.
+
+1. Source `minFrameDuration`이 수치이고 0보다 크면: `outputFrameDuration = max(sourceMinFrameDuration, 1/30)`.
+2. 그렇지 않고 Nominal Frame Rate가 유한하고 0보다 크면: `nominalFrameDuration = 1 / nominalFrameRate`, `outputFrameDuration = max(nominalFrameDuration, 1/30)`.
+3. 그 밖의 경우: `outputFrameDuration = 1/30`.
+
+결과:
+
+- 유효한 24 fps Source는 HDR / Raster / Audio 사유로 Normalization되어도 24 fps를 유지한다.
+- 29.97 fps는 약 29.97 fps를 유지한다.
+- 59.94 / 60 fps는 30 fps로 제한된다.
+- 두 Timing Fact가 모두 없으면 결정적인 30 fps Fallback을 사용한다.
+- `minFrameDuration`이 있으면 여전히 첫 번째 권위 있는 Cadence 입력이다.
+- Timing Metadata 부재는 그 밖에 Eligible한 Source를 거부하지 않는다.
+- 이 Fallback은 그 자체로 새 Normalization 사유를 만들지 않으며 기존 Nominal Frame Rate 기반 Normalization Trigger(ADR-045 §2)는 바뀌지 않는다.
+- 어떤 출력도 30 fps를 초과하지 않는다.
+- Rational 변환은 결정적이어야 하며 정확한 Timescale 선택은 구현 세부사항이다.
+
+## Canonical Preflight Order (ADR-045 §1 / ADR-046 §8 대체 순서)
+
+1. 전체 Source Duration `1.0s <= duration <= 5.0s`(ADR-042)
+2. Readable / Video Track / Protected 아님(Preflight Invalid)
+3. 실제 Container Brand — QuickTime만(ADR-044)
+4. Video Codec Family — H.264 또는 HEVC만(ADR-046)
+5. Presentation Orientation — `presentationHeight > presentationWidth`(ADR-043 Revision 1)
+6. Working-raster Feasibility(ADR-048 Decision 2), 그다음 Audio Facts 신뢰성(ADR-048 Decision 1) — 둘 다 기존 Invalid / Unsupported Media 범주
+7. Normalization 사유 판정 — HDR / >8-bit → Frame Rate(30 fps 초과) → Raster(1080p-class 초과) → Audio Transcode(non-AAC)
+
+앞선 단계의 거부가 뒤 단계보다 우선하며 1–6은 어느 것도 Normalization 사유가 아니다. Normalization 사유가 하나도 없으면 Phase-5-ready Fast Path이며, 따라서 Phase-5-ready는 Audio가 없거나 AAC인 경우만 해당한다.
+
+## Rationale
+
+- 사용자가 고른 영상의 소리를 조용히 잃거나 Codec 때문에 영상 전체를 거부하는 것보다 Working Media 안에서 AAC로 맞추는 편이 Mini Vlog 의도와 Media Safety에 맞다.
+- 48 kHz AAC-LC와 Mono 96 kbps / Stereo 128 kbps는 5초 이하 Clip에서 저장 공간 영향이 작고 iPhone 12에서 널리 지원되는 단순한 고정값이다.
+- 근사 정사각형 Source는 극히 드물며 늘리기 · 자르기 · 여백 없이 Portrait 계약을 지킬 방법이 없다. Plan 단계가 아닌 Preflight에서 거부해야 Accepted Set에 들어간 뒤 실패하는 경로가 생기지 않는다.
+- Nominal Frame Rate는 이미 Normalization Trigger 입력이므로 `minFrameDuration` 부재 시 가장 가까운 권위 있는 Cadence 정보이며, 둘 다 없을 때 30 fps는 승인된 Ceiling이다.
+
+## Consequences
+
+- `ImportNormalizationReason`에 `audioTranscode` 사유가 추가되고 Canonical 순서가 HDR → Frame Rate → Raster → Audio Transcode가 된다(구현 대상).
+- Preflight Classifier는 Orientation 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 검사를 수행하며 두 거부는 기존 Invalid / Unsupported Exclusion 범주로 매핑된다(구현 대상).
+- `WorkingMediaPlanBuilder`는 짝수 정렬 후 Portrait이 아닌 Raster를 받지 않으며 non-AAC Audio를 오류가 아닌 AAC-LC 변환 계획으로 표현한다(구현 대상).
+- `WorkingMediaNormalizer`(Step 4B)는 이 ADR의 Audio 설정과 Frame Duration 유도를 그대로 적용한다.
+- ROADMAP Phase 6 Unit / Integration Test에 이 ADR의 Audio / Raster Feasibility / Cadence Case가 추가된다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Import Storage Estimate Formula와 Safety Reserve
+- Implementation-specific Aggregate Progress 계산과 `다시 시도`의 Source-handle 유지 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항)
+
+## Non-goals
+
+- Production 구현(Step 4A 조정, Step 4B Normalizer), Export Audio Format / Bitrate(Phase 9), Audio 설정 UI, Crop / Pad / Upscale 옵션, Resume / Background 처리, 새 사용자 안내 Copy.

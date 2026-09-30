@@ -157,6 +157,9 @@ MVP에 새 기능을 포함하려면 사용자 승인과 관련 문서 업데이
 - AmbientViewingEnvironment 단독은 HDR 판별 신호가 아니며, Normalization 출력 SDR Contract는 Fast-path Copy에 적용하지 않는다(ADR-045).
 - Working Media는 절대 Upscale하지 않는다 — `scale = min(1.0, 1080 / width, 1920 / height)`로 축소만 하고 각 변을 짝수로 내림하며 최소 출력 크기 · 해상도 선택 · Upscale 옵션이 없다(ADR-047).
 - Normalization 도중 Process가 종료되면 재개하지 않는다 — Durable Resumable Operation ID · Checkpoint · Background Continuation을 두지 않고 Workspace UUID는 Ephemeral이며 버려진 Workspace는 기존 시작 시 Sweep이 정리하고 사용자는 Import를 다시 시작한다(ADR-047).
+- Normalization Audio: Audio가 없으면 출력에도 Audio가 없고(무음 합성 없음) AAC는 Passthrough하며, 신뢰성 있게 식별된 non-AAC Audio는 `audioTranscode` 사유(순서 HDR → Frame Rate → Raster → Audio Transcode)로 AAC-LC 48 kHz · Mono 96 kbps / Stereo 128 kbps(2채널 초과는 명시적 Stereo Downmix)로 변환한다; 알 수 없거나 모순된 Audio Facts는 Preflight에서 기존 Invalid / Unsupported 범주로 거부하며 Audio 전용 안내를 만들지 않는다(ADR-048).
+- ADR-047 짝수 정렬 후 출력이 엄격한 Portrait이 아닌 Portrait Source(예: 1080×1081)는 Orientation 다음 · Normalization 사유 이전의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부한다 — Crop / Pad / 늘리기 / Upscale / 여백으로 우회하지 않는다(ADR-048).
+- 출력 Frame Duration은 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`, 없으면 유한하고 0보다 큰 Nominal Frame Rate → `max(1 / nominalFrameRate, 1/30)`, 둘 다 없으면 `1/30`이며 어떤 출력도 30 fps를 초과하지 않는다(ADR-048).
 - V1 Photos Import는 preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`인 Source만 받아들이며 가로(`<`) / 정사각형(`==`) Non-portrait Source는 Preflight에서 제외하고 어떤 Media Operation도 하지 않는다. naturalSize만으로 Orientation을 판정하지 않는다(ADR-043 Revision 1).
 - Imported Clip은 공통 Clip 상한 안에서 소수 Duration을 허용하며 Camera Preset에 맞추지 않는다.
 - Project 전체 Duration에는 임의의 고정 Maximum을 두지 않는다.

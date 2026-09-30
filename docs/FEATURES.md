@@ -479,6 +479,7 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - 다중 선택(Select Clips / Editor Add)은 ADR-042 Revision 3에 따라 Duration-ineligible 항목만 제외하고 유효 항목으로 계속 진행하며 통합 안내를 한 번 표시: 짧은 항목만 제외 `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.`, 긴 항목만 제외 `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.`, 둘 다 제외 `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`; 전부 Ineligible이면 아무것도 추가하지 않음; Normalization-required 항목은 제외되지 않음; Accepted Set의 Commit은 Atomic
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Non-portrait Presentation(미지원, 가로 / 정사각형 공용) / Normalization 필요 / Invalid · Unsupported Media(ADR-044의 non-QuickTime Container 포함)를 독립적으로 구분
 - ADR-046: Import 대상 영상의 Video Codec은 H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`) Family만이다. ProRes / ProRes RAW / Motion JPEG / 기타 / 알 수 없는 Codec은 Preflight에서 제외되어(기존 `일부 영상을 추가할 수 없어요` / 단일 · Replace `영상을 추가할 수 없어요` 안내, Codec별 문구 없음) 복사 / 정규화 / 저장에 들어가지 않으며 Photos 원본과 기존 Clip은 그대로다. Ready 조건을 만족하는 HEVC는 정규화 없이 그대로 사용한다. 승인되었으나 미구현.
+- ADR-048: 세로 영상이지만 1080p급 Working 크기로 맞추고 짝수로 내림하면 세로가 아니게 되는 거의 정사각형 영상(예: 1080×1081 → 1080×1080)은 Preflight에서 기존 Invalid / Unsupported 범주로 제외된다(기존 `일부 영상을 추가할 수 없어요` / 단일 · Replace `영상을 추가할 수 없어요` 안내, 새 문구 없음, 자르기 / 여백 / 늘리기 없음, 가로 / 정사각형 안내 아님). 소리(Audio Track)가 있는데 그 형식 / Sample Rate / Channel을 신뢰성 있게 읽을 수 없거나 정보가 모순되는 영상도 같은 범주로 제외된다. Photos 원본과 기존 Clip은 그대로다. 승인되었으나 미구현.
 - ADR-044: 실제 Container가 QuickTime Movie인 영상만 Import 대상(H.264 / HEVC 모두; QuickTime ≠ 자동 허용). MP4 / ISO BMFF / 기타 / 알 수 없는 Container는 확장자가 아닌 실제 Container 검사로 판별해 Preflight에서 제외(어떤 Media 작업도 없음, Remux / Container 변환 / 변환 안내 / 출력 Container 선택 없음), 다중 선택은 해당 항목만 제외하고 계속(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), 전부 제외면 프로젝트 미생성 / 무변경, Replace 후보는 거부 + 기존 Clip 보존; 승인되었으나 미구현
 - ADR-043 Revision 1: preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`일 때만 Orientation-eligible이며 가로(`<`)와 정사각형(`==`)은 하나의 Non-portrait Presentation으로 V1 미지원 → Preflight에서 제외한다 — 다중 선택은 해당 항목만 제외하고 세로 항목으로 계속(유일한 사유면 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` 1회, 개수 표시 없음), 모두 Non-portrait이면 프로젝트 미생성 / 무변경, 단일 후보 / Replace 후보가 Non-portrait이면 `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.`로 거부하고 기존 Clip · Media · Metadata · Slot 보존, 복합 사유는 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 제외 항목에는 임시 / Project-owned Media 생성 포함 어떤 Media 작업도 없음; 자연 크기 1920×1080 + 90° Transform 영상과 좌우 반전 세로 영상은 세로로 허용, naturalSize 단독 판정 금지; 승인되었으나 미구현
 - 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부 · Per-item Filtering · Preparation Sheet · 취소 · Retry · Storage Preflight Presentation · Invalid Filtering · 새 안내는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시키고 첫 Non-ready 항목에서 선택 전체를 거부한다)
@@ -522,6 +523,7 @@ SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 �
 - Normalization Output은 Final Working Media 등록 전에 Validation하며 심각한 Highlight Clipping, 잘못된 색 변환 또는 Orientation 손상 등 명백한 변환 실패를 정상 Media로 등록하지 않는다.
 - 실패와 취소 시 Valid Source / Staging 및 Recovery Candidate는 확정된 Media Safety 계약에 따라 보호한다.
 - ADR-047: Normalization 도중 앱이 종료되면 작업을 재개하지 않는다(Checkpoint · Resume · Background 계속 없음). 프로젝트와 기존 Clip은 변경되지 않고(Replace는 기존 Clip 보존) 남은 임시 파일은 다음 실행이 자동으로 정리하며 사용자는 원하면 영상을 다시 선택한다. 승인되었으나 미구현.
+- ADR-048: 소리가 없는 영상은 소리 없이, AAC 소리는 그대로(Passthrough) 정규화하며, AAC가 아닌 알려진 소리(LPCM / ALAC / APAC 등)는 버리거나 거절하지 않고 AAC-LC 48 kHz(Mono 96 kbps, 2채널 이상은 Stereo 128 kbps, 2채널 초과는 Stereo로 Downmix)로 변환한다(소리만 다른 영상도 정규화 대상). 출력 Frame Rate는 원본의 `minFrameDuration`, 없으면 Nominal Frame Rate, 둘 다 없으면 30 fps를 기준으로 정하며 24 fps / 29.97 fps는 유지되고 30 fps를 넘지 않는다. 이는 Working Media 규칙이며 Export 결정이 아니다. 승인되었으나 미구현.
 - Import / Normalization의 Estimated Peak Additional Storage와 Safety Reserve를 충족하지 못하면 Materialization과 Normalization을 시작하지 않는다.
 - Storage 부족이나 Runtime Disk Full로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본과 기존 Project Media를 보호한다.
 - Storage 부족을 이유로 승인된 1080p-class / 30 fps / SDR Working Media 정책을 자동 하향하지 않는다.
@@ -539,7 +541,7 @@ Photos 원본은 Import, 정규화 또는 편집 과정에서도 수정하거나
 
 미디어 저장은 `ARCHITECTURE.md`와 ADR-020 / ADR-021의 확정된 기준을 따르며 SDR 정규화 방향은 ADR-022를 따른다.
 
-Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Scale-down Rule은 ADR-045(2026-09-18)로 확정되었다(QuickTime · H.264 8-bit · Rec.709 · 1080p-class 세로 · ≤ 30 fps · AAC 유지; Phase 6 Production 구현은 미완). 지원되는 원본은 사용자가 고른 Photos 영상을 바꾸지 않고 내부 Working Media 계약으로 변환될 수 있으며, 지원하지 않는 Container / 방향은 명확히 거절된다. Low-resolution Upscaling 여부는 여전히 확정하지 않는다.
+Working Media Codec / Container, 정확한 SDR Color Profile / Tagging, Tone-mapping 구현 방법, Raster Scale-down Rule은 ADR-045(2026-09-18)로 확정되었다(QuickTime · H.264 8-bit · Rec.709 · 1080p-class 세로 · ≤ 30 fps · AAC 유지; Phase 6 Production 구현은 미완). 지원되는 원본은 사용자가 고른 Photos 영상을 바꾸지 않고 내부 Working Media 계약으로 변환될 수 있으며, 지원하지 않는 Container / 방향은 명확히 거절된다. ~~Low-resolution Upscaling 여부는 여전히 확정하지 않는다.~~ — **ADR-047(2026-09-18)로 해소:** Normalization은 절대 Upscale하지 않는다. 저해상도 Source가 다른 승인 사유(HDR / 30 fps 초과 등)로 정규화되어도 Presentation Raster를 그대로 유지하며, Raster Normalization 사유는 1080p-class를 초과하는 Presentation Raster에만 적용되고, 최종 크기는 `scale = min(1.0, 1080 / width, 1920 / height)` 적용 후 각 변 짝수 내림(ADR-047)을 따른다. — **ADR-048(2026-09-30):** AAC 소리는 그대로 유지하고, AAC가 아닌 알려진 소리는 영상을 버리거나 거절하지 않고 내부 Working Media용 AAC로 변환하며, 소리 정보를 신뢰성 있게 읽을 수 없으면 기존 "읽을 수 없거나 지원하지 않는 영상"으로 제외한다. 승인되었으나 미구현.
 
 ---
 
@@ -1436,6 +1438,9 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - 정확한 SDR Color Profile / Tagging 및 Tone-mapping 구현 방법
 - 저해상도 Source의 Upscaling 정책 — Resolved by ADR-047: 절대 Upscale하지 않음
 - 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045 + ADR-047: `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
+- AAC가 아닌 원본 Audio 처리 — Resolved by ADR-048: `audioTranscode` 사유로 AAC-LC 48 kHz(Mono 96 kbps / Stereo 128 kbps) 변환, 알 수 없거나 모순된 Audio 정보는 Preflight 제외
+- 짝수 내림 후 세로가 아니게 되는 거의 정사각형 세로 영상 — Resolved by ADR-048: Preflight Working-raster Feasibility에서 기존 Invalid / Unsupported 범주로 제외
+- `minFrameDuration`이 없는 영상의 출력 Frame Rate — Resolved by ADR-048: Nominal Frame Rate, 둘 다 없으면 30 fps
 - Post-MVP Fit 또는 Background Blur 도입 여부
 
 ## Project
