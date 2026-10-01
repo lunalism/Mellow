@@ -954,7 +954,7 @@ Source Media, Project-owned Working Media와 Project Output / Export를 구별�
 
 Project Fill + Crop을 Working Media에 bake-in하지 않으며 Source의 Presentation Aspect Ratio와 이후 Framing 가능한 유효 화면 영역을 보존한다.
 
-Source Rotation / Presentation Transform을 올바르게 해석하며 Codec Alignment용 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다.
+Source Rotation / Presentation Transform을 올바르게 해석하며 Codec Alignment용 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다. — **ADR-047 Revision 1(2026-10-01):** V1 Working Media는 정렬용 Padding을 쓰지 않으며 짝수 정렬 나머지는 전체 Frame의 축별 Parity Resample(변당 최대 1 출력 Pixel)로 처리한다.
 
 Normalization standardizes media characteristics, but does not commit the user's project framing.
 
@@ -2204,7 +2204,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 - Working Media Container — Pending, Before Phase 6.
 - 정확한 SDR Color Profile / Tagging — Pending, Before Phase 6.
 - Low-resolution Source Upscaling Policy — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음; Envelope 안의 Source는 Presentation 크기 유지(짝수 내림만).
-- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045(Scale-down Bounding Box) + ADR-047(2026-09-18): `scale = min(1.0, 1080 / width, 1920 / height)`, Aspect 보존, 각 변 짝수 내림, 최소 출력 크기 없음.
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045(Scale-down Bounding Box) + ADR-047(2026-09-18): `scale = min(1.0, 1080 / width, 1920 / height)`, Aspect 보존, 각 변 짝수 내림, 최소 출력 크기 없음. Render Geometry는 ADR-047 Revision 1(2026-10-01): Crop · Padding 없이 전체 Frame을 짝수 Raster에 Render하고 정렬 나머지는 변당 최대 1 출력 Pixel의 축별 Parity Resample로 처리한다.
 - HDR / Dolby Vision Source의 Tone-mapping 구현 방법 — Pending, 관련 Normalization 구현 전 결정.
 
 Working Media Codec / Container를 Export Codec / Container와 자동으로 동일하게 결정하지 않는다.
@@ -3148,8 +3148,38 @@ ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, C
 
 # ADR-047 — Working-Media Raster and Interrupted-Normalization Recovery
 
-**Date:** 2026-09-18
+**Date:** 2026-09-18 (Revision 1: 2026-10-01)
 **Status:** Accepted (사용자 승인)
+
+## Revision 1 — Even-Raster Parity Alignment Rendering (2026-10-01)
+
+**Status:** Accepted (사용자 승인). 이 Revision은 Phase 6 Step 4B 독립 Review에서 드러난 좁은 모호성 하나를 닫는다: 원래 Decision 1은 Aspect 보존 · Crop 없음 · Padding 없음 · 각 변 짝수 내림을 함께 요구하지만, 계산된 변이 홀수일 때 짝수 내림은 출력 Aspect Ratio를 아주 조금 바꿀 수밖에 없어 네 요구를 동시에 정확히 만족할 수 없었다. V1은 그 나머지를 제한된 Parity 정렬 Resampling으로 처리한다. Decision 1의 Raster 공식 · No Upscaling, Decision 2의 No Resume / Recovery 결정, ADR-048은 바뀌지 않는다. 아래 내용이 Render Geometry의 정본이며 아래의 최초 본문은 보존된다(충돌 시 Revision 1 우선). 이 Revision은 Step 4B 구현 완료를 뜻하지 않는다.
+
+### Render Geometry Rule
+
+1. 목표 Raster 계산은 그대로 정본이다: `scale = min(1.0, 1080 / presentationWidth, 1920 / presentationHeight)`, 각 변을 `presentation × scale`로 내림한 뒤 양의 짝수로 내림한다(Decision 1).
+2. Source Presentation Frame 전체를 보존한다.
+3. Renderer는 Source Content를 어떤 경우에도 Crop하지 않는다.
+4. Renderer는 Padding · Letterbox · Pillarbox · 합성 테두리를 추가하지 않는다.
+5. 각 계산된 출력 변은 양의 짝수 정수로 내림한다(Decision 1 그대로).
+6. 짝수 정렬이 홀수인 계산 변에서 1 Pixel을 줄이면 Renderer는 가로축과 세로축을 각각 독립적으로 Resample하여 Source Presentation Frame 전체를 계획된 정확한 짝수 Raster에 맞출 수 있다.
+7. 이것은 제한된 Parity Quantization으로 승인된다.
+   - 영향받는 출력 변을 최대 1 출력 Pixel만 바꿀 수 있다(내림된 계산 값 기준).
+   - 짝수 크기 Encoding 요구를 만족하기 위해서만 존재한다.
+   - 일반 목적의 늘리기(Stretch) 정책이 아니다.
+   - 임의의 Aspect 왜곡을 정당화하는 데 쓰지 않는다.
+   - 사용자가 고르는 Fill / Fit / Stretch 옵션이 되지 않는다.
+   - 허용 한계는 백분율이 아니라 영향받는 변당 1 출력 Pixel이라는 절대값이다.
+8. 이 규칙은 Crop · Padding · Upscaling · 최소 출력 해상도 · 해상도 선택 · 새 Normalization 사유 · 새 사용자 안내 Copy나 범주를 도입하지 않는다.
+9. Classifier 동작은 바뀌지 않는다: 1080p-class를 초과하는 Presentation Raster만 Raster Normalization 사유를 만들고, 저해상도 Source는 확대하기 위해 정규화되지 않으며, 다른 사유로 정규화되는 저해상도 Source는 필요한 짝수 정렬을 제외하고 Source 크기 Raster를 유지한다.
+
+| Source Presentation | 계산된 변(내림) | 짝수 출력 | 렌더링 |
+| --- | --- | --- | --- |
+| 720×1280 | 720×1280 | 720×1280 | 그대로(Resample 없음) |
+| 2160×3840 | 1080×1920 | 1080×1920 | 균일 0.5 축소 |
+| 1080×1919 | 1080×1919 | 1080×1918 | 세로만 홀수: 전체 Frame을 세로 1919 → 1918로 Resample, 가로 1:1, Crop · Padding 없음 |
+| 2160×3842 | 1079×1920 | 1078×1920 | 가로만 홀수: 전체 Frame을 1078×1920에 맞춰 축별 Resample, Crop · Padding 없음 |
+| 719×1279 | 719×1279 | 718×1278 | 두 변 모두 홀수: 각 변 1 Pixel 정렬, 전체 Frame 유지 |
 
 **Resolves:** ADR-045가 Pending으로 남긴 Phase 6 Step 4의 두 Blocker — (1) Low-resolution Source Upscaling Policy(1080p-class Working Media의 최종 Raster Sizing), (2) Import Durable Operation Identity / Recovery 깊이(Normalization 도중 Process 종료 이후의 복구 의미)와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식. ROADMAP Phase 6 "Pending Technical Gate", ARCHITECTURE 38절 / 84절, PRODUCT / FEATURES Open Question의 동일 항목.
 
@@ -3185,9 +3215,9 @@ Portrait Presentation Raster `(width, height)`에 대해:
 
 - `scale = min(1.0, 1080 / width, 1920 / height)`
 - 출력 = `(width × scale, height × scale)`을 각 변 짝수로 **내림**한 양의 정수 크기
-- Aspect Ratio를 보존하고 Source Presentation 크기를 초과하지 않으며 짧은 변 1080 / 긴 변 1920을 초과하지 않는다.
+- Aspect Ratio를 보존하고 Source Presentation 크기를 초과하지 않으며 짧은 변 1080 / 긴 변 1920을 초과하지 않는다. — **Revision 1(2026-10-01):** Aspect 보존은 짝수 정렬 전 계산 기준이며, 정렬로 생기는 변당 최대 1 출력 Pixel 차이는 축별 Resampling으로 처리하는 제한된 Parity Quantization이다(Crop · Padding 없음, 위 Revision 1).
 - Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity다(ADR-045 §3 유지).
-- 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다.
+- 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다. — **Revision 1(2026-10-01):** "제거"는 출력 Raster 크기를 1 Pixel 줄인다는 뜻이며 Source Content를 잘라내는 것이 아니다; 전체 Presentation Frame을 그 크기로 Resample한다.
 - V1에는 별도의 "최소 출력 크기"가 없다.
 - **ADR-048(2026-09-30):** 짝수 정렬 결과가 엄격한 Portrait(`outputHeight > outputWidth`)이 아니면(예: 1080×1081 → 1080×1080) 그 Source는 Preflight의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부되며 Normalization Plan에 도달하지 않는다. 늘리기 · Crop · Padding · 여백으로 우회하지 않는다.
 

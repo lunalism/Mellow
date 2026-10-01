@@ -962,7 +962,7 @@ Normalization standardizes media characteristics, but does not commit the user's
 - Source의 Presentation Aspect Ratio를 불필요하게 파괴하지 않는다.
 - Project 9:16 또는 16:9 Fill + Crop을 Normalization Output에 bake-in하지 않는다.
 - 이후 사용자가 Framing에 사용할 수 있는 Source의 유효 화면 영역을 보존한다.
-- Codec Alignment 등을 위한 기술적 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다.
+- Codec Alignment 등을 위한 기술적 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다. — **ADR-047 Revision 1(2026-10-01):** V1 Working Media는 짝수 정렬을 위해 Padding · Letterbox · Pillarbox를 쓰지 않는다; 전체 Presentation Frame을 계획된 짝수 Raster로 축별 Resample한다(영향받는 변당 최대 1 출력 Pixel의 Parity Quantization).
 - Source Rotation / Presentation Transform을 올바르게 해석한다.
 - Working Representation은 이후 Framing Metadata를 적용할 수 있어야 한다.
 
@@ -1008,7 +1008,7 @@ Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른�
 
 이 Gate가 해결되기 전에는 실제 Normalization Pipeline 구현을 시작하지 않는다. — **ADR-045(2026-09-18):** Working Media Codec / Container / SDR Tagging / Raster Scale-down Rule / Tone-mapping 메커니즘은 확정되었다(Phase 6 Production 구현은 미완). — **ADR-047(2026-09-18):** Upscaling Policy(No Upscaling)와 Recovery 깊이(No Resume)도 확정되었다. Storage Formula / Reserve는 여전히 Pending.
 
-**Canonical Raster Rule(ADR-045 + ADR-047):** Portrait Presentation Raster `(width, height)`에 대해 `scale = min(1.0, 1080 / width, 1920 / height)`, 출력은 `(width × scale, height × scale)`을 각 변 짝수로 내림한 크기다. Source를 절대 확대하지 않으며 Envelope 안의 Source는 Presentation 크기를 유지하고(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920), 초과 Source만 비율을 보존하며 축소한다(2160×3840 → 1080×1920, 1620×2160 → 1080×1440). 짝수 정렬은 변당 최대 1 Pixel 제거이며 Upscale · Crop · Aspect-fill이 아니다. 최소 출력 크기는 없다. Classifier의 Raster 사유는 초과 Raster에만 적용되며 HDR / >30 fps 사유로 정규화되는 저해상도 Source는 크기를 유지한 채 정규화된다. **ADR-048(2026-09-30):** 짝수 정렬 결과가 엄격한 Portrait이 아닌 Source는 Plan 단계가 아니라 Preflight의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부되며 Accepted Set과 `WorkingMediaPlanBuilder`에 도달하지 않는다(Crop / Pad / 늘리기 / 2 Pixel 여백 우회 없음, Non-portrait으로 재정의하지 않음).
+**Canonical Raster Rule(ADR-045 + ADR-047):** Portrait Presentation Raster `(width, height)`에 대해 `scale = min(1.0, 1080 / width, 1920 / height)`, 출력은 `(width × scale, height × scale)`을 각 변 짝수로 내림한 크기다. Source를 절대 확대하지 않으며 Envelope 안의 Source는 Presentation 크기를 유지하고(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920), 초과 Source만 비율을 보존하며 축소한다(2160×3840 → 1080×1920, 1620×2160 → 1080×1440). 짝수 정렬은 변당 최대 1 Pixel 제거이며 Upscale · Crop · Aspect-fill이 아니다. **Render Geometry(ADR-047 Revision 1, 2026-10-01):** Renderer는 Source Presentation Frame 전체를 계획된 정확한 짝수 Raster에 Render하며 Source Content를 Crop하지 않고 Padding · Letterbox · Pillarbox · 합성 테두리를 넣지 않는다. 짝수 정렬로 홀수 계산 변이 1 Pixel 줄어든 경우에만 가로 · 세로축을 독립적으로 Resample할 수 있으며(예: 1080×1919 → 1080×1918, 2160×3842 → 1078×1920), 이는 영향받는 변당 최대 1 출력 Pixel의 제한된 Parity Quantization일 뿐 일반 Stretch 정책이나 사용자 Fill / Fit / Stretch 옵션이 아니다. 최소 출력 크기는 없다. Classifier의 Raster 사유는 초과 Raster에만 적용되며 HDR / >30 fps 사유로 정규화되는 저해상도 Source는 크기를 유지한 채 정규화된다. **ADR-048(2026-09-30):** 짝수 정렬 결과가 엄격한 Portrait이 아닌 Source는 Plan 단계가 아니라 Preflight의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부되며 Accepted Set과 `WorkingMediaPlanBuilder`에 도달하지 않는다(Crop / Pad / 늘리기 / 2 Pixel 여백 우회 없음, Non-portrait으로 재정의하지 않음).
 
 **Interrupted-Normalization Recovery(ADR-047):** Normalization 도중 Process가 종료되면 재개하지 않는다(Checkpoint · Durable Resumable ID · Background Continuation 없음). Workspace UUID는 Ephemeral이며 Source 복사본과 모든 Normalization 출력은 Accepted Set 전체 준비 완료 + Durable Commit 경계 도달까지 Operation Workspace 소유다. Process 종료는 Append / Replace / Metadata 변경 / 부분 결과 노출을 만들지 않으며 Replace는 기존 Clip을 보존한다. 다음 시작의 STEP 12B Workspace Sweep이 버려진 Workspace와 부분 출력을 Idempotent하게 정리한다(Resumable Job Database 없음; Committed Media / Photos 원본 미삭제; Symlink / Containment 보호 유지). Phase 6 구현 요구: Normalizer의 중간 · 출력 파일은 Operation Workspace Directory 안에서만 생성하고 Materialize는 Accepted Set 전체 준비 뒤에만 시작한다. Foreground `취소`는 기존 Cancellation Token 경로로 즉시 정리하며, 시작 시 Sweep은 Process 종료의 Safety Net이다.
 
@@ -2684,7 +2684,7 @@ HDR / Dolby Vision Source 허용, SDR Working Media / Preview / Export 방향은
 - 매우 낮은 Resolution Source의 Upscaling 정책 — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음.
 - Working Media Codec — Resolved by ADR-045: H.264 High 8-bit.
 - Working Media Container — Resolved by ADR-045: QuickTime `.mov`.
-- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045 + ADR-047: `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림.
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045 + ADR-047: `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림; Render Geometry는 ADR-047 Revision 1(2026-10-01): 전체 Frame, Crop · Padding 없음, 짝수 정렬 나머지는 변당 최대 1 출력 Pixel의 축별 Parity Resample.
 - non-AAC Source Audio와 Working Media Audio 설정 — Resolved by ADR-048(2026-09-30): AAC Passthrough, 알려진 non-AAC → `audioTranscode` / AAC-LC 48 kHz Mono 96 kbps · Stereo 128 kbps, 알 수 없거나 모순된 Audio Facts → Preflight 거부.
 - 짝수 정렬 후 Portrait이 아닌 Working Raster — Resolved by ADR-048(2026-09-30): Preflight Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부.
 - `minFrameDuration` 부재 시 출력 Cadence — Resolved by ADR-048(2026-09-30): Nominal Frame Rate Fallback, 둘 다 없으면 30 fps.
