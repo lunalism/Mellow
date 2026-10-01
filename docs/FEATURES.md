@@ -480,6 +480,7 @@ ADR-042에 따라 Photos Source Video는 **전체 길이**가 `1.0s <= sourceDur
 - Validation 결과는 최소한 Below-minimum / Above-maximum / Non-portrait Presentation(미지원, 가로 / 정사각형 공용) / Normalization 필요 / Invalid · Unsupported Media(ADR-044의 non-QuickTime Container 포함)를 독립적으로 구분
 - ADR-046: Import 대상 영상의 Video Codec은 H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`) Family만이다. ProRes / ProRes RAW / Motion JPEG / 기타 / 알 수 없는 Codec은 Preflight에서 제외되어(기존 `일부 영상을 추가할 수 없어요` / 단일 · Replace `영상을 추가할 수 없어요` 안내, Codec별 문구 없음) 복사 / 정규화 / 저장에 들어가지 않으며 Photos 원본과 기존 Clip은 그대로다. Ready 조건을 만족하는 HEVC는 정규화 없이 그대로 사용한다. 승인되었으나 미구현.
 - ADR-048: 세로 영상이지만 1080p급 Working 크기로 맞추고 짝수로 내림하면 세로가 아니게 되는 거의 정사각형 영상(예: 1080×1081 → 1080×1080)은 Preflight에서 기존 Invalid / Unsupported 범주로 제외된다(기존 `일부 영상을 추가할 수 없어요` / 단일 · Replace `영상을 추가할 수 없어요` 안내, 새 문구 없음, 자르기 / 여백 / 늘리기 없음, 가로 / 정사각형 안내 아님). 소리(Audio Track)가 있는데 그 형식 / Sample Rate / Channel을 신뢰성 있게 읽을 수 없거나 정보가 모순되는 영상도 같은 범주로 제외된다. Photos 원본과 기존 Clip은 그대로다. 승인되었으나 미구현.
+- ADR-049: 파일에 기록된 표시 영역(Clean Aperture)이 저장된 화면 전체와 다른 영상은 그 밖에 Ready이면 그대로 복사(Fast Path)되고, 정규화가 필요하면 색이 신뢰성 있게 일반 SDR(Rec.709)일 때만 표시 영역 전체를 자르거나 여백 없이 정규화한다. 정규화가 필요한데 HDR / Dolby Vision / 넓은 색 영역이거나 일반 SDR임을 증명할 수 없으면 Preflight에서 기존 Invalid / Unsupported 범주로 제외된다(기존 `일부 영상을 추가할 수 없어요` / 단일 · Replace `영상을 추가할 수 없어요` 안내, 새 문구 없음, 어떤 Media 작업도 없음, Photos 원본과 기존 Clip 그대로). 표시 영역이 화면 전체와 같은 영상은 기존과 같이 HDR / Dolby Vision도 정규화된다. 승인되었으나 미구현.
 - ADR-044: 실제 Container가 QuickTime Movie인 영상만 Import 대상(H.264 / HEVC 모두; QuickTime ≠ 자동 허용). MP4 / ISO BMFF / 기타 / 알 수 없는 Container는 확장자가 아닌 실제 Container 검사로 판별해 Preflight에서 제외(어떤 Media 작업도 없음, Remux / Container 변환 / 변환 안내 / 출력 Container 선택 없음), 다중 선택은 해당 항목만 제외하고 계속(`일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), 전부 제외면 프로젝트 미생성 / 무변경, Replace 후보는 거부 + 기존 Clip 보존; 승인되었으나 미구현
 - ADR-043 Revision 1: preferredTransform 적용 후 Presentation이 `presentationHeight > presentationWidth`일 때만 Orientation-eligible이며 가로(`<`)와 정사각형(`==`)은 하나의 Non-portrait Presentation으로 V1 미지원 → Preflight에서 제외한다 — 다중 선택은 해당 항목만 제외하고 세로 항목으로 계속(유일한 사유면 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` 1회, 개수 표시 없음), 모두 Non-portrait이면 프로젝트 미생성 / 무변경, 단일 후보 / Replace 후보가 Non-portrait이면 `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.`로 거부하고 기존 Clip · Media · Metadata · Slot 보존, 복합 사유는 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; 제외 항목에는 임시 / Project-owned Media 생성 포함 어떤 Media 작업도 없음; 자연 크기 1920×1080 + 90° Transform 영상과 좌우 반전 세로 영상은 세로로 허용, naturalSize 단독 판정 금지; 승인되었으나 미구현
 - 구현 상태: 5.0초 초과 거부는 Phase 5 구현 완료, 1.0초 미만 거부 · Per-item Filtering · Preparation Sheet · 취소 · Retry · Storage Preflight Presentation · Invalid Filtering · 새 안내는 Phase 6 구현 요구(현재 Phase 5 Validator는 1.0초 미만을 Ready로 통과시키고 첫 Non-ready 항목에서 선택 전체를 거부한다)
@@ -509,13 +510,13 @@ Imported Clip은 전체 Source Duration이 `1.0s <= duration <= 5.0s`인 Photos 
 
 사용자가 Imported Clip 추가를 확정하면 프로젝트에서 사용할 Project-owned Local Media를 생성한다.
 
-SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 전체 Source를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다. Normalization은 전체 Source Duration Eligibility(F-MVP-019) 검사 이후에만 시작한다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 전체 Source를 기준으로 1080p-class / 30 fps / SDR Working Media를 생성한다. — **ADR-049(2026-10-01):** 단, 정규화가 필요한 Non-full Clean Aperture Source 중 HDR / Wide-color / SDR 미증명 항목은 Preflight에서 기존 Invalid / Unsupported 범주로 제외되어 Working Media를 만들지 않는다. Normalization은 전체 Source Duration Eligibility(F-MVP-019) 검사 이후에만 시작한다.
 
 1080p-class는 고해상도 Source의 Working Target이다. ADR-047에 따라 저해상도 Source는 절대 확대하지 않으며 Working Media 크기는 `scale = min(1.0, 1080 / width, 1920 / height)`로 축소만 하고 각 변을 짝수로 내림한다(720×1280 → 720×1280, 1080×1440 → 1080×1440, 1080×1920 → 1080×1920, 2160×3840 → 1080×1920).
 
 ### Normalization Acceptance Criteria
 
-- HDR / Dolby Vision Source도 Project-owned SDR Working Media로 정규화하며 HDR Metadata 보존을 MVP 완료 조건으로 요구하지 않는다.
+- HDR / Dolby Vision Source도 Project-owned SDR Working Media로 정규화하며 HDR Metadata 보존을 MVP 완료 조건으로 요구하지 않는다. — **ADR-049(2026-10-01):** Tone-mapping은 Full-aperture Source에 ADR-045 §4 내장 Compositor로만 적용되며, Non-full Clean Aperture의 HDR / Dolby Vision Source는 Preflight에서 제외된다.
 - 30 fps 초과 Source도 Working Media에서는 30 fps 기준을 충족한다.
 - 고해상도 Source는 승인된 1080p-class Working Target을 따르며 Photos 원본의 Resolution / Frame Rate / Color는 변경하지 않는다.
 - Project Fill + Crop을 Working File에 bake-in하지 않으며 Source의 Presentation Aspect Ratio와 이후 Framing에 필요한 유효 화면 영역을 보존한다.
@@ -524,6 +525,7 @@ SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source의 5초 이하 �
 - 실패와 취소 시 Valid Source / Staging 및 Recovery Candidate는 확정된 Media Safety 계약에 따라 보호한다.
 - ADR-047: Normalization 도중 앱이 종료되면 작업을 재개하지 않는다(Checkpoint · Resume · Background 계속 없음). 프로젝트와 기존 Clip은 변경되지 않고(Replace는 기존 Clip 보존) 남은 임시 파일은 다음 실행이 자동으로 정리하며 사용자는 원하면 영상을 다시 선택한다. 승인되었으나 미구현.
 - ADR-048: 소리가 없는 영상은 소리 없이, AAC 소리는 그대로(Passthrough) 정규화하며, AAC가 아닌 알려진 소리(LPCM / ALAC / APAC 등)는 버리거나 거절하지 않고 AAC-LC 48 kHz(Mono 96 kbps, 2채널 이상은 Stereo 128 kbps, 2채널 초과는 Stereo로 Downmix)로 변환한다(소리만 다른 영상도 정규화 대상). 출력 Frame Rate는 원본의 `minFrameDuration`, 없으면 Nominal Frame Rate, 둘 다 없으면 30 fps를 기준으로 정하며 24 fps / 29.97 fps는 유지되고 30 fps를 넘지 않는다. 이는 Working Media 규칙이며 Export 결정이 아니다. 승인되었으나 미구현.
+- ADR-049: 정규화 경로는 결정적으로 정해진다 — 사유 없음 → Fast Path(표시 영역 무관), 표시 영역이 화면 전체인 Source → ADR-045 §4 내장 Compositor(HDR / Dolby Vision 포함), 표시 영역이 다른 신뢰성 있는 SDR Rec.709 Source → 색 변환 없는 Geometry 전용 경로로 표시 영역 전체를 계획된 짝수 Raster에 Crop · Padding · 검은 테두리 · 영역 밖 번짐 없이 매핑. 두 경로의 출력은 같은 Working Media 계약과 Validation을 따른다. 표시 영역은 새 Normalization 사유가 아니다. 승인되었으나 미구현.
 - Import / Normalization의 Estimated Peak Additional Storage와 Safety Reserve를 충족하지 못하면 Materialization과 Normalization을 시작하지 않는다.
 - Storage 부족이나 Runtime Disk Full로 생성된 Partial / Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본과 기존 Project Media를 보호한다.
 - Storage 부족을 이유로 승인된 1080p-class / 30 fps / SDR Working Media 정책을 자동 하향하지 않는다.
@@ -1441,6 +1443,7 @@ Mellow MVP는 다음 사용자 시나리오가 실제 iPhone에서 처음부터 
 - AAC가 아닌 원본 Audio 처리 — Resolved by ADR-048: `audioTranscode` 사유로 AAC-LC 48 kHz(Mono 96 kbps / Stereo 128 kbps) 변환, 알 수 없거나 모순된 Audio 정보는 Preflight 제외
 - 짝수 내림 후 세로가 아니게 되는 거의 정사각형 세로 영상 — Resolved by ADR-048: Preflight Working-raster Feasibility에서 기존 Invalid / Unsupported 범주로 제외
 - `minFrameDuration`이 없는 영상의 출력 Frame Rate — Resolved by ADR-048: Nominal Frame Rate, 둘 다 없으면 30 fps
+- 표시 영역(Clean Aperture)이 화면 전체와 다른 영상의 정규화 — Resolved by ADR-049: 사유 없음 Fast Path, SDR Rec.709는 Geometry 전용 정규화, HDR / Wide-color / SDR 미증명은 Preflight 제외(기존 범주)
 - Post-MVP Fit 또는 Background Blur 도입 여부
 
 ## Project

@@ -476,7 +476,7 @@ ADR-044에 따라 V1 Photos Import는 iPhone 촬영 → Photos 선택 → Mellow
 
 ADR-042 Revision 4에 따라 남은 세로 영상 중 준비(4K / HDR / Dolby Vision / 30 fps 초과 정규화)가 필요한 영상이 있으면 별도 확인 없이 자동으로 준비를 시작하고 `영상을 준비하고 있어요` / `잠시만 기다려주세요.` Sheet(진행 표시, 여러 개면 `2/5` 위치, `취소`)를 보여준다. 모두 바로 쓸 수 있는 영상이면 Sheet를 보이지 않는다. 준비가 끝나면 Sheet가 자동으로 닫히고 프로젝트 생성 / 추가 / 교체가 완료되며, 앞서 제외된 영상이 있었다면 통합 안내를 한 번 보여준다. 취소하면 임시 파일을 모두 지우고 프로젝트를 만들거나 바꾸지 않는다. 준비 중 실패하면 일부만 저장하지 않고 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`와 `다시 시도` / `취소`를 보여준다. 저장 공간이 부족하면 영상을 만들기 전에 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`를 보여준다. 읽을 수 없거나 지원하지 않는 영상은 그 영상만 제외하고 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`(길이 사유와 함께면 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`)를 한 번 보여준다. 이 동작은 승인된 정책이며 아직 구현되지 않았다. 5.0초 초과 거부는 Phase 5가 이미 구현했고 1.0초 미만 거부는 Phase 6 구현 요구사항이다.
 
-SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다.
+SDR, HDR / Dolby Vision 및 4K를 포함한 고해상도 Source Import를 허용하며 30 fps보다 높은 Source도 가져올 수 있다. (ADR-049: 파일의 표시 영역이 화면 전체와 다르고 변환이 필요한 HDR / Dolby Vision 영상은 예외적으로 제외된다.)
 
 5초 이하 전체 Source로 만드는 Project-owned Working Media는 1080p-class / 30 fps / SDR을 기준으로 한다.
 
@@ -490,7 +490,7 @@ Photos 원본은 Import, 편집, Export 또는 프로젝트 삭제 과정에서 
 
 Imported Clip의 Re-trim은 받아들여진 Project-owned Clip Media 범위 안에서만 가능하며 원본 Source Reference는 유지하지 않는다(ADR-042). Working Media Codec / Container, SDR Color Profile / Tagging 및 Tone-mapping 구현 방법은 ADR-045(2026-09-18)로 확정되었다: 사용자가 고른 Photos 원본은 변경하지 않고, 지원되는 영상은 필요 시 내부 Working Media(세로 1080p급, 30 fps 이하, SDR QuickTime)로 변환되어 프로젝트에 들어가며, 지원하지 않는 Container나 가로 / 정사각형 영상은 명확히 거절된다. 이는 기술 결정이며 Phase 6 구현 완료를 뜻하지 않는다.
 
-1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 ADR-047에 따라 저해상도 Source는 절대 확대하지 않는다(1080p급 안의 영상은 원래 크기 그대로, 초과 영상만 비율을 유지하며 축소). 정규화 도중 앱이 종료되면 작업을 재개하지 않고 프로젝트는 변경되지 않으며 사용자는 영상을 다시 선택한다(ADR-047). ADR-048에 따라 AAC가 아닌 소리를 가진 영상도 거절하지 않고 내부 Working Media용 AAC로 변환하며(AAC 소리는 그대로 유지, 소리가 없으면 소리 없이), 1080p급 크기로 맞추고 짝수로 내림하면 세로가 아니게 되는 거의 정사각형 세로 영상과 소리 정보를 신뢰성 있게 읽을 수 없는 영상은 기존 "읽을 수 없거나 지원하지 않는 영상" 안내로 제외한다. 출력 Frame Rate는 30 fps를 넘지 않으며 24 fps 같은 낮은 Frame Rate는 유지한다. 이는 승인된 정책이며 구현 완료를 뜻하지 않는다.
+1080p-class는 고해상도 Source를 제한·정규화하는 Working Target이며 ADR-047에 따라 저해상도 Source는 절대 확대하지 않는다(1080p급 안의 영상은 원래 크기 그대로, 초과 영상만 비율을 유지하며 축소). 정규화 도중 앱이 종료되면 작업을 재개하지 않고 프로젝트는 변경되지 않으며 사용자는 영상을 다시 선택한다(ADR-047). ADR-048에 따라 AAC가 아닌 소리를 가진 영상도 거절하지 않고 내부 Working Media용 AAC로 변환하며(AAC 소리는 그대로 유지, 소리가 없으면 소리 없이), 1080p급 크기로 맞추고 짝수로 내림하면 세로가 아니게 되는 거의 정사각형 세로 영상과 소리 정보를 신뢰성 있게 읽을 수 없는 영상은 기존 "읽을 수 없거나 지원하지 않는 영상" 안내로 제외한다. 출력 Frame Rate는 30 fps를 넘지 않으며 24 fps 같은 낮은 Frame Rate는 유지한다. 이는 승인된 정책이며 구현 완료를 뜻하지 않는다. ADR-049에 따라 파일에 기록된 표시 영역이 저장된 화면 전체와 다른 드문 영상은, 변환이 필요 없으면 그대로 들어가고, 변환이 필요하면 일반 SDR 색일 때만 화면을 자르거나 여백 없이 변환되며, HDR / Dolby Vision처럼 색 변환이 필요하거나 일반 SDR임을 확인할 수 없으면 기존 "읽을 수 없거나 지원하지 않는 영상" 안내로 제외된다. 새 안내 문구는 없으며 이는 승인된 정책이고 구현 완료를 뜻하지 않는다.
 
 #### Imported Orientation and Framing
 
@@ -1285,6 +1285,7 @@ Mellow의 핵심 제품에 추가하지 않는 것을 기본 원칙으로 한다
 - HDR / Dolby Vision Source의 SDR 변환을 위한 Tone-mapping 구현 방법
 - 저해상도 Source의 Upscaling 정책 및 1080p-class Working Media의 구체적인 크기 기준 — Resolved by ADR-045 + ADR-047: 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
 - AAC가 아닌 원본 Audio, 짝수 내림 후 세로가 아니게 되는 Raster, `minFrameDuration`이 없는 영상의 Frame Rate — Resolved by ADR-048: AAC-LC 48 kHz 변환 / Preflight 제외 / Nominal Frame Rate 후 30 fps Fallback
+- 표시 영역이 화면 전체와 다른 영상의 변환 범위 — Resolved by ADR-049: 변환 불필요 시 그대로, SDR은 자르기 · 여백 없이 변환, HDR / Dolby Vision / 미확인 색은 기존 안내로 제외
 - 정확한 Safety Reserve 크기와 Operation별 Storage Estimate Formula
 - Recording Estimate의 Capture Codec / Bitrate 상수와 Finalization Overhead
 - Import / Export의 Temporary 또는 Recovery-safe Overlap Multiplier
