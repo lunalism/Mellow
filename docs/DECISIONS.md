@@ -2248,6 +2248,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - `minFrameDuration` 부재 시 출력 Frame Duration — Resolved by ADR-048(2026-09-30): 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 새 Normalization 사유 없음, 거부 사유 아님, 30 fps 초과 출력 없음.
 - Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. Production 구현은 미완.
 - 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. Production 구현은 미완.
+- Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): `t_k = k × outputFrameDuration`(`t_k < E`)의 모든 Target에 정확히 한 Frame, Target 이하의 가장 최근 Rendering Frame 선택 · 새 Frame이 없으면 유지 · 미래 Frame / 보간 없음, Session은 `E`에서 종료, Audio 불변, 엄격한 Cadence Validator 유지. Production 구현은 미완.
 
 ### Camera
 
@@ -3309,8 +3310,125 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 
 # ADR-048 — Normalization Audio, Raster Feasibility, and Cadence Fallback
 
-**Date:** 2026-09-30
+**Date:** 2026-09-30 (Revision 1: 2026-10-01)
 **Status:** Accepted (사용자 승인)
+
+## Revision 1 — Deterministic Output Cadence Grid and Frame Hold (2026-10-01)
+
+**Status:** Accepted (사용자 승인, 2026-10-01 Asia/Seoul). 이 Revision은 Phase 6 Step 4B의 정규화 출력 Timing 모호성 하나를 닫는다: Decision 3은 출력 Frame Duration을 정하지만, Source Frame Timing이 그 Grid와 정확히 맞지 않을 때 정규화된 Video Sample을 어느 Presentation Time에 두는지는 정하지 않았다. 아래 Scheduling Rule이 정규화 Video 출력 Timing의 정본이며 충돌 시 Revision 1이 우선한다. Decision 1–3과 Canonical Preflight 순서를 포함한 아래의 최초 본문은 Accepted 이력으로 보존된다. 이 Revision은 Step 4B가 구현되었거나 완료되었음을 뜻하지 않으며 이 규칙은 아직 구현되지 않았다.
+
+**왜 Revision인가:** Decision 3이 정규화 출력 Cadence(`outputFrameDuration`)의 정본이며, 이 Revision은 그 Cadence를 실제 출력 Sample Timing으로 실현하는 방법만 확정한다. 새 Normalization 사유 · 새 제외 범주 · 새 Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
+
+### 실제 기기 Evidence (관찰)
+
+Source는 실제 iPhone 카메라 촬영본 `IMG_0130.MOV` 하나다.
+
+- QuickTime Container, HEVC Main10, HLG / Rec.2020
+- 진짜 Dolby Vision 신호: `dvvC` Profile 8, Compatibility ID 4
+- 신뢰성 있는 Full Aperture, Portrait Presentation
+- 정확한 Duration `2722/600`, 계획 출력 Frame Duration `1/30`(ADR-049 내장 Compositor 경로)
+
+관찰된 Source Timing:
+
+- Video Sample 136개, Interval 135개 중 `20/600` 133개와 `21/600` 2개
+- 누락된 Source Frame은 없다.
+- 두 긴 Interval 때문에 뒤따르는 Source Sample이 명목 Grid에서 먼저 `1/600`, 그다음 `2/600` 늦어졌다.
+
+LunaTestphone(iPhone 12, iOS 27.0)에서 승인된 내장 AVFoundation Tone-mapping 경로로 관찰된 동작:
+
+- `AVAssetReaderVideoCompositionOutput`은 Sample 136개를 내보냈다.
+- 각 Source Sample을 다음 `1/30` Grid 지점으로 올림하여 내보냈다.
+- Grid 지점 36(시각 `720/600`)에는 Sample을 내보내지 않았으며 그 결과 `700/600`과 `740/600` 사이 Interval이 `40/600`이 되었다.
+- Writer는 내보낸 136개 Sample을 모두 Append했고 거부한 Sample은 없었다.
+- Encoding된 Presentation Time은 Composition 출력과 정확히 같았다.
+- 결과는 엄격한 Cadence Validator 하나에서만 실패했고 Codec · SDR Rec.709 Tag · Raster · Identity Transform · HDR 신호 제거 · Audio · Duration · 사용 가능성은 그 밖에 모두 통과했다.
+- 세 번의 실행이 같은 Presentation Time 순서를 재현했다.
+
+이것은 LunaTestphone에서 이 Source로 관찰한 동작이며 보편적이거나 문서화된 AVFoundation 보장으로 취급하지 않는다. 로컬 SDK 문서는 `frameDuration`을 Rendering 간격 / 최대 출력 Frame Rate로만 설명하며 모든 Grid 지점에 Frame을 내보내도록 보장하는 Composition 설정을 문서화하지 않는다.
+
+### Decision — Cadence Grid
+
+정의:
+
+- `d = plan.outputFrameDuration`(Decision 3으로 유도, 30 fps Ceiling 불변)
+- `E` = 정확한 정규화 Session 종료 시각(기존 규칙 그대로)
+- Target Video Presentation Time `t_k = k × d`, `k = 0`부터 시작, `t_k < E`인 모든 `k`
+
+정규화된 Video 출력은 모든 Target `t_k`마다 정확히 하나의 Frame을 가진다.
+
+### Frame 선택
+
+각 Target `t_k`에 대해:
+
+1. Presentation Time이 `t_k` 이하인 가장 최근의 Rendering / Composition 결과 Frame을 사용한다.
+2. 앞선 Target 이후 새 Frame이 없으면 이전에 선택한 Frame을 이 Target에 유지(Hold)한다.
+3. 미래 Frame을 더 이른 Target에 선택하지 않는다.
+4. 보간 · Blend · 움직임 합성을 하지 않는다.
+5. 첫 Target 이하에 Frame이 하나도 없으면 정규화는 안전하게 실패한다; 검은 Lead-in을 만들지 않으며 미래 Frame을 앞으로 당기지 않는다.
+6. 인접 Target 사이에 입력 / Composition Frame이 여러 개 있으면 Target을 넘지 않는 가장 늦은 Frame을 사용하며 그보다 오래되어 대체된 Frame은 출력에서 빠질 수 있다.
+
+용어:
+
+- 내장 HDR / Wide-color 경로에서 유지되는 Frame은 승인된 AVFoundation Tone-mapping Composition이 이미 만든 가장 최근 Frame이다.
+- SDR Aperture-geometry 경로에서 유지되는 Frame은 승인된 Geometry Renderer가 이미 만든 가장 최근 Frame이다.
+- Cadence Scheduler는 Timing 선택만 수행하며 Tone Mapper나 Geometry Renderer가 되지 않는다.
+
+### 출력 Duration
+
+- Grid는 0에서 시작한다.
+- `t_k < E`인 동안만 Target을 만든다.
+- Writer Session은 기존의 정확한 정규화 종료 시각 `E`에서 끝난다.
+- 따라서 마지막 Encoded Sample의 종단 Duration은 `d`보다 짧을 수 있다.
+- 기존 출력 Duration 계약 `sourceDuration <= outputDuration <= sourceDuration + 1/30 s`(ADR-045 §7)는 그대로다.
+- 마지막 Frame Interval을 채우기 위해 출력을 늘리지 않는다.
+
+### Audio
+
+- 이 규칙으로 Audio를 복제 · 보간 · 독립 재타이밍하지 않는다.
+- 기존 AAC Passthrough / Transcode 규칙(Decision 1)은 바뀌지 않는다.
+- 기존 Session 종료와 Audio / Video Duration Validation이 계속 우선한다.
+
+### Validator
+
+- Cadence Validator는 엄격하게 유지한다.
+- 인접한 정규화 Video Presentation Time의 차이는 모두 정확히 `d`여야 한다.
+- 가끔 생기는 `2d` Interval을 허용하지 않는다.
+- Cadence 실패는 여전히 출력을 거부하며 기존 Owned-output Cleanup을 실행한다.
+
+### 범위 경계
+
+- 이것은 표준 고정 Frame Rate Scheduling이며 출력 계약의 완화가 아니다.
+- 유지된 Frame은 빠진 Target Interval 동안의 가장 최근에 알려진 Image를 나타낸다.
+- 새 시각 Content를 만들지 않는다.
+- Source Eligibility와 Duration 제한을 바꾸지 않는다.
+- 새 Normalization 사유 · 제외 범주 · 사용자 Copy · UI를 추가하지 않는다.
+- Fast-path Copy에는 영향이 없다.
+- 최대 30 fps 정책을 바꾸지 않는다.
+- Custom HDR Tone Mapping을 승인하지 않는다.
+- ADR-049의 내장 경로 / Geometry 전용 경로 선택을 바꾸지 않는다.
+- Optical Flow나 Frame 보간을 도입하지 않는다.
+- Resume / Checkpoint 동작을 만들지 않는다(ADR-047 Decision 2 불변).
+- 정규화된 Working Media Video 출력에만 적용한다.
+
+### 기록된 Fixture의 예
+
+위 Evidence Source에 이 규칙을 적용하면 다음과 같다(계산 결과이며 이 Fixture에 한정된 값이다).
+
+- Target 시각 `0/600`부터 `2720/600`까지 출력 Frame 137개
+- 유지(Hold)되는 Grid 지점은 `k = 36` 하나이며 `720/600`에서 Frame 35가 재사용된다.
+- 버려지는 Source / Composition Frame은 없다.
+- Session Duration은 `2722/600`으로 유지된다.
+- Audio / Video 종료 차이는 `1/600`으로 유지된다.
+- 이 Fixture에서 유지된 Image의 최대 나이는 한 Frame Interval `20/600`이다.
+
+이 Fixture의 최대 나이를 보편적 최대값으로 승인하지 않는다.
+
+### 필요한 검증
+
+- 순수 Cadence Scheduler Unit Test, Integration Test, LunaTestphone 실제 Media 재검증은 ROADMAP Phase 6 Unit Tests / Integration Tests / Physical Device Test에 기록된다.
+- 진짜 Dolby Vision Source가 구조적으로 실행되었지만(Classification · Plan · 내장 경로 진입) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과를 주장하지 않는다.
+
+## 최초 승인 본문 (2026-09-30 — Revision 1로 보완됨)
 
 **Resolves:** Phase 6 Step 4A(순수 SDR Working-media Contract와 Normalization Plan Builder) 구현 중 발견된 세 Blocker — (1) AAC가 아닌 Source Audio의 처리(ADR-045 §3은 "AAC Passthrough"만 정의), (2) ADR-043 Portrait이지만 ADR-047 짝수 정렬 후 출력이 Portrait이 아니게 되는 근사 정사각형 Source(예: 1080×1081 → 1080×1080)의 처리, (3) `minFrameDuration`이 없는 Source의 출력 Frame Duration 유도(ADR-045 §3 `max(minFrameDuration, 1/30)`의 입력 부재).
 
@@ -3418,6 +3536,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 - 이 Fallback은 그 자체로 새 Normalization 사유를 만들지 않으며 기존 Nominal Frame Rate 기반 Normalization Trigger(ADR-045 §2)는 바뀌지 않는다.
 - 어떤 출력도 30 fps를 초과하지 않는다.
 - Rational 변환은 결정적이어야 하며 정확한 Timescale 선택은 구현 세부사항이다.
+- **Revision 1(2026-10-01):** 위 공식은 그대로이며, 정규화된 Video 출력은 `t_k = k × outputFrameDuration`(`t_k < E`) Grid의 모든 Target에 정확히 한 Frame을 가지고 새 Frame이 없는 Target은 가장 최근 Frame을 유지한다(위 Revision 1 Cadence Grid 참조).
 
 ## Canonical Preflight Order (ADR-045 §1 / ADR-046 §8 대체 순서)
 
@@ -3443,7 +3562,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 - `ImportNormalizationReason`에 `audioTranscode` 사유가 추가되고 Canonical 순서가 HDR → Frame Rate → Raster → Audio Transcode가 된다(구현 대상).
 - Preflight Classifier는 Orientation 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 검사를 수행하며 두 거부는 기존 Invalid / Unsupported Exclusion 범주로 매핑된다(구현 대상).
 - `WorkingMediaPlanBuilder`는 짝수 정렬 후 Portrait이 아닌 Raster를 받지 않으며 non-AAC Audio를 오류가 아닌 AAC-LC 변환 계획으로 표현한다(구현 대상).
-- `WorkingMediaNormalizer`(Step 4B)는 이 ADR의 Audio 설정과 Frame Duration 유도를 그대로 적용한다.
+- `WorkingMediaNormalizer`(Step 4B)는 이 ADR의 Audio 설정과 Frame Duration 유도를 그대로 적용한다. — **Revision 1(2026-10-01):** 출력 Video Sample Timing에는 Cadence Grid와 Frame Hold 규칙을 적용한다(구현 대상).
 - ROADMAP Phase 6 Unit / Integration Test에 이 ADR의 Audio / Raster Feasibility / Cadence Case가 추가된다.
 
 ## Still Pending (이 ADR이 확정하지 않음)
