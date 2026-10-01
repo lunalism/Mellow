@@ -2247,6 +2247,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source) — Resolved by ADR-048(2026-09-30): Orientation 판정은 그대로, Orientation 다음 · Normalization 사유 이전의 Working-raster Feasibility 단계가 ADR-047 알고리즘 결과 `outputHeight > outputWidth`를 요구하고 실패 시(예: 1080×1081 → 1080×1080) Preflight 기존 Invalid / Unsupported 범주로 거부; Crop / Pad / 늘리기 / 여백 우회 없음, 새 안내 없음.
 - `minFrameDuration` 부재 시 출력 Frame Duration — Resolved by ADR-048(2026-09-30): 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 새 Normalization 사유 없음, 거부 사유 아님, 30 fps 초과 출력 없음.
 - Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. Production 구현은 미완.
+- 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. Production 구현은 미완.
 
 ### Camera
 
@@ -3458,8 +3459,74 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 
 # ADR-049 — Clean-Aperture Normalization and Tone-Mapping Eligibility Boundary
 
-**Date:** 2026-10-01
+**Date:** 2026-10-01 (Revision 1: 2026-10-01)
 **Status:** Accepted (사용자 승인)
+
+## Revision 1 — Multi-Description Consensus and Normalization Transform Eligibility (2026-10-01)
+
+**Status:** Accepted (사용자 승인). 이 Revision은 ADR-049를 반영한 Step 4B 구현의 두 번째 독립 Review(2026-10-01)가 드러낸 두 공백을 닫는다: (1) 경로 판정이 첫 번째 Video Format Description만 읽으므로 같은 Video Track의 뒤 Description이 다른 Aperture나 HDR 색을 가지면 승인되지 않은 경로로 Rendering될 수 있고, (2) Orientation Preflight(ADR-043)를 통과한 Preferred Transform이 Shear나 임의 각도 회전을 담으면 V1 Renderer가 Crop · Padding 없이 정규화할 수 없는데도 Preflight가 받아들여 Accepted Set 전체가 Runtime 실패로 끝날 수 있었다. ADR-049의 Case A–D, Tone-mapping 경계, 사용자 안내는 바뀌지 않으며 이 Revision은 Normalization 경로 판정의 입력 조건을 좁힌다. 아래 내용이 정본이며 아래의 최초 본문은 보존된다(충돌 시 Revision 1 우선). 이 Revision은 Step 4B 구현 완료나 승인을 뜻하지 않는다.
+
+**왜 Revision인가:** 두 결정 모두 ADR-049 Step 8(Aperture / Tone-map 경로 판정)이 무엇을 근거로, 어떤 Source에 대해 경로를 고를 수 있는지를 정하는 같은 경계의 보완이다. 새 Normalization 사유 · 새 제외 범주 · 새 Tone-mapping 메커니즘을 도입하지 않으므로 별도 ADR이 아니다.
+
+### Decision A — 모든 관련 Video Format Description의 합의
+
+Normalization이 필요한 Source(사유가 하나 이상)에 대해서만 적용한다.
+
+1. 선택된 Video Track의 Sample을 기술할 수 있는 모든 Video Format Description을 검사한다(첫 번째만이 아니다).
+2. 모든 Description이 신뢰성 있는 Aperture 증거를 제공해야 한다(ADR-049 Decision 1의 판정 규칙을 Description마다 적용).
+3. 모든 Description이 같은 Full / Non-full Aperture 상태로 분류되어야 한다.
+4. Encoded Raster · Clean-aperture 사각형 · Pixel Aspect Ratio 해석이 하나의 Normalization Plan과 서로 호환되어야 한다.
+5. Non-full Geometry 전용 경로(Case C)에서는 모든 Description이 각자 SDR Rec.709를 긍정적으로 증명해야 한다: Rec.709 Primaries, Rec.709 Transfer, Rec.709 Matrix, HLG 아님, PQ 아님, Rec.2020 Primaries / Matrix 신호 없음, Dolby Vision Configuration 없음.
+6. 어떤 Description이라도 없거나, 신뢰할 수 없거나, 모순되거나, Aperture 상태를 바꾸거나, 계획된 Aperture Geometry를 바꾸거나, 필요한 색 증명에 실패하면 해당 항목은 기존 Invalid / Unsupported Media 범주로 거부된다 — 새 제외 범주 · 새 안내 · 새 Copy 없음, 어떤 Normalization Operation도 시작하지 않는다.
+7. Runtime Normalizer는 Reader / Writer 작업 전에 같은 합의를 다시 확인하고 실제 Source가 더 이상 Plan과 맞지 않으면 안전하게 실패한다(Plan / Source 불일치).
+8. Description이 하나인 Track은 같은 규칙의 원소 하나짜리 경우일 뿐이다.
+
+### Decision B — Normalization Transform Eligibility
+
+Normalization이 필요한 Source는 Preferred Transform이 다음으로만 이루어진 축 정렬 Affine Mapping으로 신뢰성 있게 표현될 때만 진행할 수 있다.
+
+- Translation
+- 1/4 회전 방향: 0°, 90°, 180°, 270°
+- 선택적 가로 및 / 또는 세로 Mirroring
+- 유한하고 0이 아닌 축 정렬 Scale — 균일 또는 비균일 모두 가능하되, Source가 선언한 Presentation Transform의 실제 일부일 때만. 선언된 Presentation Transform을 Bake하는 것(ADR-045 §3)은 Mellow의 새 늘리기 정책이 아니며 임의 왜곡을 허용하지 않는다.
+
+추가 조건: 모든 Affine 성분이 유한하고, Transform이 가역이며, Presentation Geometry가 유한 · 양수 · 표현 가능하고, Shear · 임의 각도 회전 · 퇴화되었거나 0에 가까운 Basis · 모호한 Mapping이 없어야 한다. Translation과 Scale이 표준 카메라 값과 같을 필요는 없다. 구현은 일반적인 고정소수점 / Metadata 반올림 오차를 허용할 수 있으나 그 허용 오차는 눈에 보이는 임의 회전이나 Shear가 통과할 수 없을 만큼 좁아야 한다. 정확한 수치 허용 오차는 구현 세부사항이며 경계 양쪽에서 테스트해야 한다(이 ADR은 Product 정책으로서의 소수 임계값을 정하지 않는다).
+
+Normalization 사유가 하나 이상이고 Transform이 다음을 담으면 거부한다: Shear, 임의 각도 회전, 유한하지 않은 값, 0이거나 비가역인 Basis, Crop · Padding · 합성 테두리 · Aperture 밖 번짐 없이는 정확한 출력에 Mapping할 수 없는 Geometry, 그 밖에 신뢰할 수 없는 Transform 증거.
+
+이 거부는 기존 Invalid / Unsupported Media 범주로 매핑된다: 새 거부 범주 · 새 안내 · 새 Copy 없음, Reader / Writer / Output Operation 없음, 다중 선택은 기존 규칙대로 해당 항목만 제외, 단일 후보는 기존 Unsupported-media 결과, Replace는 기존 Clip과 Media를 보존. 이것은 좁은 V1 기술 경계이며 그 Source가 보편적으로 Invalid하다는 주장이 아니다.
+
+ADR-043 Revision 1의 Orientation 판정(Presentation이 Portrait인가)과 이 Transform 경계(Normalization이 필요한 Source를 V1의 No-crop / No-padding 계약 아래에서 Rendering할 수 있는가)는 서로 다른 질문이다. Orientation 판정식과 그 결과는 바뀌지 않는다.
+
+### Case A–D와의 관계
+
+- **Case A — 사유 없음:** Fast-path Copy. Aperture와 Transform은 Normalization 사유를 만들지 않으며, Non-full Aperture · 여러 Description · 축 정렬이 아닌 Transform은 Mellow가 Rendering하지 않을 때 그 자체로 항목을 거부하지 않는다. 원본 Byte가 권위다.
+- **Normalization 필요:** Case B / C / D를 고르기 전에 (1) 여러 Description의 Aperture 합의와 (2) Normalization Transform Eligibility를 먼저 요구한다. 그다음 Full Aperture → Case B 내장 AVFoundation 정규화, Non-full + 모든 Description에서 긍정적으로 증명된 SDR Rec.709 → Case C Geometry 전용 정규화, Non-full + HDR / Wide / Unknown 색 → 기존 Case D 거부, 신뢰할 수 없거나 모순된 Description 또는 부적격 Transform → 같은 기존 Invalid / Unsupported 거부 결과.
+- Transform 경계는 두 Normalization Engine 모두에 적용된다. 내장 경로는 Scale 크기가 정확히 1이 아니라는 이유만으로 거부하지 않고 유효한 축 정렬 Scale을 Bake할 수 있다. Geometry 전용 경로는 Clean Aperture 전체를 ADR-047 출력 Raster에 충실히 Mapping하는 일부로 유효한 축 정렬 Scale을 Rendering할 수 있으며 여전히 HDR Tone-mapping을 하지 않는다.
+
+### Canonical Preflight 배치(ADR-049 Step 8 보완)
+
+ADR-048 Canonical Preflight Order의 1–7단계와 그 우선순위는 바뀌지 않는다. Step 8은 다음과 같이 정밀화된다.
+
+1. 기존 Normalization 사유를 계산한다.
+2. 사유 없음 → 즉시 Fast Path.
+3. Normalization이 필요한 항목에 대해서만: 여러 Description의 Aperture / 색 합의를 확립하고, Normalization Transform Eligibility를 확립하고, 내장 경로와 Geometry 전용 경로 중 하나를 고르며, 그렇지 않으면 기존 Invalid / Unsupported Media로 거부한다.
+
+앞선 단계의 거부가 여전히 우선하며 뒤의 어떤 Normalization 사유도 이 안전 경계를 뒤집지 않는다.
+
+### 바뀌지 않는 것
+
+- ADR-045 §4의 내장 Compositor가 유일한 승인 HDR / Wide-color Tone-mapping 메커니즘이다.
+- Custom Compositor는 긍정적으로 증명된 SDR Rec.709에 대한 Geometry 전용이다.
+- ADR-047 Revision 1: Clean Aperture 전체 보존, Crop · Padding · Aperture 밖 번짐 · Upscale 없음, 정확한 짝수 출력 Raster, 제한된 Parity Resample.
+- 해상도 선택 · Fill / Fit / Stretch 옵션 · 새 Normalization 사유 · 새 Copy가 없다.
+- ADR-042 / 043 / 044 / 046 / 048의 Eligibility 규칙과 안내, Accepted Set Atomicity, Replace 보존, Photos 원본 불변.
+
+### 테스트 추적
+
+Description 하나; 일치하는 여러 Description; 뒤 Description의 Full ↔ Non-full 변경; 뒤 Description의 SDR ↔ HLG / PQ / Rec.2020 / Dolby Vision 변경; 없거나 신뢰할 수 없는 뒤 Description; 축 정렬이 아닌 Transform을 가진 Case A의 Fast-path 유지; Identity / 1/4 회전 / Mirror / Translation 정규화; 유한한 축 정렬 Scale 정규화; 허용 오차 안의 미세 Metadata 오차; 허용 오차 밖의 눈에 보이는 Shear / 회전; 유한하지 않거나 비가역인 Transform; 거부 항목의 Media Operation 없음; 기존 Step 3 안내 / 범주 동작; Runtime Source / Plan 불일치.
+
+## 최초 승인 본문 (2026-10-01 — Revision 1로 보완됨)
 
 **Resolves:** Phase 6 Step 4B 독립 Review(2026-10-01)와 뒤이은 기기 Probe에서 드러난 Blocker — Source의 Clean Aperture가 Encoded Raster 전체가 아닐 때 ADR-045 §4의 승인된 Tone-mapping 경로(AVFoundation 내장 Compositor + Layer Instruction)를 유지하면서 ADR-047 Revision 1의 전체 Frame 보존(Crop · Padding 없음)을 동시에 만족할 수 없는 문제.
 
@@ -3495,7 +3562,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 
 ## Decision 1 — Canonical Aperture Facts
 
-Inspector는 첫 번째 지원 Video Format Description에서 다음 Facts를 신뢰성 있게 얻는다.
+Inspector는 첫 번째 지원 Video Format Description에서 다음 Facts를 신뢰성 있게 얻는다. *(Revision 1: Normalization이 필요한 Source의 경로 판정은 선택된 Video Track의 모든 관련 Description이 이 Facts와 색 증명에서 합의해야 한다 — Revision 1 Decision A.)*
 
 - Encoded Raster 크기(Encoded Sample 단위 너비 · 높이)
 - Encoded Sample 좌표의 Clean-aperture 사각형(원점과 크기)
@@ -3533,6 +3600,7 @@ Orientation · Working-raster Feasibility · Raster Plan이 쓰는 Presentation 
 - Full / Non-full Aperture 자체는 Normalization을 강제하지 않으며 새 Normalization 사유를 추가하지 않는다.
 - Aperture Metadata는 복사된 Media의 일부로 남는다.
 - 그 밖에 Ready인 홀수 / Offset Aperture Source도 여기에 포함된다.
+- *(Revision 1:)* 여러 Format Description이나 축 정렬이 아닌 Preferred Transform도 Case A 항목을 거부하지 않는다 — Mellow가 Rendering하지 않기 때문이다.
 
 ### Case B — Normalization 필요, Full Aperture
 
@@ -3578,7 +3646,7 @@ Unknown / 누락된 Color Facts는 SDR Rec.709 증거가 아니다. AmbientViewi
 
 ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video / Protected → Container → Codec → Orientation → Working-raster Feasibility · Audio Facts → Normalization 사유 판정)는 바뀌지 않으며 그 뒤에 경로 판정 단계를 둔다.
 
-8. Aperture / Tone-map 경로 호환성 — 사유가 없으면 Aperture와 무관하게 Fast-path Copy; 사유가 있으면 Full Aperture → 내장 Compositor 정규화, Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화, Non-full + HDR / Wide-color / SDR 미증명(또는 신뢰할 수 없는 Aperture 증거) → 기존 Invalid / Unsupported 범주 거부.
+8. *(Revision 1로 정밀화: 사유가 있는 항목은 경로 선택 전에 모든 Description의 합의와 Normalization Transform Eligibility를 먼저 요구하며 실패 시 같은 기존 범주로 거부)* Aperture / Tone-map 경로 호환성 — 사유가 없으면 Aperture와 무관하게 Fast-path Copy; 사유가 있으면 Full Aperture → 내장 Compositor 정규화, Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화, Non-full + HDR / Wide-color / SDR 미증명(또는 신뢰할 수 없는 Aperture 증거) → 기존 Invalid / Unsupported 범주 거부.
 
 - 앞선 단계의 거부가 이 단계보다 우선한다.
 - 이 단계의 거부는 어떤 HDR / Raster / Audio 사유가 있더라도 그 사유로 뒤집히지 않는다.
