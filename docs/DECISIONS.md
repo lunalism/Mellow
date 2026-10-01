@@ -2249,6 +2249,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. Production 구현은 미완.
 - 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. Production 구현은 미완.
 - Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): `t_k = k × outputFrameDuration`(`t_k < E`)의 모든 Target에 정확히 한 Frame, Target 이하의 가장 최근 Rendering Frame 선택 · 새 Frame이 없으면 유지 · 미래 Frame / 보간 없음, Session은 `E`에서 종료, Audio 불변, 엄격한 Cadence Validator 유지. Production 구현은 미완.
+- 정규화 출력 Cadence의 검증 기준과 앞쪽 빈 Video 구간 — Resolved by ADR-048 Revision 2(2026-10-02): 정확한 Rational Presentation-time Grid(0 시작, 모든 인접 간격 정확히 `d`, `E`에서 끝나는 짧은 마지막 Sample 허용)가 권위 있는 증거이며 `nominalFrameRate` / `sampleCount / duration` 같은 평균 Rate는 진단용일 뿐 거부 조건이 아니다; 0 이하에 실제 Frame이 없으면 Typed Runtime 실패(검은 Lead-in · 미래 Frame 당김 없음, 새 Preflight 범주 · Copy 없음). Production 구현은 미완.
 
 ### Camera
 
@@ -3310,8 +3311,63 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 
 # ADR-048 — Normalization Audio, Raster Feasibility, and Cadence Fallback
 
-**Date:** 2026-09-30 (Revision 1: 2026-10-01)
+**Date:** 2026-09-30 (Revision 1: 2026-10-01, Revision 2: 2026-10-02)
 **Status:** Accepted (사용자 승인)
+
+## Revision 2 — Exact Cadence Validation and Leading-Gap Failure (2026-10-02)
+
+**Status:** Accepted (사용자 승인, 2026-10-02 Asia/Seoul). 이 Revision은 Revision 1의 Cadence Grid를 구현하면서 드러난 Validation 해석 하나를 확정하고 Revision 1의 첫 Frame 규칙을 재확인한다. 충돌 시 Revision 2가 Revision 1과 최초 본문보다 우선하며, 둘은 Accepted 이력으로 보존된다. 이 Revision은 정책만 기록하며 미커밋 Step 4B 구현이 완료 · Review · Commit · Merge되었다고 주장하지 않는다.
+
+**왜 Revision인가:** 두 결정 모두 Revision 1이 정한 정규화 출력 Cadence의 검증과 경계 조건에 관한 것이며 새 Normalization 사유 · 제외 범주 · Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
+
+### 배경 (관찰)
+
+Revision 1에 따라 Session은 정확한 종료 시각 `E`에서 끝나므로 `E`가 Grid 지점 사이에 있으면 마지막 Sample의 Duration은 `d`보다 짧다. AVFoundation의 `nominalFrameRate`나 `sampleCount / duration` 같은 평균값은 이 짧은 마지막 Sample 때문에 30을 넘을 수 있다. 예: Sample 41개, Duration `801/600`초이면 약 30.71로 보이지만 모든 인접 Presentation Time 간격은 정확히 `20/600`이다. 1초급 Clip이 Grid 경계 바로 다음 한 Tick에서 끝나면 비슷하게 약 30.95로 보일 수 있다. 이 평균값은 출력 Cadence가 30 fps보다 빠르다는 뜻이 아니다.
+
+### Decision 1 — 정확한 Timestamp가 Cadence의 권위 있는 증거다
+
+세 개념을 구별한다.
+
+1. **계획 Cadence:** `d = plan.outputFrameDuration`이며 `1/30`보다 빠르지 않다(Decision 3 불변).
+2. **실제 Sample Cadence:** 출력 Presentation Time은 0에서 시작하는 정확한 Grid `t_k = k × d`를 따르고, 모든 인접 간격은 정확히 `d`이며, Session이 정확한 `E`에서 끝나므로 마지막 Sample만 `d`보다 짧을 수 있다.
+3. **평균 / Metadata Rate:** `nominalFrameRate` 또는 `sampleCount / duration`은 짧은 마지막 Sample 때문에 30을 넘을 수 있으며 진단용 정보일 뿐이고 정확한 Cadence Grid를 무효로 만들 수 없다.
+
+규칙:
+
+- 정확한 Rational Presentation-time Grid 검증이 권위 있는 Cadence 증거다.
+- Validator는 빠진 Target, 중복 Timestamp, Grid 밖 Timestamp, `d`가 아닌 간격, 미래 Frame 선택, 출력 Duration 위반을 거부해야 한다.
+- Validator는 평균 또는 Metadata Frame Rate 값이 30 또는 30.5를 넘는다는 이유만으로 거부해서는 안 된다(`nominalFrameRate <= 30.5`, `sampleCount / duration <= 30.5` 또는 동등한 평균 Rate 상한은 출력 유효성 거부 조건이 아니다).
+- 출력 계약은 여전히 `d`가 `1/30`보다 빠르지 않도록 제한한다.
+- Metadata Nominal Rate는 진단용으로 기록할 수 있지만 유효한 정확한 Sample Timing을 무효화하지 않는다.
+- ADR-045 §7의 정규화 출력 Duration 허용 범위는 바뀌지 않는다.
+- 평균 Rate 통계를 맞추려고 Target을 빼거나, 짧은 마지막 Sample을 건너뛰거나, Session 종료를 앞당기지 않는다(Revision 1이 그 Sample을 요구한다).
+
+### Decision 2 — 앞쪽 빈 Video 구간은 정규화 실패다
+
+Revision 1의 첫 Frame 규칙을 재확인한다.
+
+- Normalization이 필요한 Source는 Target 시각 0 이하에 실제 Rendering / Composition된 Video Frame을 제공해야 한다.
+- 그런 Frame이 없으면(예: 앞쪽 Empty Edit) Operation은 Typed Normalization Error로 실패한다.
+- 검은 Lead-in을 합성하지 않는다.
+- 미래 Frame을 시각 0으로 당겨오지 않는다.
+- Timeline을 조용히 줄이거나 옮기지 않는다.
+- 이것은 현재 Accepted Set Atomicity 계약 아래의 Runtime 정규화 실패로 남으며, 이 Revision은 새 Preflight 거부 범주 · 안내 · 사용자 Copy를 추가하지 않는다.
+- 일반 iPhone 카메라 Source에는 이런 앞쪽 Empty Edit가 없을 것으로 예상하지만 이는 보장이 아니며 보장으로 기술하지 않는다.
+
+### 범위 경계
+
+- 허용 Duration 한계, Normalization 사유, Raster 규칙, Audio 처리, Tone Mapping, Aperture 경로, 취소, Cleanup, 재시도, Copy, UI를 바꾸지 않는다.
+- 새 Normalization 사유 · 제외 범주 · 안내 · 사용자 문자열을 도입하지 않는다.
+- 이 Revision은 Step 4B를 완료로 만들지 않는다.
+
+### 필요한 검증
+
+- 짧은 출력이 Grid 지점 바로 뒤에서 끝나 평균 / Metadata Rate가 30.5를 넘지만 Presentation-time Grid가 정확하면 통과해야 한다.
+- 정확한 Grid에 `2d` 간격이 있는 출력은 실패해야 한다.
+- 첫 실제 Frame이 0 이후인 Source는 성공적인 Publish 전에 Typed Error로 실패해야 한다.
+- 어떤 우회도 마지막 Target을 건너뛰거나 Session 종료를 앞당기지 않는다.
+- 실제 기기 Cadence Evidence는 계속 `IMG_0130.MOV`다: Sample 137개, Presentation Time `0 … 2720/600`, 간격 `20/600`, 정확한 종료 `2722/600`.
+- 실제 HDR 시각 A/B는 Pending이며 통과로 주장하지 않는다.
 
 ## Revision 1 — Deterministic Output Cadence Grid and Frame Hold (2026-10-01)
 
@@ -3394,6 +3450,7 @@ LunaTestphone(iPhone 12, iOS 27.0)에서 승인된 내장 AVFoundation Tone-mapp
 - 인접한 정규화 Video Presentation Time의 차이는 모두 정확히 `d`여야 한다.
 - 가끔 생기는 `2d` Interval을 허용하지 않는다.
 - Cadence 실패는 여전히 출력을 거부하며 기존 Owned-output Cleanup을 실행한다.
+- **Revision 2(2026-10-02):** 이 엄격한 검사는 정확한 Presentation-time Grid에 대한 것이며, `nominalFrameRate` 같은 평균 / Metadata Rate가 30 또는 30.5를 넘는다는 이유만으로는 거부하지 않는다.
 
 ### 범위 경계
 
@@ -3534,7 +3591,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 - `minFrameDuration`이 있으면 여전히 첫 번째 권위 있는 Cadence 입력이다.
 - Timing Metadata 부재는 그 밖에 Eligible한 Source를 거부하지 않는다.
 - 이 Fallback은 그 자체로 새 Normalization 사유를 만들지 않으며 기존 Nominal Frame Rate 기반 Normalization Trigger(ADR-045 §2)는 바뀌지 않는다.
-- 어떤 출력도 30 fps를 초과하지 않는다.
+- 어떤 출력도 30 fps를 초과하지 않는다. — **Revision 2(2026-10-02):** 이는 계획 Frame Duration `d`가 `1/30`보다 빠르지 않다는 뜻이며, 짧은 마지막 Sample 때문에 30을 넘을 수 있는 평균 / Metadata Rate(`nominalFrameRate`, `sampleCount / duration`)의 상한이 아니다.
 - Rational 변환은 결정적이어야 하며 정확한 Timescale 선택은 구현 세부사항이다.
 - **Revision 1(2026-10-01):** 위 공식은 그대로이며, 정규화된 Video 출력은 `t_k = k × outputFrameDuration`(`t_k < E`) Grid의 모든 Target에 정확히 한 Frame을 가지고 새 Frame이 없는 Target은 가장 최근 Frame을 유지한다(위 Revision 1 Cadence Grid 참조).
 

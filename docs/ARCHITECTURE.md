@@ -976,7 +976,7 @@ Trim / Fill + Crop / Framing은 가능한 한 Metadata 기반 비파괴 Editing�
 
 SDR, HDR 및 Dolby Vision Source 모두 승인된 SDR Working Pipeline으로 진입하며 HDR Metadata 보존을 성공 조건으로 요구하지 않는다.
 
-Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p-class Working Target, Presentation Aspect Ratio / Transform 및 Framing 영역 보존을 검증한다.
+Final Working Media 등록 전 SDR 변환 결과, 30 fps 기준, 승인된 1080p-class Working Target, Presentation Aspect Ratio / Transform 및 Framing 영역 보존을 검증한다. **ADR-048 Revision 2(2026-10-02):** 30 fps 기준은 정확한 Presentation-time Grid(0 시작, 모든 인접 간격이 `1/30`보다 빠르지 않은 계획 Frame Duration `d`와 정확히 같음, 정확한 `E`에서 끝나는 짧은 마지막 Sample 허용)로 검증하며 `nominalFrameRate`나 `sampleCount / duration` 같은 평균 Rate는 진단용이고 30 또는 30.5를 넘는다는 이유만으로 출력을 거부하지 않는다.
 
 심각한 Highlight Clipping, 잘못된 색 변환, Orientation 손상 또는 Incomplete Normalization Output 등 명백한 변환 실패를 정상 Working Media로 등록하지 않는다.
 
@@ -1022,7 +1022,7 @@ Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른�
 
 **원본 획득 불변조건(ADR-045 §5):** `PhotosPicker` `preferredItemEncoding`은 `.current`여야 하며(`.automatic`은 HEVC / HDR 원본 대신 H.264 Rec.709 호환 Transcode를 전달), Operation 후 Source Byte / mtime 불변을 확인한다.
 
-Variable Frame Rate 처리의 구체적인 Apple API 조합은 이 문서에서 강제하지 않으며(Metadata `minFrameDuration` 불일치는 VFR 증거가 아니다) 필요한 미결정 사항을 구현 전에 해결한다. **ADR-048(2026-09-30):** 출력 Frame Duration 유도는 확정되었다 — 유효한(수치이고 0보다 큰) `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 이 Fallback은 새 Normalization 사유나 거부 사유가 아니며 어떤 출력도 30 fps를 초과하지 않는다. 구체적 API 조합과 Rational Timescale 선택은 여전히 구현 세부사항이다. **ADR-048 Revision 1(2026-10-01):** 정규화 출력 Video Sample Timing은 결정적인 Cadence Grid를 따른다 — `d = plan.outputFrameDuration`, Target `t_k = k × d`(`k = 0`부터, 정확한 Session 종료 `E`에 대해 `t_k < E`), 모든 Target에 정확히 한 Frame. 각 Target은 Presentation Time이 `t_k` 이하인 가장 최근 Rendering 결과 Frame(내장 경로는 승인된 AVFoundation Tone-mapping Composition, Geometry 전용 경로는 승인된 Geometry Renderer의 출력)을 쓰고, 새 Frame이 없으면 이전 Frame을 유지하며, 미래 Frame 선택 · 보간 · Blend · 움직임 합성은 없다; 첫 Target 이하에 Frame이 없으면 Typed 실패(검은 Lead-in 없음). Cadence Scheduler는 Renderer 출력과 Writer 사이의 순수 Timing 선택 단계이며 Tone Mapper나 Geometry Renderer가 아니다. Audio는 복제 · 보간 · 재타이밍하지 않고, Cadence Validator는 모든 인접 Video Presentation Time 차이가 정확히 `d`일 것을 계속 요구한다(`2d` 허용 없음). 근거: LunaTestphone에서 실제 iPhone HLG / Dolby Vision 촬영본의 `21/600` Source Interval에 대해 `AVAssetReaderVideoCompositionOutput`이 각 Sample을 다음 Grid 지점으로 올림하고 Grid 지점 하나를 내보내지 않음을 관찰했다(문서화된 API 보장으로 취급하지 않음).
+Variable Frame Rate 처리의 구체적인 Apple API 조합은 이 문서에서 강제하지 않으며(Metadata `minFrameDuration` 불일치는 VFR 증거가 아니다) 필요한 미결정 사항을 구현 전에 해결한다. **ADR-048(2026-09-30):** 출력 Frame Duration 유도는 확정되었다 — 유효한(수치이고 0보다 큰) `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 이 Fallback은 새 Normalization 사유나 거부 사유가 아니며 어떤 출력도 30 fps를 초과하지 않는다. 구체적 API 조합과 Rational Timescale 선택은 여전히 구현 세부사항이다. **ADR-048 Revision 1(2026-10-01):** 정규화 출력 Video Sample Timing은 결정적인 Cadence Grid를 따른다 — `d = plan.outputFrameDuration`, Target `t_k = k × d`(`k = 0`부터, 정확한 Session 종료 `E`에 대해 `t_k < E`), 모든 Target에 정확히 한 Frame. 각 Target은 Presentation Time이 `t_k` 이하인 가장 최근 Rendering 결과 Frame(내장 경로는 승인된 AVFoundation Tone-mapping Composition, Geometry 전용 경로는 승인된 Geometry Renderer의 출력)을 쓰고, 새 Frame이 없으면 이전 Frame을 유지하며, 미래 Frame 선택 · 보간 · Blend · 움직임 합성은 없다; 첫 Target 이하에 Frame이 없으면 Typed 실패(검은 Lead-in 없음). Cadence Scheduler는 Renderer 출력과 Writer 사이의 순수 Timing 선택 단계이며 Tone Mapper나 Geometry Renderer가 아니다. Audio는 복제 · 보간 · 재타이밍하지 않고, Cadence Validator는 모든 인접 Video Presentation Time 차이가 정확히 `d`일 것을 계속 요구한다(`2d` 허용 없음). 근거: LunaTestphone에서 실제 iPhone HLG / Dolby Vision 촬영본의 `21/600` Source Interval에 대해 `AVAssetReaderVideoCompositionOutput`이 각 Sample을 다음 Grid 지점으로 올림하고 Grid 지점 하나를 내보내지 않음을 관찰했다(문서화된 API 보장으로 취급하지 않음). **ADR-048 Revision 2(2026-10-02):** 계획 Cadence(`d ≤` 30 fps), 실제 Sample Cadence(0 시작 정확한 Grid, 모든 인접 간격 정확히 `d`, 짧은 마지막 Sample 허용), 평균 / Metadata Rate(진단용, 짧은 마지막 Sample 때문에 30을 넘을 수 있음)를 구별한다. Output Validator는 빠진 Target · 중복 Timestamp · Grid 밖 Timestamp · `d`가 아닌 간격 · 미래 Frame 선택 · Duration 위반을 거부하고, 평균 / Metadata Rate만으로는 거부하지 않는다. 0 이하에 실제 Rendering Frame이 없는 Source(앞쪽 Empty Edit 등)는 Typed Runtime 정규화 실패이며 검은 Lead-in이나 미래 Frame 당김이 없다.
 
 Working Media Codec / Container는 Phase 9의 Export Codec / Container와 별개로 결정할 수 있으며 자동으로 동일하게 설정하지 않는다.
 
@@ -2332,6 +2332,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Working-raster Feasibility(ADR-048): 1080×1081의 Preflight 거부와 정렬 후 Portrait을 유지하는 인접 Raster(예: 1080×1082, 2160×2164)의 허용, Crop / Pad / 늘리기 / Upscale 우회 없음
 - 출력 Frame Duration 유도(ADR-048): 유효한 `minFrameDuration` 우선, 부재 시 Nominal Frame Rate(24 / 29.97 / 60 fps), 둘 다 부재 시 30 fps, 30 fps 초과 출력 없음
 - 순수 Cadence Scheduler(ADR-048 Revision 1): 완전히 정렬된 Source Cadence; Jitter로 빠진 Target 하나; 빠진 Target 여러 개; Target 사이의 여러 입력 Frame(가장 늦은 Frame 선택, 대체된 Frame 생략); 0의 첫 Frame; 0 이하에 Frame이 없으면 Typed 실패; 정확한 Rational Timescale; 24 / 25 / 29.97 / 30 fps Plan; 마지막 부분 Frame Duration; 정확한 Session 종료 시각 이상에는 Target 없음; 미래 Frame 선택 없음; Scheduling과 무관한 결정적 결과
+- 정확한 Cadence Validation(ADR-048 Revision 2): 짧은 마지막 Sample로 평균 / Metadata Rate가 30.5를 넘지만 Grid가 정확한 출력의 통과; `2d` 간격 · 중복 · Grid 밖 Timestamp의 거부; 평균 Rate가 거부 조건이 아님
 - Aperture / Tone-map 경로(ADR-049): Full / 중앙 소수 원점 홀수 / 정수 Offset / 형식 오류 Aperture Facts; 사유 없는 Non-full → Fast Path; 사유 있는 Full-aperture HDR · SDR → 내장 경로; 사유 있는 Non-full SDR Rec.709(10-bit 포함) → Geometry 전용 경로; 사유 있는 Non-full HLG / PQ / Rec.2020 / Dolby Vision / 미증명 색 → 기존 Invalid / Unsupported 거부와 Media Operation 없음; 성공한 두 정규화 경로의 출력 계약 동일
 - 여러 Description / Normalization Transform(ADR-049 Revision 1): Description 하나와 일치하는 여러 Description; 뒤 Description의 Full ↔ Non-full 또는 SDR ↔ HLG / PQ / Rec.2020 / Dolby Vision 변경; 없거나 신뢰할 수 없는 뒤 Description; 축 정렬이 아닌 Transform의 Case A Fast-path 유지; Identity / 1/4 회전 / Mirror / Translation / 유한한 축 정렬 Scale 정규화; 허용 오차 경계 양쪽; Shear · 회전 · 비유한 · 비가역 거부와 Media Operation 없음; Runtime Source / Plan 불일치
 - Fill + Crop
@@ -2346,7 +2347,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Recording / Import Media Commit의 Failure Boundary A–H
 - Materialization 이후 Metadata Persistence 실패와 Relaunch Recovery
 - Normalization 실패 시 Valid Source 보존
-- Normalization 출력의 SDR Working Media Contract(QuickTime · avc1 8-bit · 709 / 709 / 709 · HDR 신호 없음 · Identity · Portrait · ≤ 30 fps · Duration `source..source + 1/30 s`) 수락 / 거부와 Fast-path Copy 비적용(ADR-045)
+- Normalization 출력의 SDR Working Media Contract(QuickTime · avc1 8-bit · 709 / 709 / 709 · HDR 신호 없음 · Identity · Portrait · ≤ 30 fps · Duration `source..source + 1/30 s`) 수락 / 거부와 Fast-path Copy 비적용(ADR-045) — ADR-048 Revision 2: `≤ 30 fps`는 계획 Frame Duration과 정확한 Presentation-time Grid로 검증하며 평균 / Metadata Rate 상한이 아니다
 - Cancellation Token Idempotency, `finishWriting` 이후 취소의 미Publish, Partial Output Cleanup Idempotency(ADR-045)
 - `PhotosPicker` `preferredItemEncoding == .current` 불변조건(ADR-045)
 - Reconciliation 반복 시 Duplicate Commit 방지
@@ -2363,6 +2364,7 @@ iPhone 12에서 반복적으로 Frame Drop, UI Freeze, Memory Pressure 또는 �
 - Metadata Persistence Storage Failure에서 Final Media의 Recovery Candidate 보존
 - Storage Pressure Cleanup의 Safe Classification, Multiple Draft Isolation과 Idempotent Retry
 - Cadence Grid와 Frame Hold(ADR-048 Revision 1): 실제 또는 그와 같은 Jitter를 가진 Source의 내장 HDR 경로와 SDR Geometry 경로; 유지된 Frame이 같은 Image 내용과 인접한 정확한 Grid Presentation Time을 가진 서로 다른 두 Sample이 됨; 모든 Target을 Writer가 받아들임; Audio 불변; 엄격한 Cadence Validator 통과; 실패 / 취소 Cleanup 유지; H.264 SDR Rec.709 출력 계약 유지
+- Exact Cadence Validation과 앞쪽 빈 구간(ADR-048 Revision 2): Grid 지점 바로 뒤에서 끝나는 짧은 출력이 평균 / Metadata Rate 30.5 초과에도 통과; 첫 실제 Frame이 0 이후인 Source가 Publish 전에 Typed Error로 실패(검은 Lead-in 없음); 마지막 Target 생략 · Session 종료 단축 우회 없음
 
 Media Commit의 기본 Failure Boundary 검증은 Recording을 구현하는 Phase 4부터 수행하고 Phase 6에서 Import에 적용하며 Phase 10에서 반복 Relaunch와 복합 실패 조건을 강화한다.
 
@@ -2693,6 +2695,7 @@ HDR / Dolby Vision Source 허용, SDR Working Media / Preview / Export 방향은
 - 짝수 정렬 후 Portrait이 아닌 Working Raster — Resolved by ADR-048(2026-09-30): Preflight Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부.
 - `minFrameDuration` 부재 시 출력 Cadence — Resolved by ADR-048(2026-09-30): Nominal Frame Rate Fallback, 둘 다 없으면 30 fps.
 - Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): 결정적 Cadence Grid(`t_k = k × outputFrameDuration`, `t_k < E`)와 가장 최근 Rendering Frame의 Hold, 엄격한 Cadence Validator 유지. Production 구현은 미완.
+- 정규화 출력 Cadence의 검증 기준과 앞쪽 빈 Video 구간 — Resolved by ADR-048 Revision 2(2026-10-02): 정확한 Presentation-time Grid가 권위 있는 증거, 평균 / Metadata Rate는 진단용; 0 이하 실제 Frame 부재는 Typed Runtime 실패. Production 구현은 미완.
 - Non-full Clean Aperture Source의 정규화 / Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast Path; Full Aperture → 내장 Compositor; Non-full SDR Rec.709 → Geometry 전용; Non-full HDR / Wide-color / SDR 미증명 → Preflight 거부(기존 범주, 새 안내 없음). Production 구현은 미완.
 - 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 합의와 축 정렬 Transform(Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale)을 요구, 실패 시 기존 Invalid / Unsupported 범주로 거부; Fast Path 불변. Production 구현은 미완.
 
