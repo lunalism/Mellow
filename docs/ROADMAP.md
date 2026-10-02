@@ -1797,7 +1797,7 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 | Import Source Inspection · Selection Preflight 구성요소 | 구현(`5416111`, `c570d5b`, Phase 6 확장은 `75c2cb9` · `da1f337`) |
 | Direct-camera H.264 SDR Enforcement(Task 29b) | 구현(`bfc4451`) |
 | Select Clips / Editor Add / Replace 통합 | 미구현 |
-| Accepted Set Storage Estimate · Safety Reserve | Pending 유지 |
+| Accepted Set Storage Estimate · Safety Reserve | Pending 유지(부분): 계산 정책 부분 승인(ADR-050 050-A / 050-B / 050-C 계산 정책, 2026-10-02) · 순수 `ImportStorageEstimator` 구현(Step 5B, 연결 없음); 검사 경계 연결 · Phase 5 Admission 변경 · Integration은 Pending |
 | Free-space API / Race 처리 | Pending 유지 |
 | Blocking Preparation Progress UI · Aggregate Progress | Preparation / Progress UI 미구현(ADR-042 Revision 4로 UX 확정) · Aggregate Progress 계산은 Pending 유지(구현 세부 결정) |
 | 실제 사용자 흐름의 취소 / `다시 시도` Source-handle 조정 | Pending 유지 |
@@ -1903,8 +1903,8 @@ ADR-045로 확정된 항목(Working Media = QuickTime `.mov` · H.264 High 8-bit
 - ~~정확한 SDR Color Profile / Tagging~~ — Resolved by ADR-045(Rec.709 / 709 / 709 Video Range, HDR 신호 없음)
 - ~~Low-resolution Source Upscaling Policy(ADR-045: Scale-down Rule만 확정, Upscale 여부 Pending)~~ — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림
 - ~~1080p-class Working Media의 정확한 Raster Dimension Rule~~ — Resolved by ADR-045(1080p-class Bounding Box, 짝수 내림, Crop / Pad 없음)
-- 5초 이하 전체 Source, Picker Transient 복사본, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula
-- Photos Import / Normalization에 필요한 Safety Reserve 정책
+- 5초 이하 전체 Source, Picker Transient 복사본, Staging, Normalization Intermediate / Output, Project-owned Working Media와 Recovery-safe Overlap을 반영한 Import Storage Estimate Formula — **ADR-050 부분 승인(2026-10-02):** Import 계산 정책(050-A Output Estimate, 050-B Metadata Estimate, 050-C Volume별 계산 · 256 MiB Import Reserve · Fail-closed)은 Accepted이며 Step 5B 순수 `ImportStorageEstimator`로 구현되었다(연결 없음); 검사 경계 연결, Phase 5 Admission 변경, Integration Gate는 Pending.
+- Photos Import / Normalization에 필요한 Safety Reserve 정책 — **ADR-050 부분 승인(2026-10-02):** 268,435,456 B(256 MiB) Import 전용 Reserve Accepted(측정되지 않은 위험을 덮는다고 보장하지 않음).
 - ~~Import Durable Operation Identity / Recovery 깊이(ADR-020 Boundary C / E / F 중 Relaunch에서 재개하는 범위)와 ADR-039 STEP 12B Orphan / Workspace Predicate의 확장 방식~~ — Resolved by ADR-047(2026-09-18): Relaunch에서 재개하는 범위 없음(No Resume), Predicate 확장 없음, 기존 Workspace Sweep 재사용
 - ~~non-AAC Source Audio 처리(ADR-045 §3은 AAC Passthrough만 정의)~~ — Resolved by ADR-048(2026-09-30): `audioTranscode` → AAC-LC 48 kHz Mono 96 kbps / Stereo 128 kbps; 알 수 없거나 모순된 Audio Facts는 Preflight 거부
 - ~~짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source)~~ — Resolved by ADR-048(2026-09-30): Preflight Working-raster Feasibility 거부(기존 Invalid / Unsupported 범주)
@@ -1972,7 +1972,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 16. Import / Normalization / Materialization 중 Project Delete / Replacement가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다. Normalizer의 중간 · 출력 파일은 Operation Workspace Directory 안에서만 생성하고(Project Directory 안에 임시 파일 없음) Fast-path / Normalized 출력의 Materialize는 Accepted Set 전체 준비 완료 뒤에만 시작한다(ADR-047).
 18. Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주세요.`, Progress, `2/5`, `취소`), 실패 / Retry Alert, Storage 부족 Alert, 통합 제외 안내에 3.11절과 `DESIGN.md` 33절의 기존 Accessibility 기준(Label, VoiceOver Announcement, Dynamic Type, Contrast, Reduce Motion)을 처음부터 적용한다.
-19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 5초 이하 전체 Source, Picker Transient 복사본, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다.
+19. Source Materialization이나 Normalization을 시작하기 직전에 작업 대상 Volume의 현재 Usable Capacity를 확인하고 5초 이하 전체 Source, Picker Transient 복사본, Staging, 승인된 Normalization Intermediate / Output, Project-owned Working Media, Recovery-safe Overlap과 Safety Reserve를 반영한 Required Free Space를 계산한다. — **구현 상태(2026-10-02):** 계산은 ADR-050 050-A / 050-B / 050-C(계산 정책)의 순수 `ImportStorageEstimator`로 구현되었고(Step 5B) 이 Task가 요구하는 검사 시점 연결은 미구현이다.
 20. Import Storage Preflight가 실패하면 Materialization / Normalization Operation이나 Operation-owned Artifact를 시작하지 않고 Photos 원본과 기존 Project Media를 유지하며 Import Working Media Quality를 조용히 낮추지 않는다.
 21. Preflight 통과 후 Materialization / Normalization / Metadata Persistence 중 Disk Full이 발생하면 Incomplete Output을 정상 Clip으로 Commit하지 않고 Photos 원본, 기존 Project Media와 Recovery Candidate를 보호하며 안전하게 분류된 Disposable Artifact만 정리한다.
 22. 사용자가 공간을 확보한 뒤 Import를 재시도할 수 있게 하며 반복 Recovery / Cleanup이 중복 Clip이나 다른 Draft 손상을 만들지 않게 한다.
@@ -3599,8 +3599,8 @@ ADR-026의 Empty Project와 Unavailable Clip High-level Behavior는 Accepted 상
 - Source Reference 유지 여부 — Resolved by ADR-042: 유지하지 않는다.
 - Working Media Codec / Container / SDR Tagging / Raster Dimension Rule / Tone-mapping 메커니즘 — Resolved by ADR-045(2026-09-18, Final Device Gate PASS; Production 구현은 별도).
 - Low-resolution Source Upscaling Policy — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음, `scale = min(1.0, 1080 / width, 1920 / height)`, 짝수 내림.
-- 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula
-- Photos Import / Normalization에 필요한 Safety Reserve 정책
+- 5초 이하 전체 Source, Picker Transient 복사본과 승인된 Pipeline의 Peak Additional Storage를 반영한 Import Storage Estimate Formula — **ADR-050 부분 승인(2026-10-02):** Import 계산 정책(050-A Output Estimate, 050-B Metadata Estimate, 050-C Volume별 계산 · 256 MiB Import Reserve · Fail-closed)은 Accepted이며 Step 5B 순수 `ImportStorageEstimator`로 구현되었다(연결 없음); 검사 경계 연결, Phase 5 Admission 변경, Integration Gate는 Pending.
+- Photos Import / Normalization에 필요한 Safety Reserve 정책 — **ADR-050 부분 승인(2026-10-02):** 268,435,456 B(256 MiB) Import 전용 Reserve Accepted(측정되지 않은 위험을 덮는다고 보장하지 않음).
 - Import Durable Operation Identity / Recovery 깊이와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식 — Resolved by ADR-047(2026-09-18): No Resume, Ephemeral Workspace UUID, 기존 Sweep 재사용, Predicate 확장 없음.
 - ~~정확한 1.0초 / 5.0초 Product 경계에 대한 AVFoundation Duration 비교 정책(구현 세부사항)~~ — Resolved by ADR-042 + ADR-045 §1 / §11: Source Eligibility는 정확히 `1.0 s ≤ source duration ≤ 5.0 s`(양 끝 포함)이며 정확한 Rational(`MediaTime`) 비교로 판정하고 Frame 기반 허용치를 적용하지 않는다(ADR-045 §7의 출력 Duration 허용 범위 `source <= output <= source + 1/30 s`는 Normalization 출력 Validation 규칙이며 Source Eligibility와 별개다).
 - Preparation의 구체적 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리(구현 세부사항; 관찰 가능한 UX는 ADR-042 Revision 4로 확정)

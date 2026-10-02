@@ -2276,9 +2276,9 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - Storage Strategy — High-level Policy Resolved by ADR-024: Operation-aware Storage Preflight를 사용한다.
 - Fixed Global Free-space Threshold — ADR-024에 따라 Primary MVP Gating Strategy로 사용하지 않는다.
 - Estimated Peak Additional Storage + Safety Reserve — High-level Policy Resolved by ADR-024.
-- 정확한 Safety Reserve Bytes — Pending, 관련 Owning Phase Technical Gate.
+- 정확한 Safety Reserve Bytes — Pending, 관련 Owning Phase Technical Gate. — **ADR-050 부분 승인(2026-10-02):** Import Reserve = 268,435,456 B(256 MiB) Accepted; Export Reserve는 Pending.
 - Recording Estimate Formula, Capture Codec / Bitrate 상수와 Finalization Overhead — Pending, Before Phase 4.
-- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6(ADR-042: 기준 Source는 5초 이하 전체 Source이며 Picker Transient 복사본을 Peak에 포함).
+- Import Estimate Formula와 Temporary / Recovery-safe Overlap Multiplier — Pending, Before Phase 6(ADR-042: 기준 Source는 5초 이하 전체 Source이며 Picker Transient 복사본을 Peak에 포함). — **ADR-050 부분 승인(2026-10-02):** Import 계산 정책(050-A Output Estimate, 050-B Metadata Estimate, 050-C Volume별 계산 · 256 MiB Import Reserve · Fail-closed)은 Accepted이며 Step 5B 순수 `ImportStorageEstimator`로 구현되었다(연결 없음); 검사 경계 연결, Phase 5 Admission 변경, Integration Gate는 Pending.
 - Export Snapshot 기반 Estimate Formula와 Temporary Multiplier — Pending, Before Phase 9.
 - Storage Warning 기준과 Low-storage UI Presentation — Pending, Owning UX Gate(Phase 6 Import Storage 부족 Presentation은 ADR-042 Revision 4로 확정: `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`; Recording / Export Presentation은 여전히 Pending).
 
@@ -3007,7 +3007,7 @@ Evidence Branch: `spike/06-media-technical-gate` @ `04d836127ddb040676a7bec29728
 - Tone-curve 품질은 단일 기기 · 단일 사용자 A/B로만 검증됨.
 - 출력 Duration은 최대 +1 Frame(§7).
 - Resource Metrics(Thermal / Footprint / Capacity)는 0.25 s Sampling Lower Bound.
-- Storage Estimate Formula / Safety Reserve, Recovery 깊이, Retry / Progress UX 메커니즘, Low-resolution Upscaling Policy는 후속 구현 Gate. — **ADR-047(2026-09-18):** Recovery 깊이(No Resume)와 Upscaling Policy(No Upscaling)는 해소; Storage Formula / Reserve와 Progress / Retry 메커니즘은 여전히 Pending.
+- Storage Estimate Formula / Safety Reserve, Recovery 깊이, Retry / Progress UX 메커니즘, Low-resolution Upscaling Policy는 후속 구현 Gate. — **ADR-047(2026-09-18):** Recovery 깊이(No Resume)와 Upscaling Policy(No Upscaling)는 해소; Storage Formula / Reserve와 Progress / Retry 메커니즘은 여전히 Pending. — **ADR-050 부분 승인(2026-10-02):** Import 계산 정책(Formula와 256 MiB Reserve)은 Accepted되었고 순수 Estimator로 구현되었다(연결 없음); 검사 경계 연결과 Integration은 Pending. Progress / Retry 메커니즘은 Pending.
 - 알려진 `ProjectEditorModelTests` Thumbnail Request-order Flake는 Phase 6 Spike와 무관하다.
 
 ## Non-goals
@@ -3916,3 +3916,432 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 ## Non-goals
 
 - Production 구현, ADR-045 / ADR-047 본문 개정, 새 Normalization 사유, 새 사용자 범주 · Copy, Crop / Pad / Upscale 옵션, Remux, Custom Compositor Pre-conversion의 Tone-mapping 승인.
+
+---
+
+# ADR-050 — Import Storage Estimate, Safety Reserve, and Check Boundaries
+
+**Date:** 2026-10-02
+**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 050-D 전체(Persistence · Rollback · Retry · UX), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다.
+
+이 ADR은 서로 독립적으로 검토 · 승인할 수 있는 다섯 Decision Unit(050-A–050-E)으로 나뉜 제안이다.
+
+한 Unit의 승인은 다른 Unit이나 그 미해결 의존성을 해결하지 않으며, 이 ADR 전체에 대한 하나의 포괄적 승인으로 Import Storage Gate가 닫히지 않는다.
+
+ROADMAP Phase 6 Pending Technical Gate의 "Import Storage Estimate Formula"와 "Photos Import / Normalization에 필요한 Safety Reserve 정책"은 계산 정책으로서만 부분 승인되었다(위 Status). 검사 경계 연결, Runtime Disk Full · Recovery-safe Cleanup · Retry Integration Test, iPhone 12 Peak Storage 확인을 요구하는 ROADMAP Phase 6 Exit Criteria와 Integration Gate는 그대로 열려 있다.
+
+Accepted 상수와 계산은 Step 5B(2026-10-02)에서 순수 `ImportStorageEstimator`로 구현되었고 Picker · Normalizer · Repository · Coordinator · UI에 연결되지 않았다. 그 밖의 제안값은 Production 코드에 존재하지 않는다.
+
+050-A / 050-B / 050-C / 050-E는 승인된 계약(ADR-020 / ADR-021 / ADR-024 / ADR-039 / ADR-040 / ADR-042 Revision 4 / ADR-047)의 문구를 바꾸지 않는다(단 050-C의 Phase 5 Admission 변경 제안(OC-4)은 사용자 승인된 ROADMAP "Project Materialization Storage Technical Gate — Resolved 2026-09-15"의 동작을 바꾸는 제안이다); 승인 문서가 정하지 않은 경우의 해석과 새 정책은 각 Unit에서 그렇게 표시한다.
+
+**예외 — 050-D D1–D3은 승인된 문구의 개정 제안이다:** ADR-037 STEP 11 Implementation Note("Persist → Read-back Verify → Cleanup. Commit 전 실패 시 P는 변경되지 않으며"), ADR-040 §9("Read-back 불일치"에서도 "B는 정확히 이전 그대로 … 이 Operation이 만든 D 파일만 즉시 제거" + `클립을 교체하지 못했어요` / `다시 시도해주세요. 프로젝트는 그대로 있어요.`), ADR-047 Decision 2 Ownership과 ARCHITECTURE의 Commit 경계("Materialize → Project State → Persist → Read-back")는 Read-back을 Commit 경계 안에 두고 Read-back 실패를 "무변경 + 새 파일 제거"로 정한다. 050-D D2가 보이듯 Durable Save가 성공한 뒤에는 이 약속을 지킬 수 없고 그대로 따르면 Durable Metadata가 참조하는 Media를 지울 수 있다. 050-D D1–D3은 이 충돌을 해소하기 위한 개정 제안이며 승인되면 위 문구들의 개정이 함께 필요하다. 또한 050-D D8.5는 ADR-040 §9("Persist 실패"에서도 B 무변경 + D 파일 제거), ADR-037 STEP 11 Note(Persistence 실패 시 P 무변경), ROADMAP Phase 6 Task 14 주석(Metadata Persistence 실패 시 Rollback, Materialize된 파일 제거, Project 무변경)의 **Persist 실패 분기**에 대한 개정 제안이다: Save가 오류를 던졌더라도 다시 읽은 Durable 상태가 새 상태면 성공으로, 미확정이면 파괴적 정리 없이 보존으로 처리한다. 다시 읽은 상태가 확인된 이전 상태인 Save 오류는 위 문구와 ADR-042 Revision 4 §3을 그대로 따른다. 050-D D8.6의 "이전 Project A가 남는" 결과는 ADR-033 / ADR-034 V1 Single Saved Project의 Safe Atomic Replacement에서 벗어나는 결과다(OD-11 / OD-13). 050-D D8.7은 ADR-039 STEP 12B Startup Recovery의 Orphan Directory 판정에 빈 Store 보호를 더하는 개정 제안이다(OD-12).
+
+이 ADR은 Production 구현, UI 연결, Encoder 설정 변경, Phase 6 완료를 의미하지 않는다.
+
+## Context
+
+ADR-024는 `Required Free Space = Estimated Peak Additional Storage + Safety Reserve`, Operation별 Estimate, 0이 아닌 Reserve, Commit된 Media 재계산 금지, 부족 시 해당 Operation만 차단, Quality Downgrade와 Clip-count Cap 금지를 확정했지만 Import의 Formula와 Reserve는 Phase 6 Technical Gate로 남겼다.
+
+ADR-042 Revision 4는 관찰 가능한 UX를 확정했다: §2 취소, §3 Runtime Preparation / Normalization 실패(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`), §4 Materialization / Normalization 시작 전 Storage 부족(`확인`), §7 Accepted Set 경계.
+
+ADR-047 Decision 2는 No Resume, 시작 시 Workspace Sweep, Accepted Set 전체 준비 뒤의 Materialize(Rename)를 확정했고, Boundary F의 "Recovery Candidate 보존"을 Live Process 안 같은 Accepted Set `다시 시도`를 위한 것으로 명확히 했다.
+
+Materialization 이후 Metadata Persistence 실패 시의 Rollback 문구("Materialize된 파일 제거, Project 무변경")는 ADR-047 본문이 아니라 ROADMAP Phase 6 Task 14의 "ADR-047(2026-09-18)로 대체" 주석과 ROADMAP Phase 6 Integration Test 항목에 있다.
+
+ROADMAP Task 13은 Live Process 안에서 Valid Source / Staging을 보존하여 `다시 시도`가 같은 Accepted Set을 재시도할 수 있게 하라고 요구하고, Integration Test는 "Retry 성공 시 전체 Commit"을 요구한다.
+
+Phase 5 Storage Gate(ROADMAP "Project Materialization Storage Technical Gate — Resolved 2026-09-15")는 Phase 5 전용 100 MiB Reserve와 `ReceivedVideoFile.admit`의 File별 Pre-copy 검사를 확정했고 이 Reserve를 Import에 조용히 재사용하지 못하게 한다.
+
+Phase 6 Step 5A Exploratory Evidence(`docs/evidence/phase-06/step-5a-import-storage-report.md`, Commit `0ef173b`, iPhone 12, iOS 27.0.1)는 다음을 관측했다.
+
+- 정규화 출력은 Run당 File 하나이며 표본 추출 중 Intermediate 이름이 보이지 않았다; Workspace Peak = Source + 출력.
+- 정규화 출력 Rate(Logical 전체 File Byte ÷ Source Duration): 실제 IMG_0130 1,787,583 B/s; 합성 Noise 최대 7,450,709 B/s(HLG 1080p30, Audio 없음), 7,203,486 B/s(1080p60); 합성 4K Noise 3,340,367–3,625,380 B/s(Run 간 약 8.5% 변동). Allocated 기준 최대값은 38,248,448 B ÷ 5 s = 7,649,690 B/s였다.
+- 출력 24개의 Allocated − Logical은 203,031–1,006,513 B였다.
+- 새 빈 Store에 대한 `create` + Read-back의 WAL 증가는 74,192 B Logical / 77,824 B Allocated였고 Clip 1개와 2개에서 같았다.
+- `volumeAvailableCapacity`는 306개 측정에서 모두 26,992,640,000 B로 변하지 않았다; `statfs` 여유 공간은 1080p60 / HLG Run의 정규화 이후 30개 측정에서 26,951,680,000 B(−40,960,000 B)였다; `volumeAvailableCapacityForImportantUsage`는 한 Run 안에서는 한 번도 변하지 않았고 Run 사이에서만 네 값(37,230,774,904 / 37,271,734,904 / 37,281,000,672 / 37,240,040,672 B)을 보였다.
+
+이 관측은 상한이 아니다.
+
+Important-usage 값이 Run 안에서 변하지 않은 것이 Caching 때문인지, 갱신 단위 때문인지, Purgeable 공간 계산 때문인지는 이 Evidence로 알 수 없다; 이 값의 신선도(Freshness)와 쓰기 추적 여부는 증명되지 않았다.
+
+Normalizer는 Average Bitrate를 요청하지 않으며, 요청하더라도 Average Bitrate는 File 크기 보장이 아니다.
+
+IMG_0130 출력은 H.264 High Level 4.0을 신호했지만 합성 출력의 Level은 기록하지 않았으므로 Level 신호로부터 어떤 상한도 추론하지 않는다.
+
+---
+
+## Decision Unit 050-A — 정규화 출력 Estimate와 정책 Allowance
+
+**Unit Status:** **Accepted(2026-10-02, 사용자 부분 승인)**. Policy Estimate이며 증명된 상한이 아니다. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` — Passthrough의 `S_audio`는 호출자가 명시적으로 넘기며(Source File 전체 크기로 대체하지 않는다) Inspector Fact 연결은 Pending이다.
+
+정규화가 필요한 항목 j마다:
+
+```
+D_bound(j) = sourceDuration(j) + 1/30 s                         // ADR-045 §7 출력 Duration 허용 상한, 정확한 Rational
+V(j)       = ceil(R_video × D_bound(j) × (1 + m))
+A(j)       = 0                                                  // 출력 Audio 없음
+           | S_audio(j)                                         // AAC Passthrough: Source Audio Track의 Sample Data Byte
+           | ceil(R_tx × (D_bound(j) + 3136/48000 s))           // audioTranscode(AAC-LC 48 kHz)
+E_norm(j)  = V(j) + A(j) + C_out
+```
+
+| 항목 | 제안값 | 성격 | 측정된 한계 |
+| --- | --- | --- | --- |
+| `R_video` | 7,500,000 B/s | 경험적 표본 통계(정책 선택으로 반올림) | 1080p-class 출력의 Logical 최대 관측 7,450,709 B/s(합성 Noise, Audio 없음)를 올린 값이다. Allocated 기준 관측 최대 7,649,690 B/s보다 작으며 관측된 24개 출력에서는 그 차이가 `C_out` 안에 들어갔으며 그 밖의 출력에 대해서는 보장하지 않는다. 실제 4K60 HDR / Dolby Vision · 고움직임 · 저조도 Source는 측정되지 않았다. 상한이 아니다. |
+| `m` | 1/2 | 소유자 선택 정책 Margin | 측정에서 유도하지 않았다. 관측 사실은 같은 Source 출력의 Run 간 약 8.5% 변동과 미측정 Source 범주의 존재뿐이다. |
+| `C_out` | 2,097,152 B / 출력 File | 소유자 선택 정책 Allowance | 관측 Allocated − Logical 최대 1,006,513 B(출력 38 MB 이하 24개)이다. 더 큰 출력의 여유분과 Passthrough Audio의 Sample Table 증가는 측정되지 않았다. |
+| `S_audio` | Source에서 읽는 정확한 값 | Source Fact | AAC Passthrough는 Audio Bitstream을 그대로 복사하므로 Priming Packet을 포함한 Source Audio Payload가 출력 Audio Payload의 근거다. 현재 `ImportSourceFacts`에는 이 값이 없다. Container 증가분은 `C_out`에 포함되는 것으로 가정하며 측정되지 않았다. |
+| `R_tx` | 32,000 B/s | 소유자 선택 정책 Allowance | ADR-048의 AAC-LC 요청값(Mono 96 kbps / Stereo 128 kbps = 16,000 B/s)의 2배다. 요청은 상한이 아니며 Transcode 출력은 측정되지 않았다. `3136/48000 s`는 AAC Encoder Priming 2,112 Sample과 마지막 Frame 1,024 Sample을 위한 정책상 시간 여유이며 측정되지 않았다. |
+
+- 이전 초안의 "AAC Channel당 Frame당 6144 bit" 기반 Audio 상한은 철회한다. 그 값이 무엇을 제한하는지(NCC 정의, LFE / CCE, 960-sample Frame, Implicit SBR의 Sample Rate 보고)가 이 ADR에서 권위 있게 확인되지 않았기 때문이다.
+- 정수 계산: `D_bound = (value × 30 + timescale) / (timescale × 30)`; `V = ceil(R_video × (value × 30 + timescale) × 3 / (timescale × 30 × 2))`; Transcode 항은 분모 48,000 × 30 × timescale로 통분한 뒤 올림 나눗셈한다. 모든 곱셈 · 덧셈은 Overflow 검사를 하며 Overflow, 0 이하 Timescale, 음수 값, 읽을 수 없는 `S_audio`는 통과가 아니라 부족(Fail-closed)으로 처리한다.
+- Fast-path 항목의 Estimate는 0이다(ADR-047의 같은 Volume Materialize(Rename)).
+- Estimate는 Clip 수에 선형이며 Clip-count Cap이 없다. Storage 부족을 이유로 Raster · Frame Rate · Bitrate · Audio를 낮추지 않는다.
+
+예시(Unit 050-A만):
+
+- IMG_0130(2722/600 s, AAC Passthrough): `D_bound = 2742/600 = 457/100 s`; `V = 7,500,000 × 457/100 × 3/2 = 51,412,500`; `E_norm = 51,412,500 + S_audio + 2,097,152 = 53,509,652 + S_audio B`. 관측 출력 8,109,669 B Logical(Audio 포함)이며 `S_audio`를 뺀 부분만으로도 약 6.60배다.
+- 5.0 s 무음: `V = 7,500,000 × 151/30 × 3/2 = 56,625,000`; `E_norm = 58,722,152 B`. 관측 최대 출력 Allocation 38,248,448 B.
+- 1.0 s 무음: `V = 7,500,000 × 31/30 × 3/2 = 11,625,000`; `E_norm = 13,722,152 B`.
+- 5.0 s `audioTranscode`: `A = ceil(32,000 × 244,736/48,000) = 163,158`; `E_norm = 56,625,000 + 163,158 + 2,097,152 = 58,885,310 B`.
+
+---
+
+## Decision Unit 050-B — Metadata / WAL Estimate
+
+**Unit Status:** **Accepted(2026-10-02, 사용자 부분 승인)**; Step 5B(2026-10-02) 구현 `ImportStorageEstimator.metadata`(연결 없음). 아래 상수는 측정점 안의 경험적 관측에 소유자 선택 정책 Margin을 더한 Accepted 정책값이며 증명된 상한이 아니다. Evidence: `docs/evidence/phase-06/adr-050b-metadata-wal-report.md`(Exploratory, Commit `0ef173b`, iPhone 12, iOS 27.0.1).
+
+### 측정에서 확인한 Estimate 형태
+
+- Metadata 비용은 Accepted Set 크기가 아니라 **Operation이 수행하는 Repository Save마다, 그 Save가 다시 쓰거나 지우는 Durable Clip Row 수**에 따라 커졌다.
+- Add / Replace의 `update`는 기존 Durable Clip 전부(Active + Pending-deleted)를 다시 쓰므로 Row 수는 `D_existing + n`이다; Select Clips `create`는 `n`; `.replacingSaved`의 이전 Project 삭제 Save는 Cascade로 지우는 `D_replaced`다.
+- 같은 Save도 Store에 이미 있는 Row가 많을수록 커졌다(n = 10 `create`: 빈 Store 74,192 B, 200-Row Project가 있는 Store 90,640–94,760 B, Warm Store 86,520–90,640 B). 이 Store 크기 효과는 아래 Formula에 별도 항이 없고 측정점(Store 최대 210 Clip Row) 안의 관측은 `W_save` Margin 안에 들어갔다. Draft 수에는 상한이 없으므로 그보다 큰 Store에서의 효과는 모델링되지 않았다. Reserve는 크기가 측정에서 정해지지 않은 정책값이므로 이 위험을 덮는다고 보장하지 않으며, 초과하면 Runtime 쓰기 실패(050-C / 050-D)가 처리한다.
+- Read-back은 WAL에 쓰지 않았다.
+- `create` / `update` Save는 SQLite Commit 2개, `deleteProject` Save는 1개였다. 따라서 Repository Save 하나는 SQLite Transaction 하나가 아니고 `.replacingSaved` Operation은 Save 2회 · SQLite Transaction 3개로 이루어진다. Operation을 하나의 Transaction으로 가정하지 않는다.
+- 후속 Probe(`docs/evidence/phase-06/adr-050d-persistence-atomicity-report.md`, Exploratory)는 첫 Commit이 `Z_PRIMARYKEY` Page 하나만 바꾸고 Domain Row와 영구 이력 Row는 모두 두 번째 Commit에 있음을 관측했고, 관측한 경계(Save 직전, 각 Commit 직후, Transaction당 한 개의 중간 지점)에서 WAL Prefix로 재구성한 Durable 상태가 Save 전 상태 또는 완전한 새 상태뿐임을 관측했다(다른 중간 지점은 SQLite WAL Recovery 설계에 근거한 추론). 이것은 측정한 경우의 재구성 경계에 대한 관측이며 실제 Process 강제 종료, 전원 손실, 모든 Save 오류에 대한 보장이 아니다. Process 안의 Save 오류와 전원 손실은 관측하지 않았으므로 050-D D1의 "Save가 오류를 던지면 Commit되지 않은 것으로 본다"는 여전히 증명되지 않은 가정이다. 이 Unit은 050-D를 바꾸지 않는다.
+
+### 제안 Formula
+
+```
+W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
+```
+
+| 경로 | Save와 `R_s` |
+| --- | --- |
+| Select Clips 새 Project | `create(B)` 1회: `R = n` |
+| Select Clips `.replacingSaved` | `create(B)`: `R = n`; 이전 Project 삭제: `R = D_replaced` |
+| Editor Add | `update` 1회: `R = D_existing + n` |
+| Editor Replace | `update` 1회: `R = D_existing + 1` |
+
+- `D_existing`과 `D_replaced`는 Active와 Pending-deleted Row를 모두 센다.
+- 이 표는 현재 코드의 성공 경로 Save 수다. 050-D D2가 기록한 현재 Read-back 실패 보상 경로(`deleteProject(B)`)는 Save를 하나 더 하며(`R = n`) 050-D D3이 승인되면 없어진다; 이 Estimate는 성공 경로 기준이고 보상 Save는 Estimate에 넣지 않는다. Reserve는 크기가 측정에서 정해지지 않은 정책값이므로 이 위험을 덮는다고 보장하지 않으며, 초과하면 Runtime 쓰기 실패(050-C / 050-D)가 처리한다.
+
+| 상수 | 제안값 | 성격 | 관측과 Margin |
+| --- | --- | --- | --- |
+| `W_save` | 196,608 B (192 KiB) / Save | 경험적 관측 + 소유자 선택 정책 Margin | 작은 `R`(≤ 10)에서 관측 최대 Save당 WAL 증가는 94,760 B(이미 200 Row가 있는 Store에 n = 10 `create`)였고, Container를 닫을 때의 Checkpoint로 DB File이 최대 53,248 B 커졌다. 두 값의 합 148,008 B 대비 약 1.33배다. Operation 도중 Checkpoint는 관측되지 않았다. |
+| `W_row` | 512 B / Durable Clip Row | 경험적 관측 + 소유자 선택 정책 Margin | 같은 경로 · 같은 n의 양 끝 측정점 사이 기울기(각 끝의 Run 최대 / 최소 조합)는 약 173–325 B / Row였다: create n 1 → 200: 248–269, Add D 0 → 200: 185(n = 1) · 206(n = 10), Replace D 10 → 200: 173–282, 이전 Project 삭제 D 10 → 200: 282–325. 최대 325 대비 약 1.57배다. 같은 Scenario의 Run 간 차이가 최대 5 Frame(20,600 B)이므로 기울기 자체가 Page 단위 잡음을 포함한다. |
+
+- 측정한 모든 단계(Section B, 3 Run씩)에서 관측 WAL 증가는 이 Formula 값의 47% 이하였다.
+- 이전 초안의 `W_base = 4 MiB` 고정 Allowance는 이 형태로 대체를 제안한다.
+
+### 한계(증명된 상한이 아닌 이유)
+
+- 측정점은 `D` ≤ 200, `n` ≤ 10, Store 최대 210 Clip Row다. 그 밖으로 외삽하여 상한을 주장하지 않으며 Clip-count Cap을 두지 않는다; Formula는 Row 수에 선형으로 커질 뿐이다.
+- Operation 도중의 Checkpoint, Auto-checkpoint 임계값(`wal_autocheckpoint`는 얻지 못했다), 동시 Reader로 인한 Checkpoint 지연과 WAL 무한 증가, 기존의 큰 Store / 큰 WAL(App의 실제 WAL은 약 1 MB였다), Disk Full 중 Save는 측정하지 않았다. 이 잔여 위험은 Estimate 밖에 있다. Reserve는 크기가 측정에서 정해지지 않은 정책값이므로 이 위험을 덮는다고 보장하지 않으며, 초과하면 Runtime 쓰기 실패(050-C / 050-D)가 처리한다.
+- 기존 WAL은 Occupancy다. WAL은 Checkpoint 전까지 Operation 사이에 계속 커질 수 있으며, 그 누적분은 다음 Operation의 Capacity 측정값에 반영된다.
+- Thumbnail은 현재 Memory 전용(`ClipThumbnailService` `BoundedThumbnailCache`)이므로 Allowance가 없다.
+
+---
+
+## Decision Unit 050-C — Capacity와 Transfer Admission
+
+**Unit Status:** 부분 승인(2026-10-02, 사용자 승인). **Accepted — 계산 정책만:** Occupancy / Additional 분리와 Volume별 추가 쓰기 계산, `Reserve_import = 256 MiB`, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed, `Additional + Reserve = U`는 통과. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.requirement` / `check`(주입 가능한 Capacity 입력, 연결 없음). **구현됨 · 연결 없음(독립 승인 정책이 아님):** `NSFileWriteOutOfSpaceError` / `ENOSPC` / `AVError.diskFull`(Underlying 포함)의 Typed 분류 `ImportWriteFailureClassifier`; 그 Logging과 Presentation 연결은 Proposed다. **Proposed 유지:** 검사 경계 C0 / C0a / C1 / C2 / C3 / CR의 연결, 부족 Presentation 대응, Phase 5 Admission 변경, Provider / Transfer 해석.
+
+### Occupancy와 Additional
+
+- **Occupancy:** 검사 시점에 이미 Volume에 존재하는 모든 Byte(Commit된 Media, Replace 대상 기존 Clip Media, 다른 Draft, System Provider File, 이미 Adopt된 Source, 이미 쓰인 출력, Store / WAL). Occupancy는 Capacity 측정값에 이미 반영된 것으로 간주하며 Required에 더하지도, Capacity에서 빼지도 않는다.
+- **Additional:** 검사 시점 이후 이 Operation이 끝나기 전에 해당 Volume에 새로 Allocate될 수 있는 Byte의 추정 Peak.
+- **검사:** 각 검사는 그 단계의 쓰기 대상 Directory가 속한 Volume 하나에 대해서만 수행하고 `Additional(그 Volume) + Reserve_import ≤ U(그 Volume)`일 때만 통과한다. U는 그 시점에 읽은 `volumeAvailableCapacityForImportantUsage`다. 한 Volume의 쓰기를 다른 Volume의 Capacity에 청구하지 않는다.
+- U의 신선도는 증명되지 않았다(Context). 검사는 부족을 줄이는 장치일 뿐이며 Runtime Disk Full 처리를 대체하지 않는다.
+- 삭제 예정 File, Provider File의 해제, Replace로 대체될 기존 Media에 대해 공간을 미리 차감(Credit)하지 않는다.
+- Replace의 기존 Clip Media는 Commit까지 보호되는 Occupancy이며 새 Allocation으로 다시 계산하지 않는다. 대체 후보는 단일 항목 Accepted Set과 같은 Formula를 쓴다.
+- APFS Clone에 기대지 않는다: 모든 Mellow Copy는 Source의 Logical 크기 전체를 그 Copy 대상 Volume의 Additional로 계산한다. 같은 Volume Rename은 Data Byte를 새로 쓰지 않는 것으로 계산하지만 실패할 수 있는 연산으로 다룬다.
+- Unknown / 읽을 수 없는 Capacity, Overflow, 음수, 읽을 수 없는 Source 크기는 통과가 아니라 부족이다. Log에는 전체 Path 없이 Typed 사유를 남긴다.
+
+### Import Safety Reserve
+
+- `Reserve_import = 268,435,456 B (256 MiB)`. 0이 아니며 Phase 5의 100 MiB 상수를 재사용하지 않는 Import 전용 상수다.
+- 이 값은 측정에서 유도하지 않은 소유자 선택 정책이다. Reserve가 흡수하려는 것은 Estimate 초과, 동시 System / 다른 App 쓰기, Filesystem Metadata, W를 넘는 WAL 증가, 신선도가 증명되지 않은 U와 실제 여유 공간의 차이다. 이 중 어느 것도 이 Evidence로 크기가 정해지지 않았다.
+- Tradeoff: 값이 클수록 거의 가득 찬 기기에서 실제로는 성공했을 Import가 더 자주 차단된다. 값이 작을수록 Runtime Disk Full이 더 자주 난다. 대안: 200 MiB(209,715,200 B) 또는 512 MiB(536,870,912 B).
+
+### 검사 경계
+
+| 경계 | 시점 | 대상 Volume | Additional | 부족 시 |
+| --- | --- | --- | --- | --- |
+| C0 | Mellow의 Picker Transfer 복사 직전, Importing Closure 안, File마다 | `tmp/ProjectMediaTransfer`의 Volume | `N_k` | 초기 Preflight 부족 |
+| C0a | `adopt`가 Rename에 실패하여 Copy Fallback을 하기 직전(Fallback이 일어날 때만) | Mellow Root의 Volume | `N_k`(Transfer 복사본은 이때 Occupancy) | 초기 Preflight 부족 |
+| C1 | Accepted Set 분류 뒤, 제외 항목 Source 삭제 뒤, 첫 Attempt의 어떤 정규화 · Materialize보다 먼저 | Mellow Root | `Σ_{정규화 j} E_norm(j) + W` | 초기 Preflight 부족 |
+| C2 | Attempt 안에서 두 번째 이후 각 정규화 항목 시작 직전 | Mellow Root | 아직 시작하지 않은 정규화 항목의 `Σ E_norm + W`(이미 쓰인 출력은 Occupancy) | Attempt 중 부족 |
+| C3 | Attempt 안에서 Materialize 직전 | Mellow Root | `W`(Materialize는 같은 Volume Rename) | Attempt 중 부족 |
+| CR | `다시 시도`가 새 Attempt를 시작하기 직전, 050-D의 Retry 전제조건 확인 뒤 | Mellow Root | C1과 같은 계산(보존된 Source는 Occupancy) | Retry 전 검사 부족 |
+
+- `N_k`는 Closure 안에서 Provider File을 `stat`한 실제 Logical 크기다.
+- 현재 `adopt`는 같은 Volume에서도 `moveItem`의 어떤 오류에 대해서든 Copy Fallback을 한다. C0a는 그 Fallback이 실제로 일어날 때만 검사하므로 정상 경로에서 `N_k`를 두 번 계산하지 않는다. C0a는 현재 코드에 없는 구현 의존성이다.
+- 첫 정규화 항목은 C1이 막 검사했으므로 C2를 생략할 수 있다.
+
+### 부족 Presentation(ADR-042 Revision 4 보존)
+
+1. **초기 Preflight 부족(C0, C0a, C1):** R4 §4 그대로 — Media 미생성, Project 무변경, Replace 기존 Clip 보존, `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`. §4에는 `다시 시도`가 없으므로 Operation이 끝나고 그 Operation의 Transfer File · Workspace를 Discard한다. 아직 Attempt가 시작되지 않았으므로 Retry Source를 없애는 것이 아니다.
+2. **Attempt 중 부족(C2, C3, Durable Commit 전 Runtime Disk Full):** Preparation이 이미 시작되었으므로 R4 §4가 아니라 R4 §3의 Runtime 실패로 분류하고 050-D의 Pre-commit Rollback을 따른다. 새 Copy를 만들지 않으며 그 결과 사용자는 원인이 저장 공간임을 이 안내에서 알 수 없다(→ 소유자 선택).
+3. **Retry 전 검사 부족(CR):** 승인 문서가 정하지 않은 경우다. 권장안은 실패한 Retry Attempt로 보고 R4 §3을 다시 표시하며 Retry Source를 보존하는 것이다("Retry 재실패 시 동일 정리"). 대안인 R4 §4 표시 + Operation 종료는 R4 개정이다. 어느 쪽도 기존 Copy를 근거로 Retry Source를 Discard하거나 `다시 시도`를 없애지 않는다.
+4. **Runtime 쓰기 실패의 분류:** `NSFileWriteOutOfSpaceError`(640), POSIX `ENOSPC`(28), `AVError.diskFull`(−11807) 또는 이를 Underlying Error로 가진 오류는 내부 Typed `outOfSpace`로 분류해 Log한다. Accepted Set 이전의 Transfer 복사 · Adopt 실패는 Attempt도 Retry Source도 없으므로 R4 §3이 아니라 현재 Selection 실패 경로를 쓴다(이 경로의 Phase 6 Copy는 미정).
+
+### Phase 5 Admission 변경(제안)
+
+C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며 Task 23이 세 경로를 같은 경로로 통합하므로, 승인되어 연결되면 Phase 5 Admission의 동작을 바꾼다: Reserve가 100 MiB에서 256 MiB가 되고, 크기를 읽지 못한 File이 현재처럼 0 B로 통과하지 않고 거부되며, C0a가 추가된다. Phase 5 Reserve는 Phase 6 Import 경로가 Select Clips / Add / Replace를 대체하는 연결 단계에서 적용을 멈춘다.
+
+### Provider File vs Mellow Transfer File
+
+`ReceivedTransferredFile.file`은 System 소유이며 Mellow는 열거 · 수정 · 삭제하지 않고 Additional로 계산하지 않는다(C0 시점에 이미 존재하는 Occupancy). Mellow의 `tmp/ProjectMediaTransfer/<UUID>.<ext>` 복사본은 Mellow 소유이며 C0에서 Logical 크기 전체를 계산한다. ADR-024 Clarification과 ROADMAP의 "Picker Transient 복사본"은 이 Mellow 소유 복사본으로 해석한다(해석 확인 필요).
+
+### 예시(050-A와 050-B 제안 상수)
+
+- C1, 새 Project(`.replacingSaved` 아님), Mixed(Ready 5 s + IMG_0130): `W = 196,608 + 512 × 2 = 197,632`; `0 + 53,509,652 + S_audio + 197,632`; Required `53,509,652 + 197,632 + 268,435,456 = 322,142,740 + S_audio B`.
+- C1, 새 Project(`.replacingSaved` 아님), 5.0 s 무음 정규화 항목 10개: `W = 196,608 + 512 × 10 = 201,728`; `10 × 58,722,152 = 587,221,520`; Required `587,221,520 + 201,728 + 268,435,456 = 855,858,704 B`. 두 번째 항목 직전 C2: `9 × 58,722,152 + 201,728 + 268,435,456 = 797,136,552 B`.
+- 같은 10개를 기존 Project(Durable Clip 200개)를 대체하는 `.replacingSaved`로 만들 때: `W = (196,608 + 512 × 10) + (196,608 + 512 × 200) = 201,728 + 299,008 = 500,736`; C1 Required `587,221,520 + 500,736 + 268,435,456 = 856,157,712 B`.
+- C1, 기존 Durable Clip 40개 Project에 5.0 s 무음 정규화 항목 3개 Add: `W = 196,608 + 512 × (40 + 3) = 218,624`; `3 × 58,722,152 = 176,166,456`; Required `176,166,456 + 218,624 + 268,435,456 = 444,820,536 B`.
+- C3: `W + 268,435,456 B`(위 Add 예시에서 `218,624 + 268,435,456 = 268,654,080 B`).
+- C0, 149,619,684 B Source: Transfer 대상 Volume에서 `149,619,684 + 268,435,456 = 418,055,140 B`. C0a(Fallback이 일어날 때만): Mellow Root Volume에서 같은 418,055,140 B.
+
+---
+
+## Decision Unit 050-D — Transaction, Rollback, Retry, Target 무효화
+
+**Unit Status:** Proposed. 수치와 무관하게 독립 승인 가능한 정확성 규칙이다. D1–D3은 승인된 문구(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Decision 2 Ownership, ARCHITECTURE Commit 경계)의 개정 제안이다(이 ADR 서두의 예외 참조). 승인되지 않은 Presentation 세 가지(아래 표시)는 별도 소유자 선택이다.
+
+**범위 밖:** ADR-038 Undo / Redo도 `update` + Read-back 검증과 실패 시 현재 State 유지라는 같은 Pattern을 쓰며 Save 성공 뒤 Read-back 실패에서 In-memory 상태와 Store가 어긋날 수 있다. 이 ADR은 Undo / Redo를 다루지 않으며 별도 검토 대상으로 남긴다.
+
+### D1. Durable Commit 경계
+
+- **Durable Commit = 해당 경로의 Repository Save가 오류 없이 반환된 것.** Select Clips(새 Project)는 `repository.create(B)` 안의 `ModelContext.save()`, Editor Add / Replace는 `repository.update` 안의 `ModelContext.save()`다.
+- Save 오류만으로 Commit 여부를 정하지 않는다. Save 오류 뒤에는 D8의 Save Outcome 판정(다시 읽은 Durable 상태)을 따른다. 이는 ADR-040 §9, ADR-037 STEP 11 Note, ROADMAP Task 14의 Persist 실패 분기에 대한 개정 제안이다(서두의 예외). 확인된 이전 상태로 판정된 Save 오류는 그 문구와 ADR-042 Revision 4 §3을 바꾸지 않고 따른다.
+- **Pre-commit 실패:** Durable Save 반환 전에 일어난 모든 실패 — 정규화, C2 / C3 부족, Materialize(부분 포함), Target 무효화, 취소, 그리고 D8이 "확인된 이전 상태"로 판정한 Save 오류. D4 Rollback을 적용한다. D8이 "확인된 새 상태"나 "미확정"으로 판정한 Save 오류에는 D4를 적용하지 않는다.
+- **Post-commit 실패:** Durable Save가 성공한 뒤의 모든 실패 — Read-back 조회 실패, Read-back 불일치, Committed Media 존재 확인 실패, `.replacingSaved`의 이전 Project 삭제 실패, UI 갱신 전 중단. **Read-back 실패는 Save 실패를 증명하지 않는다.** Accepted Set 전체가 한 Save로 Commit되었으므로 Atomicity는 이미 성립했으며, Post-commit 실패는 Rollback 대상이 아니다. 이는 Read-back을 Commit 경계 안에 두는 승인 문구와 충돌하며 그 개정 제안이다(서두의 예외).
+
+### D2. 관찰된 현재 동작과 실패 Trace(이 ADR이 코드를 바꾸지 않음)
+
+- **Select Clips(새 Project / `.replacingSaved`):** `create(B)` Save 성공 → `repository.project(id:)`가 던지거나 Clip 수가 다르거나 Committed File 하나가 보이지 않음 → 현재 코드는 `try? repository.deleteProject(id: B)`를 결과와 무관하게 실행하고 이어서 `removeProjectMedia(B)`를 호출한다. 삭제 Save가 실패하면 Durable B Row가 남은 채 그 Media가 모두 지워진다. `.replacingSaved`에서는 이 경로가 이전 Project A 삭제보다 먼저 반환하므로 A와 B가 함께 남고, 최신 순서 정책상 B(Media 없음)가 현재 저장 Project가 된다. 사용자에게는 `프로젝트를 만들지 못했어요`가 표시되며 B가 남았다면 이 문장은 거짓이다.
+- **Editor Add / Replace:** `update` Save 성공 → Read-back 불일치 또는 조회 실패 → `commit`이 In-memory Project를 이전 상태로 되돌리고 실패 안내를 표시 → 호출자가 `appender.discard`로 새 Clip File을 지운다. 결과: Durable Row가 지워진 File을 참조하고(다음 열기에서 Unavailable Clip), In-memory 상태는 Store와 다르다. 이후의 모든 Edit은 저장된 새 Clip ID가 들어오는 상태에 없으므로 `update`의 `missingDurableClip` 검사에서 실패하며 Editor를 다시 열 때까지 계속된다. Replace에서도 같은 일이 대체 Clip D에 일어난다.
+- **보상 수단 없음:** `update`는 저장된 Clip이 빠진 상태를 `missingDurableClip`으로 거부하므로 "이전 상태로의 Update"는 불가능하고, Undo는 새 Clip을 Pending-deleted로 남길 뿐 Rollback이 아니다.
+
+### D3. 가장 작은 수정(제안)
+
+- Durable Save가 성공한 뒤에는 그 Save가 참조하는 어떤 Media도 지우거나 옮기지 않는다(Read-back · 존재 확인 실패 포함).
+- Post-commit 확인 실패는 Rollback이 아니라 **"Commit됨 · 확인 안 됨"** 상태로 다룬다: Row를 지우지 않고, Media를 보존하며, Workspace의 남은 Source만 Discard한다. Persisted Row가 Source of Truth다(ADR-047 Boundary G와 같은 원리).
+- Editor는 이 상태에서 In-memory Project를 이전 상태로 되돌리지 않고 Store에서 다시 읽으며, 다시 읽기도 실패하면 Editor를 Reload가 필요한 상태로 두어 추가 Edit을 막는다.
+- `.replacingSaved`는 B가 확인되지 않은 동안 A를 지우지 않는다(현재처럼 A 보존). 이때 A와 B가 함께 남는 것은 Media 안전상 허용하지만 ADR-033 / ADR-034 V1 Single Saved Project의 Safe Atomic Replacement에서 벗어난 결과이며 그 처리는 D8.6의 소유자 선택이다.
+- 이 상태에서 `프로젝트에 변경사항이 저장되지 않았어요`, `프로젝트를 만들지 못했어요`, `프로젝트는 그대로 있어요`를 쓰지 않는다; 사실이 증명되지 않았거나 거짓일 수 있기 때문이다. 이 상태의 Presentation은 D8.5의 U1 제안이며 소유자 선택(UX)이다.
+- Read-back이 `invalidPersistedMetadata` 등으로 던진 경우 보존된 B는 읽을 수 없는 Row일 수 있고, 최신 순서 정책상 현재 저장 Project가 되어 Projects 화면을 막을 수 있다. 이 경우는 D8.3의 "미확정"(Domain 변환 오류)으로 처리하며 D8.5의 U2 제안을 쓴다.
+- 이 수정은 Phase 5 코드에도 같은 위험이 있음을 보여 주지만 이 ADR은 코드를 바꾸지 않는다; 수정의 구현 시점은 별도 결정이다.
+
+### D4. Durable Commit 전 Rollback-to-Workspace
+
+**소유와 경로**
+
+- Operation Workspace `ProjectWorkspace/<op>/`는 Live Registry(`liveWorkspaceIDs`)에 등록된 Operation 소유다.
+- Retry Source는 Adopt된 Source File `ProjectWorkspace/<op>/<S>.<ext>`이며 Adopt 시 Logical 크기를 기록한다.
+- Attempt 출력은 Attempt별 하위 Directory `ProjectWorkspace/<op>/attempt-<n>/`에만 쓰며 Operation이 만든 경로를 그대로 사용한다(열거로 찾지 않는다). ADR-047은 Workspace 하위 Directory를 허용하며 Sweep이 Directory 전체 제거로 이를 포함함을 Test로 고정해야 한다.
+- Materialize 후보는 `Projects/<P>/Media/<C>.mov`이며 Clip ID `<C>`는 Attempt마다 새로 만든다.
+- 각 Ready 항목의 Restoration Record는 `(원래 Workspace 경로, Materialize 경로, 기록된 Logical 크기)`다.
+
+**Rollback 규칙(Pre-commit 실패 시)**
+
+1. **정규화 출력 후보:** Materialize 경로가 이 Attempt의 Canonical 경로와 정확히 같고 `lstat` 기준 일반 File(Symlink 아님)이며 Root 안에 있을 때만 제거하고 부재를 확인한다. 정규화 항목의 Retry Source는 Workspace를 떠난 적이 없다. Materialize 후보는 새 Recovery 정책으로 보존하지 않는다.
+2. **Ready 항목:** 같은 경로 · Type 검사 뒤, 원래 Workspace 경로가 비어 있고(충돌 보호), Workspace가 여전히 Live이고 Symlink가 아닌 실제 Directory일 때 같은 Volume Rename으로 원래 경로에 되돌린다. 되돌린 뒤 원래 경로의 File이 존재하고 기록된 크기와 같으며 Materialize 경로가 비었음을 확인한다.
+3. **부분 Materialize(항목 k / n에서 실패):** 1..k−1은 1–2항을 적용하고, 항목 k는 원래 경로와 Materialize 경로를 모두 확인하여 File이 어느 쪽에 있는지 판정한 뒤 1–2항을 적용한다.
+4. **Project Directory:** 새 Project는 모든 항목의 1–3항이 확인된 뒤에만 비어 있는 `Projects/<P>/`를 제거하며, Restoration이 끝나지 않은 Ready File이 들어 있는 동안 `removeProjectMedia`를 호출하지 않는다. 기존 Project(Add / Replace)의 Directory는 제거하지 않으며 이 Attempt가 만든 정확한 Clip ID의 File만 다룬다.
+5. **Restoration 실패**(충돌, Rename 오류, Workspace 소실, 크기 불일치): Mellow 자신의 Filesystem 연산 실패로 Mellow 소유 Retry Source를 잃은 것이다. 이것은 R4 §3의 "Source 접근이 더 이상 유효하지 않음"(외부 Source Handle의 무효화)으로 분류하지 않는다. Materialize 경로의 File은 1항 규칙으로 제거를 시도하고, 제거도 실패하면 Row 없는 Canonical Media로서 기존 STEP 12B Orphan Recovery가 다음 실행에서 회수한다. 그 Operation의 `다시 시도`는 같은 Accepted Set을 만들 수 없으므로 제공할 수 없으며, 이 내부 실패의 Presentation은 승인 문서에 없다(**소유자 선택**).
+6. **비용 한정:** 같은 Volume Rename은 보통 Data Block을 새로 Allocate하지 않지만 Directory Metadata 갱신이 필요하며 실패할 수 있다. 이 설계는 "추가 비용 0"이나 무조건적 계약 보존이 아니라, Filesystem 연산이 성공하는 한 같은 Accepted Set Retry를 가능하게 하는 설계다.
+7. **승인 문구와의 관계:** ROADMAP Task 14의 "Materialize된 파일 제거, Project 무변경"을 "Project 위치에서 제거"로 해석하면 Rename-back이 이를 만족하면서 Task 13과 ADR-047 Boundary F의 Retry Source 보존도 만족한다. 이 해석은 소유자 확인이 필요하다. 대안인 Hard-link Materialize(Workspace 이름을 Commit까지 유지)는 Restoration 실패 경로를 없애지만 ADR-047의 "Materialize(Rename)" 문구 개정이 필요하므로 이 ADR이 제안하지 않는다.
+
+### D5. 취소
+
+- 취소는 Durable Save 호출 전까지 받는다. Materialize 이후의 취소는 R4 §2대로 Operation을 끝내므로 Restoration 없이 D4 1항 규칙으로 Materialize 후보 전부(Ready 포함)를 제거 · 확인하고 Workspace를 Discard한다.
+- Save는 MainActor에서 동기로 실행되므로 Save 도중 취소가 끼어들 지점이 없다. 마지막 취소 확인 지점은 Save 직전이다. Save가 성공한 뒤 도착한 취소는 Rollback을 일으키지 않으며 Operation은 성공이다(Editor Add / Replace의 되돌리기는 기존 Undo 경로이며 Select Clips 새 Project에는 Undo가 없다).
+
+### D6. Target 무효화
+
+- Lifecycle Gate 안에서 Materialize 직전과 Durable Save 직전에 Target을 확인한다: Add / Replace는 Project Row 존재와 Orientation, Replace는 대상 Clip이 같은 Identity로 여전히 Active인지.
+- Target이 무효이면 Materialize하지 않거나 D4 1항 규칙으로 후보를 제거하고(Restoration 없음), 삭제된 Project의 `Projects/<P>/`를 다시 만들지 않으며, Operation을 끝내고 `다시 시도`를 제공하지 않는다. Retry Source는 소비자가 없으므로 Discard한다.
+- 삭제된 Project에 대한 결과는 Late Result로 버린다(ROADMAP Task 15). 살아 있는 Editor에서 Replace 대상이 사라진 경우의 안내는 승인 문서에 없다(**소유자 선택**).
+- 구현 의존성: 현재 `materialize`는 Destination Directory를 만들어 주므로 Row 없는 Project Directory를 다시 만들 수 있고, `HomeModel`의 Project 삭제와 Editor Add / Replace는 Lifecycle Gate를 사용하지 않는다.
+
+### D7. 같은 Accepted Set Retry
+
+`다시 시도`는 다음이 모두 확인될 때만 새 Attempt를 시작한다.
+
+1. 이전 Attempt Directory와 이전 Attempt의 Materialize 후보가 제거되었고 부재가 확인됨(Operation이 만든 정확한 경로, Symlink 아닌 실제 Directory, Workspace 안).
+2. 모든 Retry Source가 존재하고 `lstat` 기준 일반 File이며 기록된 Logical 크기와 같음.
+3. Target이 유효함(D6).
+4. CR 검사 통과(050-C).
+
+- 1이 실패하면(정리 실패) 미해결 Artifact 위에 새 Attempt를 시작하지 않는다. 2가 Mellow 자신의 연산 실패 때문에 실패하면 D4 5항과 같은 내부 실패다. 두 경우 모두 R4 §3의 외부 Source 무효 조항으로 분류하지 않으며 Presentation은 D4 5항과 같은 **소유자 선택**이다. 남은 Workspace는 Best-effort Discard 뒤 기존 시작 시 Sweep(ADR-047)이 회수한다.
+- 2가 외부 원인(예: Live Session 밖의 Source Handle 무효)이라면 R4 §3의 "Source 접근 무효 → Mutation 없이 안전 실패"가 적용된다. V1 Import의 Retry Source는 Mellow 소유 File이므로 이 경우는 Process 안에서 생기지 않을 것으로 예상하지만 확인되지 않았다.
+- 4가 실패하면 050-C의 Retry 전 검사 부족 처리를 따른다.
+
+### D8. Save Outcome 판정(Save 오류 또는 확인 실패 뒤)
+
+**근거의 범위:** `docs/evidence/phase-06/adr-050d-persistence-atomicity-report.md`(Exploratory)에서 DB File과 잘린 WAL로 재구성한 경계는 측정한 경우에 완전한 이전 상태 또는 완전한 새 상태로 다시 열렸다. 이것은 실제 Process 강제 종료, 전원 손실, 모든 Save 오류에 대한 보장이 아니다. 따라서 이 절은 Save 오류를 Commit 여부의 증거로 쓰지 않고, 다시 읽은 Durable 상태로 결과를 정한다.
+
+#### D8.1 언제 적용하는가
+
+- Repository Save가 오류를 던졌을 때.
+- Save는 성공했지만 Read-back이 실패하거나 Intended 상태와 다를 때.
+- **Save 성공 뒤에는 파괴적 Rollback이 없다(검토 후속 1, 2026-10-02):** Save가 오류 없이 반환되었다면, 나중의 읽기가 Prior와 같아 보이더라도 D4 Rollback · Restoration · 후보 제거를 하지 않는다. 확인된 이전 상태에 따른 Rollback은 Save가 오류를 던진 뒤 D8.3의 확인(새 ID 부재 포함)을 거친 경우에만 가능하다. Save 성공 뒤의 모순된 읽기(Prior와 같음, Intended와 다름, 읽기 · 변환 실패)는 모두 "Commit됨 · 확인 안 됨"으로 처리하여 참조 가능한 Media를 보존하고 Reload 전까지 추가 Edit을 막는다.
+- Save 성공과 Read-back 일치는 정상 완료이며 이 절이 필요 없다.
+
+#### D8.2 독립 Persisted-state Read
+
+- 실패한 `ModelContext`나 그 Object · Cache를 다시 쓰지 않는다. 현재 `SwiftDataProjectRepository.saveOrRollback`은 Save 실패 시 Rollback 뒤 새 `ModelContext`를 만든다.
+- **제안:** 같은 `ModelContainer`에서 새 `ModelContext`를 만들고 `includePendingChanges = false`인 Fetch로 대상 Project Row를 읽는다.
+- **한계:** 같은 Container의 Context들은 같은 Persistent Store Coordinator를 공유하므로 Coordinator 수준 Cache로부터 완전히 독립인지는 이 ADR이 확인하지 않았다.
+- **대안(소유자 선택):** 같은 Store URL에 별도 `ModelContainer`를 열어 읽는다(독립 Coordinator; 열기 비용과 동시 열기 동작은 검증되지 않음). Schema 매핑을 우회하는 원시 SQLite 읽기는 제안하지 않는다.
+- 다음 Process 시작의 Startup Recovery 읽기는 새 Process의 읽기이며 D8.7의 최종 정리 경로다.
+
+#### D8.3 비교 기준
+
+- **Prior Snapshot:** Operation 시작 시, Lifecycle Gate 안에서 Target 확인(D6)과 같은 Section에서 독립 Read로 얻은 대상 Project의 Domain 값. Select Clips 새 Project는 "B Row 없음"이 Prior다; `.replacingSaved`는 "A 값 + B Row 없음"이다.
+- **Intended Snapshot:** Save에 넘긴 `VlogProject` 값(삭제 Save는 "대상 Row 없음").
+- **비교 항목:** `VlogProject` Domain 전체 동등성 — Project ID, Orientation, `createdAt`, `updatedAt`, Active Clip의 ID 순서와 각 Clip의 모든 Field(`sortOrder`, `sourceKind`, `mediaRelativePath`, Duration, Trim, Framing, `createdAt`), Pending-deleted Clip 집합과 각 Deletion Record. 이에 더해 모든 Clip Row가 그 Project에 속하고, 이 Operation의 새 Clip ID가 다른 Project에 나타나지 않아야 한다.
+- **판정:**
+  - 읽기 성공이고 Intended와 같음 → **확인된 새 상태**.
+  - (Save가 오류를 던진 경우에만) 읽기 성공이고 Prior와 같으며, 같은 독립 Read에서 이 Operation의 새 Clip ID와 새 Project ID(Select Clips의 B)가 Store 어디에도 없음이 Fetch로 확인됨 → **확인된 이전 상태**. 이 확인 없이는 파괴적 Rollback(D4)을 하지 않고 미확정으로 본다.
+  - 그 밖의 모든 경우 → **미확정**: 둘 다와 다름(일부 Clip만, 순서 · Field 불일치, 다른 Project에 새 Clip ID), 읽기 오류, Domain 변환 오류(`invalidPersistedMetadata` 등), 상태가 서로 모순됨, Prior와 Intended가 같아 구분할 수 없음.
+- 추측으로 미확정을 이전 또는 새 상태로 바꾸지 않는다.
+
+#### D8.4 동시 변경
+
+- Prior Snapshot 읽기부터 Save와 판정 읽기까지를 같은 Lifecycle Gate Section 안에서 실행한다.
+- 현재 Home의 Project 삭제와 Editor Add / Replace는 Gate를 쓰지 않는다; 이것들이 Gate를 쓰는 것이 이 판정의 선행 의존성이다.
+- Gate 안에서도 예상 밖 값이 보이면 미확정이다.
+
+#### D8.5 결과별 처리와 안내(제안 — 새 안내는 모두 소유자 결정)
+
+| 결과 | Media · Workspace | `다시 시도` | Editor / 화면 | 안내 |
+| --- | --- | --- | --- | --- |
+| 확인된 이전 상태 | D4 Pre-commit Rollback(Ready Rename-back, 정규화 출력 제거) | 가능(R4 §3) | 이전 상태 유지 | R4 §3 그대로(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`); 이 경우 "저장되지 않았어요"는 확인된 사실이다 |
+| 확인된 이전 상태 + Restoration 또는 정리 실패(D4 5항, D7) | D4 5항대로; 새 Attempt 없음 | 없음 | 이전 상태 유지 | **새 안내 제안 U3:** `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 영상을 다시 선택해주세요.` / `확인` |
+| 확인된 새 상태(Save가 오류를 던졌지만 Durable 새 상태) | 참조된 Media 보존; Workspace의 남은 Source Discard | 없음 | Durable 값으로 갱신 | 정상 완료로 처리(R4는 별도 성공 Alert 없음); 오류는 Log에만; "저장되지 않았어요" 금지 |
+| Save 성공 + 확인 불가(Commit됨 · 확인 안 됨, D3) | 참조 가능 Media 보존; Workspace의 남은 Source Discard; A 보존(`.replacingSaved`) | 없음 | Editor는 Reload 필요 상태, 추가 Edit 차단 | **새 안내 제안 U1:** `저장 확인이 필요해요` / `변경사항은 저장되었지만 지금은 확인하지 못했어요. 프로젝트를 다시 열어 확인해주세요.` / `확인` |
+| 미확정 | 이 Operation이 `Projects/` 아래에 둔 모든 File 보존; Rename-back · 후보 제거 · A 삭제 등 파괴적 정리 금지; 어떤 Durable Row도 참조할 수 없는 Workspace 안의 File만 Discard 가능 | 없음(중복 Commit 위험) | Editor는 Reload 필요 상태, 추가 Edit 차단 | **새 안내 제안 U2:** `저장 결과를 확인하지 못했어요` / `영상이 저장되었는지 지금은 알 수 없어요. 같은 영상을 다시 추가하기 전에 프로젝트를 확인해주세요.` / `확인` |
+| Target 무효(D6) — 삭제된 Project | 후보 제거, Workspace Discard | 없음 | 해당 화면 없음 | 안내 없음(Late Result 폐기, Log만) |
+| Target 무효(D6) — 살아 있는 Editor | 후보 제거, Workspace Discard | 없음 | Editor 유지 | **새 안내 제안 U4:** Add `영상을 추가하지 못했어요` / `프로젝트를 찾을 수 없어요.` / `확인`; Replace `클립을 교체하지 못했어요` / `교체하려던 클립을 찾을 수 없어요.` / `확인` |
+
+- U1 문구의 "저장되었지만"은 Save 성공 = Durable Commit(D1)에 근거한다. U2–U4는 "저장되지 않았어요", "그대로 있어요", 성공적인 `다시 시도`를 주장하지 않는다. U3의 "저장되지 않았어요"는 확인된 이전 상태에서만 쓴다.
+- U2의 대안(소유자 선택): `다시 확인` Action을 더해 D8.2 읽기를 다시 하고, 확정되면 위 표의 해당 결과를 적용한다. 이 기록은 Process 안 Memory에만 있으며 Process가 끝나면 D8.7이 처리한다.
+
+#### D8.6 `.replacingSaved`의 두 Save
+
+- **Save 1(`create(B)`):** Prior = "A 그대로 + B 없음", Intended = "A 그대로 + B 완전".
+  - 확인된 이전 상태 → D4 Rollback, R4 §3, A와 그 Media 무변경.
+  - 확인된 새 상태 → B Commit. Save 2로 진행한다.
+  - Commit됨 · 확인 안 됨 또는 미확정 → Save 2를 실행하지 않는다; A와 그 Media를 보존한다; U1 또는 U2.
+- **Save 2(`deleteProject(A)`):** B가 확인된 새 상태일 때만 실행한다.
+  - Save 성공 → 독립 Read로 A Row 부재를 확인한 뒤에만 A의 Media Directory를 제거한다. 확인할 수 없으면 A Media를 보존한다(A Row가 정말 없으면 다음 시작의 Orphan Recovery가 회수한다).
+  - Save 오류 → 독립 Read: A 없음 → 삭제된 것으로 보고 A Media 제거; A 완전히 그대로 → A와 Media 보존; 그 밖 → 미확정으로 보고 A Media 보존.
+  - Save 2의 결과와 무관하게 B의 Commit은 성공이다; Save 2 실패를 B의 실패로 안내하지 않는다.
+  - A가 남으면 그것은 ADR-033 / ADR-034 V1 Single Saved Project의 Safe Atomic Replacement에서 벗어난 결과다: 사용자는 "마지막 저장 Project를 대체"하기로 확인했는데 A가 Durable Row로 남는다. A는 Durable Row가 참조하므로 STEP 12B Orphan Recovery가 회수하지 않고, 최신 순서 정책상 B 뒤에 가려져 사용자에게 보이지 않으므로 영구적인 숨은 저장 공간이 된다. AGENTS.md의 "Multiple local drafts are supported" Guardrail은 이 결과를 정당화하지 않는다(그 Guardrail과 ADR-033 / ADR-034의 V1 단일 저장 Project 사이의 관계 자체도 소유자가 확인할 사항이다).
+  - 처리 선택지(소유자 선택, ADR-034 계약에 대한 결정): (a) 안내 없음 + Log + 자동 재삭제 없음(숨은 A가 영구히 남음); (b) 다음 Select Clips 대체 또는 다음 시작에서 A 삭제를 다시 시도하는 규칙(Durable Project 삭제이므로 새 Cleanup 규칙이며 ADR-034 / ADR-039 개정이 필요); (c) A가 남았음을 알리는 새 안내. 이 ADR은 어느 것도 권장으로 확정하지 않는다.
+- **검토 후속 2(감사 미결, 2026-10-02):** B 생성과 A Metadata 삭제를 하나의 `ModelContext.save()`로 묶고 그 뒤 A의 오래된 Media를 안전하게 정리할 수 있는지 감사한다. 이 ADR은 위 두 Save 설계를 승인하지 않으며 숨은 이전 Project 처리 정책(OD-13)도 선택하지 않는다.
+- **관찰된 기존 코드 위험:** 현재 코드는 `deleteProject(A)`가 실패해도 `removeProjectMedia(A)`를 호출하므로 A Row가 지워진 Media를 참조할 수 있다(필수 구현 의존성).
+- Operation 전체는 Save 두 번이며 원자적이지 않다; Save 사이에서 멈추면 A와 B가 함께 남는다(Exploratory 관측).
+
+#### D8.7 Startup Recovery 감사와 필요한 변경
+
+- **현재 보장(코드 확인, `ProjectStartupRecoveryCoordinator`):** Project Directory 열거 실패 → 전체 중단; Project Row 읽기 오류 → 그 Project 건너뜀; Media 제거 직전 재검증 읽기 실패 → 보존; Live Editor Project 건너뜀; Durable Clip(Active + Pending)이 ID나 Path로 참조하는 Media 보존. 읽기 오류를 "Row 없음"으로 보지 않는다.
+- **구분:** Committed Project Media는 `Projects/<P>/Media/<C>.mov`이며 Durable Row 참조 여부로 판정한다. Abandoned Workspace Artifact는 `ProjectWorkspace/<op>/`이며 ADR-047에 따라 Live Registry에 없으면 Discardable이다. 미확정 Operation의 Workspace는 어떤 Durable Row도 참조하지 않으므로 다음 시작에서 회수되어도 Committed Media가 손실되지 않는다.
+- **미확정 결과의 해결:** 다음 시작에서 Store를 읽을 수 있으면 Row가 있는 Project의 Media는 참조로 보존되고 Row가 없는 Canonical Directory는 Orphan으로 제거된다. 이는 그 시점의 Durable 상태와 일치하므로 Journal 없이 정확하다. ADR-047 No Resume는 바뀌지 않는다.
+- **필요한 변경(ADR-039 STEP 12B 개정 제안):** Store는 열리지만 비어 있는 경우(예: Store File이 없어져 새로 만들어진 경우)는 현재 "Row 없음"과 구분되지 않아 모든 Canonical Project Directory가 Orphan으로 제거될 수 있다. 이는 "읽을 수 없거나 바뀐 Store를 비어 있는 것으로 보지 않는다"는 원칙과 충돌한다.
+  - (i) 권장: Project Row가 0개인데 Canonical Project Directory가 1개 이상이면 그 실행의 Orphan Directory 제거를 모두 건너뛰고 Log한다. 새 Durable 상태가 없다. 단점은 Project가 하나도 없을 때의 진짜 Orphan이 남아 저장 공간을 쓰는 것이다(데이터 손실은 아님). 한계: 완전히 빈 Store만 막는다; 비어 있지 않지만 일부 Row가 빠진 교체 · 되돌려진 Store는 그 Project들의 Directory를 여전히 Orphan으로 제거하므로 위 원칙을 완전히 만족하지 않는다.
+  - (ii) 대안: Mellow Root에 Store 식별 Marker를 두어 Store 교체를 감지한다. 비어 있지 않은 교체 Store도 감지할 수 있지만(같은 Store 안에서 Row가 사라진 경우는 감지하지 못한다) 새 Durable 상태이므로 더 큰 개정이다.
+- **범위 밖 관찰:** `MellowModelContainer.shared`는 Store를 열지 못하면 `fatalError`로 끝난다. 파괴적 정리는 일어나지 않지만 App을 쓸 수 없다. 이 ADR은 이를 다루지 않는다.
+
+#### D8.8 Architecture 영향
+
+- Durable Journal, Resumable Import, Background Continuation을 도입하지 않는다. 미확정 Operation의 기록은 Process 안 Memory에만 있고 Process가 끝나면 D8.7의 기존 Recovery가 Durable 상태로 정리한다. ADR-047 No Resume는 바뀌지 않는다.
+- 필요한 개정: (1) Commit 경계(050-D D1–D3, 서두의 예외), (2) ADR-039 STEP 12B의 빈 Store 보호(D8.7), (3) 새 안내 U1–U4(R4 §3 / §4 문구는 바꾸지 않는 추가 Presentation).
+- Storage Estimate와 Reserve(050-A / 050-B / 050-C)는 이 절과 독립이다.
+
+---
+
+## Decision Unit 050-E — `ProjectMediaTransfer` 잔여 File(연기, 승인 요청 없음)
+
+**Unit Status:** 승인 요청 없음. 별도 후속 결정으로 기록한다.
+
+- Transfer 복사 뒤 Adopt 전에 Process가 끝나면 `tmp/ProjectMediaTransfer/`에 Mellow 소유 복사본이 남을 수 있다. 현재 어떤 Startup 경로도 이를 회수하지 않는다.
+- ADR-039 STEP 12B Implementation Note는 `tmp/ProjectMediaTransfer`를 열거조차 하지 않는다고 하고 ADR-047은 "tmp 미열거"를 이미 보장된 속성으로 적는다. 이 Directory의 Startup Cleanup은 승인된 Cleanup 규칙의 확장이며 이 ADR은 그것을 제안하지 않는다.
+- UUID 형태의 이름만으로는 소유 증거가 되지 않는다. 후속 결정은 소유 증거(예: Operation Registry 또는 Manifest), Containment, Symlink, Active-use(Startup Maintenance는 Fire-and-forget이고 Picker Transfer는 Lifecycle Gate 밖이다), Registry 수명(Closure 반환부터 Adopt 완료 또는 제거까지)을 정해야 한다.
+- 영향: 남은 복사본은 Occupancy로 Capacity에 반영되므로 Estimate 계산은 바뀌지 않는다. 그러나 ROADMAP Phase 6 Exit Criteria의 Recovery-safe Cleanup Integration 준비는 이 후속 결정(또는 System tmp 정리에 맡긴다는 명시적 결정)이 없으면 완전하지 않다.
+
+---
+
+## 구현 상태(Step 5B(2026-10-02))
+
+- 구현됨(순수, 연결 없음): `MellowApp/Core/Projects/Import/ImportStorageEstimator.swift` — `ImportStoragePolicy`(Accepted 상수), `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` / `metadata` / `requirement` / `check`, `ImportWriteFailureClassifier`; Test `MellowTests/ImportStorageEstimatorTests.swift`.
+- 정확한 축약 유리수 / Overflow 검사 정수 계산이며 Floating Point를 쓰지 않는다; Ready 항목과 이미 쓰인 출력은 0을 더하고, 출력 · Margin · Metadata · Reserve를 따로 볼 수 있다.
+- 연결되지 않음: PhotosPicker / `ReceivedVideoFile`, Normalizer, Repository, Coordinator, UI, 기존 Phase 5 Admission. 검사 경계 연결과 Presentation은 Proposed다.
+
+## 미해결 의존성(Import Storage Gate를 닫기 전 필요)
+
+- 050-A: `S_audio` Inspector Fact와 Estimator 연결.
+- 050-D 검토 후속 2: `.replacingSaved`의 단일 `ModelContext.save()` 가능성 감사.
+- 050-B(선택, Gate를 막지 않음): Operation 도중 Checkpoint, 210 Row를 넘는 큰 기존 Store / WAL(Store 크기 효과), 동시 Reader 조건의 추가 Metadata Evidence. 이 조건들은 Accepted Estimate 밖이며 아래 필수 Integration Gate와 구별된다.
+- 050-C: C0a 구현, U의 신선도와 Purgeable 공간 동작 확인.
+- 050-D: D8 Save Outcome 판정 구현(독립 Read, 비교, 결과별 처리); `.replacingSaved`에서 A 삭제 실패에도 A Media를 지우는 기존 코드 수정; ADR-039 STEP 12B 빈 Store 보호 개정; Process 안 Save 오류 뒤의 Durable 상태 확인(Crash 경계 Probe는 Save 단위 PRIOR / NEW만 관측했다; 오류를 던진 Save, Commit 뒤 오류, 전원 손실, `synchronous` 설정은 미확인 — `docs/evidence/phase-06/adr-050d-persistence-atomicity-report.md`; 가정이 확인되지 않으면 대안은 Save 오류 뒤 새 Context로 다시 읽은 Durable 상태로 Rollback / 보존을 정하는 Gate이며 이는 소유자 결정 후보다); D3 Post-commit 처리와 D4 Rollback 구현, D6의 Lifecycle Gate 적용(Project 삭제, Editor Add / Replace)과 Row 없는 Project Directory 재생성 방지, Disk Full 중 Save의 All-or-nothing 확인.
+- 050-E: 후속 결정.
+- 필수 Integration Gate(통과 주장 없음):
+  - 실제 System PhotosPicker Transfer(iPhone 12): Provider File 위치 · Volume · 해제 시점 · Clone 여부, `.current` Encoding.
+  - 실제 Source: 4K30 SDR, 4K60 HDR / Dolby Vision, 1080p60, Phase-5-ready Camera Clip, Portrait Aspect Mismatch, 고Detail / 고움직임, 저조도 Noise, AAC Passthrough(Stereo 및 2 Channel 초과), non-AAC `audioTranscode`.
+  - Low-storage: C0–C3 / CR 부족, Runtime Disk Full, 공간 확보 뒤 Retry, Replace 보존, U의 신선도.
+  - Rollback-to-Workspace: 부분 Materialize, Save 실패, Restoration 실패, Mixed Set Retry 성공; Post-commit 확인 실패에서 Media 보존.
+  - Device: Workspace Sweep End-to-end(Attempt 하위 Directory 포함).
+
+## 소유자 선택
+
+| ID | 제안 선택 | 기존 승인 규칙 / 새 정책 | 근거와 불확실성 | 의존하는 미해결 작업 | 지금 독립 승인 가능 |
+| --- | --- | --- | --- | --- | --- |
+| OA-1 | `R_video = 7,500,000 B/s` | 새 정책(ADR-024 Formula 공백) | 관측 Logical 최대 7,450,709 B/s; 합성 · 미측정 범주 다수; 상한 아님 | 없음(실제 Fixture로 재검토 권장) | **Accepted** |
+| OA-2 | `m = 1/2` | 새 정책 | 측정에서 유도하지 않음; Run 간 8.5% 변동만 관측 | 없음 | **Accepted** |
+| OA-3 | `C_out = 2 MiB` | 새 정책 | 관측 최대 1,006,513 B(≤ 38 MB 출력) | 없음 | **Accepted** |
+| OA-4 | Passthrough `S_audio`; Transcode `R_tx = 32,000 B/s` + `3136/48000 s` | 새 정책 | `S_audio`는 정확한 Source 값; `R_tx`와 Priming 여유는 측정되지 않음 | `S_audio` Inspector Fact | **Accepted**(Inspector 연결은 Pending) |
+| OB-1 | `W_op = Σ_saves (W_save + W_row × R_s)`, `W_save = 196,608 B`, `W_row = 512 B` | 새 정책(경험적 관측 + 정책 Margin) | 측정점(D ≤ 200, n ≤ 10, Store ≤ 210 Row) 안 관측 최대값 대비 약 1.33배 / 1.57배; Store 크기 효과는 별도 항 없음; 도중 Checkpoint · 큰 Store · 동시 Reader 미측정; 상한 아님 | 없음(위 미측정 조건은 Estimate 밖이며 Reserve가 덮는다고 보장하지 않음; 초과 시 Runtime 쓰기 실패 처리) | **Accepted** |
+| OC-1 | Volume별 Occupancy / Additional 검사, 경계 C0 / C0a / C1 / C2 / C3 / CR, Fail-closed | ADR-024 적용 + 새 정책 | Capacity 값의 신선도 미증명 | C0a 구현; 경계 연결 | 계산 정책(Volume별 계산 · Fail-closed) **Accepted**; 경계 C0 / C0a / C1 / C2 / C3 / CR 연결은 Proposed |
+| OC-2 | `Reserve_import = 256 MiB` | 새 정책(ADR-024: 0 아님) | 측정에서 유도하지 않음; 측정되지 않은 위험을 덮는다고 보장하지 않음 | 없음 | **Accepted** |
+| OC-3 | 초기 부족 = R4 §4; Attempt 중 부족 = R4 §3; CR 부족 = R4 §3 재표시 + Source 보존 | §4 / §3은 기존 승인 규칙; 그 적용 경계는 해석 | Attempt 중 / CR 부족에서 원인이 저장 공간임을 안내하지 못함 | OD-4(Ready Source 보존은 Rename-back이 있어야 성립) | 예(OD-4와 함께; 대안 선택 시 R4 개정) |
+| OC-4 | Phase 5 Admission 변경(256 MiB, 크기 미확인 거부, C0a)과 연결 단계 적용 | Phase 5 Gate 변경 | — | Phase 6 경로 통합(Task 23) | 예 |
+| OC-5 | "Picker Transient 복사본" = Mellow 소유 Transfer 복사본 | 기존 문구의 해석 | Provider File 동작 미관측 | Picker Integration Gate | 예 |
+| OC-6 | Accepted Set 이전 Transfer · Adopt 실패의 Phase 6 Presentation | UX 결정(승인 문서에 없음) | — | 없음 | 별도 결정 |
+| OD-1 | Durable Commit = Save 성공; Read-back 실패는 Post-commit(050-D D1) | **ADR-037 STEP 11 Note · ADR-040 §9 · ADR-047 Ownership · ARCHITECTURE Commit 경계의 개정 제안** | Crash 경계에서는 Save 단위 PRIOR / NEW만 관측(첫 Commit은 `Z_PRIMARYKEY`만); 오류를 던진 Save · Commit 뒤 오류 · 전원 손실은 미확인 | 개정 문구; Process 안 Save 오류 뒤 Durable 상태 확인; Integration Test | 예(개정으로서) |
+| OD-2 | Post-commit 확인 실패 = "Commit됨 · 확인 안 됨": Media / Row 보존, Editor Reload, A 보존(050-D D3) | **같은 승인 문구의 개정 제안**(현재 코드와도 다름) | D2 Trace | OD-1; 구현 | 예(개정으로서) |
+| OD-3 | U1(Commit됨 · 확인 안 됨) · U2(미확정) 안내와 Action(050-D D8.5); 읽을 수 없는 B Row = 미확정 | 새 UX | 기존 `저장되지 않았어요` / `만들지 못했어요` / `그대로 있어요` 사용 불가 | OD-2, OD-9 | OD-2 · OD-9 뒤 |
+| OD-4 | Pre-commit Rollback-to-Workspace(Ready Rename-back, 정규화 출력 제거)(050-D D4) | Task 13 / 14와 ADR-047 Boundary F의 해석 | Filesystem 실패 시 Retry 불가 | 구현 | 예(Task 14 해석 확인 필요) |
+| OD-5 | U3: Restoration · 정리 실패(확인된 이전 상태, `다시 시도` 없음) 안내(050-D D8.5) | 새 UX(R4 §3 외부 Source 무효와 구별) | "저장되지 않았어요"는 확인된 이전 상태에서만 | OD-4, OD-9 | OD-4 뒤 |
+| OD-6 | 취소 경계: Save 직전까지 받고 Save 성공 뒤 취소는 성공(050-D D5) | R4 §2 적용 | — | 없음 | 예 |
+| OD-7 | Target 무효화: Retry 없음, Project Directory 재생성 금지, Late Result 폐기(050-D D6) | Task 15 적용 + 새 규칙 | — | Lifecycle Gate 적용 구현 | 예 |
+| OD-8 | U4: Target 무효 안내(살아 있는 Editor의 Add / Replace); 삭제된 Project는 안내 없음(050-D D8.5) | 새 UX | — | OD-7 | OD-7 뒤 |
+| OD-9 | Save Outcome 판정: Save 오류 · 확인 실패 뒤 독립 Read로 확인된 이전 / 확인된 새 / 미확정을 정하고 결과별 처리(050-D D8.1–D8.5); 확인된 이전 상태는 새 ID 부재 확인 필수 | **ADR-040 §9 · ADR-037 STEP 11 Note · ROADMAP Task 14의 Persist 실패 분기 개정 제안**(확인된 이전 상태의 Save 오류는 기존 문구와 R4 §3 그대로) | 재구성 경계 관측은 측정한 경우에 한함; 독립 Read의 Coordinator Cache 독립성 미확인 | OD-10; Lifecycle Gate 적용(D8.4); 구현 | 예(개정으로서) |
+| OD-10 | 독립 Read 방법: 같은 Container의 새 `ModelContext`(권장) 또는 별도 `ModelContainer` | 구현 정책 | 권장안의 Coordinator Cache 독립성 미검증; 대안의 동시 열기 동작 미검증; 파괴적 Rollback은 새 ID 부재 확인으로 보강(OD-9) | 없음 | 예 |
+| OD-11 | `.replacingSaved` 두 Save 처리: B 확인 전 Save 2 없음; A Row 부재 확인 뒤에만 A Media 제거; Save 2 실패는 B 성공을 바꾸지 않음(050-D D8.6) | 새 정책(현재 코드와 다름) | Save 사이 정지 시 A + B 공존 관측 | 기존 A Media 삭제 코드 수정; 단일 Save 가능성 감사(검토 후속 2) | 두 Save 설계는 승인 대상 아님(감사 결과 뒤 재제출) |
+| OD-12 | Startup Recovery 빈 Store 보호: Row 0개 + Directory ≥ 1이면 Orphan Directory 제거 생략(권장) 또는 Store 식별 Marker(050-D D8.7) | **ADR-039 STEP 12B 개정 제안** | 빈 Store 재생성 시 전체 Directory 제거 위험(코드 분석, 미재현) | 없음 | 예(개정으로서) |
+| OD-13 | 남은 A의 처리: (a) 안내 없음 · 자동 재삭제 없음(숨은 A 영구 잔존), (b) 나중 A 삭제 재시도 규칙, (c) 새 안내(050-D D8.6) | **ADR-033 / ADR-034 Safe Atomic Replacement에서의 이탈에 대한 결정**((b)는 ADR-034 / ADR-039 개정 필요) | 남은 A는 STEP 12B가 회수하지 않고 최신 순서로 가려짐 | OD-11 | 별도 결정 |
+| OE-1 | `ProjectMediaTransfer` 잔여 File 정리(050-E) | ADR-039 / ADR-047 확장(후속) | — | 별도 결정 | 이 ADR 범위 밖 |
+
+## Consequences
+
+- Unit별 승인이 가능하다. 050-A / 050-C / 050-D의 독립 승인 항목만으로도 Pure Estimator / Check와 Transaction 규칙을 구현 계획에 넣을 수 있지만 050-B가 해결되기 전에는 Import Storage Gate가 닫히지 않는다. — **갱신(2026-10-02):** 050-A · 050-B와 050-C 계산 정책은 Accepted되었고 순수 Estimator / Check로 구현되었다(연결 없음). Import Storage Gate는 검사 경계 연결, 050-D, 필수 Integration Gate 때문에 여전히 열려 있다.
+- Estimate는 관측 출력보다 크게 잡히므로 거의 가득 찬 기기에서 일부 Import가 실제로는 성공했을 상황에서도 차단될 수 있다.
+- Runtime Disk Full은 여전히 가능하며 050-C / 050-D가 처리한다.
+
+## Non-goals
+
+- Production 구현, UI 연결, Encoder Bitrate 설정, Quality Downgrade, Clip-count / Duration Cap, 새 사용자 Copy, `ProjectMediaTransfer` Startup Cleanup 승인, Export Storage, Performance Acceptance Threshold, Pending Gate의 해결 표시.
