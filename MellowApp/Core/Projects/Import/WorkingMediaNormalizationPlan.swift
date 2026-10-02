@@ -1,7 +1,7 @@
 import Foundation
 
 // Phase 6 Step 4A — the deterministic normalization plan for one accepted, normalization-required
-// item (ADR-045 §2 / §3 / §7, ADR-047 Decision 1, ADR-048). Pure: it consumes the Step 3 accepted
+// item (ADR-045 §2 / §3 / §7, ADR-047 Decision 1, ADR-048, ADR-049). Pure: it consumes the Step 3 accepted
 // item and never opens, copies, decodes, encodes or publishes media. The AVFoundation normalizer
 // (Step 4B) configures itself from a plan; it does not re-derive any of these facts. Product
 // eligibility (raster feasibility, audio reliability) is decided by preflight, never here.
@@ -24,8 +24,8 @@ enum WorkingMediaPlanError: Error, Hashable, Sendable {
     case emptyNormalizationReasons
     /// The facts do not pass preflight (forged input; Step 3 never accepts such an item).
     case rejectedByPreflight(ImportPreflightRejection)
-    /// The path's reasons or duration disagree with the preflight verdict for the same facts, or a
-    /// derived value contradicts that verdict.
+    /// The path's reasons, render path or duration disagree with the preflight verdict for the same
+    /// facts, or a derived value contradicts that verdict.
     case preflightMismatch
 }
 
@@ -36,6 +36,11 @@ struct WorkingMediaNormalizationPlan: Hashable, Sendable {
     /// Canonical order exactly as Step 3 reported it (HDR → frame rate → raster → audio transcode).
     /// An `.audioTranscode`-only plan still produces the full canonical video output.
     let reasons: [ImportNormalizationReason]
+    /// ADR-049: the built-in tone-mapping compositor (full aperture) or geometry-only SDR rendering
+    /// (non-full aperture). It never changes raster, cadence, audio, duration or validation.
+    let renderPath: WorkingMediaRenderPath
+    /// The source's encoded raster, clean aperture and pixel aspect ratio, as preflight judged them.
+    let aperture: ImportApertureGeometry
     let sourceDuration: MediaTime
     let acceptedOutputDuration: ClosedRange<MediaTime>
     /// The transform the presentation raster was derived from; it is baked into pixels and the
@@ -48,11 +53,14 @@ struct WorkingMediaNormalizationPlan: Hashable, Sendable {
     let audio: WorkingMediaAudioStrategy
 
     fileprivate init(
-        reasons: [ImportNormalizationReason], sourceDuration: MediaTime, sourcePresentationTransform: ImportAffineTransform,
+        reasons: [ImportNormalizationReason], renderPath: WorkingMediaRenderPath, aperture: ImportApertureGeometry,
+        sourceDuration: MediaTime, sourcePresentationTransform: ImportAffineTransform,
         raster: WorkingMediaRasterPlan, outputFrameDuration: MediaTime, audio: WorkingMediaAudioStrategy
     ) {
         contract = .canonical
         self.reasons = reasons
+        self.renderPath = renderPath
+        self.aperture = aperture
         self.sourceDuration = sourceDuration
         acceptedOutputDuration = contract.acceptedOutputDuration(forSource: sourceDuration)
         self.sourcePresentationTransform = sourcePresentationTransform
@@ -72,7 +80,7 @@ enum WorkingMediaPlanBuilder {
     /// verdict for `facts`, so no combination a caller can assemble yields a plan that Step 3 would
     /// not have produced.
     static func plan(preparationPath: ImportPreparationPath, facts: ImportSourceFacts, sourceDuration: MediaTime) throws -> WorkingMediaNormalizationPlan {
-        guard case .normalizationRequired(let reasons) = preparationPath else { throw WorkingMediaPlanError.fastPathItem }
+        guard let (reasons, renderPath) = preparationPath.normalization else { throw WorkingMediaPlanError.fastPathItem }
         guard !reasons.isEmpty else { throw WorkingMediaPlanError.emptyNormalizationReasons }
 
         switch ImportPreflightClassifier.classify(facts) {
@@ -80,9 +88,13 @@ enum WorkingMediaPlanBuilder {
             throw WorkingMediaPlanError.rejectedByPreflight(rejection)
         case .readyFastPath:
             throw WorkingMediaPlanError.preflightMismatch
-        case .normalizationRequired(let verdictReasons, let verdictDuration):
-            guard verdictReasons == reasons, verdictDuration == sourceDuration else { throw WorkingMediaPlanError.preflightMismatch }
+        case .normalizationRequired(let verdictReasons, let verdictPath, let verdictDuration):
+            guard verdictReasons == reasons, verdictPath == renderPath, verdictDuration == sourceDuration else {
+                throw WorkingMediaPlanError.preflightMismatch
+            }
         }
+        // Step 8 chose a path, so the aperture is reliable; the guard only keeps construction total.
+        guard let aperture = facts.aperture.geometry else { throw WorkingMediaPlanError.preflightMismatch }
 
         // Preflight passed, so the shared raster plan exists and is feasible; the guard only keeps
         // construction total.
@@ -106,7 +118,8 @@ enum WorkingMediaPlanBuilder {
         }
 
         return WorkingMediaNormalizationPlan(
-            reasons: reasons, sourceDuration: sourceDuration, sourcePresentationTransform: facts.preferredTransform,
+            reasons: reasons, renderPath: renderPath, aperture: aperture,
+            sourceDuration: sourceDuration, sourcePresentationTransform: facts.preferredTransform,
             raster: raster,
             outputFrameDuration: contract.outputFrameDuration(sourceMinimumFrameDuration: facts.minimumFrameDuration, nominalFrameRate: facts.nominalFrameRate),
             audio: audio

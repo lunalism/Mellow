@@ -36,6 +36,7 @@ final class WorkingMediaNormalizationPlanTests: XCTestCase {
             nominalFrameRate: fps, minimumFrameDuration: minFrameDuration, bitsPerComponent: bpc, highBitDepthProfile: .no,
             fullRangeVideo: .no, colorPrimaries: primaries, transferFunction: transfer, ycbcrMatrix: matrix,
             hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [],
+            aperture: .classify(encodedWidth: natural.0, encodedHeight: natural.1, cleanAperture: nil, pixelAspectRatio: nil),
             audio: audio, byteCount: 4_000_000, modificationDate: nil)
     }
 
@@ -567,7 +568,7 @@ final class WorkingMediaNormalizationPlanTests: XCTestCase {
 
     func testEmptyReasonsAreRejected() {
         assertPlanError(.emptyNormalizationReasons) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: []), facts: self.hdr(), sourceDuration: self.time(1200, 600))
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: []), facts: self.hdr(), sourceDuration: self.time(1200, 600))
         }
     }
 
@@ -575,35 +576,35 @@ final class WorkingMediaNormalizationPlanTests: XCTestCase {
         let duration = time(1200, 600)
         // HDR facts presented as a frame-rate-only path.
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60)]), facts: self.hdr(), sourceDuration: duration)
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: self.hdr(), sourceDuration: duration)
         }
         // Right reasons, out of canonical order.
         let combined = hdr((2160, 3840), fps: 60)
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [
                 .raster(presentationWidth: 2160, presentationHeight: 3840), .frameRate(nominal: 60),
                 .hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .bitDepthAbove8]),
             ]), facts: combined, sourceDuration: duration)
         }
         // Audio transcode claimed for an AAC source, and omitted for an LPCM source.
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60), .audioTranscode]), facts: self.facts(fps: 60), sourceDuration: duration)
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60), .audioTranscode]), facts: self.facts(fps: 60), sourceDuration: duration)
         }
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60)]), facts: self.facts(fps: 60, audio: self.audio("lpcm")), sourceDuration: duration)
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: self.facts(fps: 60, audio: self.audio("lpcm")), sourceDuration: duration)
         }
         // Right reasons, wrong duration.
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60)]), facts: self.facts(fps: 60), sourceDuration: self.time(1201, 600))
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: self.facts(fps: 60), sourceDuration: self.time(1201, 600))
         }
         // Fast-path facts presented as normalization-required.
         assertPlanError(.preflightMismatch) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60)]), facts: self.facts(), sourceDuration: duration)
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: self.facts(), sourceDuration: duration)
         }
     }
 
     func testRejectedFactsCannotBecomeAPlan() {
-        let path = ImportPreparationPath.normalizationRequired(reasons: [.frameRate(nominal: 60)])
+        let path = ImportPreparationPath.normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)])
         let tooLong = facts(duration: time(6, 1), fps: 60)
         assertPlanError(.rejectedByPreflight(.durationAboveMaximum)) {
             try WorkingMediaPlanBuilder.plan(preparationPath: path, facts: tooLong, sourceDuration: self.time(6, 1))
@@ -624,7 +625,7 @@ final class WorkingMediaNormalizationPlanTests: XCTestCase {
         XCTAssertEqual(result.excluded.first?.category, .invalidOrUnsupportedMedia)
         // A forged path over the same facts is refused as a preflight rejection, not a late product decision.
         assertPlanError(.rejectedByPreflight(.unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081))) {
-            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .bitDepthAbove8]), .frameRate(nominal: 60)]),
+            try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .bitDepthAbove8]), .frameRate(nominal: 60)]),
                                              facts: nearSquare, sourceDuration: self.time(1200, 600))
         }
     }
@@ -642,8 +643,97 @@ final class WorkingMediaNormalizationPlanTests: XCTestCase {
             XCTAssertTrue(result.accepted.isEmpty, "\(problem)")
             XCTAssertEqual(result.excluded.map(\.rejection), [.unsupportedAudioFacts(problem)])
             assertPlanError(.rejectedByPreflight(.unsupportedAudioFacts(problem))) {
-                try WorkingMediaPlanBuilder.plan(preparationPath: .normalizationRequired(reasons: [.frameRate(nominal: 60)]), facts: f, sourceDuration: self.time(1200, 600))
+                try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: f, sourceDuration: self.time(1200, 600))
             }
+        }
+    }
+
+    // MARK: - ADR-049 render path
+
+    private func odd(transfer: ImportTransferFunction = .rec709) -> ImportSourceFacts {
+        var f = facts(natural: (1080, 1919), fps: 60, transfer: transfer)
+        f.aperture = .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919), pixelAspectRatio: nil)
+        return f
+    }
+
+    func testPlansCarryTheVerdictRenderPathAndAperture() throws {
+        let duration = try MediaTime(value: 1200, timescale: 600)
+        let geometryPlan = try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeSDRApertureGeometry(reasons: [.frameRate(nominal: 60)]), facts: odd(), sourceDuration: duration)
+        XCTAssertEqual(geometryPlan.renderPath, .sdrApertureGeometry)
+        XCTAssertEqual(geometryPlan.aperture.cleanAperture, ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919))
+        let builtInPlan = try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: facts(fps: 60), sourceDuration: duration)
+        XCTAssertEqual(builtInPlan.renderPath, .builtInToneMap)
+        // The path never changes the rest of the plan's policy.
+        for plan in [geometryPlan, builtInPlan] {
+            XCTAssertEqual(plan.contract, .canonical)
+            XCTAssertEqual(plan.outputFrameDuration, try MediaTime(value: 1, timescale: 30))
+            XCTAssertEqual(plan.audio, .passthroughAAC)
+        }
+        XCTAssertEqual(geometryPlan.raster.output, WorkingMediaRaster(width: 1080, height: 1918))
+    }
+
+    func testRequestedPathMustMatchTheVerdict() throws {
+        let duration = try MediaTime(value: 1200, timescale: 600)
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: odd(), sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .preflightMismatch)
+        }
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeSDRApertureGeometry(reasons: [.frameRate(nominal: 60)]), facts: facts(fps: 60), sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .preflightMismatch)
+        }
+    }
+
+    func testCaseDCannotProduceAPlan() throws {
+        let duration = try MediaTime(value: 1200, timescale: 600)
+        let reasons: [ImportNormalizationReason] = [.hdr(signals: [.hlgTransfer]), .frameRate(nominal: 60)]
+        for path in [ImportPreparationPath.normalizeBuiltInToneMap(reasons: reasons), .normalizeSDRApertureGeometry(reasons: reasons)] {
+            XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: path, facts: odd(transfer: .hlg), sourceDuration: duration)) {
+                XCTAssertEqual($0 as? WorkingMediaPlanError, .rejectedByPreflight(.unsupportedApertureNormalization(.colorNotProvenSDRRec709)))
+            }
+        }
+    }
+
+    // MARK: - ADR-049 Revision 1
+
+    func testRevisionOneRejectionsCannotProduceAPlan() throws {
+        let duration = try MediaTime(value: 1200, timescale: 600)
+        var sheared = facts(fps: 60); sheared.preferredTransform = ImportAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0)
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: sheared, sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .rejectedByPreflight(.unsupportedNormalizationTransform))
+        }
+        var disagreeing = odd()
+        disagreeing.additionalVideoDescriptions = [ImportVideoDescriptionFacts(videoCodec: .h264(fourCC: "avc1"), bitsPerComponent: 8, highBitDepthProfile: .no,
+                                                                              aperture: .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil),
+                                                                              colorPrimaries: .rec709, transferFunction: .rec709, ycbcrMatrix: .rec709, hasDolbyVisionConfiguration: false)]
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeSDRApertureGeometry(reasons: [.frameRate(nominal: 60)]), facts: disagreeing, sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .rejectedByPreflight(.unsupportedApertureNormalization(.descriptionsDisagree)))
+        }
+        // A scaled axis-aligned transform plans normally, with the scaled presentation raster.
+        var scaled = facts(natural: (2160, 3840), fps: 60); scaled.preferredTransform = ImportAffineTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0)
+        let plan = try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: scaled, sourceDuration: duration)
+        XCTAssertEqual(plan.raster.output, WorkingMediaRaster(width: 1080, height: 1920))
+    }
+
+    func testLaterDescriptionSignalsReachThePlanOrBlockIt() throws {
+        let duration = try MediaTime(value: 1200, timescale: 600)
+        func later(transfer: ImportTransferFunction = .rec709, codec: ImportVideoCodec = .h264(fourCC: "avc1"), aperture: ImportApertureFacts) -> ImportVideoDescriptionFacts {
+            ImportVideoDescriptionFacts(videoCodec: codec, bitsPerComponent: 8, highBitDepthProfile: .no, aperture: aperture,
+                                        colorPrimaries: .rec709, transferFunction: transfer, ycbcrMatrix: .rec709, hasDolbyVisionConfiguration: false)
+        }
+        let full = ImportApertureFacts.classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil)
+        // A later HLG description makes a ready source normalize on the built-in path, with the HDR reason.
+        var hlgLater = facts(); hlgLater.additionalVideoDescriptions = [later(transfer: .hlg, aperture: full)]
+        let plan = try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])]), facts: hlgLater, sourceDuration: duration)
+        XCTAssertEqual(plan.reasons, [.hdr(signals: [.hlgTransfer])])
+        XCTAssertEqual(plan.renderPath, .builtInToneMap)
+        // A later unsupported codec or a later non-full HDR description cannot produce a plan.
+        var prores = facts(fps: 60); prores.additionalVideoDescriptions = [later(codec: .unsupported(fourCC: "apcn"), aperture: full)]
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]), facts: prores, sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .rejectedByPreflight(.unsupportedCodec(.unsupported(fourCC: "apcn"))))
+        }
+        var nonFullHDR = facts(); nonFullHDR.additionalVideoDescriptions = [later(transfer: .hlg, aperture: .classify(encodedWidth: 1080, encodedHeight: 1920,
+            cleanAperture: ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919), pixelAspectRatio: nil))]
+        XCTAssertThrowsError(try WorkingMediaPlanBuilder.plan(preparationPath: .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])]), facts: nonFullHDR, sourceDuration: duration)) {
+            XCTAssertEqual($0 as? WorkingMediaPlanError, .rejectedByPreflight(.unsupportedApertureNormalization(.descriptionsDisagree)))
         }
     }
 }

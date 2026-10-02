@@ -43,11 +43,32 @@ enum ImportSelectionContext: Hashable, Sendable {
 
 // MARK: - Results
 
-/// What the future preparation operation does with an accepted item (ADR-045 §2). Both paths are
-/// members of the Accepted Set; neither is an exclusion.
+/// What the future preparation operation does with an accepted item (ADR-045 §2, ADR-049
+/// Decision 4). Every path is a member of the Accepted Set; none is an exclusion.
 enum ImportPreparationPath: Hashable, Sendable {
+    /// Case A: no normalization reason — copied as is, whatever its clean aperture.
     case fastPathCopy
-    case normalizationRequired(reasons: [ImportNormalizationReason])
+    /// Case B: full clean aperture — the built-in compositor (ADR-045 §4) normalizes and tone-maps.
+    case normalizeBuiltInToneMap(reasons: [ImportNormalizationReason])
+    /// Case C: non-full clean aperture, proven SDR Rec.709 — geometry-only rendering of the whole
+    /// aperture, no tone mapping.
+    case normalizeSDRApertureGeometry(reasons: [ImportNormalizationReason])
+
+    init(reasons: [ImportNormalizationReason], renderPath: WorkingMediaRenderPath) {
+        switch renderPath {
+        case .builtInToneMap: self = .normalizeBuiltInToneMap(reasons: reasons)
+        case .sdrApertureGeometry: self = .normalizeSDRApertureGeometry(reasons: reasons)
+        }
+    }
+
+    /// The normalization reasons and render path; nil for the fast path.
+    var normalization: (reasons: [ImportNormalizationReason], renderPath: WorkingMediaRenderPath)? {
+        switch self {
+        case .fastPathCopy: return nil
+        case .normalizeBuiltInToneMap(let reasons): return (reasons, .builtInToneMap)
+        case .normalizeSDRApertureGeometry(let reasons): return (reasons, .sdrApertureGeometry)
+        }
+    }
 }
 
 /// An accepted candidate with everything preparation needs without re-inspecting.
@@ -66,11 +87,10 @@ struct ImportAcceptedItem: Hashable, Sendable {
         self.facts = facts
         self.sourceDuration = sourceDuration
         self.preparationPath = preparationPath
-        switch preparationPath {
-        case .fastPathCopy:
+        if let normalization = preparationPath.normalization {
+            verdict = .normalizationRequired(reasons: normalization.reasons, renderPath: normalization.renderPath, sourceDuration: sourceDuration)
+        } else {
             verdict = .readyFastPath(sourceDuration: sourceDuration)
-        case .normalizationRequired(let reasons):
-            verdict = .normalizationRequired(reasons: reasons, sourceDuration: sourceDuration)
         }
     }
 }
@@ -82,8 +102,10 @@ enum ImportExclusionCategory: Hashable, Sendable, CaseIterable {
     case durationAboveMaximum
     /// Malformed / unreadable / unsupported media (ADR-042 R4 §5): invalid duration, unreadable,
     /// no video track, protected content, unsupported container (ADR-044), unsupported codec
-    /// (ADR-046), infeasible working raster and unreliable audio facts (ADR-048). Deliberately one
-    /// family — there is no container-, codec-, raster- or audio-specific category.
+    /// (ADR-046), infeasible working raster and unreliable audio facts (ADR-048), a non-full clean
+    /// aperture no approved render path preserves (ADR-049 Case D), and disagreeing video format
+    /// descriptions or an unbakeable transform on a source that needs normalization (ADR-049 R1). Deliberately one family —
+    /// there is no container-, codec-, raster-, audio-, aperture- or HDR-specific category.
     case invalidOrUnsupportedMedia
     /// Landscape and square are one non-portrait presentation (ADR-043 R1).
     case nonPortraitPresentation
@@ -93,7 +115,7 @@ enum ImportExclusionCategory: Hashable, Sendable, CaseIterable {
         case .durationBelowMinimum: self = .durationBelowMinimum
         case .durationAboveMaximum: self = .durationAboveMaximum
         case .invalidDuration, .unreadable, .noVideoTrack, .protectedContent, .unsupportedContainer, .unsupportedCodec,
-             .unsupportedWorkingRaster, .unsupportedAudioFacts:
+             .unsupportedWorkingRaster, .unsupportedAudioFacts, .unsupportedApertureNormalization, .unsupportedNormalizationTransform:
             self = .invalidOrUnsupportedMedia
         case .nonPortraitPresentation: self = .nonPortraitPresentation
         }
@@ -160,7 +182,7 @@ struct ImportSelectionPreflightOutcome: Hashable, Sendable {
     /// True when preparation would have to run the normalizer for at least one accepted item —
     /// the Blocking Preparation Sheet condition (ADR-042 R4 §1).
     var requiresNormalization: Bool {
-        accepted.contains { if case .normalizationRequired = $0.preparationPath { return true } else { return false } }
+        accepted.contains { $0.preparationPath.normalization != nil }
     }
 }
 
@@ -214,8 +236,9 @@ struct ImportSelectionPreflight: Sendable {
             switch ImportPreflightClassifier.classify(facts) {
             case .readyFastPath(let duration):
                 accepted.append(ImportAcceptedItem(candidate: candidate, facts: facts, sourceDuration: duration, preparationPath: .fastPathCopy))
-            case .normalizationRequired(let reasons, let duration):
-                accepted.append(ImportAcceptedItem(candidate: candidate, facts: facts, sourceDuration: duration, preparationPath: .normalizationRequired(reasons: reasons)))
+            case .normalizationRequired(let reasons, let renderPath, let duration):
+                accepted.append(ImportAcceptedItem(candidate: candidate, facts: facts, sourceDuration: duration,
+                                                   preparationPath: ImportPreparationPath(reasons: reasons, renderPath: renderPath)))
             case .rejected(let rejection):
                 excluded.append(ImportExcludedItem(candidate: candidate, facts: facts, rejection: rejection))
             }

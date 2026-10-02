@@ -22,7 +22,8 @@ final class ImportPreflightClassifierTests: XCTestCase {
         fps: Float = 30, minFrameDuration: MediaTime? = nil,
         bpc: Int? = 8, highBitDepthProfile: ImportKnownFlag = .no,
         primaries: ImportColorPrimaries = .rec709, transfer: ImportTransferFunction = .rec709, matrix: ImportYCbCrMatrix = .rec709,
-        dolbyVision: Bool = false, ancillary: Set<ImportAncillaryHDRMetadata> = []
+        dolbyVision: Bool = false, ancillary: Set<ImportAncillaryHDRMetadata> = [],
+        aperture: ImportApertureFacts? = nil
     ) -> ImportSourceFacts {
         ImportSourceFacts(
             duration: duration, isReadable: readable, isPlayable: readable, isExportable: readable, hasProtectedContent: protected,
@@ -31,6 +32,7 @@ final class ImportPreflightClassifierTests: XCTestCase {
             nominalFrameRate: fps, minimumFrameDuration: minFrameDuration, bitsPerComponent: bpc, highBitDepthProfile: highBitDepthProfile,
             fullRangeVideo: .no, colorPrimaries: primaries, transferFunction: transfer, ycbcrMatrix: matrix,
             hasDolbyVisionConfiguration: dolbyVision, ancillaryHDRMetadata: ancillary,
+            aperture: aperture ?? .classify(encodedWidth: natural.0, encodedHeight: natural.1, cleanAperture: nil, pixelAspectRatio: nil),
             audio: audio ? ImportAudioFacts(fourCC: "aac ", sampleRate: 48_000, channelCount: 2) : nil,
             byteCount: 4_000_000, modificationDate: Date(timeIntervalSince1970: 1_000))
     }
@@ -42,7 +44,7 @@ final class ImportPreflightClassifierTests: XCTestCase {
     }
 
     private func reasons(_ f: ImportSourceFacts, file: StaticString = #filePath, line: UInt = #line) -> [ImportNormalizationReason] {
-        if case .normalizationRequired(let reasons, _) = verdict(f) { return reasons }
+        if case .normalizationRequired(let reasons, _, _) = verdict(f) { return reasons }
         XCTFail("expected normalization, got \(verdict(f))", file: file, line: line); return []
     }
 
@@ -87,7 +89,7 @@ final class ImportPreflightClassifierTests: XCTestCase {
     func testAcceptedVerdictCarriesExactSourceDuration() {
         let t = time(2121, 600)
         XCTAssertEqual(verdict(facts(duration: .exact(t))), .readyFastPath(sourceDuration: t))
-        if case .normalizationRequired(_, let d) = verdict(facts(duration: .exact(t), fps: 60)) { XCTAssertEqual(d, t) } else { XCTFail() }
+        if case .normalizationRequired(_, _, let d) = verdict(facts(duration: .exact(t), fps: 60)) { XCTAssertEqual(d, t) } else { XCTFail() }
     }
 
     // MARK: - 2. Precedence (ADR-046 §8 canonical order)
@@ -508,5 +510,271 @@ final class ImportPreflightClassifierTests: XCTestCase {
         let v = verdict(f)
         Task.detached { @Sendable in _ = f; _ = v }
         XCTAssertEqual(v, verdict(f))
+    }
+
+    // MARK: - 9. ADR-049 step 8: aperture / tone-map path
+
+    private let oddAperture = ImportApertureFacts.classify(encodedWidth: 1080, encodedHeight: 1920,
+                                                          cleanAperture: ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919), pixelAspectRatio: nil)
+
+    /// A 1080×1919 presentation from a non-full aperture (plus overrides).
+    private func nonFull(fps: Float = 30, primaries: ImportColorPrimaries = .rec709, transfer: ImportTransferFunction = .rec709,
+                         matrix: ImportYCbCrMatrix = .rec709, bpc: Int? = 8, highBitDepthProfile: ImportKnownFlag = .no, dolbyVision: Bool = false,
+                         duration: ImportSourceDuration = .exact(try! MediaTime(value: 1200, timescale: 600)), aperture: ImportApertureFacts? = nil) -> ImportSourceFacts {
+        facts(duration: duration, natural: (1080, 1919), fps: fps, bpc: bpc, highBitDepthProfile: highBitDepthProfile,
+              primaries: primaries, transfer: transfer, matrix: matrix, dolbyVision: dolbyVision, aperture: aperture ?? oddAperture)
+    }
+
+    func testCaseANoReasonIsFastPathWhateverTheAperture() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        XCTAssertEqual(verdict(nonFull()), .readyFastPath(sourceDuration: duration), "non-full aperture alone is not a reason")
+        XCTAssertEqual(verdict(nonFull(aperture: .unreliable)), .readyFastPath(sourceDuration: duration), "no path decision is needed without a reason")
+    }
+
+    func testCaseBFullApertureUsesTheBuiltInPath() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        XCTAssertEqual(verdict(facts(fps: 60)), .normalizationRequired(reasons: [.frameRate(nominal: 60)], renderPath: .builtInToneMap, sourceDuration: duration))
+        guard case .normalizationRequired(let reasons, .builtInToneMap, _) = verdict(facts(bpc: 10, transfer: .hlg)) else { return XCTFail("full HDR") }
+        XCTAssertEqual(reasons.count, 1)
+        guard case .normalizationRequired(_, .builtInToneMap, _) = verdict(facts(dolbyVision: true)) else { return XCTFail("full Dolby Vision") }
+    }
+
+    func testCaseCNonFullProvenSDRUsesGeometryOnly() {
+        guard case .normalizationRequired(let reasons, .sdrApertureGeometry, _) = verdict(nonFull(fps: 60)) else { return XCTFail("SDR 60 fps") }
+        XCTAssertEqual(reasons, [.frameRate(nominal: 60)])
+        // 10-bit with affirmative Rec.709 colour is SDR: bit depth is a reason, not tone mapping.
+        guard case .normalizationRequired(let deep, .sdrApertureGeometry, _) = verdict(nonFull(bpc: 10, highBitDepthProfile: .yes)) else { return XCTFail("10-bit SDR") }
+        XCTAssertEqual(deep, [.hdr(signals: [.bitDepthAbove8, .highBitDepthProfile])])
+    }
+
+    func testCaseDNonFullUnprovenColourIsRejected() {
+        let rejected = ImportPreflightVerdict.rejected(.unsupportedApertureNormalization(.colorNotProvenSDRRec709))
+        for (label, f) in [
+            ("HLG", nonFull(transfer: .hlg)), ("PQ", nonFull(transfer: .pq)),
+            ("Rec.2020 primaries", nonFull(fps: 60, primaries: .rec2020)), ("Rec.2020 matrix", nonFull(fps: 60, matrix: .rec2020)),
+            ("Dolby Vision", nonFull(dolbyVision: true)), ("unknown primaries", nonFull(fps: 60, primaries: .unknown)),
+            ("unknown transfer", nonFull(fps: 60, transfer: .unknown)), ("unknown matrix", nonFull(fps: 60, matrix: .unknown)),
+            ("wide colour (P3)", nonFull(fps: 60, primaries: .other("P3_D65"))),
+        ] {
+            XCTAssertEqual(verdict(f), rejected, label)
+        }
+        XCTAssertEqual(verdict(nonFull(fps: 60, aperture: .unreliable)), .rejected(.unsupportedApertureNormalization(.unreliableAperture)))
+        XCTAssertEqual(ImportExclusionCategory(.unsupportedApertureNormalization(.colorNotProvenSDRRec709)), .invalidOrUnsupportedMedia)
+        XCTAssertEqual(ImportExclusionCategory(.unsupportedApertureNormalization(.unreliableAperture)), .invalidOrUnsupportedMedia)
+    }
+
+    func testStep8PrecedenceAndNoReasonOverride() {
+        // Earlier gates still win.
+        XCTAssertEqual(verdict(nonFull(transfer: .hlg, duration: .exact(try! MediaTime(value: 240, timescale: 600)))), .rejected(.durationBelowMinimum))
+        var landscape = nonFull(transfer: .hlg); landscape.naturalWidth = 1920; landscape.naturalHeight = 1080
+        XCTAssertEqual(verdict(landscape), .rejected(.nonPortraitPresentation(.landscape)))
+        var badAudio = nonFull(transfer: .hlg); badAudio.audio = nil
+        XCTAssertEqual(verdict(badAudio), .rejected(.unsupportedAudioFacts(.missingFormatFacts)))
+        // Several reasons together never override the step-8 rejection.
+        var heavy = nonFull(fps: 60, transfer: .hlg, bpc: 10); heavy.naturalWidth = 2160; heavy.naturalHeight = 3838
+        XCTAssertEqual(verdict(heavy), .rejected(.unsupportedApertureNormalization(.colorNotProvenSDRRec709)))
+    }
+
+    // MARK: - 10. ADR-049 Revision 1: description consensus and transform eligibility
+
+    private func description(_ aperture: ImportApertureFacts, codec: ImportVideoCodec = .h264(fourCC: "avc1"), bpc: Int? = 8, profile: ImportKnownFlag = .no,
+                             primaries: ImportColorPrimaries = .rec709, transfer: ImportTransferFunction = .rec709,
+                             matrix: ImportYCbCrMatrix = .rec709, dolbyVision: Bool = false) -> ImportVideoDescriptionFacts {
+        ImportVideoDescriptionFacts(videoCodec: codec, bitsPerComponent: bpc, highBitDepthProfile: profile, aperture: aperture,
+                                    colorPrimaries: primaries, transferFunction: transfer, ycbcrMatrix: matrix, hasDolbyVisionConfiguration: dolbyVision)
+    }
+
+    private func aperture(_ x: Double, _ y: Double, _ w: Double, _ h: Double, encoded: (Int, Int) = (1080, 1920), par: ImportPixelAspectRatio? = nil) -> ImportApertureFacts {
+        .classify(encodedWidth: encoded.0, encodedHeight: encoded.1, cleanAperture: ImportCleanAperture(x: x, y: y, width: w, height: h), pixelAspectRatio: par)
+    }
+
+    private var fullAperture: ImportApertureFacts { .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil) }
+
+    func testDescriptionConsensusRequiresEveryDescriptionToAgree() {
+        let odd = description(oddAperture)
+        guard case .success(let one) = ImportDescriptionConsensus.evaluate([odd]) else { return XCTFail("one description") }
+        XCTAssertEqual(one.aperture, oddAperture); XCTAssertTrue(one.everyDescriptionProvenSDRRec709)
+        guard case .success = ImportDescriptionConsensus.evaluate([odd, odd]) else { return XCTFail("two identical") }
+        // Several compatible: representation noise within 0.001 sample.
+        guard case .success = ImportDescriptionConsensus.evaluate([odd, odd, description(aperture(0.0004, 0.5004, 1079.9996, 1919))]) else { return XCTFail("compatible") }
+        let disagree: [(String, ImportVideoDescriptionFacts)] = [
+            ("encoded raster", description(aperture(0, 0.5, 1080, 1919, encoded: (1080, 1922)))),
+            ("aperture origin", description(aperture(0, 0.25, 1080, 1919))),
+            ("fractional aperture size", description(aperture(0, 0.5, 1080, 1918.5))),
+            ("full after non-full", description(fullAperture)),
+            ("pixel aspect", description(aperture(0, 0.5, 1080, 1919, par: ImportPixelAspectRatio(horizontalSpacing: 1919, verticalSpacing: 1920)))),
+        ]
+        for (label, later) in disagree {
+            XCTAssertEqual(ImportDescriptionConsensus.evaluate([odd, later]), .failure(.descriptionsDisagree), label)
+        }
+        XCTAssertEqual(ImportDescriptionConsensus.evaluate([description(fullAperture), odd]), .failure(.descriptionsDisagree), "non-full after full")
+        XCTAssertEqual(ImportDescriptionConsensus.evaluate([odd, description(.unreliable)]), .failure(.unreliableAperture), "unreliable later")
+        XCTAssertEqual(ImportDescriptionConsensus.evaluate([]), .failure(.unreliableAperture), "no description")
+        // Colour is judged per description.
+        guard case .success(let mixed) = ImportDescriptionConsensus.evaluate([odd, description(oddAperture, transfer: .hlg)]) else { return XCTFail("mixed colour still agrees on geometry") }
+        XCTAssertFalse(mixed.everyDescriptionProvenSDRRec709)
+    }
+
+    func testEveryDescriptionMustProveSDRForTheGeometryPath() {
+        func withLater(_ later: ImportVideoDescriptionFacts) -> ImportSourceFacts { var f = nonFull(fps: 60); f.additionalVideoDescriptions = [later]; return f }
+        guard case .normalizationRequired(_, .sdrApertureGeometry, _) = verdict(withLater(description(oddAperture))) else { return XCTFail("matching SDR description") }
+        let rejected = ImportPreflightVerdict.rejected(.unsupportedApertureNormalization(.colorNotProvenSDRRec709))
+        for (label, later) in [
+            ("HLG", description(oddAperture, transfer: .hlg)), ("PQ", description(oddAperture, transfer: .pq)),
+            ("Rec.2020 primaries", description(oddAperture, primaries: .rec2020)), ("Rec.2020 matrix", description(oddAperture, matrix: .rec2020)),
+            ("Dolby Vision", description(oddAperture, dolbyVision: true)), ("unknown transfer", description(oddAperture, transfer: .unknown)),
+        ] {
+            XCTAssertEqual(verdict(withLater(later)), rejected, label)
+        }
+        XCTAssertEqual(verdict(withLater(description(fullAperture))), .rejected(.unsupportedApertureNormalization(.descriptionsDisagree)))
+        XCTAssertEqual(verdict(withLater(description(.unreliable))), .rejected(.unsupportedApertureNormalization(.unreliableAperture)))
+    }
+
+    func testBuiltInPathNeedsGeometryConsensusButMayCarryHDRDescriptions() {
+        var f = facts(fps: 60)
+        f.additionalVideoDescriptions = [description(fullAperture, primaries: .rec2020, transfer: .hlg, matrix: .rec2020, dolbyVision: true)]
+        // The later description's signals are reasons too (source-wide union), ahead of frame rate.
+        XCTAssertEqual(verdict(f), .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .dolbyVision]), .frameRate(nominal: 60)],
+                                                          renderPath: .builtInToneMap, sourceDuration: try! MediaTime(value: 1200, timescale: 600)))
+        f.additionalVideoDescriptions = [description(aperture(0, 0.5, 1080, 1919))]
+        XCTAssertEqual(verdict(f), .rejected(.unsupportedApertureNormalization(.descriptionsDisagree)))
+    }
+
+    func testFastPathIgnoresDescriptionsAndTransforms() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        var disagreeing = facts()
+        // Reason-free, supported descriptions whose apertures disagree or are unreliable: copied, not rendered.
+        disagreeing.additionalVideoDescriptions = [description(aperture(0, 0.5, 1080, 1919)), description(.unreliable, codec: .hevc(fourCC: "hvc1"))]
+        XCTAssertEqual(verdict(disagreeing), .readyFastPath(sourceDuration: duration))
+        // 540×960 sheared by 0.2 presents 732×960: still inside the 1080p class, so no reason.
+        XCTAssertEqual(verdict(facts(natural: (540, 960), transform: ImportAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0))), .readyFastPath(sourceDuration: duration), "shear, copied not rendered")
+        // A 30° rotation of a 540×960 frame still presents a portrait inside the 1080p class.
+        let angle = Double.pi / 6
+        XCTAssertEqual(verdict(facts(natural: (540, 960), transform: ImportAffineTransform(a: cos(angle), b: sin(angle), c: -sin(angle), d: cos(angle), tx: 480, ty: 0))),
+                       .readyFastPath(sourceDuration: duration), "arbitrary rotation, copied not rendered")
+    }
+
+    func testNormalizationTransformGate() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        let builtIn = { (reasons: [ImportNormalizationReason]) in ImportPreflightVerdict.normalizationRequired(reasons: reasons, renderPath: .builtInToneMap, sourceDuration: duration) }
+        let sixty: [ImportNormalizationReason] = [.frameRate(nominal: 60)]
+        for (label, natural, transform) in [
+            ("identity", (1080, 1920), ImportAffineTransform.identity),
+            ("90°", (1920, 1080), ImportAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0)),
+            ("180°", (1080, 1920), ImportAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 1080, ty: 1920)),
+            ("270°", (1920, 1080), ImportAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1920)),
+            ("mirror X", (1080, 1920), ImportAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 1080, ty: 0)),
+            ("mirror Y", (1080, 1920), ImportAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 1920)),
+            ("translation", (1080, 1920), ImportAffineTransform(a: 1, b: 0, c: 0, d: 1, tx: 12.5, ty: -3)),
+            ("non-uniform scale", (1080, 1920), ImportAffineTransform(a: 0.75, b: 0, c: 0, d: 1, tx: 0, ty: 0)),
+        ] as [(String, (Int, Int), ImportAffineTransform)] {
+            XCTAssertEqual(verdict(facts(natural: natural, transform: transform, fps: 60)), builtIn(sixty), label)
+        }
+        // Uniform scale baked from an oversized natural raster: presents 1080×1920.
+        XCTAssertEqual(verdict(facts(natural: (2160, 3840), transform: ImportAffineTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0), fps: 60)), builtIn(sixty))
+        // The geometry path takes the same scaled transforms.
+        var scaledOdd = nonFull(fps: 60); scaledOdd.preferredTransform = ImportAffineTransform(a: 0.8, b: 0, c: 0, d: 1, tx: 0, ty: 0)
+        guard case .normalizationRequired(_, .sdrApertureGeometry, _) = verdict(scaledOdd) else { return XCTFail("scaled geometry path") }
+        // Ineligible transforms are rejected only because normalization is needed.
+        let angle = Double.pi / 180
+        for (label, transform) in [
+            ("shear", ImportAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0)),
+            ("1° rotation", ImportAffineTransform(a: cos(angle), b: sin(angle), c: -sin(angle), d: cos(angle), tx: 40, ty: 0)),
+        ] {
+            var f = facts(fps: 60); f.preferredTransform = transform
+            XCTAssertEqual(verdict(f), .rejected(.unsupportedNormalizationTransform), label)
+        }
+        // A near-zero basis collapses the presentation; the earlier raster gate already rejects it.
+        var collapsed = facts(fps: 60); collapsed.preferredTransform = ImportAffineTransform(a: 1e-9, b: 0, c: 0, d: 1, tx: 0, ty: 0)
+        XCTAssertEqual(verdict(collapsed), .rejected(.unsupportedWorkingRaster(presentationWidth: 0, presentationHeight: 1920)))
+        XCTAssertEqual(ImportExclusionCategory(.unsupportedNormalizationTransform), .invalidOrUnsupportedMedia)
+    }
+
+    func testRevisionOneGatePrecedence() {
+        let shear = ImportAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0)
+        // Earlier gates still win.
+        XCTAssertEqual(verdict(facts(duration: .exact(try! MediaTime(value: 240, timescale: 600)), transform: shear, fps: 60)), .rejected(.durationBelowMinimum))
+        // Consensus is judged before the transform.
+        var both = nonFull(fps: 60); both.preferredTransform = shear; both.additionalVideoDescriptions = [description(fullAperture)]
+        XCTAssertEqual(verdict(both), .rejected(.unsupportedApertureNormalization(.descriptionsDisagree)))
+        // No reason combination overrides the transform gate.
+        var heavy = facts(transform: shear, fps: 60, transfer: .hlg); heavy.naturalWidth = 2160; heavy.naturalHeight = 3840
+        XCTAssertEqual(verdict(heavy), .rejected(.unsupportedNormalizationTransform))
+    }
+
+    // MARK: - 11. Source-wide codec gate and HDR reasons (every video format description)
+
+    private func withLater(_ base: ImportSourceFacts, _ later: ImportVideoDescriptionFacts...) -> ImportSourceFacts {
+        var f = base; f.additionalVideoDescriptions = later; return f
+    }
+
+    func testEveryDescriptionMustBeASupportedCodecFamily() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        let ready = ImportPreflightVerdict.readyFastPath(sourceDuration: duration)
+        let h264 = description(fullAperture), hevc = description(fullAperture, codec: .hevc(fourCC: "hvc1"))
+        XCTAssertEqual(verdict(withLater(facts(), h264, h264)), ready, "all H.264")
+        XCTAssertEqual(verdict(withLater(facts(codec: .hevc(fourCC: "hvc1")), hevc)), ready, "all HEVC")
+        XCTAssertEqual(verdict(withLater(facts(), hevc)), ready, "H.264 then HEVC")
+        XCTAssertEqual(verdict(withLater(facts(codec: .hevc(fourCC: "hev1")), description(fullAperture, codec: .h264(fourCC: "avc3")))), ready, "aliases, HEVC then H.264")
+        let prores = ImportVideoCodec.unsupported(fourCC: "apcn"), mjpeg = ImportVideoCodec.unsupported(fourCC: "jpeg")
+        XCTAssertEqual(verdict(withLater(facts(), description(fullAperture, codec: prores))), .rejected(.unsupportedCodec(prores)), "H.264 then ProRes")
+        XCTAssertEqual(verdict(withLater(facts(codec: .hevc(fourCC: "hvc1")), description(fullAperture, codec: mjpeg))), .rejected(.unsupportedCodec(mjpeg)), "HEVC then MJPEG")
+        XCTAssertEqual(verdict(withLater(facts(), description(fullAperture, codec: .unknown))), .rejected(.unsupportedCodec(.unknown)), "later unknown")
+        XCTAssertEqual(verdict(withLater(facts(codec: prores), h264)), .rejected(.unsupportedCodec(prores)), "unsupported first")
+        // Several unsupported: the first in source order is reported.
+        XCTAssertEqual(verdict(withLater(facts(), description(fullAperture, codec: mjpeg), description(fullAperture, codec: prores))), .rejected(.unsupportedCodec(mjpeg)))
+        // The codec gate is earlier than every reason and the path decision.
+        XCTAssertEqual(verdict(withLater(facts(fps: 60), description(fullAperture, codec: prores, transfer: .hlg))), .rejected(.unsupportedCodec(prores)))
+        XCTAssertEqual(verdict(withLater(nonFull(fps: 60), description(.unreliable, codec: prores))), .rejected(.unsupportedCodec(prores)))
+        // …and later than the container gate.
+        XCTAssertEqual(verdict(withLater(facts(container: .isoBaseMedia(brands: ["isom"])), description(fullAperture, codec: prores))),
+                       .rejected(.unsupportedContainer(.isoBaseMedia(brands: ["isom"]))))
+        XCTAssertEqual(ImportExclusionCategory(.unsupportedCodec(prores)), .invalidOrUnsupportedMedia)
+    }
+
+    func testALaterDescriptionCanIntroduceTheOnlyHDRReason() {
+        let duration = try! MediaTime(value: 1200, timescale: 600)
+        for (label, later, signal) in [
+            ("HLG", description(fullAperture, transfer: .hlg), ImportHDRSignal.hlgTransfer),
+            ("PQ", description(fullAperture, transfer: .pq), .pqTransfer),
+            ("Rec.2020 primaries", description(fullAperture, primaries: .rec2020), .rec2020Primaries),
+            ("Rec.2020 matrix", description(fullAperture, matrix: .rec2020), .rec2020Matrix),
+            ("Dolby Vision", description(fullAperture, dolbyVision: true), .dolbyVision),
+            ("> 8-bit", description(fullAperture, bpc: 10), .bitDepthAbove8),
+            ("Main10 profile", description(fullAperture, codec: .hevc(fourCC: "hvc1"), profile: .yes), .highBitDepthProfile),
+        ] {
+            // The first description is completely Phase-5-ready; the later one is the only signal.
+            XCTAssertEqual(verdict(withLater(facts(), later)),
+                           .normalizationRequired(reasons: [.hdr(signals: [signal])], renderPath: .builtInToneMap, sourceDuration: duration), label)
+        }
+        // Unknown bit depth / profile and ancillary metadata signal nothing.
+        XCTAssertEqual(verdict(withLater(facts(), description(fullAperture, bpc: nil, profile: .unknown))), .readyFastPath(sourceDuration: duration))
+        XCTAssertEqual(verdict(withLater(facts(ancillary: [.ambientViewingEnvironment, .masteringDisplayColorVolume, .contentLightLevel]), description(fullAperture))),
+                       .readyFastPath(sourceDuration: duration))
+    }
+
+    func testLaterHDROnNonFullOrUnreliableAperturesIsRejected() {
+        // First ready and full, later non-full HDR: a reason, then the descriptions disagree.
+        XCTAssertEqual(verdict(withLater(facts(), description(aperture(0, 0.5, 1080, 1919), transfer: .hlg))),
+                       .rejected(.unsupportedApertureNormalization(.descriptionsDisagree)))
+        // First ready and non-full SDR, later HLG with the same aperture: colour not proven.
+        XCTAssertEqual(verdict(withLater(nonFull(), description(oddAperture, transfer: .hlg))),
+                       .rejected(.unsupportedApertureNormalization(.colorNotProvenSDRRec709)))
+        // First ready, later unreliable aperture carrying an HDR signal.
+        XCTAssertEqual(verdict(withLater(facts(), description(.unreliable, transfer: .pq))),
+                       .rejected(.unsupportedApertureNormalization(.unreliableAperture)))
+    }
+
+    func testHDRSignalsUnionAcrossDescriptionsIndependentOfOrder() {
+        // Split signals merge; duplicates stay single; canonical order; frame rate still follows HDR.
+        let split = withLater(facts(fps: 60, transfer: .hlg), description(fullAperture, dolbyVision: true), description(fullAperture, bpc: 10, transfer: .hlg))
+        XCTAssertEqual(ImportPreflightClassifier.hdrSignals(in: split), [.hlgTransfer, .bitDepthAbove8, .dolbyVision])
+        guard case .normalizationRequired(let reasons, .builtInToneMap, _) = verdict(split) else { return XCTFail("split signals") }
+        XCTAssertEqual(reasons, [.hdr(signals: [.hlgTransfer, .bitDepthAbove8, .dolbyVision]), .frameRate(nominal: 60)])
+        // Reversing the descriptions changes neither the signal set nor the reasons.
+        let reversed = withLater(facts(fps: 60, bpc: 10, transfer: .hlg), description(fullAperture, dolbyVision: true), description(fullAperture, transfer: .hlg))
+        XCTAssertEqual(ImportPreflightClassifier.hdrSignals(in: reversed), ImportPreflightClassifier.hdrSignals(in: split))
+        guard case .normalizationRequired(let reversedReasons, _, _) = verdict(reversed) else { return XCTFail("reversed") }
+        XCTAssertEqual(reversedReasons, reasons)
     }
 }

@@ -269,10 +269,10 @@ final class ImportSourceInspectorTests: XCTestCase {
 
     func testRasterAndFrameRateFactsProduceNormalizationReasons() async throws {
         let big = try await inspector.inspect(url: try await write(Fixture(width: 1440, height: 2560, frames: 45, name: "big")))
-        XCTAssertEqual(ImportPreflightClassifier.classify(big), .normalizationRequired(reasons: [.raster(presentationWidth: 1440, presentationHeight: 2560)], sourceDuration: try MediaTime(value: 900, timescale: 600)))
+        XCTAssertEqual(ImportPreflightClassifier.classify(big), .normalizationRequired(reasons: [.raster(presentationWidth: 1440, presentationHeight: 2560)], renderPath: .builtInToneMap, sourceDuration: try MediaTime(value: 900, timescale: 600)))
         let fast = try await inspector.inspect(url: try await write(Fixture(frames: 90, frameDuration: CMTime(value: 10, timescale: 600), name: "fast")))   // 60 fps, 1.5 s
         XCTAssertEqual(fast.nominalFrameRate, 60, accuracy: 0.01)
-        XCTAssertEqual(ImportPreflightClassifier.classify(fast), .normalizationRequired(reasons: [.frameRate(nominal: fast.nominalFrameRate)], sourceDuration: try MediaTime(value: 900, timescale: 600)))
+        XCTAssertEqual(ImportPreflightClassifier.classify(fast), .normalizationRequired(reasons: [.frameRate(nominal: fast.nominalFrameRate)], renderPath: .builtInToneMap, sourceDuration: try MediaTime(value: 900, timescale: 600)))
     }
 
     // MARK: - Format-description mapping (synthetic CMFormatDescription; cases AVAssetWriter cannot encode)
@@ -284,7 +284,7 @@ final class ImportSourceInspectorTests: XCTestCase {
         return try XCTUnwrap(out)
     }
     private func baseFacts() -> ImportSourceFacts {
-        ImportSourceFacts(duration: .exact(try! MediaTime(value: 1200, timescale: 600)), isReadable: true, isPlayable: true, isExportable: true, hasProtectedContent: false, hasVideoTrack: true, hasAudioTrack: false, container: .quickTime, videoCodec: .unknown, naturalWidth: 1080, naturalHeight: 1920, preferredTransform: .identity, nominalFrameRate: 30, minimumFrameDuration: nil, bitsPerComponent: nil, highBitDepthProfile: .unknown, fullRangeVideo: .unknown, colorPrimaries: .unknown, transferFunction: .unknown, ycbcrMatrix: .unknown, hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [], audio: nil, byteCount: 1, modificationDate: nil)
+        ImportSourceFacts(duration: .exact(try! MediaTime(value: 1200, timescale: 600)), isReadable: true, isPlayable: true, isExportable: true, hasProtectedContent: false, hasVideoTrack: true, hasAudioTrack: false, container: .quickTime, videoCodec: .unknown, naturalWidth: 1080, naturalHeight: 1920, preferredTransform: .identity, nominalFrameRate: 30, minimumFrameDuration: nil, bitsPerComponent: nil, highBitDepthProfile: .unknown, fullRangeVideo: .unknown, colorPrimaries: .unknown, transferFunction: .unknown, ycbcrMatrix: .unknown, hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [], aperture: .unreliable, audio: nil, byteCount: 1, modificationDate: nil)
     }
     private func fourCC(_ s: String) -> FourCharCode { s.utf8.reduce(0) { ($0 << 8) | FourCharCode($1) } }
 
@@ -313,7 +313,7 @@ final class ImportSourceInspectorTests: XCTestCase {
         AVAssetImportSourceInspector.apply(videoFormatDescription: try description(codec: fourCC("hvc1"), extensions: hlg2020), to: &facts)
         XCTAssertEqual(facts.colorPrimaries, .rec2020); XCTAssertEqual(facts.transferFunction, .hlg); XCTAssertEqual(facts.ycbcrMatrix, .rec2020)
         XCTAssertEqual(facts.bitsPerComponent, 10); XCTAssertEqual(facts.fullRangeVideo, .yes)
-        XCTAssertEqual(ImportPreflightClassifier.classify(facts), .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .bitDepthAbove8])], sourceDuration: try MediaTime(value: 1200, timescale: 600)))
+        XCTAssertEqual(ImportPreflightClassifier.classify(facts), .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer, .rec2020Primaries, .rec2020Matrix, .bitDepthAbove8])], renderPath: .builtInToneMap, sourceDuration: try MediaTime(value: 1200, timescale: 600)))
 
         var pq = baseFacts()
         AVAssetImportSourceInspector.apply(videoFormatDescription: try description(codec: fourCC("avc1"), extensions: [kCMFormatDescriptionExtension_TransferFunction: kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ]), to: &pq)
@@ -355,7 +355,7 @@ final class ImportSourceInspectorTests: XCTestCase {
         XCTAssertEqual(facts.highBitDepthProfile, .yes)
         XCTAssertEqual(facts.ancillaryHDRMetadata, [.masteringDisplayColorVolume, .contentLightLevel, .ambientViewingEnvironment])
         // Policy stays in Step 1: DV + Main10 normalize; ancillary metadata alone does not.
-        XCTAssertEqual(ImportPreflightClassifier.classify(facts), .normalizationRequired(reasons: [.hdr(signals: [.highBitDepthProfile, .dolbyVision])], sourceDuration: try MediaTime(value: 1200, timescale: 600)))
+        XCTAssertEqual(ImportPreflightClassifier.classify(facts), .normalizationRequired(reasons: [.hdr(signals: [.highBitDepthProfile, .dolbyVision])], renderPath: .builtInToneMap, sourceDuration: try MediaTime(value: 1200, timescale: 600)))
         var ancillaryOnly = baseFacts()
         AVAssetImportSourceInspector.apply(videoFormatDescription: try description(codec: fourCC("avc1"), extensions: [kCMFormatDescriptionExtension_AmbientViewingEnvironment: Data(repeating: 0, count: 8), kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ["avcC": Data([1, 100, 0, 40])]]), to: &ancillaryOnly)
         XCTAssertEqual(ancillaryOnly.ancillaryHDRMetadata, [.ambientViewingEnvironment]); XCTAssertFalse(ancillaryOnly.hasDolbyVisionConfiguration)
@@ -481,5 +481,164 @@ final class ImportSourceInspectorTests: XCTestCase {
         do { _ = try await body(); XCTFail("expected \(expected)", file: file, line: line) }
         catch let error as ImportInspectionError { XCTAssertEqual(error, expected, file: file, line: line) }
         catch { XCTFail("unexpected \(error)", file: file, line: line) }
+    }
+
+    // MARK: - ADR-049 aperture facts (format description → lossless, classified)
+
+    private func apertureFacts(width: Int32 = 1080, height: Int32 = 1920, extensions: [CFString: Any]) throws -> ImportApertureFacts {
+        var out: CMFormatDescription?
+        XCTAssertEqual(CMVideoFormatDescriptionCreate(allocator: nil, codecType: fourCC("avc1"), width: width, height: height,
+                                                      extensions: extensions as CFDictionary, formatDescriptionOut: &out), noErr)
+        return AVAssetImportSourceInspector.apertureFacts(from: try XCTUnwrap(out))
+    }
+
+    private func cleanAperture(_ width: Any, _ height: Any, _ h: Any, _ v: Any) -> [CFString: Any] {
+        [kCMFormatDescriptionExtension_CleanAperture: [
+            kCMFormatDescriptionKey_CleanApertureWidth: width, kCMFormatDescriptionKey_CleanApertureHeight: height,
+            kCMFormatDescriptionKey_CleanApertureHorizontalOffset: h, kCMFormatDescriptionKey_CleanApertureVerticalOffset: v] as [CFString: Any]]
+    }
+
+    func testAbsentApertureIsTheFullEncodedRaster() throws {
+        guard case .full(let geometry) = try apertureFacts(extensions: [:]) else { return XCTFail("expected full") }
+        XCTAssertEqual(geometry.encodedWidth, 1080); XCTAssertEqual(geometry.encodedHeight, 1920)
+        XCTAssertEqual(geometry.cleanAperture, ImportCleanAperture(x: 0, y: 0, width: 1080, height: 1920))
+        XCTAssertEqual(geometry.pixelAspectRatio, .square)
+    }
+
+    func testExactAndNoiseLevelFullApertures() throws {
+        guard case .full = try apertureFacts(extensions: cleanAperture(1080, 1920, 0, 0)) else { return XCTFail("exact full") }
+        // Rational representation noise (1080 + 1e-6, offset 1e-4) is still full.
+        let noisy: [CFString: Any] = [kCMFormatDescriptionExtension_CleanAperture: [
+            kCMFormatDescriptionKey_CleanApertureWidthRational: [1_080_000_001, 1_000_000],
+            kCMFormatDescriptionKey_CleanApertureHeightRational: [1920, 1],
+            kCMFormatDescriptionKey_CleanApertureHorizontalOffsetRational: [1, 10_000],
+            kCMFormatDescriptionKey_CleanApertureVerticalOffsetRational: [0, 1]] as [CFString: Any]]
+        guard case .full = try apertureFacts(extensions: noisy) else { return XCTFail("noise within 0.001 is full") }
+        // Just beyond the tolerance is not (0.002 samples smaller, centred: origin 0.001).
+        guard case .nonFull = try apertureFacts(extensions: cleanAperture(1080, 1919.998, 0, 0)) else { return XCTFail("0.002 smaller is non-full") }
+        // A full-size aperture shifted beyond the tolerance leaves the raster: unreliable.
+        XCTAssertEqual(try apertureFacts(extensions: cleanAperture(1080, 1920, 0.002, 0)), .unreliable)
+    }
+
+    func testHalfSampleAndOffsetAperturesAreNonFullAndLossless() throws {
+        guard case .nonFull(let centred) = try apertureFacts(extensions: cleanAperture(1080, 1919, 0, 0)) else { return XCTFail("half-sample") }
+        XCTAssertEqual(centred.cleanAperture, ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919), "fractional origin kept, not rounded")
+        guard case .nonFull(let offset) = try apertureFacts(extensions: cleanAperture(1000, 1800, 20, 40)) else { return XCTFail("offset") }
+        XCTAssertEqual(offset.cleanAperture, ImportCleanAperture(x: 60, y: 100, width: 1000, height: 1800))
+        // Exact rational offset of -1/2.
+        let rational: [CFString: Any] = [kCMFormatDescriptionExtension_CleanAperture: [
+            kCMFormatDescriptionKey_CleanApertureWidthRational: [1080, 1], kCMFormatDescriptionKey_CleanApertureHeightRational: [1919, 1],
+            kCMFormatDescriptionKey_CleanApertureHorizontalOffsetRational: [0, 1], kCMFormatDescriptionKey_CleanApertureVerticalOffsetRational: [-1, 2]] as [CFString: Any]]
+        guard case .nonFull(let top) = try apertureFacts(extensions: rational) else { return XCTFail("rational") }
+        XCTAssertEqual(top.cleanAperture, ImportCleanAperture(x: 0, y: 0, width: 1080, height: 1919))
+    }
+
+    func testUnusableApertureEvidenceIsUnreliable() throws {
+        for (label, extensions) in [
+            ("NaN", cleanAperture(Double.nan, 1920, 0, 0)), ("infinite", cleanAperture(1080, Double.infinity, 0, 0)),
+            ("zero", cleanAperture(0, 1920, 0, 0)), ("negative", cleanAperture(1080, -1920, 0, 0)),
+            ("outside the raster", cleanAperture(1080, 1920, 10, 0)), ("not a number", cleanAperture("1080", 1920, 0, 0)),
+            ("zero denominator", [kCMFormatDescriptionExtension_CleanAperture: [
+                kCMFormatDescriptionKey_CleanApertureWidthRational: [1080, 0], kCMFormatDescriptionKey_CleanApertureHeightRational: [1920, 1],
+                kCMFormatDescriptionKey_CleanApertureHorizontalOffsetRational: [0, 1], kCMFormatDescriptionKey_CleanApertureVerticalOffsetRational: [0, 1]] as [CFString: Any]]),
+            ("missing key", [kCMFormatDescriptionExtension_CleanAperture: [kCMFormatDescriptionKey_CleanApertureWidth: 1080] as [CFString: Any]]),
+            ("zero pixel aspect", [kCMFormatDescriptionExtension_PixelAspectRatio: [kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing: 0, kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing: 1] as [CFString: Any]]),
+            ("negative pixel aspect", [kCMFormatDescriptionExtension_PixelAspectRatio: [kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing: 4, kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing: -3] as [CFString: Any]]),
+        ] as [(String, [CFString: Any])] {
+            XCTAssertEqual(try apertureFacts(extensions: extensions), .unreliable, label)
+        }
+        // Raster sizes outside the accepted range.
+        XCTAssertEqual(ImportApertureFacts.classify(encodedWidth: 0, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil), .unreliable)
+        XCTAssertEqual(ImportApertureFacts.classify(encodedWidth: ImportApertureFacts.maximumEncodedEdge + 1, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil), .unreliable)
+    }
+
+    func testPixelAspectIsKeptAndTransformsDoNotChangeApertureIdentity() throws {
+        let par: [CFString: Any] = [kCMFormatDescriptionExtension_PixelAspectRatio: [kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing: 1919, kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing: 1920] as [CFString: Any]]
+        guard case .full(let geometry) = try apertureFacts(width: 1920, height: 1080, extensions: par) else { return XCTFail("par") }
+        XCTAssertEqual(geometry.pixelAspectRatio, ImportPixelAspectRatio(horizontalSpacing: 1919, verticalSpacing: 1920))
+        // The aperture is a fact of the encoded raster; the preferred transform (rotation / mirror)
+        // never changes it.
+        var description: CMFormatDescription?
+        CMVideoFormatDescriptionCreate(allocator: nil, codecType: fourCC("avc1"), width: 1080, height: 1920, extensions: cleanAperture(1000, 1800, 20, 40) as CFDictionary, formatDescriptionOut: &description)
+        var results: [ImportApertureFacts] = []
+        for transform in [ImportAffineTransform.identity, ImportAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1920, ty: 0), ImportAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 1080, ty: 0)] {
+            var facts = baseFacts()
+            facts.preferredTransform = transform
+            AVAssetImportSourceInspector.apply(videoFormatDescription: try XCTUnwrap(description), to: &facts)
+            results.append(facts.aperture)
+        }
+        XCTAssertEqual(Set(results).count, 1)
+        guard case .nonFull = results[0] else { return XCTFail("offset aperture") }
+    }
+
+    // MARK: - ADR-049 Revision 1: every video format description
+
+    private func videoDescription(width: Int32 = 1080, height: Int32 = 1920, extensions: [CFString: Any]) throws -> CMFormatDescription {
+        var out: CMFormatDescription?
+        XCTAssertEqual(CMVideoFormatDescriptionCreate(allocator: nil, codecType: fourCC("avc1"), width: width, height: height, extensions: extensions as CFDictionary, formatDescriptionOut: &out), noErr)
+        return try XCTUnwrap(out)
+    }
+
+    func testEveryVideoFormatDescriptionIsRecorded() throws {
+        let sdr: [CFString: Any] = [kCMFormatDescriptionExtension_ColorPrimaries: kCMFormatDescriptionColorPrimaries_ITU_R_709_2,
+                                    kCMFormatDescriptionExtension_TransferFunction: kCMFormatDescriptionTransferFunction_ITU_R_709_2,
+                                    kCMFormatDescriptionExtension_YCbCrMatrix: kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2]
+        var hlg = sdr; hlg[kCMFormatDescriptionExtension_TransferFunction] = kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG
+        for (key, value) in cleanAperture(1080, 1919, 0, 0) { hlg[key] = value }
+        let first = try videoDescription(extensions: sdr), second = try videoDescription(extensions: hlg)
+
+        var single = baseFacts()
+        AVAssetImportSourceInspector.apply(videoFormatDescriptions: [first], to: &single)
+        XCTAssertEqual(single.additionalVideoDescriptions, [], "a single description is the one-element case")
+        XCTAssertEqual(single.videoDescriptions.count, 1)
+
+        var multiple = baseFacts()
+        AVAssetImportSourceInspector.apply(videoFormatDescriptions: [first, second], to: &multiple)
+        XCTAssertEqual(multiple.transferFunction, .rec709, "the first description still fills the top-level facts")
+        guard case .full = multiple.aperture else { return XCTFail("first is full") }
+        XCTAssertEqual(multiple.additionalVideoDescriptions.count, 1)
+        let later = multiple.additionalVideoDescriptions[0]
+        XCTAssertEqual(later.transferFunction, .hlg)
+        XCTAssertEqual(later.colorPrimaries, .rec709)
+        guard case .nonFull(let geometry) = later.aperture else { return XCTFail("later is non-full") }
+        XCTAssertEqual(geometry.cleanAperture, ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919))
+        XCTAssertFalse(later.isProvenSDRRec709)
+
+        var none = baseFacts()
+        AVAssetImportSourceInspector.apply(videoFormatDescriptions: [], to: &none)
+        XCTAssertEqual(none, baseFacts(), "no description, no facts")
+    }
+
+    func testLaterDescriptionsKeepCodecBitDepthAndProfile() throws {
+        func make(_ codec: String, _ extensions: [CFString: Any]) throws -> CMFormatDescription {
+            var out: CMFormatDescription?
+            XCTAssertEqual(CMVideoFormatDescriptionCreate(allocator: nil, codecType: fourCC(codec), width: 1080, height: 1920, extensions: extensions as CFDictionary, formatDescriptionOut: &out), noErr)
+            return try XCTUnwrap(out)
+        }
+        let ready = try make("avc1", [kCMFormatDescriptionExtension_BitsPerComponent: 8,
+                                      kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ["avcC": Data([1, 100, 0, 40, 0xFF, 0xE1, 0])]])
+        let main10 = try make("hvc1", [kCMFormatDescriptionExtension_BitsPerComponent: 10,
+                                       kCMFormatDescriptionExtension_TransferFunction: kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ,
+                                       kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ["hvcC": Data([1, 2, 0, 0]), "dvcC": Data(repeating: 0, count: 24)]])
+        let prores = try make("apcn", [:])
+        let truncated = try make("avc3", [kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ["avcC": Data([1])]])
+        var facts = baseFacts()
+        AVAssetImportSourceInspector.apply(videoFormatDescriptions: [ready, main10, prores, truncated], to: &facts)
+        XCTAssertEqual(facts.videoCodec, .h264(fourCC: "avc1")); XCTAssertEqual(facts.bitsPerComponent, 8); XCTAssertEqual(facts.highBitDepthProfile, .no)
+        let later = facts.additionalVideoDescriptions
+        XCTAssertEqual(later.count, 3)
+        XCTAssertEqual(later[0].videoCodec, .hevc(fourCC: "hvc1"))
+        XCTAssertEqual(later[0].bitsPerComponent, 10)
+        XCTAssertEqual(later[0].highBitDepthProfile, .yes)
+        XCTAssertEqual(later[0].transferFunction, .pq)
+        XCTAssertTrue(later[0].hasDolbyVisionConfiguration)
+        XCTAssertEqual(later[1].videoCodec, .unsupported(fourCC: "apcn"))
+        XCTAssertNil(later[1].bitsPerComponent)
+        XCTAssertEqual(later[1].highBitDepthProfile, .unknown)
+        XCTAssertEqual(later[2].videoCodec, .h264(fourCC: "avc3"))
+        XCTAssertEqual(later[2].highBitDepthProfile, .unknown, "truncated avcC proves nothing")
+        // The first description goes through the same parser.
+        XCTAssertEqual(facts.videoDescriptions[0], AVAssetImportSourceInspector.descriptionFacts(from: ready))
+        XCTAssertEqual(ImportPreflightClassifier.classify(facts), .rejected(.unsupportedCodec(.unsupported(fourCC: "apcn"))))
     }
 }

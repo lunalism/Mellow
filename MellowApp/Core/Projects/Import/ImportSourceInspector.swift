@@ -76,7 +76,7 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
             naturalWidth: 0, naturalHeight: 0, preferredTransform: .identity,
             nominalFrameRate: 0, minimumFrameDuration: nil, bitsPerComponent: nil, highBitDepthProfile: .unknown, fullRangeVideo: .unknown,
             colorPrimaries: .unknown, transferFunction: .unknown, ycbcrMatrix: .unknown,
-            hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [],
+            hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [], aperture: .unreliable,
             audio: nil, byteCount: byteCount, modificationDate: modificationDate)
 
         // Canonical video track: the first video track in file order (the established production
@@ -93,9 +93,7 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
                 if minFrameDuration.isNumeric, minFrameDuration.value > 0 {
                     facts.minimumFrameDuration = try? MediaTime(value: minFrameDuration.value, timescale: minFrameDuration.timescale)
                 }
-                if let description = descriptions.first {
-                    Self.apply(videoFormatDescription: description, to: &facts)
-                }
+                Self.apply(videoFormatDescriptions: descriptions, to: &facts)
             } catch let cancellation as CancellationError {
                 throw cancellation
             } catch {
@@ -120,13 +118,17 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
     /// Fills codec, color, bit-depth, profile, HDR-signal and ancillary-metadata facts from one
     /// video format description. Missing evidence stays `unknown` — nothing defaults to Rec.709.
     static func apply(videoFormatDescription description: CMFormatDescription, to facts: inout ImportSourceFacts) {
-        facts.videoCodec = ImportVideoCodec.classify(fourCC: fourCC(CMFormatDescriptionGetMediaSubType(description)))
-
-        func string(_ key: CFString) -> String? { CMFormatDescriptionGetExtension(description, extensionKey: key) as? String }
-        facts.colorPrimaries = Self.primaries(string(kCMFormatDescriptionExtension_ColorPrimaries))
-        facts.transferFunction = Self.transfer(string(kCMFormatDescriptionExtension_TransferFunction))
-        facts.ycbcrMatrix = Self.matrix(string(kCMFormatDescriptionExtension_YCbCrMatrix))
-        facts.bitsPerComponent = (CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_BitsPerComponent) as? NSNumber)?.intValue
+        // Codec, bit depth, profile, colour signalling, Dolby Vision configuration and aperture: the same
+        // per-description reading every further description gets (ADR-049 Revision 1).
+        let pathFacts = descriptionFacts(from: description)
+        facts.videoCodec = pathFacts.videoCodec
+        facts.bitsPerComponent = pathFacts.bitsPerComponent
+        facts.highBitDepthProfile = pathFacts.highBitDepthProfile
+        facts.colorPrimaries = pathFacts.colorPrimaries
+        facts.transferFunction = pathFacts.transferFunction
+        facts.ycbcrMatrix = pathFacts.ycbcrMatrix
+        facts.hasDolbyVisionConfiguration = pathFacts.hasDolbyVisionConfiguration
+        facts.aperture = pathFacts.aperture
         if let fullRange = (CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_FullRangeVideo) as? NSNumber)?.boolValue {
             facts.fullRangeVideo = fullRange ? .yes : .no
         }
@@ -137,11 +139,90 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
         if CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_AmbientViewingEnvironment) != nil { ancillary.insert(.ambientViewingEnvironment) }
         facts.ancillaryHDRMetadata = ancillary
 
+    }
+
+    /// Encoded raster, clean aperture and pixel aspect ratio exactly as the format description
+    /// states them (ADR-049 Decision 1). The clean-aperture extension gives the aperture size and
+    /// the offset of its centre from the raster centre (positive = right / down), each as a number
+    /// or an exact rational; it is resolved to a top-left rectangle without rounding. A missing
+    /// extension is the whole raster / square pixels (Core Media's definition); a present but
+    /// unparseable one is never guessed at — it makes the facts unreliable.
+    static func apertureFacts(from description: CMFormatDescription) -> ImportApertureFacts {
+        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        let width = Int(dimensions.width), height = Int(dimensions.height)
+
+        var aperture: ImportCleanAperture?
+        if let raw = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_CleanAperture) {
+            guard let values = raw as? [String: Any],
+                  let apertureWidth = rationalValue(values, kCMFormatDescriptionKey_CleanApertureWidthRational, kCMFormatDescriptionKey_CleanApertureWidth),
+                  let apertureHeight = rationalValue(values, kCMFormatDescriptionKey_CleanApertureHeightRational, kCMFormatDescriptionKey_CleanApertureHeight),
+                  let horizontalOffset = rationalValue(values, kCMFormatDescriptionKey_CleanApertureHorizontalOffsetRational, kCMFormatDescriptionKey_CleanApertureHorizontalOffset),
+                  let verticalOffset = rationalValue(values, kCMFormatDescriptionKey_CleanApertureVerticalOffsetRational, kCMFormatDescriptionKey_CleanApertureVerticalOffset)
+            else { return .unreliable }
+            aperture = ImportCleanAperture(
+                x: (Double(width) - apertureWidth) / 2 + horizontalOffset,
+                y: (Double(height) - apertureHeight) / 2 + verticalOffset,
+                width: apertureWidth, height: apertureHeight)
+        }
+
+        var ratio: ImportPixelAspectRatio?
+        if let raw = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) {
+            guard let values = raw as? [String: Any],
+                  let horizontal = integerValue(values[kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing as String]),
+                  let vertical = integerValue(values[kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing as String])
+            else { return .unreliable }
+            ratio = ImportPixelAspectRatio(horizontalSpacing: horizontal, verticalSpacing: vertical)
+        }
+        return .classify(encodedWidth: width, encodedHeight: height, cleanAperture: aperture, pixelAspectRatio: ratio)
+    }
+
+    /// Every video format description of the selected track (ADR-049 Revision 1): the first fills
+    /// the top-level facts as before; each further one is recorded as its own aperture / colour
+    /// facts, so a path decision can require all of them to agree. No description, no facts.
+    static func apply(videoFormatDescriptions descriptions: [CMFormatDescription], to facts: inout ImportSourceFacts) {
+        guard let first = descriptions.first else { return }
+        apply(videoFormatDescription: first, to: &facts)
+        facts.additionalVideoDescriptions = descriptions.dropFirst().map(descriptionFacts(from:))
+    }
+
+    /// The description-local facts of one video format description — codec family from the media
+    /// subtype, bit depth, profile, colour signalling, Dolby Vision configuration, aperture. The one
+    /// parser for the first description (via `apply(videoFormatDescription:to:)`) and every further
+    /// one, and the normalizer's runtime view of each current description.
+    static func descriptionFacts(from description: CMFormatDescription) -> ImportVideoDescriptionFacts {
+        func string(_ key: CFString) -> String? { CMFormatDescriptionGetExtension(description, extensionKey: key) as? String }
         // Sample-description extension atoms carry the codec configuration records: `avcC` / `hvcC`
         // give reliable profile evidence; `dvcC` / `dvvC` / `dvwC` signal Dolby Vision configuration.
         let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any] ?? [:]
-        facts.hasDolbyVisionConfiguration = ["dvcC", "dvvC", "dvwC"].contains { atoms[$0] != nil }
-        facts.highBitDepthProfile = Self.highBitDepthProfile(atoms: atoms)
+        return ImportVideoDescriptionFacts(
+            videoCodec: ImportVideoCodec.classify(fourCC: fourCC(CMFormatDescriptionGetMediaSubType(description))),
+            bitsPerComponent: (CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_BitsPerComponent) as? NSNumber)?.intValue,
+            highBitDepthProfile: highBitDepthProfile(atoms: atoms),
+            aperture: apertureFacts(from: description),
+            colorPrimaries: primaries(string(kCMFormatDescriptionExtension_ColorPrimaries)),
+            transferFunction: transfer(string(kCMFormatDescriptionExtension_TransferFunction)),
+            ycbcrMatrix: matrix(string(kCMFormatDescriptionExtension_YCbCrMatrix)),
+            hasDolbyVisionConfiguration: ["dvcC", "dvvC", "dvwC"].contains { atoms[$0] != nil })
+    }
+
+    /// A clean-aperture value: the exact rational form (`[numerator, denominator]`) when present,
+    /// else the plain number. Nil when neither is a usable finite value.
+    private static func rationalValue(_ values: [String: Any], _ rationalKey: CFString, _ numberKey: CFString) -> Double? {
+        if let pair = values[rationalKey as String] as? [NSNumber] {
+            guard pair.count == 2, pair[1].int64Value != 0 else { return nil }
+            let value = pair[0].doubleValue / pair[1].doubleValue
+            return value.isFinite ? value : nil
+        }
+        guard let number = values[numberKey as String] as? NSNumber else { return nil }
+        let value = number.doubleValue
+        return value.isFinite ? value : nil
+    }
+
+    private static func integerValue(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber else { return nil }
+        let double = number.doubleValue
+        guard double.isFinite, double == double.rounded(), abs(double) <= Double(Int32.max) else { return nil }
+        return Int(double)
     }
 
     /// Audio facts exactly as the format description states them (ADR-048). A missing stream basic
@@ -219,6 +300,6 @@ private extension ImportSourceFacts {
             naturalWidth: 0, naturalHeight: 0, preferredTransform: .identity,
             nominalFrameRate: 0, minimumFrameDuration: nil, bitsPerComponent: nil, highBitDepthProfile: .unknown, fullRangeVideo: .unknown,
             colorPrimaries: .unknown, transferFunction: .unknown, ycbcrMatrix: .unknown,
-            hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [], audio: nil, byteCount: byteCount, modificationDate: modificationDate)
+            hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [], aperture: .unreliable, audio: nil, byteCount: byteCount, modificationDate: modificationDate)
     }
 }

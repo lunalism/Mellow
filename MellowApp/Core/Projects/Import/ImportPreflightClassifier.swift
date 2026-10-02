@@ -1,14 +1,14 @@
 import Foundation
 
 // Phase 6 Photos-import preflight decision core (ADR-042 R1–R4, ADR-043 R1, ADR-044 R1, ADR-045,
-// ADR-046 §8, ADR-048). Pure and deterministic: no I/O, no AVFoundation, no file URL. Verdict
-// precedence is exactly duration → readable / video / protected → container → codec family →
-// orientation → working-raster feasibility → audio facts → normalization reasons; an earlier
-// rejection always wins and none of gates 1–7 is a normalization reason.
+// ADR-046 §8, ADR-048, ADR-049). Pure and deterministic: no I/O, no AVFoundation, no file URL.
+// Verdict precedence is exactly duration → readable / video / protected → container → codec family
+// → orientation → working-raster feasibility → audio facts → normalization reasons → aperture /
+// tone-map path; an earlier rejection always wins and none of the gates is a normalization reason.
 
 /// One canonical reason a source is excluded before any media operation. User-facing copy is
 /// mapped elsewhere (ADR-042 R2–R4, ADR-043 R1, ADR-044 R1); this layer carries no strings.
-enum ImportPreflightRejection: Hashable, Sendable {
+enum ImportPreflightRejection: Error, Hashable, Sendable {
     case durationBelowMinimum
     case durationAboveMaximum
     case invalidDuration
@@ -23,6 +23,79 @@ enum ImportPreflightRejection: Hashable, Sendable {
     case unsupportedWorkingRaster(presentationWidth: Int, presentationHeight: Int)
     /// ADR-048: an audio track whose facts cannot be relied on.
     case unsupportedAudioFacts(ImportAudioFactsProblem)
+    /// ADR-049 Case D: normalization is required, but no approved render path preserves this
+    /// source — a non-full clean aperture whose colour is not proven SDR Rec.709, or aperture
+    /// evidence too unreliable to choose a path. A V1 technical boundary, not a statement that the
+    /// media is invalid; it reuses the invalid / unsupported family.
+    case unsupportedApertureNormalization(ImportApertureNormalizationProblem)
+    /// ADR-049 Revision 1 Decision B: normalization is required, but the preferred transform is not
+    /// a bakeable axis-aligned mapping (shear, arbitrary-angle rotation, non-finite or
+    /// non-invertible). A V1 technical boundary; it reuses the invalid / unsupported family.
+    case unsupportedNormalizationTransform
+}
+
+/// Why ADR-049 step 8 found no approved render path. Diagnostic only; no user copy.
+enum ImportApertureNormalizationProblem: Error, Hashable, Sendable, CaseIterable {
+    /// The aperture facts needed to choose a path are missing or unusable, in any description.
+    case unreliableAperture
+    /// The video format descriptions disagree on aperture class, encoded raster, clean aperture or
+    /// pixel aspect, so no single plan describes every frame (ADR-049 Revision 1 Decision A).
+    case descriptionsDisagree
+    /// A non-full aperture where any description has HDR, wide-colour, unknown or otherwise unproven
+    /// SDR colour: only the built-in compositor may tone-map, and it cannot render a non-full
+    /// aperture whole.
+    case colorNotProvenSDRRec709
+}
+
+/// What every video format description of a track agrees on (ADR-049 Revision 1 Decision A). The
+/// one pure rule used by preflight, plan construction and the normalizer's runtime re-check.
+struct ImportDescriptionConsensus: Hashable, Sendable {
+    /// `.full` or `.nonFull`, carrying the first description's geometry; every other description is
+    /// compatible with it.
+    let aperture: ImportApertureFacts
+    /// True only when each description independently proves SDR Rec.709.
+    let everyDescriptionProvenSDRRec709: Bool
+
+    /// Every description must have reliable aperture facts, the same full / non-full class, the
+    /// same encoded raster and pixel aspect, and the same clean aperture within the accepted
+    /// 0.001-sample comparison. A single description is the one-element case; none is unreliable.
+    static func evaluate(_ descriptions: [ImportVideoDescriptionFacts]) -> Result<ImportDescriptionConsensus, ImportApertureNormalizationProblem> {
+        guard let first = descriptions.first, let reference = first.aperture.geometry else { return .failure(.unreliableAperture) }
+        for description in descriptions {
+            guard let geometry = description.aperture.geometry else { return .failure(.unreliableAperture) }
+            guard sameClass(description.aperture, first.aperture), compatible(geometry, reference) else { return .failure(.descriptionsDisagree) }
+        }
+        return .success(ImportDescriptionConsensus(aperture: first.aperture, everyDescriptionProvenSDRRec709: descriptions.allSatisfy(\.isProvenSDRRec709)))
+    }
+
+    private static func sameClass(_ lhs: ImportApertureFacts, _ rhs: ImportApertureFacts) -> Bool {
+        switch (lhs, rhs) {
+        case (.full, .full), (.nonFull, .nonFull): return true
+        case (.full, _), (.nonFull, _), (.unreliable, _): return false
+        }
+    }
+
+    /// One plan describes both: identical encoded raster and pixel aspect, clean aperture within
+    /// `ImportApertureFacts.fullApertureTolerance` in every component.
+    static func compatible(_ lhs: ImportApertureGeometry, _ rhs: ImportApertureGeometry) -> Bool {
+        let tolerance = ImportApertureFacts.fullApertureTolerance
+        let a = lhs.cleanAperture, b = rhs.cleanAperture
+        return lhs.encodedWidth == rhs.encodedWidth && lhs.encodedHeight == rhs.encodedHeight
+            && lhs.pixelAspectRatio == rhs.pixelAspectRatio
+            && abs(a.x - b.x) <= tolerance && abs(a.y - b.y) <= tolerance
+            && abs(a.width - b.width) <= tolerance && abs(a.height - b.height) <= tolerance
+    }
+}
+
+/// How a normalization-required source is rendered (ADR-049 Decision 2). Both paths produce the
+/// same canonical working-media output and pass the same validation.
+enum WorkingMediaRenderPath: Hashable, Sendable {
+    /// Case B — full clean aperture: AVFoundation's built-in compositor with a layer instruction
+    /// (ADR-045 §4), the only approved HDR / wide-colour tone-mapping mechanism.
+    case builtInToneMap
+    /// Case C — non-full clean aperture, colour proven SDR Rec.709: geometry-only rendering of the
+    /// whole aperture. No tone mapping happens on this path.
+    case sdrApertureGeometry
 }
 
 /// Why audio facts are unreliable (ADR-048 Decision 1). Diagnostic only; no user copy.
@@ -79,8 +152,9 @@ enum ImportNormalizationReason: Hashable, Sendable {
 enum ImportPreflightVerdict: Hashable, Sendable {
     /// Phase-5-ready: copied into project-owned media without re-encoding.
     case readyFastPath(sourceDuration: MediaTime)
-    /// Eligible, but must pass through the working-media normalizer for the listed reasons.
-    case normalizationRequired(reasons: [ImportNormalizationReason], sourceDuration: MediaTime)
+    /// Eligible, but must pass through the working-media normalizer for the listed reasons, on the
+    /// render path ADR-049 step 8 chose.
+    case normalizationRequired(reasons: [ImportNormalizationReason], renderPath: WorkingMediaRenderPath, sourceDuration: MediaTime)
     /// Excluded before any media operation.
     case rejected(ImportPreflightRejection)
 }
@@ -121,7 +195,12 @@ enum ImportPreflightClassifier {
         guard facts.container == .quickTime else { return .rejected(.unsupportedContainer(facts.container)) }
 
         // 4. Codec family (ADR-046): only H.264 / HEVC; never a normalization reason.
-        guard facts.videoCodec.isSupportedFamily else { return .rejected(.unsupportedCodec(facts.videoCodec)) }
+        //    Every video format description must be a supported family; the first unsupported one in
+        //    source order is reported. A track with no description reports `.unknown` (the first
+        //    description's facts default to it).
+        if let unsupported = facts.videoDescriptions.first(where: { !$0.videoCodec.isSupportedFamily }) {
+            return .rejected(.unsupportedCodec(unsupported.videoCodec))
+        }
 
         // 5. Presentation orientation (ADR-043 R1): strict height > width after the transform.
         let orientation = facts.presentationOrientation
@@ -149,22 +228,59 @@ enum ImportPreflightClassifier {
             reasons.append(.raster(presentationWidth: size.width, presentationHeight: size.height))
         }
         if case .transcode = audio { reasons.append(.audioTranscode) }
-        return reasons.isEmpty
-            ? .readyFastPath(sourceDuration: sourceDuration)
-            : .normalizationRequired(reasons: reasons, sourceDuration: sourceDuration)
+
+        // 9. Aperture / tone-map path (ADR-049 step 8). No reason → fast path whatever the aperture
+        //    (the aperture is never a reason). With reasons, the path follows from the aperture and
+        //    proven colour; a combination no approved path preserves is rejected, and no reason can
+        //    override that rejection.
+        //    ADR-049 Revision 1: with reasons, every video format description must agree and the
+        //    transform must be bakeable before a path is chosen. Without reasons neither is
+        //    consulted — the source is copied, not rendered.
+        guard !reasons.isEmpty else { return .readyFastPath(sourceDuration: sourceDuration) }
+        switch renderPath(facts) {
+        case .success(let path):
+            return .normalizationRequired(reasons: reasons, renderPath: path, sourceDuration: sourceDuration)
+        case .failure(let rejection):
+            return .rejected(rejection)
+        }
     }
 
-    /// Deduplicated, canonically ordered HDR signals. `ancillaryHDRMetadata` and
-    /// `minimumFrameDuration` are intentionally not consulted.
+    /// ADR-049 (incl. Revision 1) for a source that needs normalization: description consensus, then
+    /// transform eligibility, then the path from the agreed aperture and colour.
+    static func renderPath(_ facts: ImportSourceFacts) -> Result<WorkingMediaRenderPath, ImportPreflightRejection> {
+        let consensus: ImportDescriptionConsensus
+        switch ImportDescriptionConsensus.evaluate(facts.videoDescriptions) {
+        case .success(let agreed): consensus = agreed
+        case .failure(let problem): return .failure(.unsupportedApertureNormalization(problem))
+        }
+        guard ImportNormalizationTransform.isEligible(facts.preferredTransform) else { return .failure(.unsupportedNormalizationTransform) }
+        switch consensus.aperture {
+        case .full:
+            return .success(.builtInToneMap)
+        case .nonFull:
+            return consensus.everyDescriptionProvenSDRRec709
+                ? .success(.sdrApertureGeometry)
+                : .failure(.unsupportedApertureNormalization(.colorNotProvenSDRRec709))
+        case .unreliable:
+            return .failure(.unsupportedApertureNormalization(.unreliableAperture))
+        }
+    }
+
+    /// Deduplicated, canonically ordered HDR signals, unioned over every video format description
+    /// of the track (a later description can introduce the only signal), so the result does not
+    /// depend on description order. `ancillaryHDRMetadata` and `minimumFrameDuration` are
+    /// intentionally not consulted; unknown bit depth / profile and full range signal nothing.
     static func hdrSignals(in facts: ImportSourceFacts) -> [ImportHDRSignal] {
         var set = Set<ImportHDRSignal>()
-        if facts.transferFunction == .hlg { set.insert(.hlgTransfer) }
-        if facts.transferFunction == .pq { set.insert(.pqTransfer) }
-        if facts.colorPrimaries == .rec2020 { set.insert(.rec2020Primaries) }
-        if facts.ycbcrMatrix == .rec2020 { set.insert(.rec2020Matrix) }
-        if let bpc = facts.bitsPerComponent, bpc > 8 { set.insert(.bitDepthAbove8) }
-        if facts.highBitDepthProfile == .yes { set.insert(.highBitDepthProfile) }
-        if facts.hasDolbyVisionConfiguration { set.insert(.dolbyVision) }
+        for description in facts.videoDescriptions {
+            if description.transferFunction == .hlg { set.insert(.hlgTransfer) }
+            if description.transferFunction == .pq { set.insert(.pqTransfer) }
+            if description.colorPrimaries == .rec2020 { set.insert(.rec2020Primaries) }
+            if description.ycbcrMatrix == .rec2020 { set.insert(.rec2020Matrix) }
+            if let bpc = description.bitsPerComponent, bpc > 8 { set.insert(.bitDepthAbove8) }
+            if description.highBitDepthProfile == .yes { set.insert(.highBitDepthProfile) }
+            if description.hasDolbyVisionConfiguration { set.insert(.dolbyVision) }
+        }
         return set.sorted()
     }
 

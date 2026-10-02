@@ -83,6 +83,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
             nominalFrameRate: fps, minimumFrameDuration: nil, bitsPerComponent: 8, highBitDepthProfile: .no,
             fullRangeVideo: .no, colorPrimaries: .rec709, transferFunction: transfer, ycbcrMatrix: .rec709,
             hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [],
+            aperture: .classify(encodedWidth: natural.0, encodedHeight: natural.1, cleanAperture: nil, pixelAspectRatio: nil),
             audio: ImportAudioFacts(fourCC: "aac ", sampleRate: 48_000, channelCount: 2),
             byteCount: byteCount, modificationDate: Date(timeIntervalSince1970: 1_000))
     }
@@ -170,7 +171,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
     func testNormalizationRequiredItemStaysAcceptedWithItsReasons() async throws {
         let outcome = try await run([hdr])
         XCTAssertEqual(outcome.accepted.count, 1); XCTAssertTrue(outcome.excluded.isEmpty); XCTAssertNil(outcome.notice)
-        XCTAssertEqual(outcome.accepted[0].preparationPath, .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])]))
+        XCTAssertEqual(outcome.accepted[0].preparationPath, .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])]))
         XCTAssertTrue(outcome.requiresNormalization)
     }
 
@@ -181,10 +182,10 @@ final class ImportSelectionPreflightTests: XCTestCase {
         XCTAssertEqual(outcome.accepted.map(\.candidate), cands)
         XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
             .fastPathCopy,
-            .normalizationRequired(reasons: [.frameRate(nominal: 60)]),
-            .normalizationRequired(reasons: [.raster(presentationWidth: 2160, presentationHeight: 3840)]),
+            .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]),
+            .normalizeBuiltInToneMap(reasons: [.raster(presentationWidth: 2160, presentationHeight: 3840)]),
             .fastPathCopy,
-            .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])])
+            .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])])
         ])
         XCTAssertEqual(outcome.accepted.map(\.sourceDuration), Array(repeating: time(1200, 600), count: 5))
         XCTAssertTrue(outcome.excluded.isEmpty); XCTAssertNil(outcome.notice)
@@ -237,7 +238,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
         let list = [short, hdr, ready, long]
         let cands = await candidates(list)
         let outcome = try await preflight.run(cands, context: .multipleItems)
-        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [.normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])]), .fastPathCopy])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [.normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])]), .fastPathCopy])
         XCTAssertEqual(outcome.notice, .shortAndLongItemsExcluded)
         // Exhaustive partition: every candidate lands in exactly one list, each list in input
         // order, and the stored verdict agrees with the path + duration it was built from.
@@ -245,7 +246,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
         XCTAssertEqual(outcome.accepted.map(\.candidate), [cands[1], cands[2]])
         XCTAssertEqual(outcome.excluded.map(\.candidate), [cands[0], cands[3]])
         XCTAssertEqual(outcome.accepted.map(\.verdict), [
-            .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])], sourceDuration: time(1200, 600)),
+            .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])], renderPath: .builtInToneMap, sourceDuration: time(1200, 600)),
             .readyFastPath(sourceDuration: time(1200, 600))
         ])
     }
@@ -308,7 +309,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
     func testInfeasibleRasterAndUnreliableAudioAreInvalidOrUnsupportedAndOthersContinue() async throws {
         let outcome = try await run([ready, nearSquare, lpcmOnly, unknownAudio, contradictoryAudio, hdr])
         XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
-            .fastPathCopy, .normalizationRequired(reasons: [.audioTranscode]), .normalizationRequired(reasons: [.hdr(signals: [.hlgTransfer])])
+            .fastPathCopy, .normalizeBuiltInToneMap(reasons: [.audioTranscode]), .normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])])
         ])
         XCTAssertEqual(rejections(outcome), [
             .unsupportedWorkingRaster(presentationWidth: 1080, presentationHeight: 1081),
@@ -323,7 +324,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
     func testAudioOnlyNormalizationStaysInTheAcceptedSet() async throws {
         let outcome = try await run([lpcmOnly], .singleCandidate)
         XCTAssertEqual(outcome.accepted.count, 1)
-        XCTAssertEqual(outcome.accepted.first?.preparationPath, .normalizationRequired(reasons: [.audioTranscode]))
+        XCTAssertEqual(outcome.accepted.first?.preparationPath, .normalizeBuiltInToneMap(reasons: [.audioTranscode]))
         XCTAssertTrue(outcome.requiresNormalization)
         XCTAssertNil(outcome.notice)
     }
@@ -334,7 +335,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
         var zero = facts(); zero.audio = ImportAudioFacts(fourCC: "\u{0}\u{0}\u{0}\u{0}", sampleRate: 48_000, channelCount: 2)
         let outcome = try await run([highBit, zero, control])
         XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
-            .normalizationRequired(reasons: [.audioTranscode]), .normalizationRequired(reasons: [.audioTranscode])
+            .normalizeBuiltInToneMap(reasons: [.audioTranscode]), .normalizeBuiltInToneMap(reasons: [.audioTranscode])
         ])
         XCTAssertEqual(rejections(outcome), [.unsupportedAudioFacts(.malformedFormatID)])
         XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia])
@@ -651,7 +652,7 @@ final class ImportSelectionPreflightTests: XCTestCase {
         XCTAssertEqual(outcome.accepted[0].preparationPath, .fastPathCopy)
         XCTAssertEqual(outcome.accepted[0].facts.container, .quickTime)
         XCTAssertEqual(outcome.accepted[0].facts.videoCodec, .h264(fourCC: "avc1"))
-        guard case .normalizationRequired(let reasons) = outcome.accepted[1].preparationPath, reasons.count == 1,
+        guard case .normalizeBuiltInToneMap(let reasons) = outcome.accepted[1].preparationPath, reasons.count == 1,
               case .frameRate(let nominal) = reasons[0] else { return XCTFail("expected a frame-rate normalization reason, got \(outcome.accepted[1].preparationPath)") }
         XCTAssertGreaterThan(nominal, ImportPreflightPolicy.maximumNominalFrameRate)
         XCTAssertEqual(outcome.excluded.map(\.candidate), [cands[1]])
@@ -690,5 +691,76 @@ final class ImportSelectionPreflightTests: XCTestCase {
             try await ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()).run([missing], context: .singleCandidate)
         }
         XCTAssertFalse(TestSupport.exists(scratch), "preflight never creates directories")
+    }
+
+    // MARK: - ADR-049 paths and Case D exclusion
+
+    private var oddSDR60: ImportSourceFacts {
+        var f = facts(natural: (1080, 1919), fps: 60)
+        f.aperture = .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: ImportCleanAperture(x: 0, y: 0.5, width: 1080, height: 1919), pixelAspectRatio: nil)
+        return f
+    }
+    private var oddHLG: ImportSourceFacts { var f = oddSDR60; f.transferFunction = .hlg; return f }
+
+    func testApertureCasesMapToPathsAndTheExistingInvalidFamily() async throws {
+        let outcome = try await run([facts(), oddSDR60, oddHLG, facts(fps: 60)])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [
+            .fastPathCopy, .normalizeSDRApertureGeometry(reasons: [.frameRate(nominal: 60)]), .normalizeBuiltInToneMap(reasons: [.frameRate(nominal: 60)]),
+        ])
+        XCTAssertEqual(rejections(outcome), [.unsupportedApertureNormalization(.colorNotProvenSDRRec709)])
+        XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia])
+        XCTAssertEqual(outcome.notice, .invalidOrUnsupportedItemsExcluded)
+        XCTAssertTrue(outcome.requiresNormalization)
+        // The accepted item's verdict carries the same path.
+        XCTAssertEqual(outcome.accepted[1].verdict, .normalizationRequired(reasons: [.frameRate(nominal: 60)], renderPath: .sdrApertureGeometry, sourceDuration: time(1200, 600)))
+    }
+
+    func testCaseDSingleCandidateAndReplaceUseTheInvalidOrUnsupportedNotice() async throws {
+        let outcome = try await run([oddHLG], .singleCandidate)
+        XCTAssertEqual(outcome.accepted, [])
+        XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia])
+        XCTAssertEqual(outcome.notice, .candidateInvalidOrUnsupported)
+        // Mixed with a duration exclusion: the existing combined notice.
+        let mixed = try await run([oddHLG, facts(duration: .exact(time(240, 600)))])
+        XCTAssertEqual(mixed.notice, .mixedItemsExcluded)
+        // All excluded: nothing accepted, notice unchanged in kind.
+        let all = try await run([oddHLG, oddHLG])
+        XCTAssertEqual(all.accepted, []); XCTAssertEqual(all.notice, .invalidOrUnsupportedItemsExcluded)
+    }
+
+    // MARK: - ADR-049 Revision 1 exclusions
+
+    func testTransformAndDescriptionRejectionsUseTheExistingInvalidFamily() async throws {
+        // 540×960 sheared by 0.2 presents 732×960 (inside the 1080p class): only the 60 fps item needs normalization.
+        let shear = ImportAffineTransform(a: 1, b: 0, c: 0.2, d: 1, tx: 0, ty: 0)
+        let sheared60 = facts(natural: (540, 960), transform: shear, fps: 60)
+        let shearedReady = facts(natural: (540, 960), transform: shear)
+        var disagreeing = oddSDR60
+        disagreeing.additionalVideoDescriptions = [ImportVideoDescriptionFacts(videoCodec: .h264(fourCC: "avc1"), bitsPerComponent: 8, highBitDepthProfile: .no,
+                                                                              aperture: .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil),
+                                                                              colorPrimaries: .rec709, transferFunction: .rec709, ycbcrMatrix: .rec709, hasDolbyVisionConfiguration: false)]
+        let outcome = try await run([shearedReady, sheared60, disagreeing])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [.fastPathCopy], "a copied source is never rendered, so its transform is not judged")
+        XCTAssertEqual(rejections(outcome), [.unsupportedNormalizationTransform, .unsupportedApertureNormalization(.descriptionsDisagree)])
+        XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia, .invalidOrUnsupportedMedia])
+        XCTAssertEqual(outcome.notice, .invalidOrUnsupportedItemsExcluded)
+        let single = try await run([sheared60], .singleCandidate)
+        XCTAssertEqual(single.notice, .candidateInvalidOrUnsupported)
+        XCTAssertEqual(single.accepted, [])
+    }
+
+    func testLaterDescriptionCodecAndHDRReachStep3() async throws {
+        func later(_ codec: ImportVideoCodec, transfer: ImportTransferFunction = .rec709) -> ImportVideoDescriptionFacts {
+            ImportVideoDescriptionFacts(videoCodec: codec, bitsPerComponent: 8, highBitDepthProfile: .no,
+                                        aperture: .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil),
+                                        colorPrimaries: .rec709, transferFunction: transfer, ycbcrMatrix: .rec709, hasDolbyVisionConfiguration: false)
+        }
+        var prores = facts(); prores.additionalVideoDescriptions = [later(.unsupported(fourCC: "apcn"))]
+        var hlg = facts(); hlg.additionalVideoDescriptions = [later(.hevc(fourCC: "hvc1"), transfer: .hlg)]
+        let outcome = try await run([prores, hlg, facts()])
+        XCTAssertEqual(outcome.accepted.map(\.preparationPath), [.normalizeBuiltInToneMap(reasons: [.hdr(signals: [.hlgTransfer])]), .fastPathCopy])
+        XCTAssertEqual(rejections(outcome), [.unsupportedCodec(.unsupported(fourCC: "apcn"))])
+        XCTAssertEqual(categories(outcome), [.invalidOrUnsupportedMedia])
+        XCTAssertEqual(outcome.notice, .invalidOrUnsupportedItemsExcluded)
     }
 }
