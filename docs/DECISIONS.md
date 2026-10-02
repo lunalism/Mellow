@@ -954,7 +954,7 @@ Source Media, Project-owned Working Media와 Project Output / Export를 구별�
 
 Project Fill + Crop을 Working Media에 bake-in하지 않으며 Source의 Presentation Aspect Ratio와 이후 Framing 가능한 유효 화면 영역을 보존한다.
 
-Source Rotation / Presentation Transform을 올바르게 해석하며 Codec Alignment용 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다.
+Source Rotation / Presentation Transform을 올바르게 해석하며 Codec Alignment용 Padding이 필요하더라도 사용자-visible Framing 영역을 임의로 제거하지 않는다. — **ADR-047 Revision 1(2026-10-01):** V1 Working Media는 정렬용 Padding을 쓰지 않으며 짝수 정렬 나머지는 전체 Frame의 축별 Parity Resample(변당 최대 1 출력 Pixel)로 처리한다.
 
 Normalization standardizes media characteristics, but does not commit the user's project framing.
 
@@ -2204,7 +2204,7 @@ STEP 8 Immersive Editor Timeline은 Leading `+`(Add Clip) 자리를 가진다. �
 - Working Media Container — Pending, Before Phase 6.
 - 정확한 SDR Color Profile / Tagging — Pending, Before Phase 6.
 - Low-resolution Source Upscaling Policy — Resolved by ADR-047(2026-09-18): 절대 Upscale하지 않음; Envelope 안의 Source는 Presentation 크기 유지(짝수 내림만).
-- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045(Scale-down Bounding Box) + ADR-047(2026-09-18): `scale = min(1.0, 1080 / width, 1920 / height)`, Aspect 보존, 각 변 짝수 내림, 최소 출력 크기 없음.
+- 1080p-class Working Media의 정확한 Raster Dimension Rule — Resolved by ADR-045(Scale-down Bounding Box) + ADR-047(2026-09-18): `scale = min(1.0, 1080 / width, 1920 / height)`, Aspect 보존, 각 변 짝수 내림, 최소 출력 크기 없음. Render Geometry는 ADR-047 Revision 1(2026-10-01): Crop · Padding 없이 전체 Frame을 짝수 Raster에 Render하고 정렬 나머지는 변당 최대 1 출력 Pixel의 축별 Parity Resample로 처리한다.
 - HDR / Dolby Vision Source의 Tone-mapping 구현 방법 — Pending, 관련 Normalization 구현 전 결정.
 
 Working Media Codec / Container를 Export Codec / Container와 자동으로 동일하게 결정하지 않는다.
@@ -2237,7 +2237,7 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
 - Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. *(ADR-048(2026-09-30): Orientation 다음에 Working-raster Feasibility → Audio Facts 단계가 삽입되고 Normalization 사유 끝에 Audio Transcode가 추가되었다.)* Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.
-- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완. — **ADR-048(2026-09-30):** AAC Passthrough는 AAC Source에만 적용되고 non-AAC는 AAC-LC 변환, Cadence Fallback과 Working-raster Feasibility 추가.
+- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완. — **ADR-048(2026-09-30):** AAC Passthrough는 AAC Source에만 적용되고 non-AAC는 AAC-LC 변환, Cadence Fallback과 Working-raster Feasibility 추가. — **ADR-049(2026-10-01):** Tone-mapping = 내장 Compositor는 Full-aperture Source에 유지; Non-full Clean Aperture는 SDR Rec.709만 Geometry 전용 정규화, 그 밖은 Preflight 거부.
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
@@ -2246,6 +2246,10 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - non-AAC Source Audio 처리와 Working Media Audio 설정 — Resolved by ADR-048(2026-09-30): Audio 없음 → 출력 Audio 없음(무음 합성 없음); AAC → Passthrough(Normalization 사유 아님); 알려진 non-AAC → 새 사유 `audioTranscode`(순서 HDR → Frame Rate → Raster → Audio Transcode, 유일한 사유 가능)로 AAC-LC 48 kHz, Mono 96 kbps / 2채널 이상 Stereo 128 kbps(2채널 초과는 명시적 Stereo Downmix); 알 수 없거나 모순된 Audio Facts → Preflight 기존 Invalid / Unsupported 범주 거부. Export Audio 결정 아님.
 - 짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source) — Resolved by ADR-048(2026-09-30): Orientation 판정은 그대로, Orientation 다음 · Normalization 사유 이전의 Working-raster Feasibility 단계가 ADR-047 알고리즘 결과 `outputHeight > outputWidth`를 요구하고 실패 시(예: 1080×1081 → 1080×1080) Preflight 기존 Invalid / Unsupported 범주로 거부; Crop / Pad / 늘리기 / 여백 우회 없음, 새 안내 없음.
 - `minFrameDuration` 부재 시 출력 Frame Duration — Resolved by ADR-048(2026-09-30): 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 새 Normalization 사유 없음, 거부 사유 아님, 30 fps 초과 출력 없음.
+- Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. Production 구현은 미완.
+- 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. Production 구현은 미완.
+- Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): `t_k = k × outputFrameDuration`(`t_k < E`)의 모든 Target에 정확히 한 Frame, Target 이하의 가장 최근 Rendering Frame 선택 · 새 Frame이 없으면 유지 · 미래 Frame / 보간 없음, Session은 `E`에서 종료, Audio 불변, 엄격한 Cadence Validator 유지. Production 구현은 미완.
+- 정규화 출력 Cadence의 검증 기준과 앞쪽 빈 Video 구간 — Resolved by ADR-048 Revision 2(2026-10-02): 정확한 Rational Presentation-time Grid(0 시작, 모든 인접 간격 정확히 `d`, `E`에서 끝나는 짧은 마지막 Sample 허용)가 권위 있는 증거이며 `nominalFrameRate` / `sampleCount / duration` 같은 평균 Rate는 진단용일 뿐 거부 조건이 아니다; 0 이하에 실제 Frame이 없으면 Typed Runtime 실패(검은 Lead-in · 미래 Frame 당김 없음, 새 Preflight 범주 · Copy 없음). Production 구현은 미완.
 
 ### Camera
 
@@ -2920,7 +2924,7 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 3. 실제 Container Brand — QuickTime Movie(`qt  `)만 허용, MP4 / ISO BMFF / 기타 / Unknown은 Unsupported(ADR-044; 확장자 비권위)
 4. **(ADR-046 삽입)** Video Codec Family — H.264(`avc1` / `avc3`) 또는 HEVC(`hvc1` / `hev1`)만 허용, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Unsupported
 5. Presentation Orientation — `preferredTransform` 적용 후 `presentationHeight > presentationWidth`만 허용(ADR-043 Revision 1)
-6. Normalization 사유 판정(아래 §2) — 위 1–5는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다. *(최초 본문은 1–5 순서였으며 ADR-046이 Codec 단계를 삽입했다.)* — **ADR-048(2026-09-30):** 5 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 단계(기존 Invalid / Unsupported 범주)가 삽입되어 Normalization 사유 판정은 7단계가 되었다(ADR-048 Canonical Preflight Order).
+6. Normalization 사유 판정(아래 §2) — 위 1–5는 어느 것도 Normalization 사유가 아니며 서로 독립된 Verdict다. *(최초 본문은 1–5 순서였으며 ADR-046이 Codec 단계를 삽입했다.)* — **ADR-048(2026-09-30):** 5 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 단계(기존 Invalid / Unsupported 범주)가 삽입되어 Normalization 사유 판정은 7단계가 되었다(ADR-048 Canonical Preflight Order). — **ADR-049(2026-10-01):** 사유 판정 뒤에 Aperture / Tone-map 경로 호환성 단계(8)가 추가되었다(ADR-049 Decision 3).
 
 ### 2. Fast Path vs Normalization
 
@@ -2941,7 +2945,7 @@ Phase 6 Normalization 구현 전 Technical Gate 항목을 DEBUG 전용 Technical
 
 ### 4. Tone-mapping Mechanism
 
-`AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(colorPrimaries / colorTransferFunction / colorYCbCrMatrix = ITU_R_709_2, renderSize = Bounding Box, Layer Instruction으로 Transform Bake) → AVFoundation 내장 Compositor가 각 Frame을 Rec.709 SDR Working Color Space로 렌더링해 8-bit 420 Video-range Pixel Buffer를 제공 → `AVAssetWriterInput`(H.264, `AVVideoColorPropertiesKey` 709 / 709 / 709)이 태깅해 기록. **공개 메타데이터는 출력 형식과 HDR 신호 제거를 증명하지만 Tone-curve 품질은 증명하지 못한다** — 기기 A/B 시각 검증이 Acceptance Evidence다.
+`AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(colorPrimaries / colorTransferFunction / colorYCbCrMatrix = ITU_R_709_2, renderSize = Bounding Box, Layer Instruction으로 Transform Bake) → AVFoundation 내장 Compositor가 각 Frame을 Rec.709 SDR Working Color Space로 렌더링해 8-bit 420 Video-range Pixel Buffer를 제공 → `AVAssetWriterInput`(H.264, `AVVideoColorPropertiesKey` 709 / 709 / 709)이 태깅해 기록. **공개 메타데이터는 출력 형식과 HDR 신호 제거를 증명하지만 Tone-curve 품질은 증명하지 못한다** — 기기 A/B 시각 검증이 Acceptance Evidence다. — **ADR-049(2026-10-01):** 이 내장 Compositor 경로는 그대로 V1의 유일한 승인 Tone-mapping 메커니즘이며 Normalization이 필요한 Full-aperture Source(Case B)에 쓴다. Custom Compositor 앞의 Framework Pre-conversion은 이 메커니즘의 대체로 승인되지 않았다. Non-full Clean Aperture Source는 신뢰성 있는 SDR Rec.709일 때만 Tone-mapping 없는 Geometry 전용 경로로 정규화하고(Case C), Tone-mapping이 필요하거나 SDR이 증명되지 않으면 Preflight에서 기존 Invalid / Unsupported 범주로 거부한다(Case D).
 
 ### 5. 원본 획득 전제
 
@@ -3148,8 +3152,39 @@ ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, C
 
 # ADR-047 — Working-Media Raster and Interrupted-Normalization Recovery
 
-**Date:** 2026-09-18
+**Date:** 2026-09-18 (Revision 1: 2026-10-01)
 **Status:** Accepted (사용자 승인)
+
+## Revision 1 — Even-Raster Parity Alignment Rendering (2026-10-01)
+
+**Status:** Accepted (사용자 승인). 이 Revision은 Phase 6 Step 4B 독립 Review에서 드러난 좁은 모호성 하나를 닫는다: 원래 Decision 1은 Aspect 보존 · Crop 없음 · Padding 없음 · 각 변 짝수 내림을 함께 요구하지만, 계산된 변이 홀수일 때 짝수 내림은 출력 Aspect Ratio를 아주 조금 바꿀 수밖에 없어 네 요구를 동시에 정확히 만족할 수 없었다. V1은 그 나머지를 제한된 Parity 정렬 Resampling으로 처리한다. Decision 1의 Raster 공식 · No Upscaling, Decision 2의 No Resume / Recovery 결정, ADR-048은 바뀌지 않는다. 아래 내용이 Render Geometry의 정본이며 아래의 최초 본문은 보존된다(충돌 시 Revision 1 우선). 이 Revision은 Step 4B 구현 완료를 뜻하지 않는다.
+
+### Render Geometry Rule
+
+1. 목표 Raster 계산은 그대로 정본이다: `scale = min(1.0, 1080 / presentationWidth, 1920 / presentationHeight)`, 각 변을 `presentation × scale`로 내림한 뒤 양의 짝수로 내림한다(Decision 1).
+2. Source Presentation Frame 전체를 보존한다.
+3. Renderer는 Source Content를 어떤 경우에도 Crop하지 않는다.
+4. Renderer는 Padding · Letterbox · Pillarbox · 합성 테두리를 추가하지 않는다.
+5. 각 계산된 출력 변은 양의 짝수 정수로 내림한다(Decision 1 그대로).
+6. 짝수 정렬이 홀수인 계산 변에서 1 Pixel을 줄이면 Renderer는 가로축과 세로축을 각각 독립적으로 Resample하여 Source Presentation Frame 전체를 계획된 정확한 짝수 Raster에 맞출 수 있다.
+7. 이것은 제한된 Parity Quantization으로 승인된다.
+   - 영향받는 출력 변을 최대 1 출력 Pixel만 바꿀 수 있다(내림된 계산 값 기준).
+   - 짝수 크기 Encoding 요구를 만족하기 위해서만 존재한다.
+   - 일반 목적의 늘리기(Stretch) 정책이 아니다.
+   - 임의의 Aspect 왜곡을 정당화하는 데 쓰지 않는다.
+   - 사용자가 고르는 Fill / Fit / Stretch 옵션이 되지 않는다.
+   - 허용 한계는 백분율이 아니라 영향받는 변당 1 출력 Pixel이라는 절대값이다.
+8. 이 규칙은 Crop · Padding · Upscaling · 최소 출력 해상도 · 해상도 선택 · 새 Normalization 사유 · 새 사용자 안내 Copy나 범주를 도입하지 않는다.
+9. Classifier 동작은 바뀌지 않는다: 1080p-class를 초과하는 Presentation Raster만 Raster Normalization 사유를 만들고, 저해상도 Source는 확대하기 위해 정규화되지 않으며, 다른 사유로 정규화되는 저해상도 Source는 필요한 짝수 정렬을 제외하고 Source 크기 Raster를 유지한다.
+10. **ADR-049(2026-10-01) 명확화:** 보존 대상 "Presentation Frame"은 Clean-aperture Presentation 사각형(Pixel Aspect Ratio · preferredTransform 적용)이다. Non-full Clean Aperture Source에 대해 이 규칙은 Geometry 전용 SDR 경로(ADR-049 Case C)로 만족시키며, 승인된 내장 Compositor로는 경계 Sample 손실 / Aperture 밖 번짐 없이 만족시킬 수 없는 Non-full HDR / Wide-color / SDR 미증명 Source는 Crop · Padding으로 우회하지 않고 Preflight에서 거부한다(ADR-049 Case D).
+
+| Source Presentation | 계산된 변(내림) | 짝수 출력 | 렌더링 |
+| --- | --- | --- | --- |
+| 720×1280 | 720×1280 | 720×1280 | 그대로(Resample 없음) |
+| 2160×3840 | 1080×1920 | 1080×1920 | 균일 0.5 축소 |
+| 1080×1919 | 1080×1919 | 1080×1918 | 세로만 홀수: 전체 Frame을 세로 1919 → 1918로 Resample, 가로 1:1, Crop · Padding 없음 |
+| 2160×3842 | 1079×1920 | 1078×1920 | 가로만 홀수: 전체 Frame을 1078×1920에 맞춰 축별 Resample, Crop · Padding 없음 |
+| 719×1279 | 719×1279 | 718×1278 | 두 변 모두 홀수: 각 변 1 Pixel 정렬, 전체 Frame 유지 |
 
 **Resolves:** ADR-045가 Pending으로 남긴 Phase 6 Step 4의 두 Blocker — (1) Low-resolution Source Upscaling Policy(1080p-class Working Media의 최종 Raster Sizing), (2) Import Durable Operation Identity / Recovery 깊이(Normalization 도중 Process 종료 이후의 복구 의미)와 ADR-039 STEP 12B Orphan / Workspace Predicate 확장 방식. ROADMAP Phase 6 "Pending Technical Gate", ARCHITECTURE 38절 / 84절, PRODUCT / FEATURES Open Question의 동일 항목.
 
@@ -3185,9 +3220,9 @@ Portrait Presentation Raster `(width, height)`에 대해:
 
 - `scale = min(1.0, 1080 / width, 1920 / height)`
 - 출력 = `(width × scale, height × scale)`을 각 변 짝수로 **내림**한 양의 정수 크기
-- Aspect Ratio를 보존하고 Source Presentation 크기를 초과하지 않으며 짧은 변 1080 / 긴 변 1920을 초과하지 않는다.
+- Aspect Ratio를 보존하고 Source Presentation 크기를 초과하지 않으며 짧은 변 1080 / 긴 변 1920을 초과하지 않는다. — **Revision 1(2026-10-01):** Aspect 보존은 짝수 정렬 전 계산 기준이며, 정렬로 생기는 변당 최대 1 출력 Pixel 차이는 축별 Resampling으로 처리하는 제한된 Parity Quantization이다(Crop · Padding 없음, 위 Revision 1).
 - Presentation Transform은 Pixel에 Bake하고 출력 Transform은 Identity다(ADR-045 §3 유지).
-- 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다.
+- 짝수 정렬은 영향받는 변마다 최대 1 Pixel만 제거하며 Upscale · Crop 정책 · Aspect-fill 어느 것도 아니다. — **Revision 1(2026-10-01):** "제거"는 출력 Raster 크기를 1 Pixel 줄인다는 뜻이며 Source Content를 잘라내는 것이 아니다; 전체 Presentation Frame을 그 크기로 Resample한다.
 - V1에는 별도의 "최소 출력 크기"가 없다.
 - **ADR-048(2026-09-30):** 짝수 정렬 결과가 엄격한 Portrait(`outputHeight > outputWidth`)이 아니면(예: 1080×1081 → 1080×1080) 그 Source는 Preflight의 Working-raster Feasibility 단계에서 기존 Invalid / Unsupported 범주로 거부되며 Normalization Plan에 도달하지 않는다. 늘리기 · Crop · Padding · 여백으로 우회하지 않는다.
 
@@ -3276,8 +3311,181 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 
 # ADR-048 — Normalization Audio, Raster Feasibility, and Cadence Fallback
 
-**Date:** 2026-09-30
+**Date:** 2026-09-30 (Revision 1: 2026-10-01, Revision 2: 2026-10-02)
 **Status:** Accepted (사용자 승인)
+
+## Revision 2 — Exact Cadence Validation and Leading-Gap Failure (2026-10-02)
+
+**Status:** Accepted (사용자 승인, 2026-10-02 Asia/Seoul). 이 Revision은 Revision 1의 Cadence Grid를 구현하면서 드러난 Validation 해석 하나를 확정하고 Revision 1의 첫 Frame 규칙을 재확인한다. 충돌 시 Revision 2가 Revision 1과 최초 본문보다 우선하며, 둘은 Accepted 이력으로 보존된다. 이 Revision은 정책만 기록하며 미커밋 Step 4B 구현이 완료 · Review · Commit · Merge되었다고 주장하지 않는다.
+
+**왜 Revision인가:** 두 결정 모두 Revision 1이 정한 정규화 출력 Cadence의 검증과 경계 조건에 관한 것이며 새 Normalization 사유 · 제외 범주 · Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
+
+### 배경 (관찰)
+
+Revision 1에 따라 Session은 정확한 종료 시각 `E`에서 끝나므로 `E`가 Grid 지점 사이에 있으면 마지막 Sample의 Duration은 `d`보다 짧다. AVFoundation의 `nominalFrameRate`나 `sampleCount / duration` 같은 평균값은 이 짧은 마지막 Sample 때문에 30을 넘을 수 있다. 예: Sample 41개, Duration `801/600`초이면 약 30.71로 보이지만 모든 인접 Presentation Time 간격은 정확히 `20/600`이다. 1초급 Clip이 Grid 경계 바로 다음 한 Tick에서 끝나면 비슷하게 약 30.95로 보일 수 있다. 이 평균값은 출력 Cadence가 30 fps보다 빠르다는 뜻이 아니다.
+
+### Decision 1 — 정확한 Timestamp가 Cadence의 권위 있는 증거다
+
+세 개념을 구별한다.
+
+1. **계획 Cadence:** `d = plan.outputFrameDuration`이며 `1/30`보다 빠르지 않다(Decision 3 불변).
+2. **실제 Sample Cadence:** 출력 Presentation Time은 0에서 시작하는 정확한 Grid `t_k = k × d`를 따르고, 모든 인접 간격은 정확히 `d`이며, Session이 정확한 `E`에서 끝나므로 마지막 Sample만 `d`보다 짧을 수 있다.
+3. **평균 / Metadata Rate:** `nominalFrameRate` 또는 `sampleCount / duration`은 짧은 마지막 Sample 때문에 30을 넘을 수 있으며 진단용 정보일 뿐이고 정확한 Cadence Grid를 무효로 만들 수 없다.
+
+규칙:
+
+- 정확한 Rational Presentation-time Grid 검증이 권위 있는 Cadence 증거다.
+- Validator는 빠진 Target, 중복 Timestamp, Grid 밖 Timestamp, `d`가 아닌 간격, 미래 Frame 선택, 출력 Duration 위반을 거부해야 한다.
+- Validator는 평균 또는 Metadata Frame Rate 값이 30 또는 30.5를 넘는다는 이유만으로 거부해서는 안 된다(`nominalFrameRate <= 30.5`, `sampleCount / duration <= 30.5` 또는 동등한 평균 Rate 상한은 출력 유효성 거부 조건이 아니다).
+- 출력 계약은 여전히 `d`가 `1/30`보다 빠르지 않도록 제한한다.
+- Metadata Nominal Rate는 진단용으로 기록할 수 있지만 유효한 정확한 Sample Timing을 무효화하지 않는다.
+- ADR-045 §7의 정규화 출력 Duration 허용 범위는 바뀌지 않는다.
+- 평균 Rate 통계를 맞추려고 Target을 빼거나, 짧은 마지막 Sample을 건너뛰거나, Session 종료를 앞당기지 않는다(Revision 1이 그 Sample을 요구한다).
+
+### Decision 2 — 앞쪽 빈 Video 구간은 정규화 실패다
+
+Revision 1의 첫 Frame 규칙을 재확인한다.
+
+- Normalization이 필요한 Source는 Target 시각 0 이하에 실제 Rendering / Composition된 Video Frame을 제공해야 한다.
+- 그런 Frame이 없으면(예: 앞쪽 Empty Edit) Operation은 Typed Normalization Error로 실패한다.
+- 검은 Lead-in을 합성하지 않는다.
+- 미래 Frame을 시각 0으로 당겨오지 않는다.
+- Timeline을 조용히 줄이거나 옮기지 않는다.
+- 이것은 현재 Accepted Set Atomicity 계약 아래의 Runtime 정규화 실패로 남으며, 이 Revision은 새 Preflight 거부 범주 · 안내 · 사용자 Copy를 추가하지 않는다.
+- 일반 iPhone 카메라 Source에는 이런 앞쪽 Empty Edit가 없을 것으로 예상하지만 이는 보장이 아니며 보장으로 기술하지 않는다.
+
+### 범위 경계
+
+- 허용 Duration 한계, Normalization 사유, Raster 규칙, Audio 처리, Tone Mapping, Aperture 경로, 취소, Cleanup, 재시도, Copy, UI를 바꾸지 않는다.
+- 새 Normalization 사유 · 제외 범주 · 안내 · 사용자 문자열을 도입하지 않는다.
+- 이 Revision은 Step 4B를 완료로 만들지 않는다.
+
+### 필요한 검증
+
+- 짧은 출력이 Grid 지점 바로 뒤에서 끝나 평균 / Metadata Rate가 30.5를 넘지만 Presentation-time Grid가 정확하면 통과해야 한다.
+- 정확한 Grid에 `2d` 간격이 있는 출력은 실패해야 한다.
+- 첫 실제 Frame이 0 이후인 Source는 성공적인 Publish 전에 Typed Error로 실패해야 한다.
+- 어떤 우회도 마지막 Target을 건너뛰거나 Session 종료를 앞당기지 않는다.
+- 실제 기기 Cadence Evidence는 계속 `IMG_0130.MOV`다: Sample 137개, Presentation Time `0 … 2720/600`, 간격 `20/600`, 정확한 종료 `2722/600`.
+- 실제 HDR 시각 A/B는 Pending이며 통과로 주장하지 않는다.
+
+## Revision 1 — Deterministic Output Cadence Grid and Frame Hold (2026-10-01)
+
+**Status:** Accepted (사용자 승인, 2026-10-01 Asia/Seoul). 이 Revision은 Phase 6 Step 4B의 정규화 출력 Timing 모호성 하나를 닫는다: Decision 3은 출력 Frame Duration을 정하지만, Source Frame Timing이 그 Grid와 정확히 맞지 않을 때 정규화된 Video Sample을 어느 Presentation Time에 두는지는 정하지 않았다. 아래 Scheduling Rule이 정규화 Video 출력 Timing의 정본이며 충돌 시 Revision 1이 우선한다. Decision 1–3과 Canonical Preflight 순서를 포함한 아래의 최초 본문은 Accepted 이력으로 보존된다. 이 Revision은 Step 4B가 구현되었거나 완료되었음을 뜻하지 않으며 이 규칙은 아직 구현되지 않았다.
+
+**왜 Revision인가:** Decision 3이 정규화 출력 Cadence(`outputFrameDuration`)의 정본이며, 이 Revision은 그 Cadence를 실제 출력 Sample Timing으로 실현하는 방법만 확정한다. 새 Normalization 사유 · 새 제외 범주 · 새 Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
+
+### 실제 기기 Evidence (관찰)
+
+Source는 실제 iPhone 카메라 촬영본 `IMG_0130.MOV` 하나다.
+
+- QuickTime Container, HEVC Main10, HLG / Rec.2020
+- 진짜 Dolby Vision 신호: `dvvC` Profile 8, Compatibility ID 4
+- 신뢰성 있는 Full Aperture, Portrait Presentation
+- 정확한 Duration `2722/600`, 계획 출력 Frame Duration `1/30`(ADR-049 내장 Compositor 경로)
+
+관찰된 Source Timing:
+
+- Video Sample 136개, Interval 135개 중 `20/600` 133개와 `21/600` 2개
+- 누락된 Source Frame은 없다.
+- 두 긴 Interval 때문에 뒤따르는 Source Sample이 명목 Grid에서 먼저 `1/600`, 그다음 `2/600` 늦어졌다.
+
+LunaTestphone(iPhone 12, iOS 27.0)에서 승인된 내장 AVFoundation Tone-mapping 경로로 관찰된 동작:
+
+- `AVAssetReaderVideoCompositionOutput`은 Sample 136개를 내보냈다.
+- 각 Source Sample을 다음 `1/30` Grid 지점으로 올림하여 내보냈다.
+- Grid 지점 36(시각 `720/600`)에는 Sample을 내보내지 않았으며 그 결과 `700/600`과 `740/600` 사이 Interval이 `40/600`이 되었다.
+- Writer는 내보낸 136개 Sample을 모두 Append했고 거부한 Sample은 없었다.
+- Encoding된 Presentation Time은 Composition 출력과 정확히 같았다.
+- 결과는 엄격한 Cadence Validator 하나에서만 실패했고 Codec · SDR Rec.709 Tag · Raster · Identity Transform · HDR 신호 제거 · Audio · Duration · 사용 가능성은 그 밖에 모두 통과했다.
+- 세 번의 실행이 같은 Presentation Time 순서를 재현했다.
+
+이것은 LunaTestphone에서 이 Source로 관찰한 동작이며 보편적이거나 문서화된 AVFoundation 보장으로 취급하지 않는다. 로컬 SDK 문서는 `frameDuration`을 Rendering 간격 / 최대 출력 Frame Rate로만 설명하며 모든 Grid 지점에 Frame을 내보내도록 보장하는 Composition 설정을 문서화하지 않는다.
+
+### Decision — Cadence Grid
+
+정의:
+
+- `d = plan.outputFrameDuration`(Decision 3으로 유도, 30 fps Ceiling 불변)
+- `E` = 정확한 정규화 Session 종료 시각(기존 규칙 그대로)
+- Target Video Presentation Time `t_k = k × d`, `k = 0`부터 시작, `t_k < E`인 모든 `k`
+
+정규화된 Video 출력은 모든 Target `t_k`마다 정확히 하나의 Frame을 가진다.
+
+### Frame 선택
+
+각 Target `t_k`에 대해:
+
+1. Presentation Time이 `t_k` 이하인 가장 최근의 Rendering / Composition 결과 Frame을 사용한다.
+2. 앞선 Target 이후 새 Frame이 없으면 이전에 선택한 Frame을 이 Target에 유지(Hold)한다.
+3. 미래 Frame을 더 이른 Target에 선택하지 않는다.
+4. 보간 · Blend · 움직임 합성을 하지 않는다.
+5. 첫 Target 이하에 Frame이 하나도 없으면 정규화는 안전하게 실패한다; 검은 Lead-in을 만들지 않으며 미래 Frame을 앞으로 당기지 않는다.
+6. 인접 Target 사이에 입력 / Composition Frame이 여러 개 있으면 Target을 넘지 않는 가장 늦은 Frame을 사용하며 그보다 오래되어 대체된 Frame은 출력에서 빠질 수 있다.
+
+용어:
+
+- 내장 HDR / Wide-color 경로에서 유지되는 Frame은 승인된 AVFoundation Tone-mapping Composition이 이미 만든 가장 최근 Frame이다.
+- SDR Aperture-geometry 경로에서 유지되는 Frame은 승인된 Geometry Renderer가 이미 만든 가장 최근 Frame이다.
+- Cadence Scheduler는 Timing 선택만 수행하며 Tone Mapper나 Geometry Renderer가 되지 않는다.
+
+### 출력 Duration
+
+- Grid는 0에서 시작한다.
+- `t_k < E`인 동안만 Target을 만든다.
+- Writer Session은 기존의 정확한 정규화 종료 시각 `E`에서 끝난다.
+- 따라서 마지막 Encoded Sample의 종단 Duration은 `d`보다 짧을 수 있다.
+- 기존 출력 Duration 계약 `sourceDuration <= outputDuration <= sourceDuration + 1/30 s`(ADR-045 §7)는 그대로다.
+- 마지막 Frame Interval을 채우기 위해 출력을 늘리지 않는다.
+
+### Audio
+
+- 이 규칙으로 Audio를 복제 · 보간 · 독립 재타이밍하지 않는다.
+- 기존 AAC Passthrough / Transcode 규칙(Decision 1)은 바뀌지 않는다.
+- 기존 Session 종료와 Audio / Video Duration Validation이 계속 우선한다.
+
+### Validator
+
+- Cadence Validator는 엄격하게 유지한다.
+- 인접한 정규화 Video Presentation Time의 차이는 모두 정확히 `d`여야 한다.
+- 가끔 생기는 `2d` Interval을 허용하지 않는다.
+- Cadence 실패는 여전히 출력을 거부하며 기존 Owned-output Cleanup을 실행한다.
+- **Revision 2(2026-10-02):** 이 엄격한 검사는 정확한 Presentation-time Grid에 대한 것이며, `nominalFrameRate` 같은 평균 / Metadata Rate가 30 또는 30.5를 넘는다는 이유만으로는 거부하지 않는다.
+
+### 범위 경계
+
+- 이것은 표준 고정 Frame Rate Scheduling이며 출력 계약의 완화가 아니다.
+- 유지된 Frame은 빠진 Target Interval 동안의 가장 최근에 알려진 Image를 나타낸다.
+- 새 시각 Content를 만들지 않는다.
+- Source Eligibility와 Duration 제한을 바꾸지 않는다.
+- 새 Normalization 사유 · 제외 범주 · 사용자 Copy · UI를 추가하지 않는다.
+- Fast-path Copy에는 영향이 없다.
+- 최대 30 fps 정책을 바꾸지 않는다.
+- Custom HDR Tone Mapping을 승인하지 않는다.
+- ADR-049의 내장 경로 / Geometry 전용 경로 선택을 바꾸지 않는다.
+- Optical Flow나 Frame 보간을 도입하지 않는다.
+- Resume / Checkpoint 동작을 만들지 않는다(ADR-047 Decision 2 불변).
+- 정규화된 Working Media Video 출력에만 적용한다.
+
+### 기록된 Fixture의 예
+
+위 Evidence Source에 이 규칙을 적용하면 다음과 같다(계산 결과이며 이 Fixture에 한정된 값이다).
+
+- Target 시각 `0/600`부터 `2720/600`까지 출력 Frame 137개
+- 유지(Hold)되는 Grid 지점은 `k = 36` 하나이며 `720/600`에서 Frame 35가 재사용된다.
+- 버려지는 Source / Composition Frame은 없다.
+- Session Duration은 `2722/600`으로 유지된다.
+- Audio / Video 종료 차이는 `1/600`으로 유지된다.
+- 이 Fixture에서 유지된 Image의 최대 나이는 한 Frame Interval `20/600`이다.
+
+이 Fixture의 최대 나이를 보편적 최대값으로 승인하지 않는다.
+
+### 필요한 검증
+
+- 순수 Cadence Scheduler Unit Test, Integration Test, LunaTestphone 실제 Media 재검증은 ROADMAP Phase 6 Unit Tests / Integration Tests / Physical Device Test에 기록된다.
+- 진짜 Dolby Vision Source가 구조적으로 실행되었지만(Classification · Plan · 내장 경로 진입) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과를 주장하지 않는다.
+
+## 최초 승인 본문 (2026-09-30 — Revision 1로 보완됨)
 
 **Resolves:** Phase 6 Step 4A(순수 SDR Working-media Contract와 Normalization Plan Builder) 구현 중 발견된 세 Blocker — (1) AAC가 아닌 Source Audio의 처리(ADR-045 §3은 "AAC Passthrough"만 정의), (2) ADR-043 Portrait이지만 ADR-047 짝수 정렬 후 출력이 Portrait이 아니게 되는 근사 정사각형 Source(예: 1080×1081 → 1080×1080)의 처리, (3) `minFrameDuration`이 없는 Source의 출력 Frame Duration 유도(ADR-045 §3 `max(minFrameDuration, 1/30)`의 입력 부재).
 
@@ -3383,8 +3591,9 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 - `minFrameDuration`이 있으면 여전히 첫 번째 권위 있는 Cadence 입력이다.
 - Timing Metadata 부재는 그 밖에 Eligible한 Source를 거부하지 않는다.
 - 이 Fallback은 그 자체로 새 Normalization 사유를 만들지 않으며 기존 Nominal Frame Rate 기반 Normalization Trigger(ADR-045 §2)는 바뀌지 않는다.
-- 어떤 출력도 30 fps를 초과하지 않는다.
+- 어떤 출력도 30 fps를 초과하지 않는다. — **Revision 2(2026-10-02):** 이는 계획 Frame Duration `d`가 `1/30`보다 빠르지 않다는 뜻이며, 짧은 마지막 Sample 때문에 30을 넘을 수 있는 평균 / Metadata Rate(`nominalFrameRate`, `sampleCount / duration`)의 상한이 아니다.
 - Rational 변환은 결정적이어야 하며 정확한 Timescale 선택은 구현 세부사항이다.
+- **Revision 1(2026-10-01):** 위 공식은 그대로이며, 정규화된 Video 출력은 `t_k = k × outputFrameDuration`(`t_k < E`) Grid의 모든 Target에 정확히 한 Frame을 가지고 새 Frame이 없는 Target은 가장 최근 Frame을 유지한다(위 Revision 1 Cadence Grid 참조).
 
 ## Canonical Preflight Order (ADR-045 §1 / ADR-046 §8 대체 순서)
 
@@ -3396,7 +3605,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 6. Working-raster Feasibility(ADR-048 Decision 2), 그다음 Audio Facts 신뢰성(ADR-048 Decision 1) — 둘 다 기존 Invalid / Unsupported Media 범주
 7. Normalization 사유 판정 — HDR / >8-bit → Frame Rate(30 fps 초과) → Raster(1080p-class 초과) → Audio Transcode(non-AAC)
 
-앞선 단계의 거부가 뒤 단계보다 우선하며 1–6은 어느 것도 Normalization 사유가 아니다. Normalization 사유가 하나도 없으면 Phase-5-ready Fast Path이며, 따라서 Phase-5-ready는 Audio가 없거나 AAC인 경우만 해당한다.
+앞선 단계의 거부가 뒤 단계보다 우선하며 1–6은 어느 것도 Normalization 사유가 아니다. Normalization 사유가 하나도 없으면 Phase-5-ready Fast Path이며, 따라서 Phase-5-ready는 Audio가 없거나 AAC인 경우만 해당한다. — **ADR-049(2026-10-01):** 7 다음에 8. Aperture / Tone-map 경로 호환성 단계가 추가되었다: 사유 없음 → Aperture와 무관하게 Fast Path; 사유 있음 → Full Aperture는 내장 Compositor 정규화, Non-full + 신뢰성 있는 SDR Rec.709는 Geometry 전용 정규화, Non-full + HDR / Wide-color / SDR 미증명은 기존 Invalid / Unsupported 범주 거부. 1–7의 순서와 우선순위는 바뀌지 않는다.
 
 ## Rationale
 
@@ -3410,7 +3619,7 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 - `ImportNormalizationReason`에 `audioTranscode` 사유가 추가되고 Canonical 순서가 HDR → Frame Rate → Raster → Audio Transcode가 된다(구현 대상).
 - Preflight Classifier는 Orientation 다음에 Working-raster Feasibility와 Audio Facts 신뢰성 검사를 수행하며 두 거부는 기존 Invalid / Unsupported Exclusion 범주로 매핑된다(구현 대상).
 - `WorkingMediaPlanBuilder`는 짝수 정렬 후 Portrait이 아닌 Raster를 받지 않으며 non-AAC Audio를 오류가 아닌 AAC-LC 변환 계획으로 표현한다(구현 대상).
-- `WorkingMediaNormalizer`(Step 4B)는 이 ADR의 Audio 설정과 Frame Duration 유도를 그대로 적용한다.
+- `WorkingMediaNormalizer`(Step 4B)는 이 ADR의 Audio 설정과 Frame Duration 유도를 그대로 적용한다. — **Revision 1(2026-10-01):** 출력 Video Sample Timing에는 Cadence Grid와 Frame Hold 규칙을 적용한다(구현 대상).
 - ROADMAP Phase 6 Unit / Integration Test에 이 ADR의 Audio / Raster Feasibility / Cadence Case가 추가된다.
 
 ## Still Pending (이 ADR이 확정하지 않음)
@@ -3421,3 +3630,275 @@ Phase 6 Step 4A는 Normalization-required Accepted Item에서 결정적인 Norma
 ## Non-goals
 
 - Production 구현(Step 4A 조정, Step 4B Normalizer), Export Audio Format / Bitrate(Phase 9), Audio 설정 UI, Crop / Pad / Upscale 옵션, Resume / Background 처리, 새 사용자 안내 Copy.
+
+---
+
+# ADR-049 — Clean-Aperture Normalization and Tone-Mapping Eligibility Boundary
+
+**Date:** 2026-10-01 (Revision 1: 2026-10-01)
+**Status:** Accepted (사용자 승인)
+
+## Revision 1 — Multi-Description Consensus and Normalization Transform Eligibility (2026-10-01)
+
+**Status:** Accepted (사용자 승인). 이 Revision은 ADR-049를 반영한 Step 4B 구현의 두 번째 독립 Review(2026-10-01)가 드러낸 두 공백을 닫는다: (1) 경로 판정이 첫 번째 Video Format Description만 읽으므로 같은 Video Track의 뒤 Description이 다른 Aperture나 HDR 색을 가지면 승인되지 않은 경로로 Rendering될 수 있고, (2) Orientation Preflight(ADR-043)를 통과한 Preferred Transform이 Shear나 임의 각도 회전을 담으면 V1 Renderer가 Crop · Padding 없이 정규화할 수 없는데도 Preflight가 받아들여 Accepted Set 전체가 Runtime 실패로 끝날 수 있었다. ADR-049의 Case A–D, Tone-mapping 경계, 사용자 안내는 바뀌지 않으며 이 Revision은 Normalization 경로 판정의 입력 조건을 좁힌다. 아래 내용이 정본이며 아래의 최초 본문은 보존된다(충돌 시 Revision 1 우선). 이 Revision은 Step 4B 구현 완료나 승인을 뜻하지 않는다.
+
+**왜 Revision인가:** 두 결정 모두 ADR-049 Step 8(Aperture / Tone-map 경로 판정)이 무엇을 근거로, 어떤 Source에 대해 경로를 고를 수 있는지를 정하는 같은 경계의 보완이다. 새 Normalization 사유 · 새 제외 범주 · 새 Tone-mapping 메커니즘을 도입하지 않으므로 별도 ADR이 아니다.
+
+### Decision A — 모든 관련 Video Format Description의 합의
+
+Normalization이 필요한 Source(사유가 하나 이상)에 대해서만 적용한다.
+
+1. 선택된 Video Track의 Sample을 기술할 수 있는 모든 Video Format Description을 검사한다(첫 번째만이 아니다).
+2. 모든 Description이 신뢰성 있는 Aperture 증거를 제공해야 한다(ADR-049 Decision 1의 판정 규칙을 Description마다 적용).
+3. 모든 Description이 같은 Full / Non-full Aperture 상태로 분류되어야 한다.
+4. Encoded Raster · Clean-aperture 사각형 · Pixel Aspect Ratio 해석이 하나의 Normalization Plan과 서로 호환되어야 한다.
+5. Non-full Geometry 전용 경로(Case C)에서는 모든 Description이 각자 SDR Rec.709를 긍정적으로 증명해야 한다: Rec.709 Primaries, Rec.709 Transfer, Rec.709 Matrix, HLG 아님, PQ 아님, Rec.2020 Primaries / Matrix 신호 없음, Dolby Vision Configuration 없음.
+6. 어떤 Description이라도 없거나, 신뢰할 수 없거나, 모순되거나, Aperture 상태를 바꾸거나, 계획된 Aperture Geometry를 바꾸거나, 필요한 색 증명에 실패하면 해당 항목은 기존 Invalid / Unsupported Media 범주로 거부된다 — 새 제외 범주 · 새 안내 · 새 Copy 없음, 어떤 Normalization Operation도 시작하지 않는다.
+7. Runtime Normalizer는 Reader / Writer 작업 전에 같은 합의를 다시 확인하고 실제 Source가 더 이상 Plan과 맞지 않으면 안전하게 실패한다(Plan / Source 불일치).
+8. Description이 하나인 Track은 같은 규칙의 원소 하나짜리 경우일 뿐이다.
+
+### Decision B — Normalization Transform Eligibility
+
+Normalization이 필요한 Source는 Preferred Transform이 다음으로만 이루어진 축 정렬 Affine Mapping으로 신뢰성 있게 표현될 때만 진행할 수 있다.
+
+- Translation
+- 1/4 회전 방향: 0°, 90°, 180°, 270°
+- 선택적 가로 및 / 또는 세로 Mirroring
+- 유한하고 0이 아닌 축 정렬 Scale — 균일 또는 비균일 모두 가능하되, Source가 선언한 Presentation Transform의 실제 일부일 때만. 선언된 Presentation Transform을 Bake하는 것(ADR-045 §3)은 Mellow의 새 늘리기 정책이 아니며 임의 왜곡을 허용하지 않는다.
+
+추가 조건: 모든 Affine 성분이 유한하고, Transform이 가역이며, Presentation Geometry가 유한 · 양수 · 표현 가능하고, Shear · 임의 각도 회전 · 퇴화되었거나 0에 가까운 Basis · 모호한 Mapping이 없어야 한다. Translation과 Scale이 표준 카메라 값과 같을 필요는 없다. 구현은 일반적인 고정소수점 / Metadata 반올림 오차를 허용할 수 있으나 그 허용 오차는 눈에 보이는 임의 회전이나 Shear가 통과할 수 없을 만큼 좁아야 한다. 정확한 수치 허용 오차는 구현 세부사항이며 경계 양쪽에서 테스트해야 한다(이 ADR은 Product 정책으로서의 소수 임계값을 정하지 않는다).
+
+Normalization 사유가 하나 이상이고 Transform이 다음을 담으면 거부한다: Shear, 임의 각도 회전, 유한하지 않은 값, 0이거나 비가역인 Basis, Crop · Padding · 합성 테두리 · Aperture 밖 번짐 없이는 정확한 출력에 Mapping할 수 없는 Geometry, 그 밖에 신뢰할 수 없는 Transform 증거.
+
+이 거부는 기존 Invalid / Unsupported Media 범주로 매핑된다: 새 거부 범주 · 새 안내 · 새 Copy 없음, Reader / Writer / Output Operation 없음, 다중 선택은 기존 규칙대로 해당 항목만 제외, 단일 후보는 기존 Unsupported-media 결과, Replace는 기존 Clip과 Media를 보존. 이것은 좁은 V1 기술 경계이며 그 Source가 보편적으로 Invalid하다는 주장이 아니다.
+
+ADR-043 Revision 1의 Orientation 판정(Presentation이 Portrait인가)과 이 Transform 경계(Normalization이 필요한 Source를 V1의 No-crop / No-padding 계약 아래에서 Rendering할 수 있는가)는 서로 다른 질문이다. Orientation 판정식과 그 결과는 바뀌지 않는다.
+
+### Case A–D와의 관계
+
+- **Case A — 사유 없음:** Fast-path Copy. Aperture와 Transform은 Normalization 사유를 만들지 않으며, Non-full Aperture · 여러 Description · 축 정렬이 아닌 Transform은 Mellow가 Rendering하지 않을 때 그 자체로 항목을 거부하지 않는다. 원본 Byte가 권위다.
+- **Normalization 필요:** Case B / C / D를 고르기 전에 (1) 여러 Description의 Aperture 합의와 (2) Normalization Transform Eligibility를 먼저 요구한다. 그다음 Full Aperture → Case B 내장 AVFoundation 정규화, Non-full + 모든 Description에서 긍정적으로 증명된 SDR Rec.709 → Case C Geometry 전용 정규화, Non-full + HDR / Wide / Unknown 색 → 기존 Case D 거부, 신뢰할 수 없거나 모순된 Description 또는 부적격 Transform → 같은 기존 Invalid / Unsupported 거부 결과.
+- Transform 경계는 두 Normalization Engine 모두에 적용된다. 내장 경로는 Scale 크기가 정확히 1이 아니라는 이유만으로 거부하지 않고 유효한 축 정렬 Scale을 Bake할 수 있다. Geometry 전용 경로는 Clean Aperture 전체를 ADR-047 출력 Raster에 충실히 Mapping하는 일부로 유효한 축 정렬 Scale을 Rendering할 수 있으며 여전히 HDR Tone-mapping을 하지 않는다.
+
+### Canonical Preflight 배치(ADR-049 Step 8 보완)
+
+ADR-048 Canonical Preflight Order의 1–7단계와 그 우선순위는 바뀌지 않는다. Step 8은 다음과 같이 정밀화된다.
+
+1. 기존 Normalization 사유를 계산한다.
+2. 사유 없음 → 즉시 Fast Path.
+3. Normalization이 필요한 항목에 대해서만: 여러 Description의 Aperture / 색 합의를 확립하고, Normalization Transform Eligibility를 확립하고, 내장 경로와 Geometry 전용 경로 중 하나를 고르며, 그렇지 않으면 기존 Invalid / Unsupported Media로 거부한다.
+
+앞선 단계의 거부가 여전히 우선하며 뒤의 어떤 Normalization 사유도 이 안전 경계를 뒤집지 않는다.
+
+### 바뀌지 않는 것
+
+- ADR-045 §4의 내장 Compositor가 유일한 승인 HDR / Wide-color Tone-mapping 메커니즘이다.
+- Custom Compositor는 긍정적으로 증명된 SDR Rec.709에 대한 Geometry 전용이다.
+- ADR-047 Revision 1: Clean Aperture 전체 보존, Crop · Padding · Aperture 밖 번짐 · Upscale 없음, 정확한 짝수 출력 Raster, 제한된 Parity Resample.
+- 해상도 선택 · Fill / Fit / Stretch 옵션 · 새 Normalization 사유 · 새 Copy가 없다.
+- ADR-042 / 043 / 044 / 046 / 048의 Eligibility 규칙과 안내, Accepted Set Atomicity, Replace 보존, Photos 원본 불변.
+
+### 테스트 추적
+
+Description 하나; 일치하는 여러 Description; 뒤 Description의 Full ↔ Non-full 변경; 뒤 Description의 SDR ↔ HLG / PQ / Rec.2020 / Dolby Vision 변경; 없거나 신뢰할 수 없는 뒤 Description; 축 정렬이 아닌 Transform을 가진 Case A의 Fast-path 유지; Identity / 1/4 회전 / Mirror / Translation 정규화; 유한한 축 정렬 Scale 정규화; 허용 오차 안의 미세 Metadata 오차; 허용 오차 밖의 눈에 보이는 Shear / 회전; 유한하지 않거나 비가역인 Transform; 거부 항목의 Media Operation 없음; 기존 Step 3 안내 / 범주 동작; Runtime Source / Plan 불일치.
+
+## 최초 승인 본문 (2026-10-01 — Revision 1로 보완됨)
+
+**Resolves:** Phase 6 Step 4B 독립 Review(2026-10-01)와 뒤이은 기기 Probe에서 드러난 Blocker — Source의 Clean Aperture가 Encoded Raster 전체가 아닐 때 ADR-045 §4의 승인된 Tone-mapping 경로(AVFoundation 내장 Compositor + Layer Instruction)를 유지하면서 ADR-047 Revision 1의 전체 Frame 보존(Crop · Padding 없음)을 동시에 만족할 수 없는 문제.
+
+**Clarifies:** ADR-045 §1 / §4(Canonical Preflight 순서의 마지막 단계, Tone-mapping 경로의 적용 범위), ADR-047 Revision 1(Render Geometry가 보존하는 "Presentation Frame"은 Clean-aperture Presentation 사각형이며, Non-full Aperture Source의 정규화 경로), ADR-048 Canonical Preflight Order(사유 판정 뒤의 경로 판정 단계).
+
+**왜 새 ADR인가:** 이 결정은 Clean-aperture Geometry · Normalization 필요 여부 · 신뢰성 있는 SDR Rec.709 증거 · 허용되는 Rendering / Tone-mapping 경로의 조합으로 정해지는 새로운 Layer 간 Eligibility 경계다. ADR-045의 Tone-mapping 메커니즘이나 ADR-047 Revision 1의 Render Geometry Rule 어느 한쪽의 Revision으로 표현할 수 없으므로 두 ADR의 역사적 본문을 고치지 않고 이 ADR이 둘을 명확히 한다.
+
+**Explicitly Unchanged:** ADR-042의 `1.0s <= 전체 Source Duration <= 5.0s` Eligibility · Per-item Filtering · 통합 안내 · Preparation Sheet · 취소 · Runtime 실패 · `다시 시도` · Storage 부족 Presentation과 Accepted Set Atomicity, ADR-044 Revision 1 QuickTime-only Source Container, ADR-046 H.264 / HEVC Source Codec 경계, ADR-043 Revision 1 Portrait-only Presentation Eligibility, ADR-047의 No-upscale Raster 공식 · 짝수 변 규칙 · No Resume Recovery, ADR-047 Revision 1의 Parity Resample 규칙, ADR-048의 Canonical Normalization 사유 순서 · Audio 계약 · Cadence Fallback · Working-raster Feasibility, ADR-045의 Working Media 출력 계약 · Duration 허용 범위 · Cancellation / Output Ownership · Cleanup, Photos 원본 불변, Storage Estimate / Safety Reserve · Aggregate Progress · Retry Source-handle(Pending 유지), Export 결정(Phase 9), 기존 사용자 안내 Copy.
+
+**이 ADR은 Phase 6 Step 4B 구현 완료를 뜻하지 않는다.** 현재 Step 4B Normalizer는 미커밋 상태이며 이 ADR을 아직 반영하지 않는다. Inspector · Classifier · Step 3 Selection Preflight · Step 4A Plan · Step 4B Normalizer는 이후 구현 Step에서 이 ADR에 맞춘다.
+
+## Context
+
+1. ADR-045 §4는 HDR → SDR Tone-mapping 메커니즘으로 `AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(Rec.709 Composition 색 속성, Layer Instruction Transform Bake)의 AVFoundation 내장 Compositor를 승인했다.
+2. 그 경로는 ADR-045 Technical Device Spike(LunaTestphone iPhone 12)에서 HDR 결과의 기기 A/B 시각 검증을 받았다.
+3. ADR-047 Revision 1은 Presentation Frame 전체 보존, Crop 없음, Padding · 합성 테두리 없음, 정확한 양의 짝수 출력 Raster, 제한된 Parity Resample을 요구한다.
+4. Step 4B 구현은 홀수 Clean Aperture Fixture에서 마지막 출력 행이 검게 남는 결함을 보였다. 이를 고치려고 도입한 Custom Compositor는 Framework가 Compositor 앞에서 HDR Frame을 SDR로 변환하는 경로(Pre-conversion)에 의존했고, 독립 Review는 이것이 승인된 ADR-045 §4 경로와 다르다는 점을 지적했다.
+5. 사용자는 Custom Compositor의 Pre-conversion을 ADR-045 Tone-mapping의 대체로 승인하지 않았다. 이유: 명시적으로 승인된 ADR-045 경로와 다르다; 현재의 합성 HDR Test는 동등한 Tone-curve 동작을 증명하지 못한다; Dolby Vision 동작이 증명되지 않았다; 새 기기 A/B가 승인하지 않았다.
+
+### Step 4B 기기 Probe (LunaTestphone iPhone 12, 2026-10-01, 관찰)
+
+각 Clean-aperture 경계에 고유한 1 Pixel 밝기(위 250 · 아래 200 · 왼쪽 150 · 오른쪽 110, 내부 40, Aperture 밖 녹색)를 칠한 합성 H.264 Fixture를 ADR-045 §4 구성(Rec.709 Composition, Layer Instruction Transform Bake, renderSize = Presentation 크기)의 내장 Compositor로 렌더링하고 그 출력 Pixel Buffer를 재압축 없이 직접 읽었다.
+
+| Source | 내장 Compositor 출력(관찰) |
+| --- | --- |
+| Full Aperture 1080×1920 | 네 경계 모두 보존(행 0 / 1919 = 248 / 199, 열 0 / 1079 = 146 / 109) |
+| Encoded 1080×1920 안의 중앙 1080×1919 Aperture(원점 y 0.5) | 위 경계는 50% 가중으로 존재(144), 아래 경계 Sample(200)은 출력 어디에도 없음, 마지막 출력 행은 검정(0) |
+| 같은 Source, 세로 뒤집기 Transform | 검정 행이 출력 맨 위로 이동 — 손실은 Source 공간에서 일어남 |
+| Encoded 1920×1080 안의 1919×1080 Aperture, 90° 회전 | 마지막 출력 행 검정, 원본 오른쪽 경계 손실 |
+| Encoded 1080×1920 안의 1000×1800 Aperture, 원점 (60, 100) | 경계 Pixel에 Aperture 밖 녹색이 섞임(위 217/255/216, 아래 169/212/170, 오른쪽 열 50/131/48) |
+
+관찰에서 이끈 판단(추론): 뒤집기 / 회전이 손실 위치를 Source와 함께 옮기므로, 손실된 경계 정보는 이후 단계가 받기 전에 이미 없다. 따라서 내장 Compositor 뒤에 둔 Geometry 전용 단계는 없는 경계를 Crop하거나 Pixel을 만들어내지 않고는 복원할 수 없다. 또한 Full Aperture는 일반적인 iPhone / Photos Source에서 예상되는 경우지만, 모든 iPhone / Photos 자산이 Full Aperture라는 증거는 없으며 이 ADR은 그렇게 주장하지 않는다.
+
+## Decision 1 — Canonical Aperture Facts
+
+Inspector는 첫 번째 지원 Video Format Description에서 다음 Facts를 신뢰성 있게 얻는다. *(Revision 1: Normalization이 필요한 Source의 경로 판정은 선택된 Video Track의 모든 관련 Description이 이 Facts와 색 증명에서 합의해야 한다 — Revision 1 Decision A.)*
+
+- Encoded Raster 크기(Encoded Sample 단위 너비 · 높이)
+- Encoded Sample 좌표의 Clean-aperture 사각형(원점과 크기)
+- Pixel Aspect Ratio
+- Full / Non-full Aperture 판정
+
+Clean-aperture Extension이 없으면 Core Media 규약대로 Clean Aperture는 Encoded Raster 전체이며 이는 신뢰성 있는 Full Aperture다.
+
+### Full Aperture
+
+신뢰성 있게 검사된 Clean-aperture 사각형이 Encoded Raster 전체를 덮을 때만 Full Aperture다: 원점이 Encoded Raster 원점과 같고, 너비가 Encoded 너비와 같고, 높이가 Encoded 높이와 같다. Core Media가 Rational Metadata를 부동소수로 바꾸는 표현 오차만 흡수하는 허용 오차(0.001 Encoded Sample 이하)를 쓸 수 있으며, 이 허용 오차는 0.5 Sample이나 1 Sample의 Aperture 차이를 숨기지 않는다.
+
+### Non-full Aperture
+
+신뢰성 있게 검사된 Aperture가 원점이나 크기에서 Encoded Raster 전체와 다르면 Non-full Aperture다. 중앙 정렬된 소수 원점의 홀수 Aperture, 정수 Offset Aperture, 더 작은 Clean Aperture, 그 밖의 잘린 Aperture Metadata가 모두 포함된다.
+
+### 신뢰할 수 없는 Aperture 증거
+
+형식이 잘못되었거나 유한하지 않거나 퇴화되었거나 Encoded Raster 밖에 있거나 얻을 수 없는 Aperture 증거로 신뢰성 있는 정규화 경로 판정을 할 수 없으면(Decision 3 Step 8) 해당 항목은 기존 Invalid / Unsupported Media 범주로 안전하게 거부된다. Filename · 확장자 · Photos Metadata로 Aperture Geometry를 분류하지 않는다.
+
+Orientation · Working-raster Feasibility · Raster Plan이 쓰는 Presentation Raster는 기존과 같이 Clean-aperture Presentation(Pixel Aspect Ratio 적용, preferredTransform 적용 후)이며, ADR-047 Revision 1이 보존하는 "Presentation Frame"은 이 Clean-aperture Presentation 사각형이다.
+
+## Decision 2 — Accepted V1 Path Matrix
+
+| Case | 조건 | 경로 |
+| --- | --- | --- |
+| A | Eligible, Normalization 사유 없음 | 기존 Fast-path Copy(Full / Non-full 무관) |
+| B | 사유 있음, 신뢰성 있는 Full Aperture | ADR-045 §4 내장 Compositor / Layer Instruction 정규화 |
+| C | 사유 있음, Non-full Aperture, 신뢰성 있는 SDR Rec.709 | Geometry 전용 Custom Rendering 정규화 |
+| D | 사유 있음, Non-full Aperture, HDR / Wide-color / SDR 미증명 | Preflight에서 기존 Invalid / Unsupported 범주로 거부 |
+
+### Case A — Normalization 사유 없음
+
+- 그 밖에 Eligible하고 Normalization 사유가 없는 Source는 기존 Fast-path Copy를 사용하며 QuickTime Source를 그대로 보존한다.
+- Full / Non-full Aperture 자체는 Normalization을 강제하지 않으며 새 Normalization 사유를 추가하지 않는다.
+- Aperture Metadata는 복사된 Media의 일부로 남는다.
+- 그 밖에 Ready인 홀수 / Offset Aperture Source도 여기에 포함된다.
+- *(Revision 1:)* 여러 Format Description이나 축 정렬이 아닌 Preferred Transform도 Case A 항목을 거부하지 않는다 — Mellow가 Rendering하지 않기 때문이다.
+
+### Case B — Normalization 필요, Full Aperture
+
+- 기존 사유가 하나 이상 있고 Full Aperture가 신뢰성 있게 증명되면 ADR-045 §4의 승인된 내장 AVFoundation Compositor / Layer Instruction 경로를 사용한다.
+- 이 경로는 SDR과 이미 승인된 HDR / Wide-color 정규화를 모두 처리할 수 있다.
+- 기존 H.264 High · 8-bit SDR · Rec.709 QuickTime 출력 계약과 ADR-047 Raster 규칙을 유지한다.
+
+### Case C — Normalization 필요, Non-full Aperture, 신뢰성 있는 SDR Rec.709
+
+- Geometry 전용 Custom Rendering 경로를 사용하며 이 경로에서는 HDR / Wide-color Tone-mapping이 일어나지 않는다.
+- Renderer는 Clean Aperture 전체를 계획된 정확한 짝수 Raster에 매핑한다: Crop · Padding · 검은 테두리 · Aperture 밖 번짐 · 합성 가장자리 없음, Upscale 없음(ADR-047 Revision 1).
+- 기존 Audio / Cadence / Raster 사유만이 Normalization 사유이며 Clean Aperture는 새 Normalization 사유가 아니다.
+
+### Case D — Normalization 필요, Non-full Aperture, HDR / Wide-color / SDR 미증명
+
+Normalization이 필요하고 Non-full Aperture이며 다음 중 하나에 해당하면 V1은 그 항목을 Preflight에서 기존 Invalid / Unsupported Media 범주로 거부한다: HLG, PQ, Rec.2020 Primaries 또는 Matrix, Dolby Vision Configuration, 그 밖에 HDR / Wide-color Tone-mapping이 필요함, 또는 Geometry 전용 경로를 위한 SDR Rec.709가 신뢰성 있게 증명되지 않음.
+
+- Reader / Writer Operation이 시작되지 않는다.
+- Copy · Normalization · Materialization · Persistence · Append · Replace가 일어나지 않는다.
+- Photos 원본은 변경되지 않는다.
+- Replace는 기존 Clip · Media · Metadata · 순서 · Slot을 보존한다.
+- 부분 Workspace 출력이 없다.
+- 새 사용자 범주가 없고 HDR · Aperture · Codec 전용 안내가 없으며 이미 승인된 Invalid / Unsupported Copy를 재사용한다.
+- 다중 선택은 남은 Eligible 항목으로 계속하며 전부 제외 동작은 바뀌지 않는다.
+
+이것은 좁은 V1 기술 경계이며 그런 Media가 본질적으로 Invalid하다는 판단이 아니다. Post-V1 지원은 별도로 승인된 변환 메커니즘과 새 기기 HDR / Dolby Vision 증거를 요구한다.
+
+### 신뢰성 있는 SDR Rec.709-family 증거(Case C)
+
+HDR Metadata가 없다는 사실만으로는 부족하며 다음 긍정적 Source 증거가 모두 필요하다(ADR-045 §2 / ADR-048 Facts와 같은 판정 기준).
+
+- Color Primaries = Rec.709
+- Transfer Function = Rec.709
+- YCbCr Matrix = Rec.709
+- HLG 아님, PQ 아님
+- Rec.2020 Primaries / Matrix 아님
+- Dolby Vision Configuration(`dvcC` / `dvvC` / `dvwC`) 없음
+- 그 밖에 승인된 HDR 신호 없음
+
+Unknown / 누락된 Color Facts는 SDR Rec.709 증거가 아니다. AmbientViewingEnvironment / MDCV / CLLI 단독은 ADR-045 §2대로 HDR 판별 신호가 아니며 이 판정을 바꾸지 않는다. 10-bit Source도 긍정적 Rec.709 색 증거가 있으면 SDR Rec.709일 수 있다 — Bit Depth 정규화 자체는 Tone-mapping이 아니며 "10-bit"를 HDR과 동일시하지 않는다.
+
+## Decision 3 — Canonical Preflight Placement
+
+ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video / Protected → Container → Codec → Orientation → Working-raster Feasibility · Audio Facts → Normalization 사유 판정)는 바뀌지 않으며 그 뒤에 경로 판정 단계를 둔다.
+
+8. *(Revision 1로 정밀화: 사유가 있는 항목은 경로 선택 전에 모든 Description의 합의와 Normalization Transform Eligibility를 먼저 요구하며 실패 시 같은 기존 범주로 거부)* Aperture / Tone-map 경로 호환성 — 사유가 없으면 Aperture와 무관하게 Fast-path Copy; 사유가 있으면 Full Aperture → 내장 Compositor 정규화, Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화, Non-full + HDR / Wide-color / SDR 미증명(또는 신뢰할 수 없는 Aperture 증거) → 기존 Invalid / Unsupported 범주 거부.
+
+- 앞선 단계의 거부가 이 단계보다 우선한다.
+- 이 단계의 거부는 어떤 HDR / Raster / Audio 사유가 있더라도 그 사유로 뒤집히지 않는다.
+- 다섯 번째 제외 범주나 새 안내를 추가하지 않는다.
+
+## Decision 4 — Path Model and Implementation Contract
+
+의미가 구분되는 네 결과(코드 이름은 달라도 된다): `fastPathCopy`, `normalizeBuiltInToneMap`, `normalizeSDRApertureGeometry`, 거부된 Invalid / Unsupported 조합.
+
+- Step 4A의 출력 Raster 계산이 유일한 크기 권위다.
+- Plan은 선택된 준비 경로를 결정적으로 담거나 유도해야 한다.
+- Inspector는 신뢰성 있는 Aperture Facts를 수집한다.
+- Classifier와 Plan은 일치해야 한다.
+- Step 3은 Eligible 후보만 유지하고 새 거부를 기존 Invalid / Unsupported 범주로 매핑한다.
+- Step 4B는 Plan / Source 불일치를 거부한다.
+- 출력 Validation은 성공한 두 정규화 경로에서 동일하다.
+- Remux 경로를 도입하지 않는다.
+- 이 경로 구분은 승인된 계약이며 구현된 것이 아니다.
+
+## User-facing Behavior
+
+새 Copy를 도입하지 않고 기존 승인 동작을 재사용한다.
+
+- 단일 항목 / Replace: `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`
+- 다중 선택 Invalid / Unsupported만 제외: `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`
+- 복합 제외: 기존 복합 Copy 그대로.
+
+사용자 Copy는 Aperture · HDR · Dolby Vision · Rec.2020 · Tone-mapping을 언급하지 않는다.
+
+## Tests and Acceptance
+
+### 순수 Facts / Classifier / Plan Test
+
+- Full Aperture, 중앙 소수 원점 홀수 Aperture, 정수 Offset Aperture, 형식 오류 / 얻을 수 없는 Aperture
+- 사유 없는 Non-full Source는 Fast Path 유지
+- 사유 있는 Full-aperture HDR과 Full-aperture SDR은 내장 경로
+- 사유 있는 Non-full SDR Rec.709는 Geometry 전용 경로
+- 사유 있는 Non-full HLG / PQ / Rec.2020 / Dolby Vision은 거부
+- 사유 있는 Non-full Unknown / 미증명 색은 거부
+- 긍정적 709 Facts를 가진 Non-full SDR 10-bit는 Eligible 유지
+- 단계 우선순위, Step 3 Invalid / Unsupported 매핑, 단일 / 다중 / Replace 동작, 새 안내 범주 없음
+
+### 실제 Media Test
+
+- 내장 Compositor가 Full-aperture 경계를 보존
+- Custom SDR Geometry 경로가 홀수 / Offset Clean Aperture를 보존
+- Full-aperture HLG / PQ는 승인된 내장 경로 유지
+- Non-full HDR은 AVFoundation Media Operation 전에 거부
+- 성공한 정규화 경로 간 출력 계약 동일, Source 불변, 거부 항목 출력 없음
+
+### 기기 Gate
+
+- 최종 Step 4B 통합 후 기존 Full-aperture HDR 검증을 반복한다.
+- Dolby Vision A/B는 진짜 승인된 Fixture가 있을 때까지 Pending이며 합성 Dolby Vision 증명을 주장하지 않는다.
+
+## Rationale
+
+- 승인되고 기기 A/B를 받은 Tone-mapping 경로를 바꾸지 않으면서 ADR-047 Revision 1의 Crop · Padding 금지를 지킬 수 있는 가장 좁은 경계다.
+- SDR Rec.709 Source는 Tone-mapping이 필요 없으므로 Geometry 전용 경로가 Clean Aperture 전체를 정확히 매핑할 수 있다.
+- Non-full Aperture이면서 Tone-mapping이 필요한 Source는 승인된 경로로는 경계를 잃거나 번지고, 다른 변환 경로는 승인된 증거가 없다. 경계를 잃은 Working Media를 조용히 만드는 것보다 기존 범주로 제외하는 편이 Media Safety와 Product 계약에 맞다.
+- Fast-path Copy는 Source를 그대로 보존하므로 Aperture가 Normalization을 강제할 이유가 없다.
+
+## Consequences
+
+- `ImportSourceFacts`(또는 동등한 Inspector Facts)에 Encoded Raster · Clean Aperture · Pixel Aspect · Full / Non-full 판정이 추가된다(구현 대상).
+- Classifier는 사유 판정 뒤 경로 판정 단계를 수행하고 Case D를 기존 Invalid / Unsupported Exclusion으로 매핑한다(구현 대상).
+- Step 4A Plan은 준비 경로를 결정적으로 표현하고 Step 4B Normalizer는 두 정규화 경로를 구현한다(구현 대상).
+- ROADMAP Phase 6 Unit / Integration / Device Test에 이 ADR의 Case가 추가된다.
+
+## Still Pending (이 ADR이 확정하지 않음)
+
+- Non-full Aperture HDR / Wide-color Source의 Post-V1 지원(별도 변환 메커니즘 + 기기 HDR / Dolby Vision 증거)
+- Dolby Vision 기기 A/B(진짜 승인된 Fixture 필요)
+- Fast-path Copy된 Non-full Aperture Media를 이후 Preview / Export Composition이 어떻게 렌더링하는지(Phase 7 / 9 소유, 이 ADR은 결정하지 않음)
+- Import Storage Estimate Formula와 Safety Reserve, Aggregate Progress / Retry Source-handle 메커니즘
+
+## Non-goals
+
+- Production 구현, ADR-045 / ADR-047 본문 개정, 새 Normalization 사유, 새 사용자 범주 · Copy, Crop / Pad / Upscale 옵션, Remux, Custom Compositor Pre-conversion의 Tone-mapping 승인.
