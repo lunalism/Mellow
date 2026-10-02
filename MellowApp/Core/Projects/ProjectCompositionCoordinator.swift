@@ -62,7 +62,9 @@ final class ProjectCompositionCoordinator {
     /// ADR-020: validate all → materialize all → persist → verify → promote → (replacement only) remove
     /// the previous Project → discard workspace. All-or-nothing: a Project is never committed with a
     /// subset of the selected sources. On every non-committed outcome the previous saved Project (if
-    /// any) is untouched and the workspace is discarded.
+    /// any) is untouched and the workspace is discarded. B's media is removed only on failures before
+    /// the save attempt; from the save attempt on it is preserved (ADR-050 050-D D8.0), and A's media
+    /// is removed only after B is verified and A's row is confirmed absent.
     ///
     /// The whole validate → materialize → persist → promote → retire-A section runs inside the shared
     /// lifecycle gate, so a pending-Clip cleanup pass (which may be retiring A's own pending Clips or
@@ -125,41 +127,62 @@ final class ProjectCompositionCoordinator {
             }
         }
 
-        // 4. Persist B, then verify the commit by reading it back.
+        // 4. Persist B, then verify the commit by reading it back. Building the value is pre-save: B's
+        //    directory is this operation's own and nothing was persisted, so it may still be removed.
         let project: VlogProject
         do {
             project = try VlogProject(id: projectID, orientation: .portrait9x16, clips: clips)
-            try repository.create(project)
         } catch {
             log("persistence", error)
             await mediaStore.removeProjectMedia(projectID: projectID)
             return .failed(.persistence)
         }
+        // From the save attempt on, B's media may be referenced (ADR-050 050-D D8.0): a thrown save does
+        // not prove nothing committed, and a save that returned must never be rolled back. B's row and
+        // files are preserved on every failure below; an unreferenced copy is startup recovery's (an
+        // absent row leaves an orphan Project directory). The outcome is still reported as a failure —
+        // that presentation is pending the outcome-handling decision (050-D D8.5).
+        do {
+            try repository.create(project)
+        } catch {
+            log("persistence", error)
+            MellowLog.app.info("Project composition preserved media after save error project=\(String(projectID.uuidString.prefix(8)), privacy: .public)")
+            return .failed(.persistence)
+        }
         guard let committed = try? repository.project(id: projectID), committed.clips.count == clips.count else {
             log("verification", nil)
-            try? repository.deleteProject(id: projectID)
-            await mediaStore.removeProjectMedia(projectID: projectID)
             return .failed(.verification)
         }
         for clip in committed.clips where await !mediaStore.fileExists(clip.mediaRelativePath) {
             log("verification", nil)
-            try? repository.deleteProject(id: projectID)
-            await mediaStore.removeProjectMedia(projectID: projectID)
             return .failed(.verification)
         }
 
-        // 5. B is committed and is now the current saved Project (canonical recency ordering).
-        //    Only now may the replaced Project A go: metadata first, then its app-owned media.
+        // 5. B is committed, verified and is now the current saved Project (canonical recency ordering).
+        //    Only now may the replaced Project A go: metadata first, then its app-owned media — and the
+        //    media only once A's deletion returned AND a re-read confirms A's row is absent. A failed or
+        //    unconfirmed deletion keeps A's media (a surviving A row would reference it; an absent row's
+        //    directory is startup recovery's).
         if case .replacingSaved(let previousID) = intent, previousID != projectID {
+            var deleted = false
             do {
                 try repository.deleteProject(id: previousID)
+                deleted = true
             } catch {
-                // A already gone or delete failed: B is still the valid saved Project; report only.
                 log("previous project removal", error)
             }
-            await mediaStore.removeProjectMedia(projectID: previousID)
+            if deleted, isConfirmedAbsent(previousID) {
+                await mediaStore.removeProjectMedia(projectID: previousID)
+            } else {
+                MellowLog.app.info("Project composition preserved previous project media project=\(String(previousID.uuidString.prefix(8)), privacy: .public)")
+            }
         }
         return .committed(projectID: projectID)
+    }
+
+    /// True only when a read succeeds and finds no row; a read error is not proof of absence.
+    private func isConfirmedAbsent(_ projectID: UUID) -> Bool {
+        do { return try repository.project(id: projectID) == nil } catch { return false }
     }
 
     private func log(_ stage: String, _ error: Error?) {

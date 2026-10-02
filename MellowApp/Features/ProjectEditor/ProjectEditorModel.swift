@@ -399,7 +399,8 @@ final class ProjectEditorModel {
     /// directory → append after the last active Clip in picker order → one autosave + read-back →
     /// ONE history entry → first added Clip selected. Cancel and every failure leave the Project,
     /// history, selection and existing media untouched; files this operation created are removed
-    /// again. Returns the number of Clips added (0 on cancel / failure).
+    /// again when the failure precedes the save attempt, and preserved after it (ADR-050 050-D D8.0).
+    /// Returns the number of Clips added (0 on cancel / failure).
     @discardableResult
     func addClips() async -> Int {
         guard let acquisition, canAddClips else { return 0 }
@@ -415,9 +416,10 @@ final class ProjectEditorModel {
     /// → `VlogProject.replaceClip` (B becomes durable pending, D takes B's exact logical index with a
     /// NEW identity, `.imported`, trim reset, no framing) → one autosave + read-back → ONE `.replace`
     /// history entry → D selected. Cancel and every failure leave B, the Project, history, selection
-    /// and existing media exactly as before; a D file that was created but never committed is removed
-    /// at once. Undo / Redo of the entry go through the general history (B ↔ D swap identities, no
-    /// picker, no copy). Returns the new Clip's id on success.
+    /// and existing media exactly as before; a D file created before a failure that precedes the save
+    /// attempt is removed at once, and preserved after a save attempt. Undo / Redo of the entry go
+    /// through the general history (B ↔ D swap identities, no picker, no copy). Returns the new Clip's
+    /// id on success.
     @discardableResult
     func replaceSelectedClip() async -> UUID? {
         guard let acquisition, let targetID = selectedClipID, canReplaceSelectedClip else { return nil }
@@ -483,8 +485,9 @@ final class ProjectEditorModel {
 
     /// Runs INSIDE the lifecycle gate. The target is revalidated against the repository first: if the
     /// Project row is gone (or unreadable), or a Replace target is no longer an active Clip, nothing is
-    /// materialised — no Project directory is (re)created and nothing is saved. A materialised batch
-    /// that cannot be committed is removed again before the gate is released.
+    /// materialised — no Project directory is (re)created and nothing is saved. A materialised batch that
+    /// fails BEFORE the save attempt is removed again before the gate is released; after the save attempt
+    /// it is preserved.
     private func materializeAndCommit(_ validated: ProjectClipAppendCoordinator.ValidatedSources, using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
         guard isTargetCurrent(replacing: targetID) else {
             editorMessage = failure
@@ -514,8 +517,12 @@ final class ProjectEditorModel {
             ? commitEdit(.add, updated, selecting: newClips.first?.id, failure: failure, label: "add")
             : commitEdit(.replace, updated, selecting: newClips.first?.id, failure: failure, label: "replace")
         guard committed else {
-            // Never committed and referenced by nothing durable: safe to remove these files now.
-            await acquisition.appender.discard(newClips)
+            // The save was attempted: it either threw (which does not prove nothing committed) or returned
+            // and failed read-back verification (committed). Either way these files may be referenced
+            // (ADR-050 050-D D8.0), so they are preserved, never discarded; an unreferenced copy is startup
+            // recovery's once the Editor session has ended. The model still restores its previous in-memory
+            // state and shows the existing failure message — reload / presentation is pending (D8.5).
+            MellowLog.app.info("Project editor preserved acquired media after an unverified save project=\(String(self.project.id.uuidString.prefix(8)), privacy: .public)")
             return nil
         }
         return newClips

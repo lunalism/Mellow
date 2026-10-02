@@ -1188,7 +1188,7 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertTrue(mediaFiles(harness.root, projectID: model.project.id).isEmpty)
     }
 
-    func testPersistenceFailureRollsBackAndRemovesOnlyTheNewMedia() async throws {
+    func testPersistenceFailureRollsBackTheModelAndPreservesTheNewMedia() async throws {
         let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
         let harness = makeAddHarness(script: .fixtures([fixture]))
         defer { harness.cleanup() }
@@ -1210,7 +1210,10 @@ final class ProjectEditorModelTests: XCTestCase {
         XCTAssertFalse(model.canUndo, "no history entry")
         XCTAssertEqual(model.editorMessage, .addFailed)
         XCTAssertEqual(try repository.project(id: before.id), before)
-        XCTAssertEqual(mediaFiles(harness.root, projectID: before.id), ["existing.mov"], "the new file was removed, the existing one kept")
+        // ADR-050 050-D D8.0: after a save attempt the new file is preserved, never discarded.
+        let files = mediaFiles(harness.root, projectID: before.id)
+        XCTAssertEqual(files.count, 2, "the new file is preserved")
+        XCTAssertTrue(files.contains("existing.mov"), "the existing one is kept")
     }
 
     func testAddIsRefusedWhileDraggingOrCommitting() async throws {

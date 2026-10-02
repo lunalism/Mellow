@@ -81,6 +81,16 @@ final class FailableProjectRepository: ProjectRepository {
     var createFails = false
     var deleteFails = false
     var updateFails = false
+    /// The write lands, then the call throws: a save whose outcome the caller cannot see.
+    var createThrowsAfterCommit = false
+    var updateThrowsAfterCommit = false
+    var deleteThrowsAfterCommit = false
+    /// `project(id:)` throws for these IDs (an unreadable verification / absence read).
+    var unreadableIDs: Set<UUID> = []
+    /// `project(id:)` returns nil for these IDs although the row exists (a read-back that cannot see it).
+    var hiddenIDs: Set<UUID> = []
+    /// Every Project created while this is true is hidden from `project(id:)` read-back.
+    var hideCreatedProjects = false
     private(set) var createCount = 0
     private(set) var updateCount = 0
     private(set) var deletedIDs: [UUID] = []
@@ -92,20 +102,28 @@ final class FailableProjectRepository: ProjectRepository {
         createCount += 1
         if createFails { throw Failure.injected }
         try inner.create(project)
+        if hideCreatedProjects { hiddenIDs.insert(project.id) }
+        if createThrowsAfterCommit { throw Failure.injected }
     }
-    func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
+    func project(id: UUID) throws -> VlogProject? {
+        if unreadableIDs.contains(id) { throw Failure.injected }
+        if hiddenIDs.contains(id) { return nil }
+        return try inner.project(id: id)
+    }
     func recentProjects() throws -> [VlogProject] { try inner.recentProjects() }
     func update(_ project: VlogProject) throws {
         updateCount += 1
         onUpdate?()
         if updateFails { throw Failure.injected }
         try inner.update(project)
+        if updateThrowsAfterCommit { throw Failure.injected }
     }
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws {
         if deleteFails { throw Failure.injected }
         deletedIDs.append(id)
         try inner.deleteProject(id: id)
+        if deleteThrowsAfterCommit { throw Failure.injected }
     }
     func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
 }

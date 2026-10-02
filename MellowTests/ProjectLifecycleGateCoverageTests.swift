@@ -385,7 +385,7 @@ final class ProjectLifecycleGateCoverageTests: XCTestCase {
         XCTAssertNil(home.failure, "the gate is usable again")
     }
 
-    func testCommitFailureRemovesTheBatchBeforeReleasingTheGate() async throws {
+    func testCommitFailurePreservesTheBatchAndReleasesTheGate() async throws {
         let project = try await makeProject(withClips: false)
         let failing = FailableProjectRepository()
         try failing.create(project)
@@ -395,7 +395,7 @@ final class ProjectLifecycleGateCoverageTests: XCTestCase {
         let added = await editor.addClips()
 
         XCTAssertEqual(added, 0)
-        XCTAssertTrue(mediaFiles(project.id).isEmpty, "uncommitted files removed")
+        XCTAssertEqual(mediaFiles(project.id).count, 1, "after a save attempt the batch is preserved (ADR-050 050-D D8.0)")
         XCTAssertFalse(gate.isHeld)
         XCTAssertEqual(gate.waitingCount, 0)
     }

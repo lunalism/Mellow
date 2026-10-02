@@ -466,10 +466,10 @@ final class ProjectStartupRecoveryCoordinatorTests: XCTestCase {
 
     // MARK: Add rollback (STEP 11) and the crash window
 
-    func testAddRollbackStillCleansImmediatelyAndRecoveryHandlesOnlyTheCrashWindow() async throws {
+    func testAddSaveFailurePreservesItsFileAndRecoveryRemovesUnreferencedCopies() async throws {
         let h = makeHarness()
         let (project, _) = try seedProject(h)
-        // In-process failure: STEP 11 discards its own files immediately (unchanged behaviour).
+        // In-process save failure: the file is preserved (ADR-050 050-D D8.0 — a thrown save is not proof).
         let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
         let selector = FakeProjectMediaSelector(script: .fixtures([fixture]))
         let appender = ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: FakeProjectStorageGate(verdict: .sufficient))
@@ -480,16 +480,17 @@ final class ProjectStartupRecoveryCoordinatorTests: XCTestCase {
         let added = await editor.addClips()
         XCTAssertEqual(added, 0)
         let media = try fm.contentsOfDirectory(atPath: root.appendingPathComponent("Projects/\(project.id.uuidString)/Media").path)
-        XCTAssertEqual(media.count, 2, "rollback removed the materialised file before any recovery ran")
+        XCTAssertEqual(media.count, 3, "the materialised file is preserved after the save attempt")
 
-        // Crash window: the file exists, no row references it → next launch's recovery removes it.
+        // Crash window: the file exists, no row references it → next launch's recovery removes it, and
+        // the preserved-but-unreferenced copy above with it.
         let workspace = try await store.beginWorkspace()
         let sources = try await TestSupport.adoptedSources([fixture], into: workspace, store: store)
         guard case .ready(let clips) = await appender.prepareClips(for: project, sources: sources) else { return XCTFail() }
         await store.discard(workspace)
         XCTAssertTrue(exists(clips[0].mediaRelativePath.value))
         let report = await h.runStartupMaintenance()
-        XCTAssertEqual(report.orphanMediaRemoved, 1)
+        XCTAssertEqual(report.orphanMediaRemoved, 2)
         XCTAssertFalse(exists(clips[0].mediaRelativePath.value))
         XCTAssertEqual(try h.repository.project(id: project.id)?.clips.count, 2)
     }

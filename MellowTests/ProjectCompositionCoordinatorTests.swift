@@ -257,7 +257,7 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         XCTAssertTrue(TestSupport.noProjectMedia(under: root))
     }
 
-    func testPersistenceFailureCommitsNothingAndCleansMedia() async throws {
+    func testPersistenceErrorCommitsNothingVisibleAndPreservesBMedia() async throws {
         let repository = FailableProjectRepository()
         repository.createFails = true
         let workspace = try await store.beginWorkspace()
@@ -265,7 +265,9 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         let outcome = await coordinator(repository: repository).compose(.fresh, sources: selected, workspace: workspace)
         XCTAssertEqual(outcome, .failed(.persistence))
         XCTAssertTrue(try repository.recentProjects().isEmpty)
-        XCTAssertTrue(TestSupport.noProjectMedia(under: root), "materialized B media removed after failed persist")
+        // ADR-050 050-D D8.0: a thrown save does not prove nothing committed — B's media is preserved
+        // (an unreferenced copy is startup recovery's).
+        XCTAssertFalse(TestSupport.noProjectMedia(under: root), "materialized B media preserved after a save error")
         XCTAssertFalse(TestSupport.exists(workspace.directory))
     }
 

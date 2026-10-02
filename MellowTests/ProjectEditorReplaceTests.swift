@@ -414,7 +414,7 @@ final class ProjectEditorReplaceTests: XCTestCase {
         await assertFileExists(store, d.mediaRelativePath, true)
     }
 
-    func testReplacePersistenceFailureRollsBackAndRemovesOnlyTheNewMedia() async throws {
+    func testReplacePersistenceFailureRollsBackTheModelAndPreservesTheNewMedia() async throws {
         let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
         let h = try await makeEditor(script: .fixtures([fixture]))
         await h.model.loadThumbnails(displayScale: 2)
@@ -434,7 +434,9 @@ final class ProjectEditorReplaceTests: XCTestCase {
         XCTAssertEqual(ProjectEditorMessage.replaceFailed.title, "클립을 교체하지 못했어요")
         XCTAssertEqual(ProjectEditorMessage.replaceFailed.message, "다시 시도해주세요. 프로젝트는 그대로 있어요.")
         XCTAssertEqual(try h.repository.project(id: before.id), before)
-        XCTAssertEqual(mediaFiles(before.id), filesBefore, "D's file removed, A and C kept")
+        // ADR-050 050-D D8.0: after a save attempt D's file is preserved; A and C are kept.
+        XCTAssertEqual(mediaFiles(before.id).count, filesBefore.count + 1, "D's file preserved")
+        XCTAssertTrue(Set(mediaFiles(before.id)).isSuperset(of: filesBefore), "A and C kept")
         XCTAssertFalse(h.model.isAcquiringClips)
     }
 
