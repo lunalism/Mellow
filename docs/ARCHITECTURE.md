@@ -486,6 +486,8 @@ Feature Layer와 Persistence 사이에는 `ProjectRepository` Boundary를 사용
 
 **저장 Project 대체(ADR-033 Revision 1 / ADR-050 OD-14, 2026-10-02):** `replaceProject(previousID:with:)`는 A 존재, B ID 부재, B Clip Identity 충돌 없음, B Metadata 변환을 먼저 검증한 뒤 Autosave를 끈 전용 `ModelContext`에서 B 삽입과 A(Active / Pending-deleted Clip Row 포함 Cascade) 삭제를 한 번의 명시적 Save로 Commit한다. Media는 다루지 않는다. 오류는 이전 Durable 상태를 증명하지 않으며 한 번의 Save는 강제 종료 · 전원 손실 Atomicity 보장이 아니다. 구현 · Test 완료, Coordinator 연결 Pending(현재 `ProjectCompositionCoordinator.compose`는 두 Save).
 
+**Save 결과 관측(ADR-050 050-D OD-10, 2026-10-02):** `SwiftDataProjectRepository.observePersistedState(for:)`는 `ProjectSaveExpectation`에 필요한 `PersistedStateObservation`을 만든다. 관측마다 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`)를 쓰며 공유 Context의 저장하지 않은 변경을 읽거나 저장하거나 버리지 않고 Metadata를 바꾸지 않는다. Fetch 실패와 Domain 변환 실패는 `.unreadable`, 행 없음은 `.absent`이며 만든 ID는 정렬된 Bounded Batch로 Store 전체에서 조회한다(실패한 Batch는 빠진 것으로, 다른 Batch의 충돌은 그대로). 이것은 구현 정책이며 모든 공유 Cache를 우회하거나 모든 실패에서 독립적인 Durable 진실을 확립한다는 보장이 아니고, 여러 Fetch로 이루어져 원자적 Snapshot이 아니다; Lifecycle Gate 직렬화와 분류기 · Coordinator 연결은 Pending이다.
+
 ### Responsibilities
 
 - Project 생성

@@ -143,6 +143,10 @@ final class SwiftDataProjectRepository: ProjectRepository {
     static let clipIdentityQueryBatchSize = 500
 
     #if DEBUG
+    /// Test seam: returns true for an observation fetch that should fail with `InjectedObservationFault`.
+    /// Nil in every production path; absent from Release.
+    var debugObservationFault: ((ObservationFetch) -> Bool)? = nil
+
     /// Test seam: replaces the staged-mapping check. Nil in every production path; absent from Release.
     var debugStagedMappingOverride: ((PersistedVlogProject, VlogProject) -> Bool)? = nil
     #endif
@@ -182,5 +186,106 @@ final class SwiftDataProjectRepository: ProjectRepository {
         var descriptor = FetchDescriptor<PersistedVlogProject>(predicate: predicate)
         descriptor.fetchLimit = 1
         return try modelContext.fetch(descriptor).first
+    }
+}
+
+// MARK: - Persisted-state observation (ADR-050 050-D OD-10)
+
+extension SwiftDataProjectRepository {
+    /// Holder recorded for a created Clip ID whose row exists but has no owning Project. It never equals a
+    /// real Project ID (`UUID()` never yields the all-zero UUID) and so never equals an intended owner: the
+    /// classifier treats it as present (prior) and as a contradiction (intended).
+    static let unownedClipHolder = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+    /// The fetches one observation makes (names the DEBUG-only fault-injection points).
+    enum ObservationFetch: Equatable {
+        case project(UUID)
+        case createdProjects(batch: Int)
+        case createdClips(batch: Int)
+    }
+
+    #if DEBUG
+    /// Error thrown by an injected (simulated) observation fetch failure — not a real store failure.
+    struct InjectedObservationFault: Error {}
+    #endif
+
+    /// Reads the persisted state a `ProjectSaveExpectation` needs, for `ProjectSaveOutcomeClassifier`.
+    ///
+    /// OD-10 policy: every call uses a NEW `ModelContext` from this repository's container, with autosave
+    /// disabled and `includePendingChanges = false`; it never reuses the save context or the shared
+    /// context's objects, so the shared context's unsaved edits are neither read, saved nor discarded.
+    /// Nothing is mutated. This is an implementation policy, not a guarantee of bypassing every shared
+    /// cache or of independent durable truth under every failure. The observation is several separate
+    /// fetches, not one atomic store snapshot: callers must serialize it with Project lifecycle mutations
+    /// (the lifecycle gate) for the results to describe one moment. Without that serialization a row
+    /// deleted mid-observation can also fail while its relationships are read, which surfaces as a framework
+    /// exception rather than an `.unreadable` result, as on the repository's other read paths.
+    ///
+    /// Evidence is explicit and never hidden: a missing row is `.absent`; a fetch or domain-conversion
+    /// failure is `.unreadable`; created identities are queried store-wide in bounded batches, and an
+    /// identity whose batch failed is simply left out (so the classifier sees it as missing) while every
+    /// identity that was queried successfully, including conflicting holders, is still reported.
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation {
+        let context = ModelContext(modelContext.container)
+        context.autosaveEnabled = false
+
+        var projects: [UUID: ObservedProjectRecord] = [:]
+        for id in Set(expectation.prior.keys).union(expectation.intended.keys) {
+            projects[id] = observeProject(id, in: context)
+        }
+
+        var holders: [UUID: Set<UUID>] = [:]
+        // Deterministic batches (sorted identities), independent of dictionary / set iteration order.
+        let createdProjectIDs = expectation.createdProjectIDs.sorted { $0.uuidString < $1.uuidString }
+        let createdClipIDs = expectation.createdClipOwners.keys.sorted { $0.uuidString < $1.uuidString }
+        let batchSize = Self.clipIdentityQueryBatchSize
+        for (batchIndex, start) in stride(from: 0, to: createdProjectIDs.count, by: batchSize).enumerated() {
+            let batch = Array(createdProjectIDs[start..<min(start + batchSize, createdProjectIDs.count)])
+            do {
+                try injectObservationFault(.createdProjects(batch: batchIndex))
+                var descriptor = FetchDescriptor<PersistedVlogProject>(predicate: #Predicate { batch.contains($0.id) })
+                descriptor.includePendingChanges = false
+                let found = Set(try context.fetch(descriptor).map(\.id))
+                for id in batch { holders[id] = found.contains(id) ? [id] : [] }
+            } catch {
+                continue   // these identities stay missing
+            }
+        }
+        for (batchIndex, start) in stride(from: 0, to: createdClipIDs.count, by: batchSize).enumerated() {
+            let batch = Array(createdClipIDs[start..<min(start + batchSize, createdClipIDs.count)])
+            do {
+                try injectObservationFault(.createdClips(batch: batchIndex))
+                var descriptor = FetchDescriptor<PersistedVlogClip>(predicate: #Predicate { batch.contains($0.id) })
+                descriptor.includePendingChanges = false
+                var batchHolders = Dictionary(uniqueKeysWithValues: batch.map { ($0, Set<UUID>()) })
+                for row in try context.fetch(descriptor) {
+                    batchHolders[row.id, default: []].insert(row.project?.id ?? Self.unownedClipHolder)
+                }
+                holders.merge(batchHolders) { $0.union($1) }
+            } catch {
+                continue   // these identities stay missing
+            }
+        }
+        return PersistedStateObservation(projects: projects, createdIdentityHolders: holders)
+    }
+
+    private func observeProject(_ id: UUID, in context: ModelContext) -> ObservedProjectRecord {
+        do {
+            try injectObservationFault(.project(id))
+            var descriptor = FetchDescriptor<PersistedVlogProject>(predicate: #Predicate { $0.id == id })
+            descriptor.includePendingChanges = false
+            let rows = try context.fetch(descriptor)
+            guard let row = rows.first else { return .absent }
+            guard rows.count == 1 else { return .unreadable }
+            return .present(try row.domainValue())
+        } catch {
+            return .unreadable
+        }
+    }
+
+    private func injectObservationFault(_ fetch: ObservationFetch) throws {
+        #if DEBUG
+        if let fault = debugObservationFault, fault(fetch) { throw InjectedObservationFault() }
+        #endif
     }
 }

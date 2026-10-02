@@ -3,7 +3,8 @@ import Foundation
 // ADR-050 050-D save-outcome classification (classification rules accepted 2026-10-02). Pure: it compares
 // caller-supplied observations with prior / intended snapshots and returns a domain outcome. It performs
 // no reads, no filesystem work and no cleanup, and it cannot know whether the caller's read was independent
-// of context / coordinator caches (the fresh-read strategy, OD-10, is still Proposed).
+// of context / coordinator caches (OD-10's dedicated-context policy is implemented separately by
+// `SwiftDataProjectRepository.observePersistedState(for:)`; it is a policy, not a cache-bypass guarantee).
 
 /// A complete, order-aware comparison value for one persisted Project. Active Clips compare in timeline
 /// order with every field; pending-deleted Clips compare as a set keyed by identity (with every field,
@@ -138,9 +139,10 @@ enum ObservedProjectRecord: Equatable, Sendable {
 struct PersistedStateObservation: Equatable, Sendable {
     /// Every Project ID in the expectation should appear here; a missing entry counts as not observed.
     let projects: [UUID: ObservedProjectRecord]
-    /// Store-wide result of looking up the operation-created identities, or nil when that lookup was not
-    /// made or failed. For each queried identity: the Project IDs that hold it (a Project ID "holds" itself
-    /// when its row exists; a Clip ID is held by the Project that owns the row). Empty set = absent.
+    /// Store-wide result of looking up the operation-created identities, or nil when no lookup result is
+    /// available at all. For each queried identity: the Project IDs that hold it (a Project ID "holds" itself
+    /// when its row exists; a Clip ID is held by the Project that owns the row). Empty set = absent. A created
+    /// identity with no key (for example its query batch failed) counts as not observed.
     let createdIdentityHolders: [UUID: Set<UUID>]?
 }
 
