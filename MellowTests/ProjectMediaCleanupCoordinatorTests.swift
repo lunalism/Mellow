@@ -228,7 +228,7 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
         let selector = FakeProjectMediaSelector(script: .fixtures([fixture]))
         let appender = ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: FakeProjectStorageGate(verdict: .sufficient))
-        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: .sufficient), appender: appender)
+        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: .sufficient), appender: appender, lifecycle: h.gate)
         return ProjectEditorModel(project: project, repository: h.repository, thumbnails: FakeClipThumbnailProvider(), acquisition: acquisition)
     }
 

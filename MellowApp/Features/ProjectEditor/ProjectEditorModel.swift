@@ -74,6 +74,9 @@ struct EditorClipAcquisition {
     let mediaSelector: any ProjectMediaSelecting
     let storageGate: any ProjectStorageGating
     let appender: ProjectClipAppendCoordinator
+    /// The shared Project lifecycle gate (ADR-039): target revalidation, materialisation and the commit
+    /// run inside it. Must be the app's single instance, the same one cleanup / composition use.
+    let lifecycle: ProjectLifecycleOperationGate
     #if DEBUG
     /// UI-test seam (`-uiTestCrashAfterAddMaterialize`): runs right after the batch is materialised
     /// and before it is committed — the STEP 12B crash window. Nil in every production path.
@@ -402,19 +405,7 @@ final class ProjectEditorModel {
         guard let acquisition, canAddClips else { return 0 }
         acquisitionMode = .add
         defer { acquisitionMode = nil }
-        guard case .ready(let newClips) = await acquireClips(using: acquisition, selectionLimit: nil, failure: .addFailed) else { return 0 }
-        var updated = project
-        do { try updated.appendClips(newClips) } catch {
-            await acquisition.appender.discard(newClips)
-            editorMessage = .addFailed
-            return 0
-        }
-        guard commitEdit(.add, updated, selecting: newClips.first?.id, failure: .addFailed, label: "add") else {
-            // Never committed and referenced by nothing durable: safe to remove these files now.
-            await acquisition.appender.discard(newClips)
-            return 0
-        }
-        return newClips.count
+        return await acquireAndCommit(using: acquisition, replacing: nil, failure: .addFailed)?.count ?? 0
     }
 
     // MARK: - Replace (STEP 13, ADR-040)
@@ -432,78 +423,122 @@ final class ProjectEditorModel {
         guard let acquisition, let targetID = selectedClipID, canReplaceSelectedClip else { return nil }
         acquisitionMode = .replace(targetID)
         defer { acquisitionMode = nil }
-        guard case .ready(let newClips) = await acquireClips(using: acquisition, selectionLimit: 1, failure: .replaceFailed) else { return nil }
-        // Cardinality is the model's rule, not the picker's: anything but exactly one source is a failure.
-        guard newClips.count == 1, let replacement = newClips.first else {
-            await acquisition.appender.discard(newClips)
-            editorMessage = .replaceFailed
-            return nil
-        }
-        var updated = project
-        do { try updated.replaceClip(id: targetID, with: replacement) } catch {
-            await acquisition.appender.discard(newClips)
-            editorMessage = .replaceFailed
-            return nil
-        }
-        guard commitEdit(.replace, updated, selecting: replacement.id, failure: .replaceFailed, label: "replace") else {
-            await acquisition.appender.discard(newClips)
-            return nil
-        }
-        return replacement.id
-    }
-
-    private enum AcquisitionResult {
-        case ready([VlogClip])
-        case none
+        return await acquireAndCommit(using: acquisition, replacing: targetID, failure: .replaceFailed)?.first?.id
     }
 
     /// The one acquisition path Add and Replace share (ADR-037 / ADR-040): workspace → selector
-    /// session (`selectionLimit` bounds the picker) → `ProjectClipAppendCoordinator.prepareClips`
-    /// (reserve guard → validate ALL → materialise ALL). Cancel is silent; every other outcome maps
-    /// to the canonical Select-Clips copy, with `failure` as the operation's generic message. The
-    /// workspace is always discarded here; a materialised batch that the caller cannot commit is the
-    /// caller's to discard.
-    private func acquireClips(using acquisition: EditorClipAcquisition, selectionLimit: Int?, failure: ProjectEditorMessage) async -> AcquisitionResult {
+    /// session → reserve guard + validation, all OUTSIDE the lifecycle gate (the workspace is
+    /// protected by the store's live-workspace registry) → then, INSIDE the shared lifecycle gate
+    /// (ADR-039 / ADR-050 serialization prerequisite): revalidate the target → materialise → commit,
+    /// or remove the files this operation created. Project deletion, composition / replacement,
+    /// cleanup and startup recovery therefore cannot interleave with the target check, the new
+    /// Project-directory files or the repository write. The workspace is always discarded here.
+    /// Returns the committed new Clips (picker order), or nil on cancel / failure.
+    private func acquireAndCommit(using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
         guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
             editorMessage = failure
-            return .none
+            return nil
         }
-        let result = await acquireClips(using: acquisition, workspace: workspace, selectionLimit: selectionLimit, failure: failure)
+        var committed: [VlogClip]?
+        if let validated = await selectAndValidate(using: acquisition, workspace: workspace, selectionLimit: targetID == nil ? nil : 1, failure: failure) {
+            committed = await acquisition.lifecycle.withExclusiveAccess {
+                await materializeAndCommit(validated, using: acquisition, replacing: targetID, failure: failure)
+            }
+        }
         await acquisition.mediaStore.discard(workspace)
-        return result
+        return committed
     }
 
-    private func acquireClips(using acquisition: EditorClipAcquisition, workspace: ProjectMediaWorkspace, selectionLimit: Int?, failure: ProjectEditorMessage) async -> AcquisitionResult {
+    /// Selector session (`selectionLimit` bounds the picker) → `ProjectClipAppendCoordinator.validate`.
+    /// Cancel is silent; every other outcome maps to the canonical Select-Clips copy, with `failure` as
+    /// the operation's generic message. Creates nothing under the Project directory.
+    private func selectAndValidate(using acquisition: EditorClipAcquisition, workspace: ProjectMediaWorkspace, selectionLimit: Int?, failure: ProjectEditorMessage) async -> ProjectClipAppendCoordinator.ValidatedSources? {
         let sources: [SelectedVideoSource]
         switch await acquisition.mediaSelector.selectVideos(into: workspace, store: acquisition.mediaStore, admission: acquisition.storageGate, selectionLimit: selectionLimit) {
         case .cancelled:
-            return .none
+            return nil
         case .insufficientStorage:
             editorMessage = .addInsufficientStorage
-            return .none
+            return nil
         case .failed:
             editorMessage = failure
-            return .none
+            return nil
         case .selected(let selected):
             sources = selected
         }
         if let selectionLimit, sources.count > selectionLimit {
             // A boundary that returned more than the session allowed: nothing was materialised yet.
             editorMessage = failure
-            return .none
+            return nil
         }
-        switch await acquisition.appender.prepareClips(for: project, sources: sources) {
-        case .ready(let clips):
-            #if DEBUG
-            acquisition.debugAfterMaterialize?()
-            #endif
-            return .ready(clips)
+        switch await acquisition.appender.validate(sources) {
+        case .ready(let validated): return validated
         case .requiresImportPreparation(let reason): editorMessage = .addRequiresImportPreparation(reason)
         case .invalidMedia: editorMessage = .addInvalidMedia
         case .insufficientStorage: editorMessage = .addInsufficientStorage
         case .failed: editorMessage = failure
         }
-        return .none
+        return nil
+    }
+
+    /// Runs INSIDE the lifecycle gate. The target is revalidated against the repository first: if the
+    /// Project row is gone (or unreadable), or a Replace target is no longer an active Clip, nothing is
+    /// materialised — no Project directory is (re)created and nothing is saved. A materialised batch
+    /// that cannot be committed is removed again before the gate is released.
+    private func materializeAndCommit(_ validated: ProjectClipAppendCoordinator.ValidatedSources, using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
+        guard isTargetCurrent(replacing: targetID) else {
+            editorMessage = failure
+            return nil
+        }
+        // Cardinality is the model's rule, not the picker's: Replace needs exactly one source.
+        if targetID != nil, validated.sources.count != 1 {
+            editorMessage = failure
+            return nil
+        }
+        guard case .ready(let newClips) = await acquisition.appender.materialize(validated, for: project) else {
+            editorMessage = failure
+            return nil
+        }
+        #if DEBUG
+        acquisition.debugAfterMaterialize?()
+        #endif
+        var updated = project
+        do {
+            if let targetID { try updated.replaceClip(id: targetID, with: newClips[0]) } else { try updated.appendClips(newClips) }
+        } catch {
+            await acquisition.appender.discard(newClips)
+            editorMessage = failure
+            return nil
+        }
+        let committed = targetID == nil
+            ? commitEdit(.add, updated, selecting: newClips.first?.id, failure: failure, label: "add")
+            : commitEdit(.replace, updated, selecting: newClips.first?.id, failure: failure, label: "replace")
+        guard committed else {
+            // Never committed and referenced by nothing durable: safe to remove these files now.
+            await acquisition.appender.discard(newClips)
+            return nil
+        }
+        return newClips
+    }
+
+    /// Fresh repository check of the acquisition target, inside the gate: the Project still exists and,
+    /// for Replace, the target is still an active Clip both here and in the store.
+    private func isTargetCurrent(replacing targetID: UUID?) -> Bool {
+        let label = String(project.id.uuidString.prefix(8))
+        let stored: VlogProject?
+        do { stored = try repository.project(id: project.id) } catch {
+            MellowLog.app.error("Project editor acquisition target unreadable project=\(label, privacy: .public)")
+            return false
+        }
+        guard let stored else {
+            MellowLog.app.info("Project editor acquisition stopped project=\(label, privacy: .public) reason=projectAbsent")
+            return false
+        }
+        if let targetID, !(project.clips.contains { $0.id == targetID } && stored.clips.contains { $0.id == targetID }) {
+            MellowLog.app.info("Project editor acquisition stopped project=\(label, privacy: .public) reason=replaceTargetNotActive")
+            return false
+        }
+        return true
     }
 
     // MARK: - Undo / Redo (ADR-038)

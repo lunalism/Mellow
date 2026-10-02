@@ -28,8 +28,35 @@ final class ProjectClipAppendCoordinator {
         case failed
     }
 
+    /// Sources that passed the reserve guard and validation, with their durations, not yet materialised.
+    /// The workspace that holds them must stay live until `materialize(_:for:)` has run.
+    struct ValidatedSources: Equatable, Sendable {
+        let sources: [SelectedVideoSource]
+        let durations: [MediaTime]
+    }
+
+    enum Validation: Equatable, Sendable {
+        case ready(ValidatedSources)
+        case requiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
+        case invalidMedia(Phase5ReadyVerdict.InvalidReason)
+        case insufficientStorage
+        case failed
+    }
+
     /// Same pipeline as Project composition (ADR-020 / ADR-024), scoped to appending to `project`.
     func prepareClips(for project: VlogProject, sources: [SelectedVideoSource]) async -> Outcome {
+        switch await validate(sources) {
+        case .ready(let validated): return await materialize(validated, for: project)
+        case .requiresImportPreparation(let reason): return .requiresImportPreparation(reason)
+        case .invalidMedia(let reason): return .invalidMedia(reason)
+        case .insufficientStorage: return .insufficientStorage
+        case .failed: return .failed
+        }
+    }
+
+    /// Steps 1–2 only (reserve guard, validate every source). Touches no Project directory, so the Editor
+    /// runs it outside the lifecycle gate.
+    func validate(_ sources: [SelectedVideoSource]) async -> Validation {
         guard !sources.isEmpty else { return .failed }
 
         // 1. Final reserve guard: sources are already adopted on this volume, promotion is a rename.
@@ -49,10 +76,15 @@ final class ProjectClipAppendCoordinator {
             case .invalid(let reason): return .invalidMedia(reason)
             }
         }
+        return .ready(ValidatedSources(sources: sources, durations: durations))
+    }
 
-        // 3. Materialise into the current Project's own directory; undo everything on any failure.
+    /// Step 3: materialise into `project`'s own directory; undo everything on any failure. The Editor
+    /// calls it inside the lifecycle gate after revalidating the target Project.
+    func materialize(_ validated: ValidatedSources, for project: VlogProject) async -> Outcome {
+        guard !validated.sources.isEmpty, validated.sources.count == validated.durations.count else { return .failed }
         var clips: [VlogClip] = []
-        for (index, source) in sources.enumerated() {
+        for (index, source) in validated.sources.enumerated() {
             let clipID = UUID()
             do {
                 let path = try await mediaStore.materialize(source.url, projectID: project.id, clipID: clipID)
@@ -62,9 +94,9 @@ final class ProjectClipAppendCoordinator {
                     projectID: project.id,
                     sourceKind: .imported,
                     mediaRelativePath: path,
-                    sourceDuration: durations[index],
+                    sourceDuration: validated.durations[index],
                     trimStart: .zero,
-                    trimDuration: durations[index],
+                    trimDuration: validated.durations[index],
                     framing: nil,
                     sortOrder: project.clips.count + index
                 ))

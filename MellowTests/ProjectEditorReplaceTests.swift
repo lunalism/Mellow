@@ -65,7 +65,7 @@ final class ProjectEditorReplaceTests: XCTestCase {
         try repository.create(loaded)
         let selector = FakeProjectMediaSelector(script: script)
         let appender = ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()), storage: FakeProjectStorageGate(verdict: storage))
-        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: storage), appender: appender)
+        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: storage), appender: appender, lifecycle: ProjectLifecycleOperationGate())
         let model = ProjectEditorModel(project: loaded, repository: repository, thumbnails: provider, acquisition: acquisition,
                                        availability: availability ?? CommittedMediaAvailabilityChecker(resolver: store))
         return Harness(repository: repository, selector: selector, provider: provider, model: model, ids: loaded.clips.map(\.id))
@@ -510,7 +510,7 @@ final class ProjectEditorReplaceTests: XCTestCase {
         let repository = FailableProjectRepository()
         try repository.create(project)
         let selector = ProbingSelector()
-        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(), appender: ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())), storage: FakeProjectStorageGate()))
+        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(), appender: ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())), storage: FakeProjectStorageGate()), lifecycle: ProjectLifecycleOperationGate())
         let model = ProjectEditorModel(project: project, repository: repository, thumbnails: FakeClipThumbnailProvider(), acquisition: acquisition, availability: CommittedMediaAvailabilityChecker(resolver: store))
         await model.loadThumbnails(displayScale: 2)
         model.select(project.clips[1].id)

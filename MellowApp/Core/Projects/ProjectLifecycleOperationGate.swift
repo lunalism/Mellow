@@ -1,8 +1,9 @@
 import Foundation
 
 /// The one async critical section for cross-resource Project lifecycle mutations (ADR-039):
-/// pending-Clip physical cleanup, Project composition / Safe Atomic Replacement and the Editor's
-/// Project load all enter through `withExclusiveAccess`, so cleanup can never interleave with a
+/// pending-Clip physical cleanup, startup recovery, Project composition / Safe Atomic Replacement, the
+/// Editor's Project load, Home Project deletion and the Editor's Add / Replace target check →
+/// materialise → commit all enter through `withExclusiveAccess`, so cleanup can never interleave with a
 /// composition that touches the same Project files / metadata, and a new Editor never reads a
 /// half-reconciled Project (file gone, row still pending) that a later autosave could resurrect.
 ///
@@ -10,7 +11,8 @@ import Foundation
 /// Main-Actor isolated, so acquire / release are plain synchronous state changes with no hop and no
 /// check-then-act window. The lock is HELD ACROSS the operation's suspension points; waiters queue in
 /// FIFO order and receive the lock by direct hand-off. It is not a Boolean flag and there is no
-/// polling. Camera capture never takes this gate (it has no Project).
+/// polling. Camera capture never takes this gate (it has no Project). A holder must never call
+/// `withExclusiveAccess` again from inside its operation: the lock is not reentrant.
 @MainActor
 final class ProjectLifecycleOperationGate {
     private(set) var isHeld = false

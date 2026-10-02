@@ -1044,7 +1044,7 @@ final class ProjectEditorModelTests: XCTestCase {
             validator: Phase5ReadyMediaValidator(inspector: inspector ?? AVAssetProjectMediaInspector()),
             storage: FakeProjectStorageGate(verdict: storage)
         )
-        return AddHarness(root: root, store: store, selector: selector, acquisition: EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: storage), appender: appender))
+        return AddHarness(root: root, store: store, selector: selector, acquisition: EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: storage), appender: appender, lifecycle: ProjectLifecycleOperationGate()))
     }
 
     private func makeAddEditor(clipSeconds: [Int64] = [2, 3], harness: AddHarness, provider: FakeClipThumbnailProvider = FakeClipThumbnailProvider()) throws -> (ProjectEditorModel, FailableProjectRepository, [UUID]) {
@@ -1243,7 +1243,7 @@ final class ProjectEditorModelTests: XCTestCase {
         let root = TestSupport.temporaryRoot("editor-add-probe"); defer { try? FileManager.default.removeItem(at: root) }
         let store = ProjectMediaStore(root: root)
         let selector = ProbingSelector()
-        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(), appender: ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())), storage: FakeProjectStorageGate()))
+        let acquisition = EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(), appender: ProjectClipAppendCoordinator(mediaStore: store, validator: Phase5ReadyMediaValidator(inspector: FakeProjectMediaInspector(.ready())), storage: FakeProjectStorageGate()), lifecycle: ProjectLifecycleOperationGate())
         let repository = FailableProjectRepository()
         let project = try makeProject(clipSeconds: [2, 3])
         try repository.create(project)

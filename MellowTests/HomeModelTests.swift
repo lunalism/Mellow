@@ -7,7 +7,7 @@ import XCTest
 final class HomeModelTests: XCTestCase {
     func testLaunchAndRecentNavigationDoNotCreateProjects() throws {
         let repository = InMemoryProjectRepository()
-        let model = HomeModel(repository: repository, router: AppRouter())
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
         model.loadRecent()
         model.loadRecent()
         XCTAssertTrue(model.router.path.isEmpty)
@@ -24,7 +24,7 @@ final class HomeModelTests: XCTestCase {
         XCTAssertEqual(try repository.recentProjects().count, 1)
     }
 
-    func testBothOrientationsPersistAcrossRecreationAndDeletion() throws {
+    func testBothOrientationsPersistAcrossRecreationAndDeletion() async throws {
         let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -32,7 +32,7 @@ final class HomeModelTests: XCTestCase {
         var ids: [UUID] = []
         do {
             let container = try MellowModelContainer.makePersistentContainer(storeURL: url)
-            let model = HomeModel(repository: SwiftDataProjectRepository(modelContext: container.mainContext), router: AppRouter())
+            let model = HomeModel(repository: SwiftDataProjectRepository(modelContext: container.mainContext), router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
             model.loadRecent()
             XCTAssertTrue(model.projects.isEmpty)
             for orientation in ProjectOrientation.allCases {
@@ -50,7 +50,7 @@ final class HomeModelTests: XCTestCase {
         }
         do {
             let container = try MellowModelContainer.makePersistentContainer(storeURL: url)
-            let model = HomeModel(repository: SwiftDataProjectRepository(modelContext: container.mainContext), router: AppRouter())
+            let model = HomeModel(repository: SwiftDataProjectRepository(modelContext: container.mainContext), router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
             model.loadRecent()
             XCTAssertEqual(model.projects.count, 2)
             for (index, orientation) in ProjectOrientation.allCases.enumerated() {
@@ -59,7 +59,7 @@ final class HomeModelTests: XCTestCase {
                 XCTAssertEqual(model.router.path, [.recent, .camera(ids[index])])
             }
             model.pendingDeletion = model.projects.first { $0.id == ids[0] }
-            model.confirmDeletion()
+            await model.confirmDeletion()
             XCTAssertEqual(model.projects.map(\.id), [ids[1]])
         }
         let container = try MellowModelContainer.makePersistentContainer(storeURL: url)
@@ -69,7 +69,7 @@ final class HomeModelTests: XCTestCase {
 
     func testCreationFailureDoesNotNavigateAndRetryWorks() throws {
         let repository = FailingProjectRepository()
-        let model = HomeModel(repository: repository, router: AppRouter())
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
         model.router.path = []
         repository.shouldFail = true
         model.createProject(orientation: .portrait9x16)
@@ -82,28 +82,44 @@ final class HomeModelTests: XCTestCase {
         XCTAssertEqual(model.projects.count, 1)
     }
 
-    func testDeleteCancelAndFailurePreserveProject() throws {
+    func testDeleteCancelAndFailurePreserveProject() async throws {
         let repository = FailingProjectRepository()
         let project = try VlogProject(orientation: .landscape16x9)
         try repository.create(project)
-        let model = HomeModel(repository: repository, router: AppRouter())
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
         model.loadRecent()
         model.pendingDeletion = project
         model.pendingDeletion = nil
-        model.confirmDeletion()
+        await model.confirmDeletion()
         XCTAssertEqual(try repository.project(id: project.id), project)
         model.pendingDeletion = project
         repository.shouldFail = true
-        model.confirmDeletion()
+        await model.confirmDeletion()
         XCTAssertEqual(model.failure, .deletion)
         XCTAssertEqual(model.projects, [project])
         repository.shouldFail = false
         XCTAssertEqual(try repository.project(id: project.id), project)
     }
 
+    func testDeleteUsesTheCapturedProjectAfterTheAlertClearedThePendingSelection() async throws {
+        let repository = InMemoryProjectRepository()
+        let project = try VlogProject(orientation: .portrait9x16)
+        try repository.create(project)
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
+        model.loadRecent()
+        // The alert's dismissal binding clears the selection in the tap's turn; the Task runs later.
+        model.pendingDeletion = project
+        let captured = try XCTUnwrap(model.pendingDeletion)
+        model.pendingDeletion = nil
+        await model.delete(captured)
+        XCTAssertNil(try repository.project(id: project.id))
+        XCTAssertNil(model.failure)
+        XCTAssertTrue(model.projects.isEmpty)
+    }
+
     func testLoadFailureIsNotPresentedAsEmptyAndCanRecover() throws {
         let repository = FailingProjectRepository()
-        let model = HomeModel(repository: repository, router: AppRouter())
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
         repository.shouldFail = true
         model.loadRecent()
         XCTAssertTrue(model.loadFailed)
@@ -114,7 +130,7 @@ final class HomeModelTests: XCTestCase {
 
     func testOpenFailureAndMissingProjectDoNotNavigate() throws {
         let repository = FailingProjectRepository()
-        let model = HomeModel(repository: repository, router: AppRouter())
+        let model = HomeModel(repository: repository, router: AppRouter(), lifecycle: ProjectLifecycleOperationGate())
         repository.shouldFail = true
         model.openProject(id: UUID())
         XCTAssertEqual(model.failure, .opening)

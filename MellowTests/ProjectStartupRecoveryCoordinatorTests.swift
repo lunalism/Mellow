@@ -476,7 +476,7 @@ final class ProjectStartupRecoveryCoordinatorTests: XCTestCase {
         let failing = FailableProjectRepository()
         try failing.create(project)
         failing.updateFails = true
-        let editor = ProjectEditorModel(project: project, repository: failing, thumbnails: FakeClipThumbnailProvider(), acquisition: EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: .sufficient), appender: appender))
+        let editor = ProjectEditorModel(project: project, repository: failing, thumbnails: FakeClipThumbnailProvider(), acquisition: EditorClipAcquisition(mediaStore: store, mediaSelector: selector, storageGate: FakeProjectStorageGate(verdict: .sufficient), appender: appender, lifecycle: h.gate))
         let added = await editor.addClips()
         XCTAssertEqual(added, 0)
         let media = try fm.contentsOfDirectory(atPath: root.appendingPathComponent("Projects/\(project.id.uuidString)/Media").path)

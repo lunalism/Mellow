@@ -161,8 +161,9 @@ struct HomeView: View {
         .alert("Delete vlog?", isPresented: Binding(
             get: { model.pendingDeletion != nil },
             set: { if !$0 { model.pendingDeletion = nil } }
-        ), presenting: model.pendingDeletion) { _ in
-            Button("Delete", role: .destructive, action: model.confirmDeletion)
+        ), presenting: model.pendingDeletion) { project in
+            // Captured now: the alert's dismissal clears `pendingDeletion` before the Task body runs.
+            Button("Delete", role: .destructive) { Task { await model.delete(project) } }
             Button("Cancel", role: .cancel) { model.pendingDeletion = nil }
         } message: { project in
             Text("Delete \(project.displayName())? This can’t be undone.")

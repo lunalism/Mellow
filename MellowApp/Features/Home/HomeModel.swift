@@ -12,11 +12,15 @@ final class HomeModel {
     var failure: HomeFailure?
 
     private let repository: any ProjectRepository
+    /// The shared Project lifecycle gate (ADR-039): deletion never interleaves with an Editor Add /
+    /// Replace commit, composition, cleanup or startup recovery.
+    private let lifecycle: ProjectLifecycleOperationGate
     let router: AppRouter
 
-    init(repository: any ProjectRepository, router: AppRouter) {
+    init(repository: any ProjectRepository, router: AppRouter, lifecycle: ProjectLifecycleOperationGate) {
         self.repository = repository
         self.router = router
+        self.lifecycle = lifecycle
     }
 
     func loadRecent() {
@@ -71,20 +75,40 @@ final class HomeModel {
         }
     }
 
-    func confirmDeletion() {
+    /// Deletes the pending Project (programmatic entry; the alert passes its captured value to
+    /// `delete(_:)` because dismissal clears `pendingDeletion` before any Task body runs).
+    func confirmDeletion() async {
         guard let project = pendingDeletion else { return }
         pendingDeletion = nil
+        await delete(project)
+    }
+
+    /// Deletes `project`'s metadata inside the shared lifecycle gate (the media directory is left for
+    /// startup orphan recovery, as before). Waits its turn behind an in-flight protected section.
+    func delete(_ project: VlogProject) async {
+        // The deletion may wait behind another gate holder; navigation can change meanwhile.
+        let pathAtConfirmation = router.path
         do {
-            try repository.deleteProject(id: project.id)
+            try await lifecycle.withExclusiveAccess { try repository.deleteProject(id: project.id) }
             projects.removeAll { $0.id == project.id }
             if openedProject?.id == project.id {
                 openedProject = nil
-                router.path = [.recent]
+                // Leave the deleted Project as before, but never undo a later, unrelated navigation.
+                if router.path == pathAtConfirmation || router.path.contains(where: { Self.route($0, refersTo: project.id) }) {
+                    router.path = [.recent]
+                }
             }
             loadRecent()
         } catch {
             logPersistenceFailure(error)
             failure = .deletion
+        }
+    }
+
+    private static func route(_ route: AppRouter.Route, refersTo projectID: UUID) -> Bool {
+        switch route {
+        case .camera(let id), .projectEditor(let id): id == projectID
+        case .recent, .projectsEntry: false
         }
     }
 

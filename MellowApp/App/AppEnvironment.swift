@@ -264,7 +264,7 @@ final class AppEnvironment {
             storage: projectStorageGate,
             lifecycle: projectLifecycle
         )
-        self.home = HomeModel(repository: repository, router: router)
+        self.home = HomeModel(repository: repository, router: router, lifecycle: projectLifecycle)
         let photosVideoSelector = PhotosVideoSelector()
         self.photosVideoSelector = photosVideoSelector
         let appender = ProjectClipAppendCoordinator(
@@ -288,7 +288,8 @@ final class AppEnvironment {
                     mediaStore: projectMediaStore,
                     validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
                     storage: FakeProjectStorageGate(verdict: .sufficient)
-                )
+                ),
+                lifecycle: projectLifecycle
             )
             // `-uiTestCrashAfterAddMaterialize`: the STEP 12B crash window — the batch's files exist
             // under the Project, no row references them yet, and the process dies before commit.
@@ -299,12 +300,12 @@ final class AppEnvironment {
         } else {
             let editorSelector = PhotosVideoSelector()
             self.editorPhotosSelector = editorSelector
-            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender)
+            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender, lifecycle: projectLifecycle)
         }
         #else
         let editorSelector = PhotosVideoSelector()
         self.editorPhotosSelector = editorSelector
-        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender)
+        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender, lifecycle: projectLifecycle)
         #endif
         // The Projects screen stays below the Editor so Back returns Editor → 프로젝트 → Camera.
         self.projectsEntry = ProjectsEntryModel(
