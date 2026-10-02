@@ -519,3 +519,241 @@ private final class SwiftDataRepositoryEnvironment {
         self.repository = SwiftDataProjectRepository(modelContext: container.mainContext)
     }
 }
+
+// MARK: - Saved-Project replacement in one save (ADR-033 Revision 1 / ADR-050 OD-14)
+
+extension ProjectRepositoryTests {
+    /// A Project with `active` active Clips followed by `pending` pending-deleted Clips.
+    private func makeReplacementProject(active: Int, pending: Int, updatedAt: Date) throws -> VlogProject {
+        let id = UUID()
+        var project = try VlogProject(
+            id: id, createdAt: updatedAt.addingTimeInterval(-60), updatedAt: updatedAt, orientation: .portrait9x16,
+            clips: (0..<(active + pending)).map { try makeClip(projectID: id, sortOrder: $0) }
+        )
+        for index in 0..<pending {
+            try project.deleteClip(id: project.clips[project.clips.count - 1].id, deletedAt: updatedAt.addingTimeInterval(Double(index + 1)))
+        }
+        return project
+    }
+
+    private func storedClipRowCount(_ container: ModelContainer) throws -> Int {
+        try ModelContext(container).fetchCount(FetchDescriptor<PersistedVlogClip>())
+    }
+
+    private func assertDurableState(storeURL: URL, present: [VlogProject], absent: [UUID], clipRows: Int, file: StaticString = #filePath, line: UInt = #line) throws {
+        let reopened = try makeSwiftDataEnvironment(storeURL: storeURL)
+        for project in present { XCTAssertEqual(try reopened.repository.project(id: project.id), project, file: file, line: line) }
+        for id in absent { XCTAssertNil(try reopened.repository.project(id: id), file: file, line: line) }
+        XCTAssertEqual(try storedClipRowCount(reopened.container), clipRows, file: file, line: line)
+    }
+
+    func testSwiftDataReplaceProjectSwapsAForBInOneSaveAndCascadesPendingClips() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 3, pending: 2, updatedAt: base)
+        let other = try makeReplacementProject(active: 2, pending: 0, updatedAt: base.addingTimeInterval(-3600))
+        let b = try makeReplacementProject(active: 4, pending: 0, updatedAt: base.addingTimeInterval(60))
+        do {
+            let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+            try environment.repository.create(other)
+            try environment.repository.create(a)
+            XCTAssertEqual(try storedClipRowCount(environment.container), 7)
+
+            try environment.repository.replaceProject(previousID: a.id, with: b)
+
+            // The same repository (shared context) sees the replacement at once.
+            XCTAssertNil(try environment.repository.project(id: a.id))
+            let stored = try XCTUnwrap(try environment.repository.project(id: b.id))
+            XCTAssertEqual(stored, b)
+            XCTAssertEqual(stored.clips.map(\.id), b.clips.map(\.id))
+            XCTAssertEqual(stored.clips.map(\.sortOrder), [0, 1, 2, 3])
+            XCTAssertTrue(stored.clips.allSatisfy { $0.projectID == b.id })
+            XCTAssertEqual(try environment.repository.project(id: other.id), other)
+            XCTAssertEqual(try environment.repository.recentProjects().first?.id, b.id)
+        }
+        // A fresh repository: B complete, A and all five of A's rows (two pending) gone, the other Project intact.
+        try assertDurableState(storeURL: store.url, present: [b, other], absent: [a.id], clipRows: 6)
+    }
+
+    func testSwiftDataReplaceProjectRefusesMissingADuplicateBAndConflictingClipsWithoutChanges() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 1, updatedAt: base)
+        let other = try makeReplacementProject(active: 2, pending: 0, updatedAt: base.addingTimeInterval(-60))
+        let b = try makeReplacementProject(active: 2, pending: 0, updatedAt: base.addingTimeInterval(60))
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(a)
+        try environment.repository.create(other)
+
+        XCTAssertThrowsError(try environment.repository.replaceProject(previousID: UUID(), with: b)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .projectNotFound)
+        }
+        XCTAssertThrowsError(try environment.repository.replaceProject(previousID: a.id, with: other)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .duplicateProject)
+        }
+        XCTAssertThrowsError(try environment.repository.replaceProject(previousID: a.id, with: a)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .duplicateProject)
+        }
+        // B reusing one of A's Clip identities, and B reusing another Project's Clip identity.
+        for borrowed in [a.durableClips[0].id, other.clips[1].id] {
+            let conflicting = try VlogProject(
+                id: b.id, createdAt: b.createdAt, updatedAt: b.updatedAt, orientation: b.orientation,
+                clips: [try VlogClip(id: borrowed, projectID: b.id, sourceKind: .imported, mediaRelativePath: b.clips[0].mediaRelativePath,
+                                     sourceDuration: .seconds(5), trimDuration: .seconds(5), sortOrder: 0)]
+            )
+            XCTAssertThrowsError(try environment.repository.replaceProject(previousID: a.id, with: conflicting)) {
+                XCTAssertEqual($0 as? ProjectRepositoryError, .clipIdentityConflict)
+            }
+        }
+        try assertDurableState(storeURL: store.url, present: [a, other], absent: [b.id], clipRows: 5)
+    }
+
+    func testSwiftDataReplaceProjectMappingFailureLeavesAIntact() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 1, updatedAt: base)
+        let b = try makeReplacementProject(active: 3, pending: 0, updatedAt: base.addingTimeInterval(60))
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(a)
+        environment.repository.debugStagedMappingOverride = { _, _ in false }
+
+        XCTAssertThrowsError(try environment.repository.replaceProject(previousID: a.id, with: b)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .replacementMappingMismatch)
+        }
+        XCTAssertEqual(try environment.repository.project(id: a.id), a)
+        try assertDurableState(storeURL: store.url, present: [a], absent: [b.id], clipRows: 3)
+    }
+
+    /// A store opened with `allowsSave: false` refuses the save. This exercises the repository's error
+    /// and rollback path only; it is NOT evidence of how a failure in the middle of a save behaves.
+    func testSwiftDataReplaceProjectSaveRefusalLeavesAIntact() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 1, updatedAt: base)
+        let b = try makeReplacementProject(active: 3, pending: 0, updatedAt: base.addingTimeInterval(60))
+        do {
+            let writer = try makeSwiftDataEnvironment(storeURL: store.url)
+            try writer.repository.create(a)
+        }
+        do {
+            let schema = Schema([PersistedVlogProject.self, PersistedVlogClip.self])
+            let readOnly = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: store.url, allowsSave: false)])
+            let repository = SwiftDataProjectRepository(modelContext: readOnly.mainContext)
+            XCTAssertThrowsError(try repository.replaceProject(previousID: a.id, with: b)) {
+                // Not a validation refusal: every pre-save check passes, so the error comes from the save.
+                XCTAssertFalse($0 is ProjectRepositoryError, "\($0)")
+            }
+            XCTAssertEqual(try repository.project(id: a.id), a)
+            XCTAssertNil(try repository.project(id: b.id))
+        }
+        try assertDurableState(storeURL: store.url, present: [a], absent: [b.id], clipRows: 3)
+    }
+
+    func testSwiftDataReplaceProjectDoesNotPersistUnrelatedPendingEditsInTheSharedContext() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 0, updatedAt: base)
+        let b = try makeReplacementProject(active: 2, pending: 0, updatedAt: base.addingTimeInterval(60))
+        let stray = try makeReplacementProject(active: 1, pending: 0, updatedAt: base.addingTimeInterval(-60))
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(a)
+        // An unsaved edit in the shared context (its own autosave held off so only replaceProject could save it).
+        environment.container.mainContext.autosaveEnabled = false
+        environment.container.mainContext.insert(PersistedVlogProject(project: stray))
+        XCTAssertTrue(environment.container.mainContext.hasChanges)
+
+        try environment.repository.replaceProject(previousID: a.id, with: b)
+
+        XCTAssertTrue(environment.container.mainContext.hasChanges, "the shared context's pending edit was not saved")
+        try assertDurableState(storeURL: store.url, present: [b], absent: [a.id, stray.id], clipRows: 2)
+        environment.container.mainContext.rollback()
+    }
+
+    func testSwiftDataReplaceProjectKeepsBsPendingDeletedClipsAcrossReopen() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 1, updatedAt: base)
+        let b = try makeReplacementProject(active: 3, pending: 2, updatedAt: base.addingTimeInterval(60))
+        XCTAssertEqual(b.deletedClips.count, 2)
+        do {
+            let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+            try environment.repository.create(a)
+            try environment.repository.replaceProject(previousID: a.id, with: b)
+        }
+        let reopened = try makeSwiftDataEnvironment(storeURL: store.url)
+        let stored = try XCTUnwrap(try reopened.repository.project(id: b.id))
+        XCTAssertEqual(stored, b)
+        XCTAssertEqual(stored.deletedClips.map(\.id), b.deletedClips.map(\.id))
+        XCTAssertEqual(stored.deletedClips.map(\.deletion), b.deletedClips.map(\.deletion))
+        XCTAssertTrue(stored.durableClips.allSatisfy { $0.projectID == b.id })
+        XCTAssertNil(try reopened.repository.project(id: a.id))
+        XCTAssertEqual(try storedClipRowCount(reopened.container), 5)
+    }
+
+    /// No Clip-count cap: a B larger than several conflict-query batches replaces A, and a conflict that
+    /// sits beyond the first batch is still refused before anything is staged.
+    func testSwiftDataReplaceProjectHandlesLargeBAndFindsConflictBeyondFirstBatch() throws {
+        let store = try makeStore()
+        defer { store.cleanup() }
+        let batch = SwiftDataProjectRepository.clipIdentityQueryBatchSize
+        let count = batch * 2 + 200
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 0, updatedAt: base)
+        let other = try makeReplacementProject(active: 1, pending: 0, updatedAt: base.addingTimeInterval(-60))
+        let environment = try makeSwiftDataEnvironment(storeURL: store.url)
+        try environment.repository.create(a)
+        try environment.repository.create(other)
+
+        func largeB(borrowing borrowed: UUID?) throws -> VlogProject {
+            let id = UUID()
+            let clips = try (0..<count).map { index -> VlogClip in
+                let clipID = (index == count - 1) ? (borrowed ?? UUID()) : UUID()
+                return try VlogClip(id: clipID, projectID: id, sourceKind: .imported,
+                                    mediaRelativePath: try RelativeMediaPath("Projects/\(id.uuidString)/Media/\(clipID.uuidString).mov"),
+                                    sourceDuration: .seconds(5), trimDuration: .seconds(5), sortOrder: index)
+            }
+            return try VlogProject(id: id, createdAt: base, updatedAt: base.addingTimeInterval(60), orientation: .portrait9x16, clips: clips)
+        }
+        // Conflict in the last batch: the last Clip reuses the other Project's Clip identity.
+        let conflicting = try largeB(borrowing: other.clips[0].id)
+        XCTAssertThrowsError(try environment.repository.replaceProject(previousID: a.id, with: conflicting)) {
+            XCTAssertEqual($0 as? ProjectRepositoryError, .clipIdentityConflict)
+        }
+        try assertDurableState(storeURL: store.url, present: [a, other], absent: [conflicting.id], clipRows: 3)
+
+        let valid = try largeB(borrowing: nil)
+        try environment.repository.replaceProject(previousID: a.id, with: valid)
+        try assertDurableState(storeURL: store.url, present: [valid, other], absent: [a.id], clipRows: count + 1)
+    }
+
+    func testInMemoryReplaceProjectMatchesSwiftDataSemantics() throws {
+        let repository = InMemoryProjectRepository()
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = try makeReplacementProject(active: 2, pending: 1, updatedAt: base)
+        let other = try makeReplacementProject(active: 1, pending: 0, updatedAt: base.addingTimeInterval(-60))
+        let b = try makeReplacementProject(active: 3, pending: 0, updatedAt: base.addingTimeInterval(60))
+        try repository.create(a)
+        try repository.create(other)
+
+        XCTAssertThrowsError(try repository.replaceProject(previousID: UUID(), with: b)) { XCTAssertEqual($0 as? ProjectRepositoryError, .projectNotFound) }
+        XCTAssertThrowsError(try repository.replaceProject(previousID: a.id, with: other)) { XCTAssertEqual($0 as? ProjectRepositoryError, .duplicateProject) }
+        let conflicting = try VlogProject(
+            id: b.id, createdAt: b.createdAt, updatedAt: b.updatedAt, orientation: b.orientation,
+            clips: [try VlogClip(id: other.clips[0].id, projectID: b.id, sourceKind: .imported, mediaRelativePath: b.clips[0].mediaRelativePath,
+                                 sourceDuration: .seconds(5), trimDuration: .seconds(5), sortOrder: 0)]
+        )
+        XCTAssertThrowsError(try repository.replaceProject(previousID: a.id, with: conflicting)) { XCTAssertEqual($0 as? ProjectRepositoryError, .clipIdentityConflict) }
+        XCTAssertEqual(try repository.project(id: a.id), a)
+
+        try repository.replaceProject(previousID: a.id, with: b)
+        XCTAssertNil(try repository.project(id: a.id))
+        XCTAssertEqual(try repository.project(id: b.id), b)
+        XCTAssertEqual(try repository.project(id: other.id), other)
+    }
+}

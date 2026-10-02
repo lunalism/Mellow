@@ -46,6 +46,19 @@ final class InMemoryProjectRepository: ProjectRepository {
         projects[projectID] = project
     }
 
+    /// Same validation and outcome as SwiftData's single-save replacement (no partial state in memory).
+    func replaceProject(previousID: UUID, with project: VlogProject) throws {
+        guard previousID != project.id else { throw ProjectRepositoryError.duplicateProject }
+        guard projects[previousID] != nil else { throw ProjectRepositoryError.projectNotFound }
+        guard projects[project.id] == nil else { throw ProjectRepositoryError.duplicateProject }
+        let existingClipIDs = Set(projects.values.flatMap { $0.durableClips.map(\.id) })
+        guard project.durableClips.allSatisfy({ !existingClipIDs.contains($0.id) }) else {
+            throw ProjectRepositoryError.clipIdentityConflict
+        }
+        projects.removeValue(forKey: previousID)
+        projects[project.id] = project
+    }
+
     func deleteProject(id: UUID) throws {
         guard projects.removeValue(forKey: id) != nil else {
             throw ProjectRepositoryError.projectNotFound

@@ -484,6 +484,8 @@ App Container의 Physical Path가 변경되어도 Project Media Reference를 다
 
 Feature Layer와 Persistence 사이에는 `ProjectRepository` Boundary를 사용한다.
 
+**저장 Project 대체(ADR-033 Revision 1 / ADR-050 OD-14, 2026-10-02):** `replaceProject(previousID:with:)`는 A 존재, B ID 부재, B Clip Identity 충돌 없음, B Metadata 변환을 먼저 검증한 뒤 Autosave를 끈 전용 `ModelContext`에서 B 삽입과 A(Active / Pending-deleted Clip Row 포함 Cascade) 삭제를 한 번의 명시적 Save로 Commit한다. Media는 다루지 않는다. 오류는 이전 Durable 상태를 증명하지 않으며 한 번의 Save는 강제 종료 · 전원 손실 Atomicity 보장이 아니다. 구현 · Test 완료, Coordinator 연결 Pending(현재 `ProjectCompositionCoordinator.compose`는 두 Save).
+
 ### Responsibilities
 
 - Project 생성

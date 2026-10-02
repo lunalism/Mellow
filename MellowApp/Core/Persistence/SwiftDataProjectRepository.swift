@@ -93,6 +93,76 @@ final class SwiftDataProjectRepository: ProjectRepository {
         try saveOrRollback()
     }
 
+    /// ADR-033 Revision 1 / ADR-050 OD-14. A dedicated context with autosave disabled keeps this one
+    /// explicit save the only persistence point: nothing is written while rows are staged, and pending
+    /// edits in the shared context are never swept into this save. Every fetch and check runs before the
+    /// first mutation; staging and `save()` then run with no suspension point. On a save error the
+    /// dedicated context is rolled back and discarded (the shared context is untouched).
+    /// A stays registered, unchanged, in the shared context afterwards. That is harmless only because
+    /// every repository mutation saves or rolls back at once, so the shared context never holds a
+    /// dirty A that a later autosave could write against the deleted row.
+    func replaceProject(previousID: UUID, with project: VlogProject) throws {
+        let context = ModelContext(modelContext.container)
+        context.autosaveEnabled = false
+
+        guard previousID != project.id else { throw ProjectRepositoryError.duplicateProject }
+        guard let previous = try Self.persistedProject(id: previousID, in: context) else {
+            throw ProjectRepositoryError.projectNotFound
+        }
+        guard try Self.persistedProject(id: project.id, in: context) == nil else {
+            throw ProjectRepositoryError.duplicateProject
+        }
+        // Never rely on unique-attribute upsert: any existing row with one of B's Clip IDs (A's included)
+        // is a conflict, refused before staging. There is no Clip-count cap, so the IN query is split into
+        // bounded batches that stay far below SQLite's bind-variable limit; every batch runs before any
+        // mutation is staged.
+        let clipIDs = project.durableClips.map(\.id)
+        for start in stride(from: 0, to: clipIDs.count, by: Self.clipIdentityQueryBatchSize) {
+            let batch = Array(clipIDs[start..<min(start + Self.clipIdentityQueryBatchSize, clipIDs.count)])
+            let descriptor = FetchDescriptor<PersistedVlogClip>(predicate: #Predicate { batch.contains($0.id) })
+            guard try context.fetchCount(descriptor) == 0 else {
+                throw ProjectRepositoryError.clipIdentityConflict
+            }
+        }
+        let staged = PersistedVlogProject(project: project)
+        guard stagedMappingMatches(staged, project) else {
+            throw ProjectRepositoryError.replacementMappingMismatch
+        }
+
+        context.insert(staged)
+        context.delete(previous)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    /// Clip identities checked per conflict query (bind variables per statement).
+    static let clipIdentityQueryBatchSize = 500
+
+    #if DEBUG
+    /// Test seam: replaces the staged-mapping check. Nil in every production path; absent from Release.
+    var debugStagedMappingOverride: ((PersistedVlogProject, VlogProject) -> Bool)? = nil
+    #endif
+
+    /// The staged B must convert back to exactly the incoming Project (identity, Clip values and order,
+    /// pending-deleted Clips).
+    private func stagedMappingMatches(_ staged: PersistedVlogProject, _ project: VlogProject) -> Bool {
+        #if DEBUG
+        if let override = debugStagedMappingOverride { return override(staged, project) }
+        #endif
+        return (try? staged.domainValue()) == project
+    }
+
+    private static func persistedProject(id: UUID, in context: ModelContext) throws -> PersistedVlogProject? {
+        let predicate = #Predicate<PersistedVlogProject> { $0.id == id }
+        var descriptor = FetchDescriptor<PersistedVlogProject>(predicate: predicate)
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
     private func saveOrRollback() throws {
         do {
             try modelContext.save()

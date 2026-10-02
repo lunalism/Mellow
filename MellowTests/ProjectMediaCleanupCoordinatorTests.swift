@@ -81,6 +81,7 @@ final class ProbingRepository: ProjectRepository {
         try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID)
     }
     func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
 }
 
 // MARK: - Tests

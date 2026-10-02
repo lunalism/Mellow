@@ -333,5 +333,6 @@ final class ProjectsEntryModelTests: XCTestCase {
         func update(_ project: VlogProject) throws {}
         func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {}
         func deleteProject(id: UUID) throws {}
+        func replaceProject(previousID: UUID, with project: VlogProject) throws {}
     }
 }

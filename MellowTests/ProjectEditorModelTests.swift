@@ -443,6 +443,7 @@ final class ProjectEditorModelTests: XCTestCase {
             func update(_ project: VlogProject) throws {}
             func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws {}
             func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+            func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
         }
         let repository = SwallowingRepository()
         let project = try makeProject(clipSeconds: [2, 3, 1])

@@ -196,4 +196,5 @@ private final class FailingProjectRepository: ProjectRepository {
     func update(_ project: VlogProject) throws { try check(); try underlying.update(project) }
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try check(); try underlying.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws { try check(); try underlying.deleteProject(id: id) }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try check(); try underlying.replaceProject(previousID: previousID, with: project) }
 }

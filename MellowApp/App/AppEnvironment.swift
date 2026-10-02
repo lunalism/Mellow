@@ -841,6 +841,7 @@ private final class UpdateFailingProjectRepository: ProjectRepository {
     func update(_ project: VlogProject) throws { throw SaveFailure() }
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
 }
 #endif
 

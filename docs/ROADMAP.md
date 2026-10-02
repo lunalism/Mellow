@@ -1545,7 +1545,7 @@ ADR-033에 따라 이 Phase가 V1 Project Composition을 소유한다.
 
 - Camera `Projects` Entry: 저장 Project가 없으면 `Select Clips`, 있으면 `Load Last Saved` / `Select Clips`.
 - `Select Clips`에서 Photos Clip을 선택해 단일 편집 가능 Project를 생성하며 필요한 Media를 App-managed Project Storage로 Materialize한다(ADR-020 Transactional Commit 적용).
-- 저장 Project가 있을 때의 대체 확인(`Creating a new project will replace your last saved project.`)과 Safe Atomic Replacement(A 보존 → B Workspace → Materialize → Persist → 검증 → 승격 → 그 뒤 A 제거).
+- 저장 Project가 있을 때의 대체 확인(`Creating a new project will replace your last saved project.`)과 Safe Atomic Replacement(A 보존 → B Workspace → Materialize → Persist → 검증 → 승격 → 그 뒤 A 제거) — **ADR-033 Revision 1(2026-10-02):** 순서는 A 보존 → B Workspace → Materialize → B Media · Metadata 확인 → Gate 안 A 재확인 → B 삽입과 A Metadata 삭제의 단일 Save → B 완전 · A 부재 확인 → 그 뒤 A Media 제거로 바뀌었다; Repository API만 구현되었고 Select Clips 연결은 Phase 6 Pending이다.
 - Project 삭제 / 대체는 Mellow Editing Copy만 제거하며 Photos 원본을 절대 삭제하지 않는다.
 - Multi-project Recent Projects Grid / Browser는 V1 Primary Flow가 아니며 Post-V1 복원 결정 전까지 구조만 보존한다.
 - **Production Projects Wiring — 완료 2026-09-15 (Phase 5 STEP 7):** 일반 Camera `Projects` Control은 이제 Canonical `프로젝트` 화면(`.projectsEntry`)으로 진입하며 `새 프로젝트 시작`은 STEP 6의 실제 PhotosPicker Composition 경로를, `기존 프로젝트 불러오기`는 정확한 저장 Project UUID의 ProjectEditor를 연다. ADR-035 / ADR-036의 "DEBUG Routing으로만 도달" Transitional Staging은 종료되었다. 기존 Recent Browser(`.recent`)는 Canonical Camera 경로에서 더 이상 도달할 수 없고 Phase 2 / 3 회귀용 DEBUG 인자(`-uiTestLegacyRecentProjects`)로만 열리며 Post-V1 Multi-project 결정 전까지 구조만 보존한다.
@@ -1797,6 +1797,7 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 | Import Source Inspection · Selection Preflight 구성요소 | 구현(`5416111`, `c570d5b`, Phase 6 확장은 `75c2cb9` · `da1f337`) |
 | Direct-camera H.264 SDR Enforcement(Task 29b) | 구현(`bfc4451`) |
 | Select Clips / Editor Add / Replace 통합 | 미구현 |
+| `.replacingSaved` 단일 Save 대체(ADR-033 Revision 1 / OD-14) | Repository API `replaceProject(previousID:with:)` 구현 · Test(연결 없음); Coordinator 연결 · D8 결과 판정 · 안내는 Pending |
 | Accepted Set Storage Estimate · Safety Reserve | Pending 유지(부분): 계산 정책 부분 승인(ADR-050 050-A / 050-B / 050-C 계산 정책, 2026-10-02) · 순수 `ImportStorageEstimator` 구현(Step 5B, 연결 없음); 검사 경계 연결 · Phase 5 Admission 변경 · Integration은 Pending |
 | Free-space API / Race 처리 | Pending 유지 |
 | Blocking Preparation Progress UI · Aggregate Progress | Preparation / Progress UI 미구현(ADR-042 Revision 4로 UX 확정) · Aggregate Progress 계산은 Pending 유지(구현 세부 결정) |

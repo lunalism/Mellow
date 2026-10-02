@@ -1803,6 +1803,8 @@ Phase 3의 Landscape Camera Layout, Control Rail, Landscape 전용 Physical Vali
 
 # ADR-033 — Capture-First Recording, Photos Save, and Single-Project V1 Policy
 
+> **Revision 1 (2026-10-02, 사용자 승인 — ADR-050 OD-14 (a)):** 아래 "Safe Atomic Project Replacement"의 5–9단계는 역사 기록이며, 현재 계약은 그 절 끝의 Revision 1(B 삽입과 A Metadata 삭제를 하나의 Save로 Commit, "failed replacement" 불변식 범위 축소)이다.
+
 > **Clarification (ADR-046, 2026-09-18):** Mellow 직접 촬영의 출력 Format은 QuickTime `.mov` · H.264 · SDR · 1080p 30 fps로 고정되며 Capture Session 구성 시 H.264를 명시 요청하고 불가 시 안전 실패한다(HEVC / ProRes Fallback 없음). 이 ADR의 Recording / Photos Save / Single-Project 정책은 변경되지 않는다.
 
 **Date:** 2026-09-14
@@ -1867,6 +1869,21 @@ B 생성이 완료 전에 실패하면 B의 Temporary / Copied Media와 부분 M
 `A failed replacement must never destroy the last valid saved Project.`
 
 Project 삭제 / 대체는 Project Metadata와 Mellow-owned Editing / Materialized Copy만 제거할 수 있으며 사용자 Photos Library의 원본 Camera Clip이나 사용자가 선택한 다른 Photos 원본은 절대 삭제하지 않는다. 이 구현은 Phase 4 Camera Recording이 아니라 Project / Import / Composition Phase가 소유한다.
+
+**Revision 1 (2026-10-02, 사용자 승인 — ADR-050 OD-14 (a), 단일 Save 대체):** 위 1–9의 원문은 역사 기록으로 보존하며, 5–9는 다음으로 대체된다.
+
+5. Project B와 Clip Metadata를 만들고, 저장 전에 B의 모든 Media 존재와 Metadata 변환을 확인한다.
+6. Lifecycle Gate 안에서 A가 여전히 대체 대상인지 다시 확인한 뒤, B의 삽입과 A Metadata(A의 Active와 Pending-deleted Clip Row 포함)의 삭제를 하나의 명시적 Save로 함께 Commit한다.
+7. B의 완전한 저장 상태와 A Metadata의 부재를 확인한다.
+8. 확인되면 B가 새 단일 저장 Project다.
+9. 그 뒤에만 A의 App-managed Editing Media를 제거한다. 확인할 수 없거나 결과가 미확정이면 B와 A의 Media를 제거하지 않는다.
+
+- A가 그 사이 없어졌거나 대체 대상이 아니면 Target 무효화로 처리하며 B만 생성하는 동작으로 바꾸지 않는다.
+- Commit 전에 실패한 대체는 A를 그대로 보존한다.
+- **불변식 범위 축소:** `A failed replacement must never destroy the last valid saved Project.`의 "failed replacement"는 결합 Save가 Commit되기 전의 실패로 한정된다. 결합 Save가 Commit된 뒤에는 A Metadata가 이미 없으므로, 그 뒤의 확인 실패에서 A의 Media를 보존하는 것만으로는 A를 되살릴 수 없다; B를 확인할 수 없거나 B가 쓸 수 없는 Row라면 다음 시작의 기존 Orphan Recovery가 Row 없는 A Directory를 제거하여 A를 잃을 수 있다. 이 잔여 경우는 승인과 함께 받아들여졌다.
+- 하나의 Save 호출은 SQLite Transaction 하나나 강제 종료 · 전원 손실 Atomicity를 보장하지 않는다. 근거는 Exploratory 재구성 경계 측정(`docs/evidence/phase-06/adr-050d-combined-save-report.md`)뿐이다.
+- 이 Revision은 ADR-050 050-D 전체, 독립 Read 구현 방법(OD-10), 새 안내 Copy, Startup Cleanup 개정을 승인하지 않는다; 확인 방법과 확인 실패의 Presentation은 Pending이다.
+- **구현 상태(2026-10-02):** Repository API `ProjectRepository.replaceProject(previousID:with:)`가 구현 · Test되었으나 어떤 Coordinator / UI에도 연결되지 않았다. 현재 Production Select Clips 경로(`ProjectCompositionCoordinator.compose`)는 여전히 두 Save(`create` → `deleteProject`)를 쓴다; 연결은 Pending이다.
 
 ### Duration
 
@@ -3922,7 +3939,7 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 # ADR-050 — Import Storage Estimate, Safety Reserve, and Check Boundaries
 
 **Date:** 2026-10-02
-**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 050-D 전체(Persistence · Rollback · Retry · UX), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다.
+**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인):** OD-14 (a) — `.replacingSaved`의 단일 Save 대체와 그에 따른 ADR-033 Revision 1(B Media 존재 · Metadata 변환의 Save 전 확인, Lifecycle Gate 안 Target 재확인, A 소실 시 Target 무효화(B만 생성하는 Fallback 없음), 성공 · 미확정 결과의 Media 보존, B 완전 저장과 A Metadata 부재 확인 뒤에만 A Media 제거, Commit 뒤 A Metadata는 이미 없다는 잔여 위험의 명시적 수용). Accepted 050-B 두 Save Metadata 계산과 상수는 바뀌지 않는다. C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 그 밖의 050-D(D8 Save Outcome 판정 · 독립 Read 방법 OD-10 · 새 안내 Copy · Rollback · Retry · Startup Cleanup 개정 등), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다.
 
 이 ADR은 서로 독립적으로 검토 · 승인할 수 있는 다섯 Decision Unit(050-A–050-E)으로 나뉜 제안이다.
 
@@ -4242,6 +4259,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 #### D8.6 `.replacingSaved`의 두 Save
 
+**상태(2026-10-02):** 아래 두 Save 처리는 승인되지 않았고 OD-14 (a) 승인으로 대체되었다(역사 기록으로 보존). 현재 Production 코드는 아직 두 Save를 쓰며 단일 Save Repository API로의 연결은 Pending이다.
+
 - **Save 1(`create(B)`):** Prior = "A 그대로 + B 없음", Intended = "A 그대로 + B 완전".
   - 확인된 이전 상태 → D4 Rollback, R4 §3, A와 그 Media 무변경.
   - 확인된 새 상태 → B Commit. Save 2로 진행한다.
@@ -4252,9 +4271,104 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
   - Save 2의 결과와 무관하게 B의 Commit은 성공이다; Save 2 실패를 B의 실패로 안내하지 않는다.
   - A가 남으면 그것은 ADR-033 / ADR-034 V1 Single Saved Project의 Safe Atomic Replacement에서 벗어난 결과다: 사용자는 "마지막 저장 Project를 대체"하기로 확인했는데 A가 Durable Row로 남는다. A는 Durable Row가 참조하므로 STEP 12B Orphan Recovery가 회수하지 않고, 최신 순서 정책상 B 뒤에 가려져 사용자에게 보이지 않으므로 영구적인 숨은 저장 공간이 된다. AGENTS.md의 "Multiple local drafts are supported" Guardrail은 이 결과를 정당화하지 않는다(그 Guardrail과 ADR-033 / ADR-034의 V1 단일 저장 Project 사이의 관계 자체도 소유자가 확인할 사항이다).
   - 처리 선택지(소유자 선택, ADR-034 계약에 대한 결정): (a) 안내 없음 + Log + 자동 재삭제 없음(숨은 A가 영구히 남음); (b) 다음 Select Clips 대체 또는 다음 시작에서 A 삭제를 다시 시도하는 규칙(Durable Project 삭제이므로 새 Cleanup 규칙이며 ADR-034 / ADR-039 개정이 필요); (c) A가 남았음을 알리는 새 안내. 이 ADR은 어느 것도 권장으로 확정하지 않는다.
-- **검토 후속 2(감사 미결, 2026-10-02):** B 생성과 A Metadata 삭제를 하나의 `ModelContext.save()`로 묶고 그 뒤 A의 오래된 Media를 안전하게 정리할 수 있는지 감사한다. 이 ADR은 위 두 Save 설계를 승인하지 않으며 숨은 이전 Project 처리 정책(OD-13)도 선택하지 않는다.
+- **검토 후속 2(2026-10-02; Source 감사 결과는 D8.6a, 결정은 OD-14):** B 생성과 A Metadata 삭제를 하나의 `ModelContext.save()`로 묶고 그 뒤 A의 오래된 Media를 안전하게 정리할 수 있는지 감사한다. 이 ADR은 위 두 Save 설계를 승인하지 않으며 숨은 이전 Project 처리 정책(OD-13)도 선택하지 않는다.
 - **관찰된 기존 코드 위험:** 현재 코드는 `deleteProject(A)`가 실패해도 `removeProjectMedia(A)`를 호출하므로 A Row가 지워진 Media를 참조할 수 있다(필수 구현 의존성).
 - Operation 전체는 Save 두 번이며 원자적이지 않다; Save 사이에서 멈추면 A와 B가 함께 남는다(Exploratory 관측).
+
+#### D8.6a `.replacingSaved` 단일 Save 감사 결과(2026-10-02)
+
+**상태:** OD-14 (a)와 ADR-033 Revision 1이 2026-10-02에 승인되었다. 이 절의 나머지(D8 판정 연결, 독립 Read 방법, 안내, 아래 Coordinator 순서의 연결)는 Proposed다. 구현: `ProjectRepository.replaceProject(previousID:with:)`(Dedicated `ModelContext`, `autosaveEnabled = false`, 모든 검증 뒤 Insert · Delete · 명시적 Save 한 번; Coordinator 연결 없음).
+
+이 절은 검토 후속 2의 Source 감사 결과와, 소유자가 승인한 하나의 결합 Save 실험(2026-10-02, Exploratory)의 결과다. Production 코드는 바꾸지 않았으며 두 Save 설계도, 단일 Save 설계도, OD-13도 승인하지 않는다(감사 · 실험 시점 기준; 이후의 승인 상태와 구현은 위 상태 줄).
+
+**기술적 가능성(Source 근거):**
+
+- `PersistedVlogProject.clips`는 `@Relationship(deleteRule: .cascade, inverse: \PersistedVlogClip.project)`이고 Active와 Pending-deleted Clip Row가 모두 이 관계에 들어 있다(`PersistedVlogProject.init(project:)`가 `durableClips` 전체를 넣는다). 따라서 `modelContext.delete(A)`는 A의 모든 Durable Clip Row를 Cascade 대상으로 만든다(050-D Probe의 `deleteProject` 경계 관측과 일치).
+- (감사 시점) `SwiftDataProjectRepository`의 유일한 쓰기 경로는 `saveOrRollback()` 안의 `modelContext.save()`이며, 실패 시 `rollback()` 뒤 새 `ModelContext`로 바꾼다. 같은 Context에 B 삽입과 A 삭제를 쌓고 `save()`를 한 번 호출하는 것은 이 구조로 표현할 수 있다. 구현된 `replaceProject`는 대신 Autosave를 끈 전용 `ModelContext`로 Save한다(위 상태 줄).
+- 따라서 "한 번의 명시적 `ModelContext.save()`"는 기술적으로 가능하다. 그러나 Save 호출 하나가 SQLite Transaction 하나나 보편적 Atomicity를 증명하지 않는다. 050-B에서 `create` Save 하나가 SQLite Commit 2개를 쓰는 것이 관측되었고, 050-D Probe는 그중 첫 Commit이 `Z_PRIMARYKEY` Page만 바꾸고 Domain Row는 모두 두 번째 Commit에 있음을 관측했다; 따라서 Commit이 여럿이라는 사실만으로 "A 삭제"와 "B 삽입"이 별도 Domain Commit으로 나뉜다고 볼 수 없다. 결합 Save의 Commit 구조와 경계 상태는 측정됨(Exploratory, 재구성 경계, A ≤ 50 / B ≤ 10 Clip — 아래 결합 Save 실험 결과).
+
+**조기 Save 위험:**
+
+- Production Repository는 `modelContainer.mainContext`를 쓰며 Repository는 실패 뒤 교체 Context에만 `autosaveEnabled = false`를 설정한다. 즉 정상 경로의 Context는 Autosave가 켜져 있다: 결합 Save 실험의 Test Process에서 Production 형태 `mainContext`의 `autosaveEnabled`는 `true`로 읽혔다(그 한 Process에서 읽은 값).
+- 따라서 새 API는 (1) 던질 수 있는 모든 Fetch · 검증을 어떤 삽입 · 삭제보다 먼저 끝내고, (2) 삽입 · 삭제 · `save()`를 중단 지점(`await`) 없이 한 동기 구간에서 실행하며, (3) 그 구간의 어떤 오류에도 `rollback()`해야 한다. 그렇지 않으면 Autosave가 B 삽입만 또는 A 삭제만 저장할 수 있다.
+- `@Attribute(.unique) id`는 같은 ID 삽입을 오류가 아니라 Upsert로 처리할 수 있으므로 기존 `create`처럼 B ID 중복을 먼저 Fetch로 거부해야 한다.
+
+**승인된 계약과의 관계:**
+
+- ADR-033 "Safe Atomic Project Replacement"는 순서를 정한다: B를 완전히 Persist(6) → B Commit 검증(7) → 승격(8) → 그 뒤에만 A와 A의 Media 제거(9), 그리고 `A failed replacement must never destroy the last valid saved Project.` ROADMAP Phase 5(`A 보존 → … → 검증 → 승격 → 그 뒤 A 제거`)도 같다.
+- 단일 Save는 B Persist와 A Metadata 삭제를 같은 Save에 넣으므로 6–9의 순서를 바꾼다. A의 Media는 B 확인 뒤까지 보존할 수 있지만, Save 성공 뒤 B를 확인할 수 없는 경우(Read-back 실패, Domain 변환 실패) A의 Row는 이미 없고, 다음 시작의 STEP 12B Orphan Recovery는 Row 없는 A Directory를 제거한다. 그 경우 B가 실제로 쓸 수 없는 Row라면 마지막 유효 저장 Project가 사라질 수 있다.
+- 반대로 현재 두 Save 설계(D8.6)는 6–9의 순서를 지키지만 Save 2 실패 시 숨은 A가 남아 V1 Single Saved Project에서 벗어난다(OD-13).
+- **측정되지 않은 가설 — 분할된 결합 Save의 최악 경우:** 만약 결합 Save의 Domain 변경이 SQLite Commit 여러 개로 나뉘고 "A 삭제 + Cascade"가 "B 삽입"보다 먼저 Durable해진 뒤 Process가 멈춘다면 Store에는 A도 B도 없을 수 있다. 그 경우 다음 시작에서 STEP 12B(`ProjectStartupRecoveryCoordinator.recoverProjectExclusively`)는 Row 없는 A와 B Directory를 모두 제거하여 두 Project를 모두 잃는다. 이것은 관측이 아니라 가설이다. 현재 두 Save 설계(D8.6)는 050-D Probe가 재구성한 경계(측정한 경우)에서 "A", "A + B" 또는 "B"만 보였고 "A도 B도 없음"은 보이지 않았다. 이는 실제 Process 강제 종료, 전원 손실, 모든 Save 오류에 대한 보장이 아니며 두 Save 설계가 모든 실패에 안전하다는 주장도 아니다.
+- **결합 Save 실험 결과(2026-10-02, Exploratory — `docs/evidence/phase-06/adr-050d-combined-save-report.md`):** 격리된 Store에서 Autosave를 끈 하나의 `ModelContext`에 B 삽입과 A 삭제를 쌓고 `save()`를 한 번 호출했다(Small: A 5 Clip 중 Pending 1 → B 3; Large: A 50 Clip 중 Pending 10 → B 10; 각 3 Run). 매번 SQLite Commit은 2개였고 첫 Commit은 `Z_PRIMARYKEY` Page 하나만, 둘째 Commit은 B 삽입과 A · A의 모든 Clip Row(Pending 포함) 삭제를 함께 썼다. 재구성한 경계는 Save 직전 · 첫 Commit 직후 · 둘째 Transaction 중간이 모두 "A만", 둘째 Commit 직후가 "B만"이었고 "둘 다", "둘 다 없음", 부분, 읽기 불가는 나오지 않았다; 24개 경계 모두 `quick_check` = `ok`, 소유 없는 Clip Row 0. 이것은 측정한 경우의 재구성 경계이며 실제 Process 강제 종료, 전원 손실, 모든 Save 오류 동작의 보장이 아니다. 같은 실험에서 Production 형태 `mainContext`의 `autosaveEnabled`는 `true`로 읽혔다. 실험은 별도 Context에서 직접 삽입 · 삭제했으므로 제안된 `replaceProject` API나 Autosave가 켜진 `mainContext`와의 상호작용을 시험한 것이 아니다.
+- 결론: 단일 Save는 결합 Save가 Crash 경계에서 이전 또는 새 상태만 남길 때에만 V1 단일 저장 Project 불변식을 강화한다; 위 실험은 측정한 경우에 그렇게 관측했지만 보장은 아니다. 단일 Save는 어떤 경우에도 ADR-033 Safe Atomic Replacement의 6–9 순서 문구 개정이 필요하다. 이 감사의 전제(Durable Journal · Durable Operation 기록을 도입하지 않음) 안에서는 두 계약을 동시에 완전히 만족하는 설계를 찾지 못했다. 전제 밖의 대안으로는 B 삽입과 같은 Save에서 A에 Superseded / Tombstone 표시를 남기는 Schema 추가가 있으나 이는 Durable 기록이므로 이 감사가 제안하지 않는다. 어느 쪽을 우선할지는 소유자 결정이다(OD-14).
+
+**단일 Save를 택할 경우의 최소 설계(Proposed):**
+
+- Repository API: `replaceProject(previousID: UUID, with project: VlogProject) throws`.
+  1. B ID가 Store에 없음을 Fetch로 확인(있으면 `duplicateProject`).
+  2. A Row를 Fetch(없으면 `projectNotFound`; 아래 Coordinator가 처리).
+  3. Save 전 사전 검증: 삽입할 `PersistedVlogProject(project:)`를 `domainValue()`로 되돌려 Intended B와 같은지 확인(Mapping 오류를 Save 전에 거부; 저장 장치 오류는 막지 못함).
+  4. 같은 동기 구간에서 `insert(B)`, `delete(A)`, `saveOrRollback()`.
+  - (구현으로 대체됨, 2026-10-02) 구현된 `replaceProject`는 A를 먼저 Fetch하고, Autosave를 끈 전용 `ModelContext`에서 Insert · Delete · `save()`를 한 번 실행하며, 오류 시 그 전용 Context만 Rollback한다; 위 1–4는 감사 시점의 제안이다.
+- Coordinator 순서(Lifecycle Gate 안): A가 여전히 같은 ID의 현재 저장 Project인지 재확인 → B Media Materialize(D4 Rollback 규칙) → 동기 구간 직전에 모든 B File의 존재 확인(현재 `compose`의 Commit 뒤 `fileExists` 검사를 Save 앞으로 옮김; 없으면 Save 없이 D4 Rollback) → `replaceProject` → D8.2 독립 Read로 "B 완전 + A 없음" 확인 → 확인된 경우에만 A의 Media Directory 제거 → Workspace Discard.
+- Materialize에는 중단 지점이 있고 Home 삭제 · Editor `update`는 아직 Gate 밖이므로(D6 의존성), A의 존재 판정은 `replaceProject` 자신의 Fetch(2단계)가 최종 권위다. 그 Fetch가 `projectNotFound`를 던지면 아무것도 삽입 · 삭제되지 않았다. **대상 처리 제약(2026-10-02, 소유자 지시):** 이때 대체를 B만 만드는 생성으로 조용히 바꾸지 않는다; Target 무효화(D6)로 처리하여 B 후보를 D4 규칙으로 정리하고 Operation을 끝낸다. B만 생성하는 Fallback은 소유자가 따로 승인할 때만 쓴다.
+- Save 성공 뒤 B File이 없다고 확인되면 "Commit됨 · 확인 안 됨"으로 처리하고 파괴적 정리를 하지 않는다(현재 `compose`의 B 삭제 경로를 쓰지 않는다).
+- 현재 `ProjectsEntryModel`은 대체 대상 ID를 Gate 밖에서 미리 읽는다(`savedProjectID`); Lifecycle Gate 안에서 재확인한다. A가 그 사이 없어졌거나 다른 Project가 현재 저장 Project가 되었다면 Target 무효화(D6)로 처리하여 Operation을 끝내고 Retry를 제공하지 않는다(안내는 OD-8 / U4와 같은 범주의 소유자 선택). B만 생성하는 Fallback은 소유자의 별도 승인 없이는 쓰지 않는다.
+- Save 결과 판정은 D8 그대로이며 Prior = "A 그대로 + B 없음(새 ID 부재 포함)", Intended = "B 완전 + A 없음"이다.
+
+| Save 결과(단일 Save) | Metadata | Media | 사용자 결과 |
+| --- | --- | --- | --- |
+| Target 무효(Gate 재확인 실패 또는 `replaceProject`의 `projectNotFound`) | 무변경(아무것도 삽입 · 삭제하지 않음; B만 생성하는 Fallback 없음) | B 후보 D4 규칙으로 정리; A 상태 그대로 | D6 Target 무효화, `다시 시도` 없음, 안내는 OD-8 / U4 범주의 소유자 선택 |
+| 사전 Fetch · 검증 실패(Save 전) | 무변경(아무것도 삽입 · 삭제하지 않음) | B 후보 D4 Rollback; A 무변경 | R4 §3(확인된 이전 상태) |
+| Save 오류 → 확인된 이전 상태 | A 그대로, B 없음 | B 후보 D4 Rollback; A Media 보존 | R4 §3, `다시 시도` 가능 |
+| Save 오류 → 확인된 새 상태 | B 완전, A 없음 | B Media 보존; A Row 부재 확인 뒤 A Media 제거 | 정상 완료 |
+| Save 성공 → 확인됨 | B 완전, A 없음 | B 보존; 확인 뒤 A Media 제거 | 정상 완료 |
+| Save 성공 → 확인 불가 | B Durable(Save 성공), A Row 없음(가정) | B · A Media 모두 Process 안에서 보존; 다음 시작에서 Row 없는 A Directory는 STEP 12B가 제거 | U1(Commit됨 · 확인 안 됨) |
+| 미확정(Save 오류 + 모순 · 읽기 실패, 예: "A 없음 + B 없음" 또는 "A + B") | 알 수 없음 | Process 안에서는 B · A Media 모두 보존, 파괴적 정리 없음; 다음 시작에서 STEP 12B는 그때 Row가 없는 Directory를 제거하므로 "A 없음 + B 없음"이었다면 A와 B를 모두 잃는다 | U2, `다시 시도` 없음 |
+| Save 전 Crash | A 그대로 | Row 없는 B Directory는 다음 시작에서 제거 | 이전 상태 |
+| Save 도중 Crash · 부분 Commit(측정한 경우의 재구성 경계에서는 관측되지 않음; 보장 아님) | "A 없음 + B 없음" 또는 "A + B" 가능 | 다음 시작에서 STEP 12B가 Row 없는 Directory를 제거: "A 없음 + B 없음"이면 A와 B 모두 손실; "A + B"면 둘 다 보존(숨은 A) | 마지막 유효 Project 손실 가능 |
+| Save 뒤 · A Media 제거 전 Crash | B 완전(Durable), A 없음 | Row 없는 A Directory는 다음 시작에서 제거 | B가 저장 Project |
+
+- Crash / Relaunch는 기존 STEP 12B와 ADR-047 Workspace Sweep만으로 위 표처럼 수렴하며 Durable Journal을 쓰지 않는다. "Save 도중 Crash · 부분 Commit" 행은 결합 Save 실험의 재구성 경계(측정한 경우)에서 관측되지 않았지만, 실제 강제 종료 · 전원 손실 · 더 큰 규모에서 생기지 않는다는 보장은 아니다.
+
+**050-B Metadata Estimate와의 관계:**
+
+- Accepted 050-B는 Save별 합이며 `.replacingSaved`를 Save 2회(`R = n`, `R = D_replaced`)로 계산한다. 단일 Save에 같은 Formula를 적용하면 `W_save` 한 번이 빠져 196,608 B 작아진다. 결합 Save는 측정됨(Exploratory): 관측 WAL 증가 65,920 B 대 두 Save Estimate 397,312 B(A 5 · B 3), 86,520 B 대 423,936 B(A 50 · B 10). 이 비교는 상수를 바꾸지 않으며 상한을 증명하지 않는다.
+- 제안: 단일 Save를 택하더라도 Accepted 050-B의 두 Save 계산(`ImportMetadataOperation.replacingSaved`)을 그대로 쓴다(보수적). 상수나 Accepted 계산을 바꾸지 않는다; 바꾸려면 별도 소유자 결정이 필요하다.
+
+**OD-14 제안 권장(Proposed — 소유자 결정 전, 승인 아님):** (a) 단일 Save. 근거: 측정한 경우에 결합 Save의 Domain 변경은 하나의 SQLite Transaction에 있었고 재구성 경계는 "A만" 또는 "B만"이었다; 두 Save 설계에는 Save 2 실패 시 숨은 A(OD-13)라는 구조적 이탈이 남는다. 남는 위험과 완화: 결합 Save가 성공했는데 B를 확인할 수 없거나 B가 실제로 쓸 수 없는 Row라면 A Row는 이미 없고 다음 시작에서 STEP 12B가 A Directory를 제거하므로 마지막 유효 저장 Project를 잃는다 — 이 잔여 경우를 소유자가 알고 받아들여야 하며, Save 전 B File 존재 확인과 B Metadata 변환 확인으로 줄이고, A Media는 확인 뒤에만 제거한다; 실제 강제 종료 · 전원 손실 · Process 안 Save 오류는 측정되지 않았다. (b)를 택하는 것도 정당한 소유자 결정이다.
+
+**(a)를 택할 경우 필요한 ADR-033 "Safe Atomic Project Replacement" 개정 문구(제안):**
+
+- 현재 5–9:
+  - `5. Project B와 Clip Metadata를 만든다.`
+  - `6. Project B를 완전히 Persist한다.`
+  - `7. B의 Commit 성공을 검증한다.`
+  - `8. B를 새 단일 저장 Project로 승격한다.`
+  - `9. 그 뒤에만 Project A와 A의 App-managed Editing Media를 제거한다.`
+- 제안 5–9:
+  - `5. Project B와 Clip Metadata를 만들고, 저장 전에 B의 모든 Media 존재와 Metadata 변환을 확인한다.`
+  - `6. Lifecycle Gate 안에서 A가 여전히 대체 대상인지 다시 확인한 뒤, B의 삽입과 A Metadata의 삭제를 하나의 Persist로 함께 Commit한다.`
+  - `7. 독립 읽기로 B의 완전한 Commit과 A Metadata의 부재를 검증한다.`
+  - `8. 검증되면 B가 새 단일 저장 Project다.`
+  - `9. 그 뒤에만 A의 App-managed Editing Media를 제거한다; 검증할 수 없으면 A의 Media를 제거하지 않고 ADR-050 050-D D8의 결과 처리를 따른다.`
+- 추가 문장(제안): `Commit 전에 실패한 대체는 A를 그대로 보존한다. 결합 Persist가 Commit된 뒤에는 A Metadata가 이미 제거되었으므로 그 뒤의 검증 실패는 대체 실패가 아니라 ADR-050 050-D D8의 확인 실패로 처리한다.`
+- **불변식 범위 축소(개정):** `A failed replacement must never destroy the last valid saved Project.`의 "failed replacement"를 결합 Persist가 Commit되기 전의 실패로 한정한다. 이것은 명확화가 아니라 승인된 안전 불변식의 범위를 줄이는 개정이다: 결합 Persist가 Commit된 뒤 B를 확인할 수 없거나 B가 쓸 수 없는 Row인 경우 현재 문구로는 A를 파괴하면 안 되는 실패한 대체이지만, 개정 문구로는 대체 실패가 아니며 A는 다음 시작에서 사라진다. 소유자는 이 잔여 경우를 명시적으로 받아들여야 한다.
+- ROADMAP Phase 5의 `A 보존 → B Workspace → Materialize → Persist → 검증 → 승격 → 그 뒤 A 제거` 요약도 같은 순서로 맞춘다.
+
+**남은 불확실성과 가장 작은 확인 방법:**
+
+- **OD-14 결정 전 입력:** 결합 Save의 SQLite Commit 구조, 경계 상태, WAL 증가를 WAL Prefix 방법으로 측정했다(위 실험 결과, 2026-10-02). 남은 불확실성은 실제 강제 종료 · 전원 손실 · Process 안 Save 오류와 측정 규모 밖의 동작이다.
+- `mainContext.autosaveEnabled`: 결합 Save 실험의 한 Test Process에서 `true`로 읽힘(측정됨). 구현된 `replaceProject`는 Autosave를 끈 전용 Context를 쓰므로 이 값에 의존하지 않는다(별도 고정 Test 없음).
+- Save 오류 경로: `ModelConfiguration(allowsSave: false)`로 연 Store에서 `save()`가 던지는지 확인하는 Unit Test(Save 도중 실패의 증거는 아니며 그렇게 표시).
+
+**구현 · Test 계획(1–3과 5는 OD-14가 단일 Save를 택한 경우에만; 4는 결정 전 입력):**
+
+1. `ProjectRepository.replaceProject(previousID:with:)`와 `SwiftDataProjectRepository` 구현, `InMemoryProjectRepository` 대응, DEBUG `UpdateFailingProjectRepository`(`AppEnvironment.swift`)와 Test Double의 전달 구현.
+2. Unit Test(격리된 On-disk Store): 성공 시 B 완전 · A와 A의 Active / Pending Clip Row 모두 없음; B ID 중복 → 아무것도 바뀌지 않음; A 없음 → 정의된 오류이며 B 미삽입; 사전 검증 실패 → 무변경; `allowsSave: false` Store에서 오류 → Rollback 뒤 A 그대로.
+3. Coordinator Test: Gate 안 대상 재확인, `projectNotFound` → Target 무효화이며 `create(B)` Fallback 없음, 확인 전 A Media 미제거, 확인 불가 · 미확정에서 A · B Media 보존, `.replacingSaved` 외 경로 무변경.
+4. 위 WAL Prefix 측정은 OD-14 결정 전 입력이며 2026-10-02에 수행했다(`adr-050d-combined-save-report.md`, Exploratory).
+5. 기존 Phase 5 `compose` 경로 교체 시점은 050-D의 Post-save Media 삭제 결함 수정과 함께 정한다.
 
 #### D8.7 Startup Recovery 감사와 필요한 변경
 
@@ -4294,7 +4408,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 ## 미해결 의존성(Import Storage Gate를 닫기 전 필요)
 
 - 050-A: `S_audio` Inspector Fact와 Estimator 연결.
-- 050-D 검토 후속 2: `.replacingSaved`의 단일 `ModelContext.save()` 가능성 감사.
+- 050-D 검토 후속 2: `.replacingSaved` — OD-14 (a) Accepted와 ADR-033 Revision 1(2026-10-02), 결합 Save 측정(Exploratory), Repository API `replaceProject(previousID:with:)` 구현 · Test 완료; Coordinator 연결, D8 결과 판정, 확인 방법(OD-10), 안내는 Pending.
 - 050-B(선택, Gate를 막지 않음): Operation 도중 Checkpoint, 210 Row를 넘는 큰 기존 Store / WAL(Store 크기 효과), 동시 Reader 조건의 추가 Metadata Evidence. 이 조건들은 Accepted Estimate 밖이며 아래 필수 Integration Gate와 구별된다.
 - 050-C: C0a 구현, U의 신선도와 Purgeable 공간 동작 확인.
 - 050-D: D8 Save Outcome 판정 구현(독립 Read, 비교, 결과별 처리); `.replacingSaved`에서 A 삭제 실패에도 A Media를 지우는 기존 코드 수정; ADR-039 STEP 12B 빈 Store 보호 개정; Process 안 Save 오류 뒤의 Durable 상태 확인(Crash 경계 Probe는 Save 단위 PRIOR / NEW만 관측했다; 오류를 던진 Save, Commit 뒤 오류, 전원 손실, `synchronous` 설정은 미확인 — `docs/evidence/phase-06/adr-050d-persistence-atomicity-report.md`; 가정이 확인되지 않으면 대안은 Save 오류 뒤 새 Context로 다시 읽은 Durable 상태로 Rollback / 보존을 정하는 Gate이며 이는 소유자 결정 후보다); D3 Post-commit 처리와 D4 Rollback 구현, D6의 Lifecycle Gate 적용(Project 삭제, Editor Add / Replace)과 Row 없는 Project Directory 재생성 방지, Disk Full 중 Save의 All-or-nothing 확인.
@@ -4331,9 +4445,10 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 | OD-8 | U4: Target 무효 안내(살아 있는 Editor의 Add / Replace); 삭제된 Project는 안내 없음(050-D D8.5) | 새 UX | — | OD-7 | OD-7 뒤 |
 | OD-9 | Save Outcome 판정: Save 오류 · 확인 실패 뒤 독립 Read로 확인된 이전 / 확인된 새 / 미확정을 정하고 결과별 처리(050-D D8.1–D8.5); 확인된 이전 상태는 새 ID 부재 확인 필수 | **ADR-040 §9 · ADR-037 STEP 11 Note · ROADMAP Task 14의 Persist 실패 분기 개정 제안**(확인된 이전 상태의 Save 오류는 기존 문구와 R4 §3 그대로) | 재구성 경계 관측은 측정한 경우에 한함; 독립 Read의 Coordinator Cache 독립성 미확인 | OD-10; Lifecycle Gate 적용(D8.4); 구현 | 예(개정으로서) |
 | OD-10 | 독립 Read 방법: 같은 Container의 새 `ModelContext`(권장) 또는 별도 `ModelContainer` | 구현 정책 | 권장안의 Coordinator Cache 독립성 미검증; 대안의 동시 열기 동작 미검증; 파괴적 Rollback은 새 ID 부재 확인으로 보강(OD-9) | 없음 | 예 |
-| OD-11 | `.replacingSaved` 두 Save 처리: B 확인 전 Save 2 없음; A Row 부재 확인 뒤에만 A Media 제거; Save 2 실패는 B 성공을 바꾸지 않음(050-D D8.6) | 새 정책(현재 코드와 다름) | Save 사이 정지 시 A + B 공존 관측 | 기존 A Media 삭제 코드 수정; 단일 Save 가능성 감사(검토 후속 2) | 두 Save 설계는 승인 대상 아님(감사 결과 뒤 재제출) |
+| OD-11 | `.replacingSaved` 두 Save 처리: B 확인 전 Save 2 없음; A Row 부재 확인 뒤에만 A Media 제거; Save 2 실패는 B 성공을 바꾸지 않음(050-D D8.6) | 새 정책(현재 코드와 다름) | Save 사이 정지 시 A + B 공존 관측 | 기존 A Media 삭제 코드 수정; 단일 Save 가능성 감사(검토 후속 2) | 두 Save 설계는 승인 대상 아님(감사 결과 뒤 재제출) — **2026-10-02: OD-14 (a) 승인으로 대체됨(두 Save 설계는 승인되지 않음)** |
 | OD-12 | Startup Recovery 빈 Store 보호: Row 0개 + Directory ≥ 1이면 Orphan Directory 제거 생략(권장) 또는 Store 식별 Marker(050-D D8.7) | **ADR-039 STEP 12B 개정 제안** | 빈 Store 재생성 시 전체 Directory 제거 위험(코드 분석, 미재현) | 없음 | 예(개정으로서) |
-| OD-13 | 남은 A의 처리: (a) 안내 없음 · 자동 재삭제 없음(숨은 A 영구 잔존), (b) 나중 A 삭제 재시도 규칙, (c) 새 안내(050-D D8.6) | **ADR-033 / ADR-034 Safe Atomic Replacement에서의 이탈에 대한 결정**((b)는 ADR-034 / ADR-039 개정 필요) | 남은 A는 STEP 12B가 회수하지 않고 최신 순서로 가려짐 | OD-11 | 별도 결정 |
+| OD-13 | 남은 A의 처리: (a) 안내 없음 · 자동 재삭제 없음(숨은 A 영구 잔존), (b) 나중 A 삭제 재시도 규칙, (c) 새 안내(050-D D8.6) | **ADR-033 / ADR-034 Safe Atomic Replacement에서의 이탈에 대한 결정**((b)는 ADR-034 / ADR-039 개정 필요) | 남은 A는 STEP 12B가 회수하지 않고 최신 순서로 가려짐 | OD-11 | 별도 결정 — **2026-10-02: 두 Save 경로가 승인되지 않아 결정 보류(단일 Save에서 "A + B"는 측정한 경우 관측되지 않음)** |
+| OD-14 | `.replacingSaved` Save 구조: (a) 단일 `ModelContext.save()`(B 삽입 + A 삭제) — 원자적으로 Commit되면 숨은 A 없음, ADR-033 6–9 순서 개정 필요, Save 성공 뒤 B 확인 불가 또는 B가 쓸 수 없는 Row면 다음 시작에서 A 소실(잔여 위험; ADR-033 "failed replacement" 불변식 범위 축소), 결합 Save의 Domain 변경이 분할 Commit된다면 Crash 시 A와 B 모두 손실 위험(가설; 측정한 경우의 재구성 경계에서는 Domain 변경이 한 Commit이었고 "둘 다 없음"은 관측되지 않음, 보장 아님); (b) 현재 두 Save — ADR-033 순서 유지, Save 2 실패 시 숨은 A(OD-13), 재구성 경계(측정한 경우)에서 "A도 B도 없음"은 관측되지 않음(보장 아님)(050-D D8.6a) | **ADR-033 Safe Atomic Replacement 문구 개정 및 안전 불변식 범위 축소((a)의 경우) 또는 ADR-033 / ADR-034 Single Saved Project 이탈 위험 수용((b)의 경우)** | Source 감사 + 결합 Save 실험(Exploratory, A ≤ 50 / B ≤ 10, 재구성 경계) | (a)를 택하면 ADR-033 개정 · 구현 · Test | 별도 결정; Proposed 권장 (a)(D8.6a), 승인 아님 — **Accepted (a)(2026-10-02, 사용자 승인); ADR-033 Revision 1** |
 | OE-1 | `ProjectMediaTransfer` 잔여 File 정리(050-E) | ADR-039 / ADR-047 확장(후속) | — | 별도 결정 | 이 ADR 범위 밖 |
 
 ## Consequences

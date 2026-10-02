@@ -107,6 +107,7 @@ final class FailableProjectRepository: ProjectRepository {
         deletedIDs.append(id)
         try inner.deleteProject(id: id)
     }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
 }
 
 /// Async-safe existence assertion for Project-owned media.

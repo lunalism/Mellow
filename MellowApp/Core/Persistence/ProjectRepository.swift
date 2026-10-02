@@ -15,6 +15,14 @@ protocol ProjectRepository {
     /// absence → this call (ADR-039). Maintenance semantics: must NOT bump the Project's `updatedAt`.
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws
     func deleteProject(id: UUID) throws
+    /// Saved-Project replacement (ADR-033 Revision 1 / ADR-050 OD-14): inserts `project` (B) and deletes
+    /// the Project `previousID` (A) with all of A's durable Clip rows, active and pending-deleted, in ONE
+    /// explicit save. Everything that can fail is validated before anything is staged: A must exist
+    /// (`projectNotFound`), B's ID must be absent (`duplicateProject`), and no B Clip identity may already
+    /// exist in the store (`clipIdentityConflict`). Media files are never touched here; callers keep A's
+    /// media until B's complete saved state and A's absence are confirmed. A thrown error does not prove
+    /// the prior durable state, and one save call is not a crash / power-loss atomicity guarantee.
+    func replaceProject(previousID: UUID, with project: VlogProject) throws
 }
 
 enum ProjectRepositoryError: Error, Equatable {
@@ -25,4 +33,8 @@ enum ProjectRepositoryError: Error, Equatable {
     /// `update` was handed a Project that omits a Clip the store still holds.
     case missingDurableClip
     case clipNotPendingDeletion
+    /// `replaceProject` was handed a Clip identity that already exists in the store (any Project).
+    case clipIdentityConflict
+    /// `replaceProject`'s staged rows did not map back to the exact incoming Project.
+    case replacementMappingMismatch
 }
