@@ -2236,8 +2236,8 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - 1.0초 미만 Photos Source 거부의 사용자 안내 — Resolved by ADR-042 Revision 2(2026-09-17): `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`.
 - 다중 선택의 Duration-ineligible 항목 처리와 통합 안내 — Resolved by ADR-042 Revision 3(2026-09-17): Per-item Filtering, `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요.` / `긴 영상이 제외되었어요` / `5초를 초과한 영상은 추가할 수 없어요.` / `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.`, Accepted Set Atomicity, Replace는 단일 후보.
 - Landscape / Square(Non-portrait) Photos Source 처리 — Resolved by ADR-043 + Revision 1(2026-09-18): V1 미지원, Presentation Geometry `presentationHeight > presentationWidth` 기준 Preflight Per-item 제외, Non-portrait만 제외 시 `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.` / 단일 후보 · Replace `지원하지 않는 영상이에요` / `세로 영상을 선택해주세요.` / 복합 사유는 기존 통합 안내; Square Pending 없음.
-- Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. *(ADR-048(2026-09-30): Orientation 다음에 Working-raster Feasibility → Audio Facts 단계가 삽입되고 Normalization 사유 끝에 Audio Transcode가 추가되었다.)* Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.
-- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완. — **ADR-048(2026-09-30):** AAC Passthrough는 AAC Source에만 적용되고 non-AAC는 AAC-LC 변환, Cadence Fallback과 Working-raster Feasibility 추가. — **ADR-049(2026-10-01):** Tone-mapping = 내장 Compositor는 Full-aperture Source에 유지; Non-full Clean Aperture는 SDR Rec.709만 Geometry 전용 정규화, 그 밖은 Preflight 거부.
+- Capture Codec 불변조건과 Photos Import Codec 경계 — Resolved by ADR-046(2026-09-18): Mellow 촬영 = QuickTime `.mov` · H.264 · SDR(명시 요청, Fallback 없음, 불가 시 안전 실패); Import는 H.264(`avc1` / `avc3`) · HEVC(`hvc1` / `hev1`) Family만, ProRes / ProRes RAW / MJPEG / 기타 / Unknown은 Preflight Unsupported(기존 Invalid / Unsupported Copy, Codec별 문구 없음); Preflight 순서 Duration → Invalid → Container → **Codec** → Orientation → Normalization. *(ADR-048(2026-09-30): Orientation 다음에 Working-raster Feasibility → Audio Facts 단계가 삽입되고 Normalization 사유 끝에 Audio Transcode가 추가되었다.)* ~~Production 구현(Step 1 Classifier, Capture Enforcement)은 미완.~~ 구현 상태(2026-10-02): Classifier Codec Family 판정 `efbcff9`(모든 Format Description 판정은 `da1f337`), Capture Enforcement `bfc4451`; Import 흐름 연결은 미구현.
+- Phase 6 Working Media Technical Gate(Codec / Container 출력, SDR Tagging, Tone-mapping 메커니즘, Raster Scale-down, Cancellation Cleanup, HDR → SDR 기기 검증) — Resolved by ADR-045(2026-09-18): QuickTime H.264 High 8-bit 709 / 709 / 709, 1080p-class Portrait Bounding Box, ≤ 30 fps, Identity Transform, AAC Passthrough; Tone-mapping = AVFoundation Compositor(Composition 709); `.current` 획득 전제; AVE 단독 비신호; Contract는 Normalization 출력만; Duration +1 Frame 허용; Evidence Branch `spike/06-media-technical-gate` @ `04d83612`. **Pending 유지:** Upscaling Policy, Storage Formula / Reserve, Recovery 깊이, Retry / Progress 메커니즘. Phase 6 Production 구현은 미완. 구현 상태(2026-10-02): Working Media Contract · Plan(`75c2cb9`)과 Normalizer · Cadence Scheduler · Output Validator(`da1f337`) 구성요소 구현 · 검증; 사용자 Import 흐름 · Storage · Progress · Retry 연결은 미구현. — **ADR-048(2026-09-30):** AAC Passthrough는 AAC Source에만 적용되고 non-AAC는 AAC-LC 변환, Cadence Fallback과 Working-raster Feasibility 추가. — **ADR-049(2026-10-01):** Tone-mapping = 내장 Compositor는 Full-aperture Source에 유지; Non-full Clean Aperture는 SDR Rec.709만 Geometry 전용 정규화, 그 밖은 Preflight 거부.
 - Photos Import Source Container Eligibility — Resolved by ADR-044(2026-09-18): 실제 Container가 QuickTime Movie인 Source만 V1 Import 허용(H.264 / HEVC 모두), MP4 / ISO BMFF / 기타 / Unknown Container는 신뢰성 있는 Inspection(확장자 아님) 기반 Preflight Per-item 제외(기존 Invalid / Unsupported 범주, `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / 복합 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`), Remux / Container 변환 없음; 단일 후보 / Replace의 Unsupported-media 안내 — Resolved by ADR-044 Revision 1(2026-09-18): `영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.`, Replace 후보 거부 + 기존 Clip · Media · Metadata · 순서 · Slot 보존.
 - Phase 6 Normalization-required Import의 진입 / 진행 / 실패 / Retry Presentation, Storage 부족 Presentation, Preflight 판별 Invalid Media Filtering, 통합 안내 우선순위, Accepted Set 경계 — Resolved by ADR-042 Revision 4(2026-09-17): 자동 진입 + Blocking Preparation Sheet `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `2/5` Progress / `취소`, Runtime 실패 `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시 시도` / `취소`, Storage 부족 `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`, Invalid 제외 `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`, 복합 제외 `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`. Phase 6 Structural UX Gate 해결.
 - Phase 6 Preparation의 Export Session / Cancellation API, Aggregate Progress 계산, Retry Source-handle 메커니즘, Filesystem Free-space API / Race 처리 — Pending, Phase 6 Technical Gate(구현 세부사항).
@@ -2246,10 +2246,10 @@ Working Media Codec / Container를 Export Codec / Container와 자동으로 동�
 - non-AAC Source Audio 처리와 Working Media Audio 설정 — Resolved by ADR-048(2026-09-30): Audio 없음 → 출력 Audio 없음(무음 합성 없음); AAC → Passthrough(Normalization 사유 아님); 알려진 non-AAC → 새 사유 `audioTranscode`(순서 HDR → Frame Rate → Raster → Audio Transcode, 유일한 사유 가능)로 AAC-LC 48 kHz, Mono 96 kbps / 2채널 이상 Stereo 128 kbps(2채널 초과는 명시적 Stereo Downmix); 알 수 없거나 모순된 Audio Facts → Preflight 기존 Invalid / Unsupported 범주 거부. Export Audio 결정 아님.
 - 짝수 정렬 후 Portrait이 아닌 Working Raster(근사 정사각형 Portrait Source) — Resolved by ADR-048(2026-09-30): Orientation 판정은 그대로, Orientation 다음 · Normalization 사유 이전의 Working-raster Feasibility 단계가 ADR-047 알고리즘 결과 `outputHeight > outputWidth`를 요구하고 실패 시(예: 1080×1081 → 1080×1080) Preflight 기존 Invalid / Unsupported 범주로 거부; Crop / Pad / 늘리기 / 여백 우회 없음, 새 안내 없음.
 - `minFrameDuration` 부재 시 출력 Frame Duration — Resolved by ADR-048(2026-09-30): 유효한 `minFrameDuration` → `max(minFrameDuration, 1/30)`; 없으면 유한하고 0보다 큰 Nominal Frame Rate로 `max(1 / nominalFrameRate, 1/30)`; 둘 다 없으면 `1/30`. 새 Normalization 사유 없음, 거부 사유 아님, 30 fps 초과 출력 없음.
-- Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. Production 구현은 미완.
-- 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. Production 구현은 미완.
-- Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): `t_k = k × outputFrameDuration`(`t_k < E`)의 모든 Target에 정확히 한 Frame, Target 이하의 가장 최근 Rendering Frame 선택 · 새 Frame이 없으면 유지 · 미래 Frame / 보간 없음, Session은 `E`에서 종료, Audio 불변, 엄격한 Cadence Validator 유지. Production 구현은 미완.
-- 정규화 출력 Cadence의 검증 기준과 앞쪽 빈 Video 구간 — Resolved by ADR-048 Revision 2(2026-10-02): 정확한 Rational Presentation-time Grid(0 시작, 모든 인접 간격 정확히 `d`, `E`에서 끝나는 짧은 마지막 Sample 허용)가 권위 있는 증거이며 `nominalFrameRate` / `sampleCount / duration` 같은 평균 Rate는 진단용일 뿐 거부 조건이 아니다; 0 이하에 실제 Frame이 없으면 Typed Runtime 실패(검은 Lead-in · 미래 Frame 당김 없음, 새 Preflight 범주 · Copy 없음). Production 구현은 미완.
+- Non-full Clean Aperture Source의 정규화와 Tone-mapping 경로 — Resolved by ADR-049(2026-10-01): 사유 없음 → Fast-path Copy(Aperture 무관); 사유 + Full Aperture → ADR-045 §4 내장 Compositor; 사유 + Non-full + 신뢰성 있는 SDR Rec.709 → Geometry 전용 정규화(Crop · Padding 없음); 사유 + Non-full + HDR / Wide-color / SDR 미증명 → Preflight 기존 Invalid / Unsupported 범주 거부(새 안내 없음). Custom Compositor Pre-conversion은 Tone-mapping으로 승인되지 않음. ~~Production 구현은 미완.~~ 구성요소 구현 · 검증(`da1f337`, 2026-10-02), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현.
+- 여러 Video Format Description의 합의와 Normalization Transform Eligibility — Resolved by ADR-049 Revision 1(2026-10-01): 사유가 있는 항목만 모든 관련 Description의 Aperture 상태 · Geometry · (Case C에서) SDR Rec.709 증명이 합의해야 하고 Preferred Transform이 Translation · 1/4 회전 · Mirroring · 유한하고 0이 아닌 축 정렬 Scale로만 이루어져야 하며(Shear · 임의 각도 회전 · 비가역 · 비유한 거부), 실패 시 기존 Invalid / Unsupported 범주로 거부(새 안내 없음); 사유 없는 항목은 Fast Path 유지. ~~Production 구현은 미완.~~ 구성요소 구현 · 검증(`da1f337`, 2026-10-02), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현.
+- Source Frame Timing이 출력 Grid와 맞지 않을 때의 정규화 Video Sample Timing — Resolved by ADR-048 Revision 1(2026-10-01): `t_k = k × outputFrameDuration`(`t_k < E`)의 모든 Target에 정확히 한 Frame, Target 이하의 가장 최근 Rendering Frame 선택 · 새 Frame이 없으면 유지 · 미래 Frame / 보간 없음, Session은 `E`에서 종료, Audio 불변, 엄격한 Cadence Validator 유지. ~~Production 구현은 미완.~~ 구성요소 구현 · 검증(`da1f337`, 2026-10-02), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현.
+- 정규화 출력 Cadence의 검증 기준과 앞쪽 빈 Video 구간 — Resolved by ADR-048 Revision 2(2026-10-02): 정확한 Rational Presentation-time Grid(0 시작, 모든 인접 간격 정확히 `d`, `E`에서 끝나는 짧은 마지막 Sample 허용)가 권위 있는 증거이며 `nominalFrameRate` / `sampleCount / duration` 같은 평균 Rate는 진단용일 뿐 거부 조건이 아니다; 0 이하에 실제 Frame이 없으면 Typed Runtime 실패(검은 Lead-in · 미래 Frame 당김 없음, 새 Preflight 범주 · Copy 없음). ~~Production 구현은 미완.~~ 구성요소 구현 · 검증(`da1f337`, 2026-10-02), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현.
 
 ### Camera
 
@@ -2871,7 +2871,7 @@ Phase 6 Included / Technical Gate / 구현 Task / Unit · Integration · Physica
 - **승인된 Product 정책:** 위 1–7항.
 - **현재 Phase 5 동작:** `Phase5ReadyMediaValidator`는 Container를 검사하지 않으며(AVFoundation이 열 수 있는 파일을 그대로 판정) 첫 Non-ready / Invalid 항목에서 선택 전체를 거부한다. 단일 항목 Invalid는 `영상을 열 수 없어요` / `선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요.`를 표시한다(구현 사실이며 이 ADR이 승인 Copy로 채택하지 않는다).
 - **DEBUG Spike:** 현재 Spike는 `ftyp` Brand Sniffing과 MP4 → QuickTime Passthrough Remux 경로를 포함한다. 이는 Technical Gate 조사를 위한 **일회용 진단 코드**이며 Product 동작이 아니다; Spike 정리에서 제거될 예정이다.
-- **미래 Phase 6 Production:** 신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외 + 위 Copy는 **승인되었으나 미구현**인 Phase 6 요구사항이다. 이 ADR은 Swift / Test / Spike를 변경하지 않는다.
+- **미래 Phase 6 Production:** 신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외 + 위 Copy는 **승인되었으나 미구현**인 Phase 6 요구사항이다. 이 ADR은 Swift / Test / Spike를 변경하지 않는다. — **구현 상태(2026-10-02):** 신뢰성 있는 Container Inspection은 `ImportSourceInspector`(`5416111`) · `ImportPreflightClassifier`(`efbcff9`)에, Per-item 판정 매핑은 `ImportSelectionPreflight`(`c570d5b`)에 구현되었으나 사용자 흐름과 Copy 표시 연결은 미구현이다.
 
 ### 11. 남은 Technical Device Spike Gate
 
@@ -2910,6 +2910,8 @@ ADR-044 이후 남은 Phase 6 Technical Device Spike Gate는 (1) Mid-run Cancell
 **Explicitly Unchanged:** ADR-042 Duration / Per-item Filtering / Structural UX, ADR-043 Revision 1 Portrait-only, ADR-044 Revision 1 QuickTime-only 및 Copy, ADR-020 / 024 / 037 / 039 Commit · Storage · Recovery 계약, Low-resolution Upscaling Policy(Pending 유지), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Recovery 깊이, Progress / Retry 메커니즘(Pending 유지), Export Codec / Container(Phase 9).
 
 **이 ADR은 Phase 6 Production 구현 완료를 의미하지 않는다.** Technical Gate가 해결되어 구현을 시작할 수 있다는 결정이며, Production Pipeline · Per-item Filtering · Preparation Presentation은 여전히 미구현이다.
+
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. Production Pipeline의 구성요소 — Working Media Contract · Plan(Step 4A `75c2cb9`)과 `AVFoundationWorkingMediaNormalizer` · Cadence Scheduler · Output Validator(Step 4B `da1f337`) — 는 구현 · 검증되었다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). Per-item Filtering과 Preparation Presentation의 사용자 흐름 연결은 여전히 미구현이며 Phase 6은 완료되지 않았다.
 
 ## Context
 
@@ -3159,6 +3161,8 @@ ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, C
 
 **Status:** Accepted (사용자 승인). 이 Revision은 Phase 6 Step 4B 독립 Review에서 드러난 좁은 모호성 하나를 닫는다: 원래 Decision 1은 Aspect 보존 · Crop 없음 · Padding 없음 · 각 변 짝수 내림을 함께 요구하지만, 계산된 변이 홀수일 때 짝수 내림은 출력 Aspect Ratio를 아주 조금 바꿀 수밖에 없어 네 요구를 동시에 정확히 만족할 수 없었다. V1은 그 나머지를 제한된 Parity 정렬 Resampling으로 처리한다. Decision 1의 Raster 공식 · No Upscaling, Decision 2의 No Resume / Recovery 결정, ADR-048은 바뀌지 않는다. 아래 내용이 Render Geometry의 정본이며 아래의 최초 본문은 보존된다(충돌 시 Revision 1 우선). 이 Revision은 Step 4B 구현 완료를 뜻하지 않는다.
 
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. 이 Render Geometry 규칙(전체 Frame, Crop · Padding 없음, 변당 최대 1 출력 Pixel의 축별 Parity Resample, 정확한 짝수 Raster)은 Step 4B(`da1f337`)로 구현 · 검증되었다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현이다.
+
 ### Render Geometry Rule
 
 1. 목표 Raster 계산은 그대로 정본이다: `scale = min(1.0, 1080 / presentationWidth, 1920 / presentationHeight)`, 각 변을 `presentation × scale`로 내림한 뒤 양의 짝수로 내림한다(Decision 1).
@@ -3193,6 +3197,8 @@ ProRes / ProRes RAW / MJPEG / 기타 Codec Import 지원, Codec 변환 옵션, C
 **Explicitly Unchanged:** ADR-042의 `1.0s <= 전체 Source Duration <= 5.0s`(양 끝 포함) Eligibility · Per-item Filtering · 통합 안내 · Preparation Sheet · 취소 · Runtime 실패 · `다시 시도`(Live Session 안 Source Handle 유효 시) · Storage 부족 Presentation, ADR-043 Revision 1 Portrait-only, ADR-044 Revision 1 QuickTime-only Container, ADR-046 H.264 / HEVC-only Codec Family와 Direct-camera H.264, ADR-045의 HDR / >8-bit · >30 fps · >1080p-class Normalization 사유 · SDR / H.264 High 8-bit / Rec.709 / QuickTime `.mov` 출력 · Transform Bake + Identity · AAC Passthrough · Duration 허용 범위 · Idempotent Cancellation Token · Partial Output 제거 책임, ADR-020 / ADR-037 / ADR-040의 Accepted Set Atomic Commit과 Replace 보존, Photos 원본 불변, Export Codec / Container(Phase 9), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Aggregate Progress / Retry Source-handle 메커니즘(Pending 유지).
 
 **이 ADR은 Phase 6 Step 4 Production 구현을 의미하지 않는다.** 두 Blocker를 해소하여 `WorkingMediaNormalizer` / `SDRWorkingMediaContract` 구현을 시작할 수 있게 하는 결정이며 Normalizer · Preparation Operation · Presentation · Storage Preflight는 여전히 미구현이다.
+
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. Raster 공식(No Upscaling)은 Step 4A(`75c2cb9`)에, Normalizer와 Revision 1 Render Geometry(전체 Frame, Crop · Padding 없음, 정확한 짝수 Raster)는 Step 4B(`da1f337`)에 구현 · 검증되었다. Preparation Operation · Presentation · Storage Preflight는 여전히 미구현이다.
 
 ## Context
 
@@ -3275,7 +3281,7 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 - 이후 시작에서 버려진 · 미Commit Normalization Workspace와 부분 출력은 Cleanup 후보다.
 - 기존 시작 시 Sweep 경계(ADR-039 STEP 12B `ProjectStartupRecoveryCoordinator`: `liveWorkspaceIDs`에 없는 Canonical `ProjectWorkspace/<UUID>/` 제거 → Row 없는 Canonical `Projects/<P>/` 제거 → Durable 참조 없는 Canonical `Projects/<P>/Media/<UUID>.mov` 제거)를 재사용하며 Resumable Job Database를 정의하지 않는다.
 - **이미 보장되는 것(구현 완료, Phase 5 STEP 12B):** Workspace 직속 파일을 포함한 버려진 Workspace Directory 전체 제거, Idempotency(Missing = 성공, 두 번째 실행 무작업), App-owned Root Containment · Canonical UUID Round-trip · Symlink 거부 · 기대 Type 일치 · Noncanonical 보존, Metadata 무변경, 후보별 Failure Isolation + Log + 다음 실행 Retry, Committed Media(Durable 참조) 보존, Photos / CaptureStaging / tmp 미열거.
-- **Phase 6이 추가로 만족해야 하는 요구(미구현):** Normalizer의 중간 · 출력 파일이 Operation Workspace Directory **안에서만** 만들어져 기존 Predicate로 Cleanup되게 할 것(Workspace 밖 · Project Directory 안에 Normalization 임시 파일을 두지 않는다), Workspace 안의 하위 Directory를 쓴다면 Sweep이 Directory 전체 제거로 이를 포함함을 Test로 고정할 것, Fast-path / Normalized 출력의 Materialize(Rename)는 Accepted Set 전체 준비 완료 뒤에만 시작할 것.
+- **Phase 6이 추가로 만족해야 하는 요구(미구현):** Normalizer의 중간 · 출력 파일이 Operation Workspace Directory **안에서만** 만들어져 기존 Predicate로 Cleanup되게 할 것(Workspace 밖 · Project Directory 안에 Normalization 임시 파일을 두지 않는다), Workspace 안의 하위 Directory를 쓴다면 Sweep이 Directory 전체 제거로 이를 포함함을 Test로 고정할 것, Fast-path / Normalized 출력의 Materialize(Rename)는 Accepted Set 전체 준비 완료 뒤에만 시작할 것. — **구현 상태(2026-10-02):** Normalizer 측 의무는 구현되었다(`da1f337`: 호출자가 준 Destination 하나만 만들고 소유하며 실패 · 취소 시 자기 소유 Output만 제거하고 Resume · Checkpoint가 없다). Operation Workspace 생성 · 연결과 시작 시 Sweep을 포함한 End-to-end 검증은 미구현이다.
 - Cleanup은 Committed Project-owned Media나 Photos 원본을 절대 삭제하지 않으며 Missing 파일은 안전하게 처리한다.
 - Symbolic Link · Traversal · Containment · Ownership 보호는 변경하지 않는다.
 - Cleanup 실패는 기존 Recovery 메커니즘으로 Log / 다음 실행 Retry될 수 있으나 버려진 작업을 Resumable Import로 바꾸거나 Project를 변경하지 않는다.
@@ -3317,6 +3323,8 @@ ADR-020 / ARCHITECTURE 25절과의 관계(V1 Import에 대한 Clarification):
 ## Revision 2 — Exact Cadence Validation and Leading-Gap Failure (2026-10-02)
 
 **Status:** Accepted (사용자 승인, 2026-10-02 Asia/Seoul). 이 Revision은 Revision 1의 Cadence Grid를 구현하면서 드러난 Validation 해석 하나를 확정하고 Revision 1의 첫 Frame 규칙을 재확인한다. 충돌 시 Revision 2가 Revision 1과 최초 본문보다 우선하며, 둘은 Accepted 이력으로 보존된다. 이 Revision은 정책만 기록하며 미커밋 Step 4B 구현이 완료 · Review · Commit · Merge되었다고 주장하지 않는다.
+
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. 이 Revision의 정확한 Cadence Validation(평균 / Metadata Rate 거부 없음, 마지막 Target까지의 Grid 끝 규칙, 단일 Sample Grid)과 앞쪽 빈 구간 Typed 실패는 Task 29h와 후속 독립 Review 보정까지 포함해 Step 4B(`da1f337`)로 구현 · 검증 · Commit되었다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현이다. 실제 HDR 결과는 ADR-049 구현 상태 갱신에 기록되어 있다: `IMG_0130.MOV` · `da1f337` · LunaTestphone · 승인된 내장 Full-aperture 경로에서 소유자 시각 판정 PASS(일반 Dolby Vision 인증 아님).
 
 **왜 Revision인가:** 두 결정 모두 Revision 1이 정한 정규화 출력 Cadence의 검증과 경계 조건에 관한 것이며 새 Normalization 사유 · 제외 범주 · Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
 
@@ -3367,11 +3375,13 @@ Revision 1의 첫 Frame 규칙을 재확인한다.
 - 첫 실제 Frame이 0 이후인 Source는 성공적인 Publish 전에 Typed Error로 실패해야 한다.
 - 어떤 우회도 마지막 Target을 건너뛰거나 Session 종료를 앞당기지 않는다.
 - 실제 기기 Cadence Evidence는 계속 `IMG_0130.MOV`다: Sample 137개, Presentation Time `0 … 2720/600`, 간격 `20/600`, 정확한 종료 `2722/600`.
-- 실제 HDR 시각 A/B는 Pending이며 통과로 주장하지 않는다.
+- 실제 HDR 시각 A/B는 Pending이며 통과로 주장하지 않는다. — **결과(2026-10-02):** 위 문장은 작성 시점의 상태다. 이후 `IMG_0130.MOV` · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 경로에 한해 소유자 시각 판정 PASS(`PASS — HDR to SDR appearance is acceptable.`; 일반 Dolby Vision 인증 아님).
 
 ## Revision 1 — Deterministic Output Cadence Grid and Frame Hold (2026-10-01)
 
 **Status:** Accepted (사용자 승인, 2026-10-01 Asia/Seoul). 이 Revision은 Phase 6 Step 4B의 정규화 출력 Timing 모호성 하나를 닫는다: Decision 3은 출력 Frame Duration을 정하지만, Source Frame Timing이 그 Grid와 정확히 맞지 않을 때 정규화된 Video Sample을 어느 Presentation Time에 두는지는 정하지 않았다. 아래 Scheduling Rule이 정규화 Video 출력 Timing의 정본이며 충돌 시 Revision 1이 우선한다. Decision 1–3과 Canonical Preflight 순서를 포함한 아래의 최초 본문은 Accepted 이력으로 보존된다. 이 Revision은 Step 4B가 구현되었거나 완료되었음을 뜻하지 않으며 이 규칙은 아직 구현되지 않았다.
+
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. 이 Cadence Grid와 Frame Hold 규칙은 Task 29g로 Step 4B(`da1f337`)에 구현 · 검증되었고 `IMG_0130.MOV` 실제 기기 재검증(Sample 137개, `0 … 2720/600`, `720/600` Hold, 종료 `2722/600`)을 통과했다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현이다. 실제 HDR 결과는 ADR-049 구현 상태 갱신에 기록되어 있다: `IMG_0130.MOV` · `da1f337` · LunaTestphone · 승인된 내장 Full-aperture 경로에서 소유자 시각 판정 PASS(일반 Dolby Vision 인증 아님).
 
 **왜 Revision인가:** Decision 3이 정규화 출력 Cadence(`outputFrameDuration`)의 정본이며, 이 Revision은 그 Cadence를 실제 출력 Sample Timing으로 실현하는 방법만 확정한다. 새 Normalization 사유 · 새 제외 범주 · 새 Frame Duration 공식을 도입하지 않으므로 별도 ADR이 아니다.
 
@@ -3483,7 +3493,7 @@ LunaTestphone(iPhone 12, iOS 27.0)에서 승인된 내장 AVFoundation Tone-mapp
 ### 필요한 검증
 
 - 순수 Cadence Scheduler Unit Test, Integration Test, LunaTestphone 실제 Media 재검증은 ROADMAP Phase 6 Unit Tests / Integration Tests / Physical Device Test에 기록된다.
-- 진짜 Dolby Vision Source가 구조적으로 실행되었지만(Classification · Plan · 내장 경로 진입) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과를 주장하지 않는다.
+- 진짜 Dolby Vision Source가 구조적으로 실행되었지만(Classification · Plan · 내장 경로 진입) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과를 주장하지 않는다. — **결과(2026-10-02):** 위 문장은 작성 시점의 상태다. 이후 `IMG_0130.MOV` · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 경로에 한해 소유자 시각 판정 PASS(`PASS — HDR to SDR appearance is acceptable.`; 일반 Dolby Vision 인증 아님).
 
 ## 최초 승인 본문 (2026-09-30 — Revision 1로 보완됨)
 
@@ -3494,6 +3504,8 @@ LunaTestphone(iPhone 12, iOS 27.0)에서 승인된 내장 AVFoundation Tone-mapp
 **Explicitly Unchanged:** ADR-042의 `1.0s <= 전체 Source Duration <= 5.0s` Eligibility · Per-item Filtering · 통합 안내 · Preparation Sheet · 취소 · Runtime 실패 · `다시 시도` · Storage 부족 Presentation과 Accepted Set Atomicity, ADR-043 Revision 1의 Orientation 판정식 `presentationHeight > presentationWidth`와 Non-portrait Copy, ADR-044 Revision 1 QuickTime-only Container, ADR-046 H.264 / HEVC-only Video Codec Family와 Direct-camera H.264, ADR-045의 Video 출력 계약(QuickTime `.mov` · H.264 High 8-bit · Rec.709 / 709 / 709 · Video Range · Transform Bake + Identity · 1080p-class Portrait Bounding Box) · Tone-mapping 메커니즘 · 출력 Duration 허용 범위 · Cancellation / Output Ownership, ADR-045 §2의 기존 Normalization Trigger(HDR / >8-bit, Nominal Frame Rate 기준 30 fps 초과, 1080p-class 초과 Raster), ADR-047의 Raster 공식과 No Resume, ADR-020 / ADR-037 / ADR-040의 Atomic Commit과 Replace 보존, Photos 원본 불변, Export Codec / Container / Audio(Phase 9), Import Storage Estimate Formula / Safety Reserve(Pending 유지), Aggregate Progress / Retry Source-handle 메커니즘(Pending 유지).
 
 **이 ADR은 Production 구현을 의미하지 않으며 Phase 6 Step 4B를 시작하지 않는다.** Step 4B(`WorkingMediaNormalizer` AVFoundation Adapter)가 추측 없이 구현될 수 있도록 세 정책을 확정하는 Product / Architecture 완결 결정이다. Classifier · Inspector · Selection Preflight · Plan Builder는 이 ADR에 맞추어 이후 구현 Step에서 조정되며 현재 구현은 이 ADR의 새 규칙을 아직 반영하지 않는다.
+
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. Classifier · Inspector · Selection Preflight · Plan Builder는 Step 4A(`75c2cb9`)에서 이 ADR에 맞추어 조정되었고, Step 4B Normalizer(`da1f337`)는 Audio 계약 · Frame Duration 유도 · Revision 1 Cadence Grid · Revision 2 정확한 출력 Validation을 구현 · 검증했다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현이며 Phase 6은 완료되지 않았다.
 
 ## Context
 
@@ -3714,6 +3726,8 @@ Description 하나; 일치하는 여러 Description; 뒤 Description의 Full ↔
 
 **이 ADR은 Phase 6 Step 4B 구현 완료를 뜻하지 않는다.** 현재 Step 4B Normalizer는 미커밋 상태이며 이 ADR을 아직 반영하지 않는다. Inspector · Classifier · Step 3 Selection Preflight · Step 4A Plan · Step 4B Normalizer는 이후 구현 Step에서 이 ADR에 맞춘다.
 
+**구현 상태 갱신(2026-10-02):** 위 문장은 작성 시점의 상태다. Inspector · Classifier · Step 3 Selection Preflight · Step 4A Plan 경로 · Step 4B Normalizer는 이 ADR과 Revision 1에 맞추어 `da1f337`로 구현 · 검증 · Commit되었다(LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인). 실제 iPhone 촬영본 `IMG_0130.MOV`(HEVC Main10 HLG / Rec.2020, Dolby Vision `dvvC` Profile 8 · Compatibility ID 4, Full Aperture)의 정규화 출력은 H.264 High SDR Rec.709이고 Sample 137개가 `0 … 2720/600`의 정확한 `20/600` Grid에 있으며 `720/600`에서 Frame을 유지하고 Video / Session은 `2722/600`, Audio는 `2721/600`에 끝나며 엄격한 Validator를 통과했다. 소유자 기기 시각 판정은 `PASS — HDR to SDR appearance is acceptable.`이며 이 판정은 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 경로에만 해당하고 일반 Dolby Vision 인증이나 모든 HDR Source · 모든 기기에 대한 증명이 아니다. 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현이며 Phase 6은 완료되지 않았다.
+
 ## Context
 
 1. ADR-045 §4는 HDR → SDR Tone-mapping 메커니즘으로 `AVAssetReaderVideoCompositionOutput` + `AVMutableVideoComposition`(Rec.709 Composition 색 속성, Layer Instruction Transform Bake)의 AVFoundation 내장 Compositor를 승인했다.
@@ -3876,7 +3890,7 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 ### 기기 Gate
 
 - 최종 Step 4B 통합 후 기존 Full-aperture HDR 검증을 반복한다.
-- Dolby Vision A/B는 진짜 승인된 Fixture가 있을 때까지 Pending이며 합성 Dolby Vision 증명을 주장하지 않는다.
+- Dolby Vision A/B는 진짜 승인된 Fixture가 있을 때까지 Pending이며 합성 Dolby Vision 증명을 주장하지 않는다. — **구현 상태(2026-10-02):** 이 Fixture 한정 Dolby Vision A/B 항목은 진짜 `dvvC` Profile 8 · Compatibility ID 4 신호를 가진 `IMG_0130.MOV`의 소유자 시각 판정 PASS(`PASS — HDR to SDR appearance is acceptable.`)로 충족되어 더 이상 Pending이 아니다. 이 판정은 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 정규화 경로에 한정되며 일반 Dolby Vision 인증이 아니고 모든 Dolby Vision Profile · Metadata 변형 · 기기 · Aperture · Rendering 경로 · Source를 보장하지 않는다. 사용자 Import 흐름 통합과 Phase 6 전체는 완료되지 않았다.
 
 ## Rationale
 
@@ -3895,7 +3909,7 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 ## Still Pending (이 ADR이 확정하지 않음)
 
 - Non-full Aperture HDR / Wide-color Source의 Post-V1 지원(별도 변환 메커니즘 + 기기 HDR / Dolby Vision 증거)
-- Dolby Vision 기기 A/B(진짜 승인된 Fixture 필요)
+- Dolby Vision 기기 A/B(진짜 승인된 Fixture 필요) — **구현 상태(2026-10-02):** 이 Fixture 한정 Dolby Vision A/B 항목은 진짜 `dvvC` Profile 8 · Compatibility ID 4 신호를 가진 `IMG_0130.MOV`의 소유자 시각 판정 PASS(`PASS — HDR to SDR appearance is acceptable.`)로 충족되어 더 이상 Pending이 아니다. 이 판정은 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 정규화 경로에 한정되며 일반 Dolby Vision 인증이 아니고 모든 Dolby Vision Profile · Metadata 변형 · 기기 · Aperture · Rendering 경로 · Source를 보장하지 않는다. 사용자 Import 흐름 통합과 Phase 6 전체는 완료되지 않았다.
 - Fast-path Copy된 Non-full Aperture Media를 이후 Preview / Export Composition이 어떻게 렌더링하는지(Phase 7 / 9 소유, 이 ADR은 결정하지 않음)
 - Import Storage Estimate Formula와 Safety Reserve, Aggregate Progress / Retry Source-handle 메커니즘
 

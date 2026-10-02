@@ -628,13 +628,13 @@ MVP Feature 구현은 대략 다음 Phase에 연결한다.
 | Clip List / Reorder / Delete / Undo | Phase 5 |
 | Photos Video Import | Phase 6 |
 | Imported Video Whole-source 1.0–5.0 s Eligibility (ADR-042) | Phase 5(5.0초 초과 거부 구현 완료) / Phase 6(1.0초 미만 거부 + 다중 선택 Per-item Filtering + Normalization + Preparation Sheet / 취소 / Retry / Storage 부족 / Invalid Filtering Presentation) |
-| Portrait-only Photos Import (ADR-043 + Revision 1) | Phase 5(Non-portrait = Non-ready, 선택 전체 거부 구현) / Phase 6(Per-item Non-portrait 제외 + Canonical 안내, 미구현) |
-| Phase 6 Working Media Technical Gate (ADR-045) | Resolved / PASS(Spike Evidence `04d83612`) — Production 구현 미완: `ImportPreflightClassifier` / `WorkingMediaNormalizer` / `SDRWorkingMediaContract` Phase 6 구현 대상 |
-| Clean-aperture Normalization / Tone-map Eligibility Boundary (ADR-049) | Phase 6 — Accepted(2026-10-01); Revision 1(여러 Description 합의 · Normalization Transform Eligibility) Accepted(2026-10-01), 미구현: Inspector Aperture Facts · Classifier 경로 판정 · Step 3 매핑 · Step 4A Plan 경로 · Step 4B 내장 / SDR Geometry 두 경로(Task 29e, 29f) |
-| Normalized Output Cadence Grid / Frame Hold (ADR-048 Revision 1) | Phase 6 — Accepted(2026-10-01), 미구현: Step 4B Cadence Scheduler(Task 29g) · LunaTestphone 실제 Media 재검증 |
-| Exact Cadence Validation / Leading-Gap Failure (ADR-048 Revision 2) | Phase 6 — Accepted(2026-10-02), 미구현: Output Validator의 평균 Rate 거부 제거와 경계 Test(Task 29h) |
-| Capture Codec Invariant + Import Codec Boundary (ADR-046) | Phase 4 코드는 Codec 미명시(Default 의존) → Phase 6 Task 29b Enforcement 미구현 / Phase 6 Task 29a Codec Family Preflight 미구현 |
-| QuickTime-only Photos Import Container (ADR-044) | Phase 5(Container 미검사) / Phase 6(신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외, 미구현; MP4 Remux 없음) |
+| Portrait-only Photos Import (ADR-043 + Revision 1) | Phase 5(Non-portrait = Non-ready, 선택 전체 거부 구현) / Phase 6(Per-item Non-portrait 제외 + Canonical 안내, 미구현) — 구현 상태(2026-10-02): 판정 구성요소 구현(`efbcff9` Classifier, `c570d5b` Selection Preflight), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현 |
+| Phase 6 Working Media Technical Gate (ADR-045) | Resolved / PASS(Spike Evidence `04d83612`) — ~~Production 구현 미완: `ImportPreflightClassifier` / `WorkingMediaNormalizer` / `SDRWorkingMediaContract` Phase 6 구현 대상~~ 구현 상태(2026-10-02): `ImportPreflightClassifier`(`efbcff9`) · `SDRWorkingMediaContract`와 Plan(Step 4A `75c2cb9`) · `AVFoundationWorkingMediaNormalizer`(Step 4B `da1f337`) 구성요소 구현 · 검증, 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현 |
+| Clean-aperture Normalization / Tone-map Eligibility Boundary (ADR-049) | Phase 6 — Accepted(2026-10-01); Revision 1(여러 Description 합의 · Normalization Transform Eligibility) Accepted(2026-10-01), ~~미구현: Inspector Aperture Facts · Classifier 경로 판정 · Step 3 매핑 · Step 4A Plan 경로 · Step 4B 내장 / SDR Geometry 두 경로(Task 29e, 29f)~~ 구현 상태(2026-10-02): Task 29e · 29f 구성요소 구현 · 검증(`da1f337`), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현 |
+| Normalized Output Cadence Grid / Frame Hold (ADR-048 Revision 1) | Phase 6 — Accepted(2026-10-01), ~~미구현: Step 4B Cadence Scheduler(Task 29g) · LunaTestphone 실제 Media 재검증~~ 구현 상태(2026-10-02): Task 29g 구현 · 검증(`da1f337`), `IMG_0130.MOV` LunaTestphone 재검증 통과(Sample 137개, `720/600` Hold, 종료 `2722/600`) |
+| Exact Cadence Validation / Leading-Gap Failure (ADR-048 Revision 2) | Phase 6 — Accepted(2026-10-02), ~~미구현: Output Validator의 평균 Rate 거부 제거와 경계 Test(Task 29h)~~ 구현 상태(2026-10-02): Task 29h 구현 · 검증(`da1f337`) |
+| Capture Codec Invariant + Import Codec Boundary (ADR-046) | Phase 4 코드는 Codec 미명시(Default 의존) → ~~Phase 6 Task 29b Enforcement 미구현 / Phase 6 Task 29a Codec Family Preflight 미구현~~ 구현 상태(2026-10-02): Task 29b 구현(`bfc4451`, Direct Camera H.264 SDR 명시 요청 · 불가 시 안전 실패); Task 29a Codec Family 판정 구성요소 구현(`efbcff9`, 모든 Format Description 판정은 `da1f337`), Import 흐름 연결은 미구현 |
+| QuickTime-only Photos Import Container (ADR-044) | Phase 5(Container 미검사) / Phase 6(신뢰성 있는 Container Inspection + Per-item Unsupported-container 제외, 미구현; MP4 Remux 없음) — 구현 상태(2026-10-02): Container Inspection · 판정 구성요소 구현(`5416111` Inspector, `efbcff9` Classifier, `c570d5b` Selection Preflight), 사용자 Import 흐름(Select Clips / Editor Add / Replace) 연결은 미구현 |
 | Trim | Phase 7 |
 | Fill + Crop / Framing | Phase 7 |
 | Full Vlog Preview | Phase 8 |
@@ -1775,7 +1775,7 @@ Logical Deletion, Session Undo / Redo History, 결정적 복원, Unavailable Cli
 
 # Phase 6 — Photos Video Import
 
-**Status:** Not Started — Documentation Replanning 완료 2026-09-17 (ADR-042, Level 3 Product / UX Change). Production 구현은 시작하지 않았다.
+**Status:** Not Started — Documentation Replanning 완료 2026-09-17 (ADR-042, Level 3 Product / UX Change). Production 구현은 시작하지 않았다. — **구현 상태(2026-10-02): In Progress** — 위 문장은 작성 시점의 상태다. 구성요소 구현(`efbcff9` · `5416111` · `c570d5b` · `bfc4451` · `75c2cb9` · `da1f337`); 사용자 Import 흐름(Select Clips / Editor Add / Replace) 통합은 미구현이며 Phase 6은 완료되지 않았다.
 
 ### ADR-042 Replanning — 2026-09-17
 
@@ -1786,6 +1786,26 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 **Structural UX:** ADR-042 Revision 4(2026-09-17)로 Normalization-required Import의 자동 진입 / Blocking Preparation Sheet / 취소 / Runtime 실패 · Retry / Storage 부족 / Preflight Invalid Filtering / 통합 안내 우선순위 / Accepted Set 경계가 모두 확정되어 Phase 6 Structural UX Gate는 해결되었다. Technical Gate는 그대로 Pending이다.
 
 **구현 상태 구분:** 5.0초 초과 거부는 Phase 5가 이미 세 경로에서 구현·검증했다. **1.0초 미만 거부는 아직 구현되지 않았다**(`Phase5ReadyMediaValidator`는 `0 < d`만 검사하고 `testShortClipsAreAcceptedWithoutCameraMinimum`이 0.4초를 Ready로 고정) — 이는 Phase 6 구현 요구사항이다. Per-item Filtering, Preparation Sheet, 취소, Retry, Storage Preflight Presentation, Invalid Media Filtering, 새 안내 Copy도 모두 아직 구현되지 않았으며 Swift / Test는 별도 승인된 구현 작업에서만 변경한다.
+
+**구현 상태(2026-10-02):** 1.0초 미만 거부와 Per-item 판정은 Phase 6 `ImportPreflightClassifier`(`efbcff9`, 정확한 Rational `1.0 s ≤ duration ≤ 5.0 s`, 허용치 없음)와 `ImportSelectionPreflight`(`c570d5b`) 구성요소에 구현되었다. 이 구성요소들은 아직 Select Clips / Editor Add / Replace 흐름에 연결되지 않았으므로 현재 사용자 흐름은 여전히 `Phase5ReadyMediaValidator`를 사용하며 1.0초 미만 Source를 거부하지 않는다. Phase 6 계층별 상태는 다음과 같다.
+
+| 계층 | 상태(2026-10-02) |
+| --- | --- |
+| Step 4A 순수 Contract · Raster Policy · Plan · Preflight 논리 | 구현 · 테스트(`75c2cb9`) |
+| Step 4B Normalizer Engine · Cadence Scheduler · Output Validator · Cleanup 동작 | 구현 · 검증(`da1f337`; LunaTestphone `MellowTests` 693/693 · Debug / Release 기기 Build 성공 · 독립 Review 승인) |
+| 실제 `IMG_0130.MOV` Full-aperture HDR 구조 검증과 소유자 시각 판정 | `IMG_0130.MOV` · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 경로에 한해 통과(일반 Dolby Vision 인증 아님) |
+| Import Source Inspection · Selection Preflight 구성요소 | 구현(`5416111`, `c570d5b`, Phase 6 확장은 `75c2cb9` · `da1f337`) |
+| Direct-camera H.264 SDR Enforcement(Task 29b) | 구현(`bfc4451`) |
+| Select Clips / Editor Add / Replace 통합 | 미구현 |
+| Accepted Set Storage Estimate · Safety Reserve | Pending 유지 |
+| Free-space API / Race 처리 | Pending 유지 |
+| Blocking Preparation Progress UI · Aggregate Progress | Preparation / Progress UI 미구현(ADR-042 Revision 4로 UX 확정) · Aggregate Progress 계산은 Pending 유지(구현 세부 결정) |
+| 실제 사용자 흐름의 취소 / `다시 시도` Source-handle 조정 | Pending 유지 |
+| Project로의 Atomic Materialization / Commit 통합 | 미구현(계약은 확정) |
+| Relaunch Resume / Checkpoint | 정책상 구현하지 않음(ADR-047) |
+| 버려진 Workspace 산출물의 시작 시 정리 | 기존 Phase 5 안전망 존재; Normalizer 통합 의무는 End-to-end 연결 · 검증 필요 |
+| 일반 Dolby Vision 지원 / 품질 인증 | 주장하지 않음 |
+| Phase 6 전체 | 미완료 |
 
 System PhotosPicker는 Duration으로 항목을 미리 숨기지 못하므로 사용자가 5초 초과 Video를 탭할 수 있다. Mellow는 Metadata Validation 후 해당 항목을 거부하고 Materialize / Normalize / Persist / Append / Replace / Commit 어느 것도 하지 않으며 Photos 원본을 변경하지 않는다. 5.0초 초과 거부는 Phase 5 STEP 6 / 11 / 13이 이미 세 경로(`새 프로젝트 시작` / Editor `+` / `클립 교체`)에서 같은 Validator(`requires import preparation(.tooLong)`)와 같은 Copy(`영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요.`)로 구현·검증한 동작이며 Phase 6은 이를 유지하고 다른 Duration 정책을 만들지 않는다. 1.0초 미만 거부는 Phase 6이 같은 세 경로에 추가하며 Canonical 안내는 ADR-042 Revision 2(2026-09-17 승인)의 `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.`다(Above-maximum 안내와 별개, 세 경로 동일).
 
@@ -2088,11 +2108,11 @@ iPhone 12에서 실제 Photos Library를 이용하여 검증한다.
 
 Normalization 도중 강제 종료(출력 생성 전 / 부분 출력 후 / 한 항목 완료 후)와 Materialization 후 Metadata Save 실패를 주입한 뒤 Relaunch하여 Project 무변경, 버려진 Workspace / 부분 출력의 시작 시 정리, Resume 없음, Duplicate Clip 없음, Replace의 기존 Clip 보존을 확인한다(ADR-047).
 
-ADR-049: 최종 Step 4B 통합 후 Full-aperture HDR Source의 기존 내장 Compositor HDR → SDR 검증을 LunaTestphone(iPhone 12)에서 반복한다. Dolby Vision A/B는 진짜 승인된 Fixture가 확보될 때까지 Pending이며 합성 Dolby Vision 증명을 주장하지 않는다.
+ADR-049: 최종 Step 4B 통합 후 Full-aperture HDR Source의 기존 내장 Compositor HDR → SDR 검증을 LunaTestphone(iPhone 12)에서 반복한다. Dolby Vision A/B는 진짜 승인된 Fixture가 확보될 때까지 Pending이며 합성 Dolby Vision 증명을 주장하지 않는다. — **검증 상태(2026-10-02):** 실제 iPhone 촬영본 `IMG_0130.MOV`(HEVC Main10 HLG / Rec.2020, Dolby Vision `dvvC` Profile 8 · Compatibility ID 4, Full Aperture)의 정규화 출력은 H.264 High SDR Rec.709이고 Sample 137개가 `0 … 2720/600`의 정확한 `20/600` Grid에 있으며 `720/600`에서 Frame을 유지하고 Video / Session은 `2722/600`, Audio는 `2721/600`에 끝나며 엄격한 Validator를 통과했다. 소유자 기기 시각 판정은 `PASS — HDR to SDR appearance is acceptable.`이며 이 판정은 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 경로에만 해당하고 일반 Dolby Vision 인증이나 모든 HDR Source · 모든 기기에 대한 증명이 아니다. **Fixture 조건 해소(2026-10-02):** 위 "진짜 승인된 Fixture" 조건은 진짜 `dvvC` Profile 8 · Compatibility ID 4 신호를 가진 `IMG_0130.MOV`로 충족되어(구조 검증 통과, 소유자 시각 A/B 통과) 이 Dolby Vision A/B 항목은 더 이상 Pending이 아니다. 이 해소는 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture Tone-mapping 경로에 한정되며 일반 Dolby Vision 지원 · 인증이나 모든 HDR Source · 기기 · 정규화 경로에 대한 증명이 아니다.
 
-ADR-048 Revision 1: Cadence Scheduler 구현 후 실제 iPhone 촬영본 `IMG_0130.MOV`(HEVC Main10 HLG / Rec.2020, Dolby Vision `dvvC` Profile 8 · Compatibility ID 4, Duration `2722/600`)를 LunaTestphone에서 다시 정규화하여 출력 Frame 137개, Grid 지점 36의 유지 Frame 하나, 정확한 `1/30` Cadence, Duration `2722/600`, 기존 출력 계약 전체를 확인한 뒤 Pending인 실제 HDR Tone-mapping Evidence / 시각 A/B를 이어간다. 이 Source로 진짜 Dolby Vision 신호는 구조적으로 실행되었지만(Classification · Plan · 내장 경로) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과로 주장하지 않는다.
+ADR-048 Revision 1: Cadence Scheduler 구현 후 실제 iPhone 촬영본 `IMG_0130.MOV`(HEVC Main10 HLG / Rec.2020, Dolby Vision `dvvC` Profile 8 · Compatibility ID 4, Duration `2722/600`)를 LunaTestphone에서 다시 정규화하여 출력 Frame 137개, Grid 지점 36의 유지 Frame 하나, 정확한 `1/30` Cadence, Duration `2722/600`, 기존 출력 계약 전체를 확인한 뒤 Pending인 실제 HDR Tone-mapping Evidence / 시각 A/B를 이어간다. 이 Source로 진짜 Dolby Vision 신호는 구조적으로 실행되었지만(Classification · Plan · 내장 경로) Dolby Vision 시각 품질 승인은 출력 시각 Evidence가 완료될 때까지 Pending이며 통과로 주장하지 않는다. — **결과(2026-10-02):** Cadence Scheduler 구현(`da1f337`) 후 위 재검증을 완료했고 시각 A/B의 소유자 판정은 `PASS — HDR to SDR appearance is acceptable.`이다(범위는 이 Source · 현재 구현 · LunaTestphone · 내장 경로로 한정, 일반 Dolby Vision 인증 아님).
 
-ADR-048 Revision 2: `IMG_0130.MOV`는 계속 실제 기기 Cadence Evidence다(Sample 137개, Presentation Time `0 … 2720/600`, 간격 `20/600`, 정확한 종료 `2722/600`). Validator 수정 후에도 이 결과가 유지되어야 하며 실제 HDR 시각 A/B는 Pending이고 통과로 주장하지 않는다.
+ADR-048 Revision 2: `IMG_0130.MOV`는 계속 실제 기기 Cadence Evidence다(Sample 137개, Presentation Time `0 … 2720/600`, 간격 `20/600`, 정확한 종료 `2722/600`). Validator 수정 후에도 이 결과가 유지되어야 하며 실제 HDR 시각 A/B는 Pending이고 통과로 주장하지 않는다. — **결과(2026-10-02):** 위 문장은 작성 시점의 상태다. Validator 수정 후 위 결과가 유지되었고 실제 HDR 시각 A/B는 이후 통과했다: 소유자 판정 `PASS — HDR to SDR appearance is acceptable.`. 이 결과는 `IMG_0130.MOV` · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture Tone-mapping 경로에 한정되며 일반 Dolby Vision 지원 · 인증이나 모든 HDR Source · 기기 · 정규화 경로에 대한 증명이 아니다.
 
 Import 중 Project Delete / Replacement와 늦은 Completion을 검증하여 삭제된 Project가 다시 나타나지 않고 Photos 원본이 보존되는지 확인한다.
 
@@ -2170,7 +2190,7 @@ Preparation Sheet(`영상을 준비하고 있어요` / `잠시만 기다려주�
 
 Import Production Pipeline이 공통 Media Commit 계약을 따르고 Failure Recovery Integration Test 및 iPhone 12 검증이 완료되어야 한다.
 
-ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)와 ADR-043 Revision 1의 Non-portrait(Landscape / Square) Preflight 제외, ADR-044의 QuickTime-only Container Preflight 제외(MP4 Import / Remux 없음), ADR-046의 Codec Family Preflight 제외(Unsupported Codec의 Normalization 미도달)와 Direct-camera H.264 Enforcement 회귀가 세 경로에서 검증되고, Revision 3의 다중 선택 Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Replace 보존이 Select Clips · Add · Replace에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다. ADR-049의 경로 판정(Fast Path / 내장 Compositor / SDR Geometry / Preflight 거부)이 Unit · Integration Test로 검증되고 Full-aperture HDR 기기 검증이 최종 Step 4B 통합 후 반복되어야 한다(Dolby Vision A/B는 진짜 Fixture 확보 전까지 Pending으로 명시).
+ADR-042의 전체 Source Duration Eligibility(1.0초 미만 거부 / 정확히 1.0초 허용 / 정확히 5.0초 허용 / 5.0초 초과 거부)와 ADR-043 Revision 1의 Non-portrait(Landscape / Square) Preflight 제외, ADR-044의 QuickTime-only Container Preflight 제외(MP4 Import / Remux 없음), ADR-046의 Codec Family Preflight 제외(Unsupported Codec의 Normalization 미도달)와 Direct-camera H.264 Enforcement 회귀가 세 경로에서 검증되고, Revision 3의 다중 선택 Per-item Filtering / 통합 안내 / Accepted Set Atomicity / Replace 보존이 Select Clips · Add · Replace에서 검증되고, ADR-022의 SDR / 30 fps / 1080p-class 및 Framing 보존 계약과 Phase 6 Technical Gate가 충족되어야 하며 HDR / Dolby Vision Import의 iPhone 12 검증 결과 없이 완료로 처리하지 않는다. ADR-049의 경로 판정(Fast Path / 내장 Compositor / SDR Geometry / Preflight 거부)이 Unit · Integration Test로 검증되고 Full-aperture HDR 기기 검증이 최종 Step 4B 통합 후 반복되어야 한다(Dolby Vision A/B는 진짜 Fixture 확보 전까지 Pending으로 명시). — **검증 상태(2026-10-02):** 이 Exit Criterion의 진짜 Fixture 조건은 진짜 `dvvC` Profile 8 · Compatibility ID 4 신호를 가진 `IMG_0130.MOV`로 충족되었고 소유자 시각 판정은 `PASS — HDR to SDR appearance is acceptable.`이다. 이 결과는 이 Source · 현재 Step 4B 구현(`da1f337`) · LunaTestphone · 승인된 내장 Full-aperture 정규화 경로에 한정되며 일반 Dolby Vision 인증이 아니고 모든 Dolby Vision Profile · Metadata 변형 · 기기 · Aperture · Rendering 경로 · Source를 보장하지 않는다. 이 Fixture 한정 항목만 충족되었으며 나머지 Phase 6 Exit Criteria, 사용자 Import 흐름 통합, Phase 6 전체는 완료되지 않았다.
 
 ADR-024의 Import Estimate Formula와 Safety Reserve Gate가 구현 전에 승인되고 Preflight / Runtime Disk Full / Recovery-safe Cleanup / Retry Integration Test 및 iPhone 12 Peak Additional Storage 측정이 완료되어야 한다.
 
