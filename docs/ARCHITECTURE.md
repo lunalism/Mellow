@@ -995,7 +995,7 @@ Select Clips / Editor Add / Replace의 Photos Import는 다음 순서를 따른�
 5. **취소:** Cooperative Cancellation 요청 후 그 Operation이 만든 임시 / 부분 생성 파일을 모두 제거하고 Project / Clip Metadata를 변경하지 않는다(Replace 기존 Clip 보존). ADR-021의 Active Usage 원칙에 따라 실제 Release 이후 정리한다. 구체적 API는 Technical Gate다.
 6. **Runtime 실패 Rollback:** Accepted Set 중 하나라도 Preparation / Materialization / Normalization / Persist에 실패하면 Operation 전체가 실패다 — 성공한 부분 집합을 Commit하지 않고 임시 / 부분 파일을 제거하며 Project는 무변경(Select Clips 미생성)이다. Preflight Invalidity(Per-item 제외)와 Runtime 실패(Operation 전체 실패)는 구분되며 Runtime 실패를 Per-item 제외로 바꾸지 않는다. Relaunch를 넘는 Recovery 깊이 / Durable Operation Identity는 Technical Gate다.
 7. **Retry 범위:** Retry는 같은 Accepted Set Operation을 Live Operation / Session 안에서 Source Handle이 여전히 유효할 때만 다시 시도하며, Source 접근이 무효이면 Mutation 없이 안전하게 실패한다. Broad Photos 권한을 도입하지 않는다. Source-handle 유지 메커니즘은 Technical Gate다.
-8. **Commit:** 성공 시 Accepted Set 전체를 ADR-020 / ADR-037 계약으로 Atomic Commit한다(Materialize → Project State → Persist → Read-back). Replace는 완전 성공 시에만 Media / Metadata를 Atomic하게 교체한다.
+8. **Commit:** 성공 시 Accepted Set 전체를 ADR-020 / ADR-037 계약으로 Atomic Commit한다(Materialize → Project State → Persist → Read-back). Replace는 완전 성공 시에만 Media / Metadata를 Atomic하게 교체한다. — **ADR-050 분류 규칙 승인(2026-10-02)에 따른 개정:** Save가 성공한 뒤의 Read-back 실패 · 불일치는 Commit 전 실패가 아니라 "Commit됨 · 확인 안 됨"이며 참조 가능 Media를 보존하고 Rollback하지 않는다; Save 오류는 다시 읽은 상태로 분류한다(ADR-050 050-D D8.0). 순수 분류기만 구현되었고 현재 Production 코드는 아직 이 문구의 이전 동작이며 연결은 Pending이다.
 9. **안내 우선순위:** 완료된 Operation당 통합 제외 안내 최대 1회; 취소 / 실패가 우선하며 완료되지 않은 Operation에 제외 성공 안내를 표시하지 않는다.
 
 ### Technical Gate Before Phase 6 Normalization

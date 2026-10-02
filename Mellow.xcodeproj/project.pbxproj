@@ -77,6 +77,8 @@
 		000000000000000000000280 /* WorkingMediaCadenceSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000180 /* WorkingMediaCadenceSchedulerTests.swift */; };
 		000000000000000000000281 /* ImportStorageEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000181 /* ImportStorageEstimator.swift */; };
 		000000000000000000000282 /* ImportStorageEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000182 /* ImportStorageEstimatorTests.swift */; };
+		000000000000000000000283 /* ProjectSaveOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000183 /* ProjectSaveOutcome.swift */; };
+		000000000000000000000284 /* ProjectSaveOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000184 /* ProjectSaveOutcomeTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -216,6 +218,8 @@
 		000000000000000000000180 /* WorkingMediaCadenceSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingMediaCadenceSchedulerTests.swift; sourceTree = "<group>"; };
 		000000000000000000000181 /* ImportStorageEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportStorageEstimator.swift; sourceTree = "<group>"; };
 		000000000000000000000182 /* ImportStorageEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportStorageEstimatorTests.swift; sourceTree = "<group>"; };
+		000000000000000000000183 /* ProjectSaveOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSaveOutcome.swift; sourceTree = "<group>"; };
+		000000000000000000000184 /* ProjectSaveOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSaveOutcomeTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -351,6 +355,7 @@
 				000000000000000000000178 /* WorkingMediaNormalizerTests.swift */,
 				000000000000000000000180 /* WorkingMediaCadenceSchedulerTests.swift */,
 				000000000000000000000182 /* ImportStorageEstimatorTests.swift */,
+				000000000000000000000184 /* ProjectSaveOutcomeTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -563,6 +568,7 @@
 				000000000000000000000118 /* ProjectRepository.swift */,
 				000000000000000000000119 /* SwiftDataProjectRepository.swift */,
 				00000000000000000000011A /* InMemoryProjectRepository.swift */,
+				000000000000000000000183 /* ProjectSaveOutcome.swift */,
 				00000000000000000000011B /* MellowModelContainer.swift */,
 			);
 			path = Persistence;
@@ -864,6 +870,7 @@
 				000000000000000000000216 /* ProjectRepository.swift in Sources */,
 				000000000000000000000217 /* SwiftDataProjectRepository.swift in Sources */,
 				000000000000000000000218 /* InMemoryProjectRepository.swift in Sources */,
+				000000000000000000000283 /* ProjectSaveOutcome.swift in Sources */,
 				000000000000000000000219 /* MellowModelContainer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -894,6 +901,7 @@
 				000000000000000000000278 /* WorkingMediaNormalizerTests.swift in Sources */,
 				000000000000000000000280 /* WorkingMediaCadenceSchedulerTests.swift in Sources */,
 				000000000000000000000282 /* ImportStorageEstimatorTests.swift in Sources */,
+				000000000000000000000284 /* ProjectSaveOutcomeTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,

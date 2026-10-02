@@ -1797,6 +1797,7 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 | Import Source Inspection · Selection Preflight 구성요소 | 구현(`5416111`, `c570d5b`, Phase 6 확장은 `75c2cb9` · `da1f337`) |
 | Direct-camera H.264 SDR Enforcement(Task 29b) | 구현(`bfc4451`) |
 | Select Clips / Editor Add / Replace 통합 | 미구현 |
+| Save Outcome 분류(ADR-050 050-D D8.0) | 분류 규칙 Accepted · 순수 `ProjectSaveOutcomeClassifier` 구현(연결 없음); 독립 Read(OD-10) · Lifecycle Gate · Rollback · 안내 · Integration은 Pending |
 | `.replacingSaved` 단일 Save 대체(ADR-033 Revision 1 / OD-14) | Repository API `replaceProject(previousID:with:)` 구현 · Test(연결 없음); Coordinator 연결 · D8 결과 판정 · 안내는 Pending |
 | Accepted Set Storage Estimate · Safety Reserve | Pending 유지(부분): 계산 정책 부분 승인(ADR-050 050-A / 050-B / 050-C 계산 정책, 2026-10-02) · 순수 `ImportStorageEstimator` 구현(Step 5B, 연결 없음); 검사 경계 연결 · Phase 5 Admission 변경 · Integration은 Pending |
 | Free-space API / Race 처리 | Pending 유지 |
@@ -1968,7 +1969,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 11. Import 취소 또는 실패 시 Ownership과 Recovery Classification을 확인하여 Discardable Temporary Artifact만 정리한다.
 12. Import 실패 시 Project에 깨진 Clip Metadata를 남기지 않는다.
 13. Normalization 실패 시 Live Process 안에서는 Valid Source / Staging을 보존하여 `다시 시도`가 같은 Accepted Set을 재시도할 수 있게 하고 Incomplete Derived Output을 Final Media로 취급하지 않는다(ADR-047: Relaunch 이후에는 아무것도 보존 · 재개하지 않으며 Operation Workspace 전체가 시작 시 Sweep 대상이다).
-14. ~~Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다(ADR-039 STEP 12B Predicate 확장 포함).~~ — **ADR-047(2026-09-18)로 대체:** Materialization 이후 Metadata Persistence가 실패하면 Live Process 안에서 Operation 실패로 Rollback(Materialize된 파일 제거, Project 무변경)하며 Relaunch 재개는 없다. Process 종료로 Row 없이 남은 Project-owned 파일은 기존 STEP 12B Orphan Recovery(Row 없는 Directory / Durable 참조 없는 Media 제거)가 정리하고 Predicate는 확장하지 않는다.
+14. ~~Materialization 이후 Metadata Persistence 실패 시 Recoverable Operation을 보존하여 Relaunch에서 Metadata Commit을 재개한다(ADR-039 STEP 12B Predicate 확장 포함).~~ — **ADR-047(2026-09-18)로 대체:** Materialization 이후 Metadata Persistence가 실패하면 Live Process 안에서 Operation 실패로 Rollback(Materialize된 파일 제거, Project 무변경)하며 Relaunch 재개는 없다. Process 종료로 Row 없이 남은 Project-owned 파일은 기존 STEP 12B Orphan Recovery(Row 없는 Directory / Durable 참조 없는 Media 제거)가 정리하고 Predicate는 확장하지 않는다. — **ADR-050 분류 규칙 승인(2026-10-02)에 따른 개정:** Save가 성공한 뒤의 Read-back 실패 · 불일치는 Commit 전 실패가 아니라 "Commit됨 · 확인 안 됨"이며 참조 가능 Media를 보존하고 Rollback하지 않는다; Save 오류는 다시 읽은 상태로 분류한다(ADR-050 050-D D8.0). 순수 분류기만 구현되었고 현재 Production 코드는 아직 이 문구의 이전 동작이며 연결은 Pending이다.
 15. 반복 시작 시 Cleanup이 Idempotent하고(Resume가 없으므로 Duplicate Clip이 생성될 경로가 없음) 삭제되었거나 존재하지 않는 Project에 Late Result를 등록하지 않도록 한다.
 16. Import / Normalization / Materialization 중 Project Delete / Replacement가 확정되면 영속적인 Invalid Target 전환과 가능한 작업의 Cancellation을 요청하고 Commit 직전 Validity를 검증한다.
 17. Cancelled / Late Import의 Operation-owned Working / Temporary Media는 ADR-020 Classification과 Active Usage 해제 이후에만 정리하며 Photos 원본과 다른 Draft를 보호한다. Normalizer의 중간 · 출력 파일은 Operation Workspace Directory 안에서만 생성하고(Project Directory 안에 임시 파일 없음) Fast-path / Normalized 출력의 Materialize는 Accepted Set 전체 준비 완료 뒤에만 시작한다(ADR-047).
@@ -2077,7 +2078,7 @@ Segment Selection Structural UX Gate는 ADR-042로 제거되었고, 남은 Norma
 - Source / Staged Media와 Normalized Output의 각각의 Validation
 - Normalization 도중 실패 후 Valid Source 보존과 Incomplete Derived Output 분류
 - 중단 시나리오(ADR-047, 각각 Relaunch 후): 출력 생성 전 중단, 부분 출력 생성 후 중단, Accepted Set 중 한 항목 완료 후 전체 Commit 전 중단 → Project 무변경 · Clip 없음 · Workspace / 부분 출력이 시작 시 Sweep으로 제거 · Resume 없음; Replace 중단 → 기존 Clip · Media · 순서 · Slot 보존
-- Materialization 후 Metadata Persistence 실패 → Live Process 안에서 Rollback(파일 제거, Project 무변경); Metadata Save 성공 후 UI Update 전 중단 → Relaunch에서 Persisted Row가 Source of Truth이며 중복 없음
+- Materialization 후 Metadata Persistence 실패 → Live Process 안에서 Rollback(파일 제거, Project 무변경); Metadata Save 성공 후 UI Update 전 중단 → Relaunch에서 Persisted Row가 Source of Truth이며 중복 없음 — **ADR-050 분류 규칙 승인(2026-10-02)에 따른 개정:** Save가 성공한 뒤의 Read-back 실패 · 불일치는 Commit 전 실패가 아니라 "Commit됨 · 확인 안 됨"이며 참조 가능 Media를 보존하고 Rollback하지 않는다; Save 오류는 다시 읽은 상태로 분류한다(ADR-050 050-D D8.0). 순수 분류기만 구현되었고 현재 Production 코드는 아직 이 문구의 이전 동작이며 연결은 Pending이다.
 - 시작 시 Cleanup Idempotency: 두 번째 실행 무작업, Committed Media와 Photos 원본 미삭제, Missing 파일 안전 처리, Workspace 밖 · Root 밖 · Symlink · Traversal 경로 미삭제(기존 STEP 12B 보호 그대로)
 - Cancel / Failure 후 Discardable Temporary Artifact Cleanup과 Recoverable Media 보존
 - 반복 Recovery / Cleanup의 Idempotency 및 Invalid Project Late Result의 Commit 차단
