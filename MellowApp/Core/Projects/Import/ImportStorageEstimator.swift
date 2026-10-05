@@ -459,6 +459,131 @@ struct ImportStorageWorkSet: Equatable, Sendable {
     }
 }
 
+// MARK: - Attempt boundary checks (050-C C1 / C2 / C3 / CR, accepted 2026-10-06; internal, unwired)
+
+/// The accepted Mellow-root admission boundaries of one import operation (C0 / C0a are not here).
+enum ImportAttemptBoundary: Hashable, Sendable {
+    /// After Accepted Set classification, before preparation starts.
+    case c1BeforePreparation
+    /// Immediately before the second and each later normalization item.
+    case c2BeforeNormalizationItem
+    /// Immediately before materialization; every normalization output must already be written.
+    case c3BeforeMaterialization
+    /// Before every Retry attempt, with a NEW work set (same requirement as C1).
+    case crBeforeRetry
+}
+
+/// Why a work set does not fit the boundary it is checked at. A caller defect; never a pass.
+enum ImportBoundaryStateProblem: Hashable, Sendable {
+    /// C1 / CR need a fresh attempt (no written outputs).
+    case outputsAlreadyWritten
+    /// C2 is only before a normalization item, so one must still be pending.
+    case noPendingNormalization
+    /// C2 is only before the SECOND and later normalization items, so one normalization output must
+    /// already be written (ready items do not count).
+    case noCompletedNormalization
+    /// C3 requires every normalization output to be written.
+    case normalizationStillPending
+}
+
+/// A suggested failure route for a non-passing check — only a category for the caller. It never
+/// authorizes Retry, performs rollback or claims cleanup succeeded.
+enum ImportBoundaryFailureRoute: Hashable, Sendable {
+    /// C1: initial storage refusal (ADR-042 R4 §4 acknowledgement); preparation never starts.
+    case initialStorageRefusal
+    /// C2 / C3: attempt failure. R4 §3 with `다시 시도` may be offered only after the caller has VERIFIED
+    /// rollback and established Retry eligibility (D7a); a failed restoration / cleanup uses U3 instead.
+    case attemptFailure
+    /// CR: retry-capacity refusal (050-C CR copy), meaningful only while the operation's retry state
+    /// remains valid; the caller must hold that state.
+    case retryCapacityRefusal
+}
+
+/// One boundary check. The requirement keeps output, metadata and reserve separate.
+enum ImportBoundaryCheckOutcome: Hashable, Sendable {
+    case sufficient(ImportStorageRequirement, usableBytes: Int64)
+    case insufficient(ImportStorageRequirement, usableBytes: Int64)
+    /// Capacity was unavailable (nil, negative or a reader error other than cancellation): fail closed.
+    case capacityUnknown(ImportStorageRequirement)
+    /// The estimate could not be computed: fail closed (capacity is not read).
+    case invalidEstimate(ImportStorageCompositionError)
+    /// The work set does not fit the boundary: fail closed (capacity is not read).
+    case invalidBoundaryState(ImportBoundaryStateProblem)
+
+    var passes: Bool {
+        if case .sufficient = self { return true }
+        return false
+    }
+}
+
+struct ImportBoundaryCheckResult: Hashable, Sendable {
+    let boundary: ImportAttemptBoundary
+    let outcome: ImportBoundaryCheckOutcome
+
+    var passes: Bool { outcome.passes }
+
+    /// nil when the check passes; otherwise the boundary's suggested route. Unknown capacity, invalid
+    /// estimates and invalid states fail closed onto the same route (no new copy). An
+    /// `.invalidBoundaryState` is a caller defect, not a shortage: once wired, the caller needs its own
+    /// handling for it (repeating the same check cannot succeed).
+    var failureRoute: ImportBoundaryFailureRoute? {
+        guard !passes else { return nil }
+        switch boundary {
+        case .c1BeforePreparation: return .initialStorageRefusal
+        case .c2BeforeNormalizationItem, .c3BeforeMaterialization: return .attemptFailure
+        case .crBeforeRetry: return .retryCapacityRefusal
+        }
+    }
+}
+
+enum ImportAttemptBoundaryChecker {
+    /// Checks `workSet` at `boundary` against the capacity the injected reader reports for the Mellow-root
+    /// location. Reuses `ImportStorageWorkSet.requirement()` and `ImportStorageEstimator.check`: equality
+    /// passes; unknown, negative or unreadable capacity, invalid estimates and invalid boundary states fail
+    /// closed. Capacity is read only after the state and estimate are valid. A `CancellationError` from the
+    /// reader is rethrown — never turned into unknown capacity.
+    ///
+    /// Reads nothing else, never alters the work set and touches no files. Callers must obtain or revalidate
+    /// the operation's metadata inputs (the work set's Project snapshot) under the accepted serialization
+    /// boundary. A pass is an admission check only, not a guarantee of space during writes.
+    static func check(_ boundary: ImportAttemptBoundary, workSet: ImportStorageWorkSet,
+                      capacity: () async throws -> Int64?) async throws(CancellationError) -> ImportBoundaryCheckResult {
+        func result(_ outcome: ImportBoundaryCheckOutcome) -> ImportBoundaryCheckResult { ImportBoundaryCheckResult(boundary: boundary, outcome: outcome) }
+        if let problem = stateProblem(boundary, workSet) { return result(.invalidBoundaryState(problem)) }
+        let requirement: ImportStorageRequirement
+        do { requirement = try workSet.requirement() } catch { return result(.invalidEstimate(error)) }
+        let usable: Int64?
+        do {
+            usable = try await capacity()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            usable = nil
+        }
+        switch ImportStorageEstimator.check(requirement, usableCapacityBytes: usable) {
+        case .sufficient(_, let usableBytes): return result(.sufficient(requirement, usableBytes: usableBytes))
+        case .insufficient(_, let usableBytes): return result(.insufficient(requirement, usableBytes: usableBytes))
+        case .capacityUnknown: return result(.capacityUnknown(requirement))
+        case .invalidEstimate(let error):
+            // Not produced by the synchronous check today (the requirement is already valid); kept so a
+            // future estimator failure still fails closed instead of being dropped.
+            return result(.invalidEstimate(.estimate(error)))
+        }
+    }
+
+    private static func stateProblem(_ boundary: ImportAttemptBoundary, _ workSet: ImportStorageWorkSet) -> ImportBoundaryStateProblem? {
+        let pending = workSet.pendingNormalizationIDs.count
+        let written = workSet.items.filter { $0 == .normalizedOutputWritten }.count
+        switch boundary {
+        case .c1BeforePreparation, .crBeforeRetry: return written > 0 ? .outputsAlreadyWritten : nil
+        case .c2BeforeNormalizationItem:
+            if written == 0 { return .noCompletedNormalization }
+            return pending == 0 ? .noPendingNormalization : nil
+        case .c3BeforeMaterialization: return pending > 0 ? .normalizationStillPending : nil
+        }
+    }
+}
+
 // MARK: - Out-of-space classification (050-C)
 
 enum ImportWriteFailureKind: Hashable, Sendable {

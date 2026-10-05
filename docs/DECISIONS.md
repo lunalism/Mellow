@@ -4157,6 +4157,8 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 - Retry 시점의 Source 무효 · Target 무효 거부 안내는 미결이다.
 - 성공 또는 미확정 Save 결과는 D8.0 처리를 그대로 따르며 이 부족들은 Save 뒤 파괴적 Rollback을 결코 허용하지 않는다.
 
+**구현(2026-10-06, 내부 · 연결 없음):** C1 / C2 / C3 / CR 경계 검사기 `ImportAttemptBoundaryChecker.check(_:workSet:capacity:)`가 구현되었다 — 기존 `ImportStorageWorkSet.requirement()`와 `ImportStorageEstimator.check`를 그대로 쓰고, 경계와 Work Set이 맞지 않으면(C1 / CR에 쓰인 출력, C2에 이미 쓰인 정규화 출력이 없거나(Ready 항목은 세지 않음) 남은 정규화가 없음, C3에 쓰이지 않은 출력) 용량을 읽지 않고 통과시키지 않으며, 주입된 용량 읽기의 취소는 그대로 전파하고 다른 읽기 실패 · 음수 · nil은 모름(Fail-closed)으로 다루며, 출력 · Metadata · Reserve를 따로 담은 결과와 경계별 실패 경로(C1 초기 부족, C2 / C3 Attempt 실패, CR Retry 용량 거부)를 제안할 뿐 Retry를 허용하거나 Rollback · 정리 성공을 주장하지 않는다. C0 / C0a 연결은 미구현이고, Phase 5 최종 Guard 퇴역 시점, Startup Cleanup, Source · Target 무효 Retry 거부 안내, 일반 Late Result는 그대로 미결이다.
+
 **구현 상태:** 경계 연결, 부족 안내, Phase 5 Admission 개정은 모두 미구현이다; 현재 코드는 Phase 5 Admission(100 MiB Reserve, File별 Pre-copy 검사)과 Commit 직전 최종 Guard를 그대로 쓴다. 계산(`ImportStorageEstimator`, `ImportStorageWorkSet`)은 구현 · 연결 없음이다. **남은 명확화:** Phase 6 경로가 세 흐름을 대체할 때 Phase 5 Commit 직전 최종 Guard(추가 0 + 100 MiB)를 퇴역할지는 이 승인에 명시되지 않았다.
 
 ### 예시(050-A와 050-B 제안 상수)

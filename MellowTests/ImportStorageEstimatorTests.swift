@@ -474,4 +474,176 @@ final class ImportStorageEstimatorTests: XCTestCase {
         XCTAssertEqual(requirement.outputBytes, 150 * 24_972_152)
         XCTAssertEqual(requirement.metadataBytes, 196_608 + 512 * 150)
     }
+
+    // MARK: Attempt boundary checks (C1 / C2 / C3 / CR)
+
+    private func mixedWorkSet() async throws -> (ImportStorageWorkSet, [ImportAcceptedItem]) {
+        let measured = ImportAudioPayloadMeasurement.combining(trackID: 2, stored: .bytes(50_000), delivered: .bytes(49_000))
+        let items = try await accepted([
+            try sourceFacts(fps: 30, audio: .aac(.unavailable(.notMeasured))),
+            try sourceFacts(fps: 60, audio: .aac(measured)),
+            try sourceFacts(fps: 60, audio: .none),
+            try sourceFacts(fps: 60, audio: .lpcm),
+        ])
+        return (try ImportStorageWorkSet(accepted: items, plans: try plans(items), operation: .createProject), items)
+    }
+
+    private let reserve: Int64 = 268_435_456
+    private let metadata4: Int64 = 198_656
+
+    /// Outputs 25,022,152 (passthrough) + 24,972,152 (no audio) + 25,039,310 (transcode) = 75,033,614.
+    func testEachBoundaryChecksItsExactRemainingRequirementAndEqualityPasses() async throws {
+        var (set, items) = try await mixedWorkSet()
+        var reads = 0   // how often the (non-escaping) capacity reader is consulted
+
+        // C1: every output still to write; equality passes, one byte short does not.
+        let c1Required: Int64 = 75_033_614 + metadata4 + reserve
+        var result = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set) { reads += 1; return c1Required }
+        guard case .sufficient(let c1, let usable) = result.outcome else { return XCTFail("\(result.outcome)") }
+        XCTAssertEqual([c1.outputBytes, c1.metadataBytes, c1.reserveBytes, usable], [75_033_614, metadata4, reserve, c1Required])
+        XCTAssertNil(result.failureRoute)
+        result = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set) { c1Required - 1 }
+        XCTAssertEqual(result.outcome, .insufficient(c1, usableBytes: c1Required - 1))
+        XCTAssertEqual(result.failureRoute, .initialStorageRefusal)
+
+        // C2 after the first output is written: that output is not charged again.
+        try set.markOutputWritten(items[1].candidate.id)
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { 24_972_152 + 25_039_310 + 198_656 + 268_435_456 }
+        guard case .sufficient(let c2, _) = result.outcome else { return XCTFail("\(result.outcome)") }
+        XCTAssertEqual([c2.outputBytes, c2.metadataBytes, c2.reserveBytes], [24_972_152 + 25_039_310, metadata4, reserve])
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { c2.requiredBytes - 1 }
+        XCTAssertEqual(result.outcome, .insufficient(c2, usableBytes: c2.requiredBytes - 1))
+        XCTAssertEqual(result.failureRoute, .attemptFailure)
+
+        // C3 once every output is written: metadata + reserve only.
+        try set.markOutputWritten(items[2].candidate.id)
+        try set.markOutputWritten(items[3].candidate.id)
+        result = try await ImportAttemptBoundaryChecker.check(.c3BeforeMaterialization, workSet: set) { metadata4 + reserve }
+        guard case .sufficient(let c3, _) = result.outcome else { return XCTFail("\(result.outcome)") }
+        XCTAssertEqual([c3.outputBytes, c3.metadataBytes, c3.reserveBytes], [0, metadata4, reserve])
+        result = try await ImportAttemptBoundaryChecker.check(.c3BeforeMaterialization, workSet: set) { metadata4 + reserve - 1 }
+        XCTAssertEqual(result.failureRoute, .attemptFailure)
+
+        // CR builds a NEW set: the same requirement as C1.
+        let retrySet = try ImportStorageWorkSet(accepted: items, plans: try plans(items), operation: .createProject)
+        result = try await ImportAttemptBoundaryChecker.check(.crBeforeRetry, workSet: retrySet) { c1Required - 1 }
+        XCTAssertEqual(result.outcome, .insufficient(c1, usableBytes: c1Required - 1))
+        XCTAssertEqual(result.failureRoute, .retryCapacityRefusal)
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testInvalidBoundaryStatesNeverPassAndDoNotReadCapacity() async throws {
+        var (set, items) = try await mixedWorkSet()
+        var reads = 0   // how often the (non-escaping) capacity reader is consulted
+        var result = try await ImportAttemptBoundaryChecker.check(.c3BeforeMaterialization, workSet: set) { reads += 1; return .max }
+        XCTAssertEqual(result.outcome, .invalidBoundaryState(.normalizationStillPending), "C3 with unwritten outputs is refused")
+        XCTAssertEqual(result.failureRoute, .attemptFailure)
+
+        try set.markOutputWritten(items[1].candidate.id)
+        for boundary in [ImportAttemptBoundary.c1BeforePreparation, .crBeforeRetry] {
+            result = try await ImportAttemptBoundaryChecker.check(boundary, workSet: set) { reads += 1; return .max }
+            XCTAssertEqual(result.outcome, .invalidBoundaryState(.outputsAlreadyWritten), "\(boundary) needs a fresh attempt")
+            XCTAssertEqual(result.failureRoute, boundary == .crBeforeRetry ? .retryCapacityRefusal : .initialStorageRefusal)
+        }
+        try set.markOutputWritten(items[2].candidate.id)
+        try set.markOutputWritten(items[3].candidate.id)
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { reads += 1; return .max }
+        XCTAssertEqual(result.outcome, .invalidBoundaryState(.noPendingNormalization))
+        XCTAssertEqual(reads, 0, "capacity is read only for a valid state and estimate")
+    }
+
+    /// C2 runs before the SECOND and later normalization items: one normalization output written and one
+    /// still pending. Ready items never count as a completed normalization.
+    func testC2RequiresACompletedAndAPendingNormalization() async throws {
+        var reads = 0
+        // Fresh set (ready + three pending normalizations): refused, capacity never read.
+        let (fresh, items) = try await mixedWorkSet()
+        var set = fresh
+        var result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { reads += 1; return .max }
+        XCTAssertEqual(result.outcome, .invalidBoundaryState(.noCompletedNormalization))
+        XCTAssertFalse(result.passes)
+
+        // Ready items plus only the FIRST pending normalization, nothing written: same refusal.
+        let firstOnly = try await accepted([try sourceFacts(fps: 30, audio: .none), try sourceFacts(fps: 30, audio: .none), try sourceFacts(fps: 60, audio: .none)])
+        let readyAndFirst = try ImportStorageWorkSet(accepted: firstOnly, plans: try plans(firstOnly), operation: .createProject)
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: readyAndFirst) { reads += 1; return .max }
+        XCTAssertEqual(result.outcome, .invalidBoundaryState(.noCompletedNormalization))
+        XCTAssertEqual(reads, 0)
+
+        // One written + pending: a valid C2 calculation (only the unwritten outputs are charged).
+        try set.markOutputWritten(items[1].candidate.id)
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { reads += 1; return .max }
+        guard case .sufficient(let requirement, _) = result.outcome else { return XCTFail("\(result.outcome)") }
+        XCTAssertEqual(requirement.outputBytes, 24_972_152 + 25_039_310)
+        XCTAssertEqual(reads, 1)
+
+        // Nothing pending any more: refused.
+        try set.markOutputWritten(items[2].candidate.id)
+        try set.markOutputWritten(items[3].candidate.id)
+        result = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: set) { reads += 1; return .max }
+        XCTAssertEqual(result.outcome, .invalidBoundaryState(.noPendingNormalization))
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testUnavailableCapacityFailsClosedOnEachBoundaryRoute() async throws {
+        let (set, _) = try await mixedWorkSet()
+        struct ReadFailure: Error {}
+        let readers: [() async throws -> Int64?] = [{ nil }, { -1 }, { throw ReadFailure() }]
+        for reader in readers {
+            let c1 = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set, capacity: reader)
+            guard case .capacityUnknown(let requirement) = c1.outcome else { return XCTFail("\(c1.outcome)") }
+            XCTAssertEqual(requirement.outputBytes, 75_033_614)
+            XCTAssertEqual(c1.failureRoute, .initialStorageRefusal)
+            let cr = try await ImportAttemptBoundaryChecker.check(.crBeforeRetry, workSet: set, capacity: reader)
+            XCTAssertEqual(cr.failureRoute, .retryCapacityRefusal)
+            XCTAssertFalse(cr.passes)
+        }
+    }
+
+    func testCapacityReaderCancellationIsRethrownNotUnknown() async throws {
+        let (set, _) = try await mixedWorkSet()
+        do {
+            _ = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set) { throw CancellationError() }
+            XCTFail("cancellation must propagate")
+        } catch {}   // the only error the checker can throw is CancellationError (typed throws)
+
+        // A reader that honours task cancellation; the task cancels itself first, so ordering is deterministic.
+        let task = Task { () -> String in
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                let result = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set) {
+                    try Task.checkCancellation()
+                    return .max
+                }
+                return "result \(result.outcome)"
+            } catch {
+                return "cancelled"
+            }
+        }
+        let value = await task.value
+        XCTAssertEqual(value, "cancelled")
+    }
+
+    func testFailureRoutesAreOnlySuggestedCategories() async throws {
+        let (set, items) = try await mixedWorkSet()
+        var started = set
+        try started.markOutputWritten(items[1].candidate.id)
+        let routes = try await [ImportAttemptBoundary.c1BeforePreparation, .crBeforeRetry].asyncMap { boundary in
+            try await ImportAttemptBoundaryChecker.check(boundary, workSet: set) { 0 }.failureRoute
+        }
+        let c2Route = try await ImportAttemptBoundaryChecker.check(.c2BeforeNormalizationItem, workSet: started) { 0 }.failureRoute
+        XCTAssertEqual(routes + [c2Route], [.initialStorageRefusal, .retryCapacityRefusal, .attemptFailure])
+        // A pass carries no route, and no result type offers a Retry decision, rollback or cleanup claim.
+        let pass = try await ImportAttemptBoundaryChecker.check(.c1BeforePreparation, workSet: set) { .max }
+        XCTAssertTrue(pass.passes)
+        XCTAssertNil(pass.failureRoute)
+    }
+}
+
+private extension Array {
+    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
+        var values: [T] = []
+        for element in self { values.append(try await transform(element)) }
+        return values
+    }
 }
