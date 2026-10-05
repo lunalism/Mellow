@@ -300,4 +300,178 @@ final class ImportStorageEstimatorTests: XCTestCase {
         ]
         for error in negatives { XCTAssertEqual(ImportWriteFailureClassifier.classify(error), .other, "\(error)") }
     }
+
+    // MARK: Accepted-set composition (unwired inputs for the accepted calculation)
+
+    /// Serves scripted facts by URL so the real preflight builds the accepted items.
+    private actor ScriptedInspector: ImportSourceInspecting {
+        private var facts: [URL: ImportSourceFacts] = [:]
+        func set(_ value: ImportSourceFacts, for url: URL) { facts[url] = value }
+        func inspect(url: URL) async throws -> ImportSourceFacts {
+            guard let value = facts[url] else { throw ImportInspectionError.sourceMissing }
+            return value
+        }
+    }
+
+    private enum SourceAudio { case none, aac(ImportAudioPayloadMeasurement), lpcm }
+
+    /// A 2.0 s portrait H.264 source; 60 fps makes it normalization-required, 30 fps fast-path ready.
+    private func sourceFacts(fps: Float, audio: SourceAudio) throws -> ImportSourceFacts {
+        var facts = ImportSourceFacts(
+            duration: .exact(try time(1200, 600)), isReadable: true, isPlayable: true, isExportable: true, hasProtectedContent: false,
+            hasVideoTrack: true, hasAudioTrack: false, container: .quickTime, videoCodec: .h264(fourCC: "avc1"),
+            naturalWidth: 1080, naturalHeight: 1920, preferredTransform: .identity,
+            nominalFrameRate: fps, minimumFrameDuration: nil, bitsPerComponent: 8, highBitDepthProfile: .no,
+            fullRangeVideo: .no, colorPrimaries: .rec709, transferFunction: .rec709, ycbcrMatrix: .rec709,
+            hasDolbyVisionConfiguration: false, ancillaryHDRMetadata: [],
+            aperture: .classify(encodedWidth: 1080, encodedHeight: 1920, cleanAperture: nil, pixelAspectRatio: nil),
+            audio: nil, byteCount: 4_000_000, modificationDate: nil)
+        switch audio {
+        case .none:
+            facts.audioPayload = .noAudioTrack
+        case .aac(let payload):
+            facts.hasAudioTrack = true
+            facts.audio = ImportAudioFacts(fourCC: "aac ", sampleRate: 48_000, channelCount: 2)
+            facts.audioPayload = payload
+        case .lpcm:
+            facts.hasAudioTrack = true
+            facts.audio = ImportAudioFacts(fourCC: "lpcm", sampleRate: 48_000, channelCount: 2)
+        }
+        return facts
+    }
+
+    private func accepted(_ list: [ImportSourceFacts]) async throws -> [ImportAcceptedItem] {
+        let inspector = ScriptedInspector()
+        var candidates: [ImportCandidate] = []
+        for (index, facts) in list.enumerated() {
+            let url = URL(fileURLWithPath: "/workspace/storage-\(index).mov")
+            await inspector.set(facts, for: url)
+            candidates.append(ImportCandidate(url: url))
+        }
+        let outcome = try await ImportSelectionPreflight(inspector: inspector).run(candidates, context: .multipleItems)
+        XCTAssertTrue(outcome.excluded.isEmpty, "\(outcome.excluded)")
+        return outcome.accepted
+    }
+
+    private func plans(_ items: [ImportAcceptedItem]) throws -> [ImportCandidateID: WorkingMediaNormalizationPlan] {
+        var plans: [ImportCandidateID: WorkingMediaNormalizationPlan] = [:]
+        for item in items where item.preparationPath.normalization != nil { plans[item.candidate.id] = try WorkingMediaPlanBuilder.plan(for: item) }
+        return plans
+    }
+
+    private func project(active: Int, pendingDeleted: Int) throws -> VlogProject {
+        let id = UUID()
+        let clips = try (0..<(active + pendingDeleted)).map { index in
+            try VlogClip(projectID: id, sourceKind: .imported, mediaRelativePath: try RelativeMediaPath("Projects/\(id.uuidString)/Media/\(UUID().uuidString).mov"),
+                         sourceDuration: .seconds(2), trimDuration: .seconds(2), sortOrder: index)
+        }
+        var project = try VlogProject(id: id, orientation: .portrait9x16, clips: clips)
+        for _ in 0..<pendingDeleted { try project.deleteClip(id: project.clips[project.clips.count - 1].id) }
+        XCTAssertEqual(project.durableClips.count, active + pendingDeleted)
+        return project
+    }
+
+    private func assertCompositionThrows(_ expected: ImportStorageCompositionError, file: StaticString = #filePath, line: UInt = #line,
+                                         _ body: () throws -> Void) {
+        XCTAssertThrowsError(try body(), file: file, line: line) { XCTAssertEqual($0 as? ImportStorageCompositionError, expected, file: file, line: line) }
+    }
+
+    /// 2.0 s normalized output: V = ceil(7,500,000 × (2 + 1/30) × 3/2) = 22,875,000; C_out = 2,097,152.
+    /// No audio 24,972,152; passthrough S_audio 50,000 → 25,022,152; transcode ceil((61/30 + 3136/48000) × 32,000)
+    /// = 67,158 → 25,039,310.
+    func testMixedAcceptedSetComposesExactRemainingOutputsAndMetadata() async throws {
+        let measured = ImportAudioPayloadMeasurement.combining(trackID: 2, stored: .bytes(50_000), delivered: .bytes(49_000))
+        let items = try await accepted([
+            try sourceFacts(fps: 30, audio: .aac(.unavailable(.notMeasured))),   // ready: no measurement needed
+            try sourceFacts(fps: 60, audio: .aac(measured)),                      // passthrough, S_audio = max = 50,000
+            try sourceFacts(fps: 60, audio: .none),
+            try sourceFacts(fps: 60, audio: .lpcm),                               // the PLAN transcodes
+        ])
+        XCTAssertEqual(items.map { $0.preparationPath.normalization == nil }, [true, false, false, false])
+        var set = try ImportStorageWorkSet(accepted: items, plans: try plans(items), operation: .createProject)
+        XCTAssertEqual(set.items, [.ready, .normalized(sourceDuration: try time(1200, 600), audio: .passthrough(sourcePayloadBytes: 50_000)),
+                                   .normalized(sourceDuration: try time(1200, 600), audio: .none),
+                                   .normalized(sourceDuration: try time(1200, 600), audio: .transcode)])
+        XCTAssertEqual(set.metadataOperation, .createProject(newClips: 4))
+
+        // C1-shaped: every normalization output still to write + W(4 rows) — reserve kept separate.
+        var requirement = try set.requirement()
+        XCTAssertEqual(requirement.outputBytes, 25_022_152 + 24_972_152 + 25_039_310)        // 75,033,614
+        XCTAssertEqual(requirement.metadataBytes, 198_656)
+        XCTAssertEqual(requirement.reserveBytes, 268_435_456)
+        XCTAssertEqual(requirement.requiredBytes, 343_667_726)
+
+        // As work finishes, written outputs leave the remaining sum exactly once; metadata stays.
+        try set.markOutputWritten(items[1].candidate.id)
+        requirement = try set.requirement()
+        XCTAssertEqual(requirement.outputBytes, 24_972_152 + 25_039_310)
+        XCTAssertEqual(set.pendingNormalizationIDs, [items[2].candidate.id, items[3].candidate.id])
+        try set.markOutputWritten(items[2].candidate.id)
+        try set.markOutputWritten(items[3].candidate.id)
+        requirement = try set.requirement()
+        XCTAssertEqual(requirement.outputBytes, 0, "C3-shaped: nothing left but metadata")
+        XCTAssertEqual(requirement.metadataBytes, 198_656)
+        XCTAssertEqual(requirement.requiredBytes, 198_656 + 268_435_456)
+
+        assertCompositionThrows(.outputAlreadyWritten(items[1].candidate.id)) { try set.markOutputWritten(items[1].candidate.id) }
+        assertCompositionThrows(.notANormalizationItem(items[0].candidate.id)) { try set.markOutputWritten(items[0].candidate.id) }
+        let unknown = ImportCandidateID()
+        assertCompositionThrows(.unknownItem(unknown)) { try set.markOutputWritten(unknown) }
+    }
+
+    func testUnavailablePassthroughFailsClosedButReadyItemsNeverNeedIt() async throws {
+        let items = try await accepted([try sourceFacts(fps: 30, audio: .aac(.unavailable(.readingFailed))),
+                                        try sourceFacts(fps: 60, audio: .aac(.unavailable(.notMeasured)))])
+        assertCompositionThrows(.estimate(.sourceAudioPayloadUnavailable)) {
+            _ = try ImportStorageWorkSet(accepted: items, plans: try self.plans(items), operation: .createProject)
+        }
+        let readyOnly = try ImportStorageWorkSet(accepted: [items[0]], plans: [:], operation: .createProject)
+        XCTAssertEqual(try readyOnly.requirement().outputBytes, 0, "a ready item adds nothing and needs no measurement")
+    }
+
+    func testEveryNormalizationItemNeedsItsOwnActualPlan() async throws {
+        let items = try await accepted([try sourceFacts(fps: 30, audio: .none), try sourceFacts(fps: 60, audio: .none), try sourceFacts(fps: 60, audio: .lpcm)])
+        let all = try plans(items)
+        var missing = all; missing[items[1].candidate.id] = nil
+        assertCompositionThrows(.missingPlan(items[1].candidate.id)) { _ = try ImportStorageWorkSet(accepted: items, plans: missing, operation: .createProject) }
+        var forReady = all; forReady[items[0].candidate.id] = all[items[1].candidate.id]
+        assertCompositionThrows(.unexpectedPlan(items[0].candidate.id)) { _ = try ImportStorageWorkSet(accepted: items, plans: forReady, operation: .createProject) }
+        var swapped = all; swapped[items[1].candidate.id] = all[items[2].candidate.id]
+        assertCompositionThrows(.planDoesNotMatchItem(items[1].candidate.id)) { _ = try ImportStorageWorkSet(accepted: items, plans: swapped, operation: .createProject) }
+        let stray = ImportCandidateID()
+        var extra = all; extra[stray] = all[items[1].candidate.id]
+        assertCompositionThrows(.unexpectedPlan(stray)) { _ = try ImportStorageWorkSet(accepted: items, plans: extra, operation: .createProject) }
+        assertCompositionThrows(.duplicateItem(items[1].candidate.id)) {
+            _ = try ImportStorageWorkSet(accepted: items + [items[1]], plans: all, operation: .createProject)
+        }
+        assertCompositionThrows(.emptyAcceptedSet) { _ = try ImportStorageWorkSet(accepted: [], plans: [:], operation: .createProject) }
+    }
+
+    /// Durable rows include pending-deleted Clips (050-B). Target: 3 active + 2 pending-deleted = 5 rows.
+    func testMetadataForEachOperationUsesDurableRowCounts() async throws {
+        let target = try project(active: 3, pendingDeleted: 2)
+        let items = try await accepted((0..<4).map { _ in try sourceFacts(fps: 30, audio: .none) })
+        let plans = try plans(items)
+        func metadata(_ accepted: [ImportAcceptedItem], _ operation: ImportStorageOperation) throws -> Int64 {
+            try ImportStorageWorkSet(accepted: accepted, plans: plans.filter { id, _ in accepted.contains { $0.candidate.id == id } }, operation: operation).requirement().metadataBytes
+        }
+        XCTAssertEqual(try metadata(items, .createProject), 196_608 + 512 * 4)
+        // Conservative two-save replacement charge: create(B, 4 rows) + delete(A, 5 durable rows).
+        XCTAssertEqual(try ImportStorageWorkSet(accepted: items, plans: plans, operation: .replacingSaved(previous: target)).metadataOperation,
+                       .replacingSaved(newClips: 4, replacedDurableClips: 5))
+        XCTAssertEqual(try metadata(items, .replacingSaved(previous: target)), (196_608 + 512 * 4) + (196_608 + 512 * 5))
+        XCTAssertEqual(try metadata(items, .add(to: target)), 196_608 + 512 * (5 + 4))
+        XCTAssertEqual(try metadata([items[0]], .replaceClip(in: target)), 196_608 + 512 * (5 + 1))
+        assertCompositionThrows(.invalidAcceptedCount(expected: 1, actual: 2)) {
+            _ = try ImportStorageWorkSet(accepted: Array(items.prefix(2)), plans: plans, operation: .replaceClip(in: target))
+        }
+    }
+
+    func testCompositionHasNoClipCap() async throws {
+        let items = try await accepted((0..<150).map { _ in try sourceFacts(fps: 60, audio: .none) })
+        let set = try ImportStorageWorkSet(accepted: items, plans: try plans(items), operation: .createProject)
+        let requirement = try set.requirement()
+        XCTAssertEqual(requirement.outputBytes, 150 * 24_972_152)
+        XCTAssertEqual(requirement.metadataBytes, 196_608 + 512 * 150)
+    }
 }

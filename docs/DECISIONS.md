@@ -4481,7 +4481,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ## 구현 상태(Step 5B(2026-10-02))
 
-- 구현됨(순수, 연결 없음): `MellowApp/Core/Projects/Import/ImportStorageEstimator.swift` — `ImportStoragePolicy`(Accepted 상수), `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` / `metadata` / `requirement` / `check`, `ImportWriteFailureClassifier`; Test `MellowTests/ImportStorageEstimatorTests.swift`.
+- 구현됨(순수, 연결 없음): `MellowApp/Core/Projects/Import/ImportStorageEstimator.swift` — `ImportStoragePolicy`(Accepted 상수), `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` / `metadata` / `requirement` / `check`, `ImportWriteFailureClassifier`(2026-10-05 명확화: 구현되었고 연결되지 않은 Typed 분류일 뿐이며 그 Logging · Presentation은 별도로 승인된 정책이 아니다 — 050-C 검사 경계와 함께 Proposed); Test `MellowTests/ImportStorageEstimatorTests.swift`.
+- 구현됨(2026-10-05, 순수, 연결 없음): Accepted Set 조합 `ImportStorageWorkSet` / `ImportStorageOperation` — Preflight의 Accepted 항목과 실제 정규화 계획을 기존 Estimator 입력으로 바꾼다(Ready = 0, 정규화 = Accepted 영상 정책 + 계획 기준 Audio 대응, 쓰인 출력 = 0, 모든 정규화 항목에 자기 계획 필수); Metadata는 만들기 · `.replacingSaved`(보수적 두 Save) · Add · Replace를 Durable Row 수(Pending-deleted 포함)로 계산하며 출력 · Metadata · Reserve는 따로 유지된다. 이것은 계산일 뿐이며 C1 / C2 / C3의 연결 · 실행 시점 · Presentation을 승인하지 않는다.
 - 정확한 축약 유리수 / Overflow 검사 정수 계산이며 Floating Point를 쓰지 않는다; Ready 항목과 이미 쓰인 출력은 0을 더하고, 출력 · Margin · Metadata · Reserve를 따로 볼 수 있다.
 - 연결되지 않음: PhotosPicker / `ReceivedVideoFile`, Normalizer, Repository, Coordinator, UI, 기존 Phase 5 Admission. 검사 경계 연결과 Presentation은 Proposed다.
 

@@ -336,6 +336,129 @@ struct ImportStorageRatio {
     }
 }
 
+// MARK: - Accepted-set composition (inputs for the 050-A / 050-B / 050-C calculation; unwired)
+
+/// Why an accepted set could not be composed into estimate inputs. Every case fails closed.
+enum ImportStorageCompositionError: Error, Hashable, Sendable {
+    case estimate(ImportStorageEstimateError)
+    /// Internal guard: an empty accepted set is no operation (not a 050-B policy statement).
+    case emptyAcceptedSet
+    case duplicateItem(ImportCandidateID)
+    /// A normalization item has no plan, so its output would silently be left out.
+    case missingPlan(ImportCandidateID)
+    /// A plan was supplied for a fast-path item or for an ID that is not in the set.
+    case unexpectedPlan(ImportCandidateID)
+    /// The supplied plan is not the one the plan builder derives for that accepted item.
+    case planDoesNotMatchItem(ImportCandidateID)
+    case unknownItem(ImportCandidateID)
+    case notANormalizationItem(ImportCandidateID)
+    case outputAlreadyWritten(ImportCandidateID)
+    case invalidAcceptedCount(expected: Int, actual: Int)
+}
+
+/// The Project-level shape of one import operation, from operation-local values only (no repository
+/// reads). Durable row counts include pending-deleted Clips (050-B).
+enum ImportStorageOperation: Equatable, Sendable {
+    case createProject
+    /// Select Clips `.replacingSaved`: keeps the conservative two-save metadata charge (050-B).
+    case replacingSaved(previous: VlogProject)
+    case add(to: VlogProject)
+    /// Editor Replace: exactly one accepted item.
+    case replaceClip(in: VlogProject)
+
+    func metadataOperation(acceptedCount: Int) throws(ImportStorageCompositionError) -> ImportMetadataOperation {
+        guard acceptedCount > 0 else { throw .emptyAcceptedSet }
+        switch self {
+        case .createProject:
+            return .createProject(newClips: acceptedCount)
+        case .replacingSaved(let previous):
+            return .replacingSaved(newClips: acceptedCount, replacedDurableClips: previous.durableClips.count)
+        case .add(let target):
+            return .add(existingDurableClips: target.durableClips.count, newClips: acceptedCount)
+        case .replaceClip(let target):
+            guard acceptedCount == 1 else { throw .invalidAcceptedCount(expected: 1, actual: acceptedCount) }
+            return .replace(existingDurableClips: target.durableClips.count)
+        }
+    }
+}
+
+/// One operation's accepted set as estimate inputs, with each item's remaining work explicit. Built
+/// from the accepted items and the ACTUAL normalization plans; every normalization item must have its
+/// plan (none may be left out), fast-path items take none and never need an audio measurement. Ready
+/// items and written outputs add no output bytes; the metadata charge stays until the operation ends.
+/// A calculation only: it does not accept where, when or how a check (C1 / C2 / C3) runs or is shown.
+/// One set describes ONE attempt: written outputs never revert, so a retry (CR, "same as C1") builds a new
+/// set. The durable row count is captured from the `VlogProject` snapshot given at construction; this
+/// estimate does not establish that the snapshot is still current. It is conservative only if the rows
+/// charged at the relevant save do not exceed those captured, so any future wiring must obtain or revalidate
+/// these operation inputs under the appropriate serialization boundary.
+struct ImportStorageWorkSet: Equatable, Sendable {
+    struct Entry: Equatable, Sendable {
+        let id: ImportCandidateID
+        /// `.ready`, `.normalized` (output still to write) or `.normalizedOutputWritten`.
+        fileprivate(set) var item: ImportStorageItem
+    }
+
+    private(set) var entries: [Entry]
+    let metadataOperation: ImportMetadataOperation
+
+    init(accepted: [ImportAcceptedItem], plans: [ImportCandidateID: WorkingMediaNormalizationPlan],
+         operation: ImportStorageOperation) throws(ImportStorageCompositionError) {
+        var seen = Set<ImportCandidateID>()
+        var entries: [Entry] = []
+        for item in accepted {
+            let id = item.candidate.id
+            guard seen.insert(id).inserted else { throw .duplicateItem(id) }
+            guard item.preparationPath.normalization != nil else {
+                if plans[id] != nil { throw .unexpectedPlan(id) }
+                entries.append(Entry(id: id, item: .ready))
+                continue
+            }
+            guard let plan = plans[id] else { throw .missingPlan(id) }
+            guard let derived = try? WorkingMediaPlanBuilder.plan(for: item), derived == plan else { throw .planDoesNotMatchItem(id) }
+            let normalized: ImportStorageItem
+            do {
+                let audio = try ImportStorageEstimator.outputAudio(for: plan.audio, sourcePayload: item.facts.audioPayload)
+                // Computed once here so an invalid input fails the set now, not at a later check.
+                _ = try ImportStorageEstimator.normalizedOutput(sourceDuration: plan.sourceDuration, audio: audio)
+                normalized = .normalized(sourceDuration: plan.sourceDuration, audio: audio)
+            } catch {
+                throw .estimate(error)
+            }
+            entries.append(Entry(id: id, item: normalized))
+        }
+        if let stray = plans.keys.filter({ !seen.contains($0) }).min(by: { $0.rawValue.uuidString < $1.rawValue.uuidString }) {
+            throw .unexpectedPlan(stray)
+        }
+        self.metadataOperation = try operation.metadataOperation(acceptedCount: accepted.count)
+        self.entries = entries
+    }
+
+    /// Records that one normalization item's output is now on disk (existing occupancy from here on).
+    mutating func markOutputWritten(_ id: ImportCandidateID) throws(ImportStorageCompositionError) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { throw .unknownItem(id) }
+        switch entries[index].item {
+        case .ready: throw .notANormalizationItem(id)
+        case .normalizedOutputWritten: throw .outputAlreadyWritten(id)
+        case .normalized: entries[index].item = .normalizedOutputWritten
+        }
+    }
+
+    /// The items as the estimate sees them now, in accepted order.
+    var items: [ImportStorageItem] { entries.map(\.item) }
+
+    /// Normalization items whose output is not written yet.
+    var pendingNormalizationIDs: [ImportCandidateID] {
+        entries.filter { if case .normalized = $0.item { return true } else { return false } }.map(\.id)
+    }
+
+    /// Remaining output bytes + this operation's metadata, with the Import reserve kept separate
+    /// (`ImportStorageRequirement`). Reuses the accepted estimator arithmetic unchanged.
+    func requirement() throws(ImportStorageCompositionError) -> ImportStorageRequirement {
+        do { return try ImportStorageEstimator.requirement(remaining: items, metadata: metadataOperation) } catch { throw .estimate(error) }
+    }
+}
+
 // MARK: - Out-of-space classification (050-C)
 
 enum ImportWriteFailureKind: Hashable, Sendable {
@@ -343,6 +466,8 @@ enum ImportWriteFailureKind: Hashable, Sendable {
     case other
 }
 
+/// Implemented and unwired: a typed classification only. Its logging and presentation are not a
+/// separately accepted policy (they remain Proposed with the 050-C boundaries).
 enum ImportWriteFailureClassifier {
     /// `.outOfSpace` when the error, or any underlying error it carries, is Cocoa
     /// `NSFileWriteOutOfSpaceError` (640), POSIX `ENOSPC`, or `AVError.diskFull`.
