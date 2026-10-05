@@ -3939,7 +3939,7 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 # ADR-050 — Import Storage Estimate, Safety Reserve, and Check Boundaries
 
 **Date:** 2026-10-02
-**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인):** OD-14 (a) — `.replacingSaved`의 단일 Save 대체와 그에 따른 ADR-033 Revision 1(B Media 존재 · Metadata 변환의 Save 전 확인, Lifecycle Gate 안 Target 재확인, A 소실 시 Target 무효화(B만 생성하는 Fallback 없음), 성공 · 미확정 결과의 Media 보존, B 완전 저장과 A Metadata 부재 확인 뒤에만 A Media 제거, Commit 뒤 A Metadata는 이미 없다는 잔여 위험의 명시적 수용). Accepted 050-B 두 Save Metadata 계산과 상수는 바뀌지 않는다. **추가 승인(2026-10-02, 사용자 승인) — 결과 처리 P1–P6 · P8(D8.5a):** Prior Snapshot 시점, Editor Reconciliation 차단, U1 / U2 정확한 문구, Save 오류 뒤 `completed` 처리, Projects 갱신과 Load 실패 = 모름, `priorConfirmed` 임시 경계, Select Clips의 `replaceProject` 연결이 Accepted(Production 미구현); P7(동기 Editor 변경)은 보류. **추가 승인(2026-10-02, 사용자 승인) — Lifecycle Gate 직렬화 전제조건 구현:** Home Project 삭제와 Editor Add / Replace의 Target 재확인 · Materialize · Commit을 공유 Gate로 직렬화(D6 구현 항목); 050-D의 다른 결정은 승인하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인) — OD-10 관측 구현 정책:** 관측마다 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`), Save Context · 공유 Context Object 재사용 없음; 구현 정책이며 모든 공유 Cache를 우회하거나 모든 실패에서 독립적인 Durable 진실을 확립한다는 보장이 아니고, 여러 Fetch로 이루어져 원자적 Snapshot이 아니다. **추가 부분 승인(2026-10-02, 사용자 승인) — Save Outcome 분류 규칙(050-D D8.0):** Save 성공 + Intended 확인 → 완료; Save 성공 + 확인 불가 · 모순 → Commit됨 · 확인 안 됨(참조 가능 Media 보존, Rollback 금지); Save 오류 + Intended 확인 → 완료; Save 오류 + Prior 확인(만든 Project · Clip ID의 Store 전체 부재 확인 포함) → Commit 전 Rollback 대상; Save 오류 + 그 밖 → 미확정(참조 가능 Media 보존, `다시 시도` 금지); 명확화: Save 오류 뒤 완료에는 만든 모든 ID의 완전하고 일치하는 Store 전체 증거가 필요하다(D8.0). 이 규칙은 해당 Save / 확인 결과 의미만 개정한다(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Ownership, ARCHITECTURE Commit 경계, ROADMAP Task 14의 Read-back · Persist 실패 분기). C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 그 밖의 050-D(D8.1–D8.5의 결과별 처리 · Prior Snapshot 시점 · Gate 안 Prior Snapshot · 판정 연결 · Rollback 구현 · 새 안내 Copy · Retry · Startup Cleanup 개정 등; 2026-10-02 갱신: 이 가운데 D8.5a P1–P6 · P8로 Accepted된 부분은 제외), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다. **추가 승인(2026-10-05, 사용자 승인) — Select Clips 한정 안내(D8.5b):** Save 전 Project 확인 실패, Projects Load 실패 · "모름" 상태, 대체 Target 무효, 그 밖의 Save 전 준비 실패의 Select Clips 문구와 처리; Editor Stale 상태 안내, U3 / U4, 그 밖의 미결 항목은 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — Editor 결과 처리와 P7(D8.5c):** Reorder · Delete · Undo · Redo의 공유 Lifecycle Gate 직렬화(P7), Editor의 Save 전 정지 안내, 이 네 편집의 `priorConfirmed` 안내, 진행 중 표시 · Navigation 규칙; Rollback, 같은 Set Retry, 일반 Late Result 정책, Startup Cleanup 개정과 그 밖의 050-D · 050-E는 바뀌지 않는다.
+**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인):** OD-14 (a) — `.replacingSaved`의 단일 Save 대체와 그에 따른 ADR-033 Revision 1(B Media 존재 · Metadata 변환의 Save 전 확인, Lifecycle Gate 안 Target 재확인, A 소실 시 Target 무효화(B만 생성하는 Fallback 없음), 성공 · 미확정 결과의 Media 보존, B 완전 저장과 A Metadata 부재 확인 뒤에만 A Media 제거, Commit 뒤 A Metadata는 이미 없다는 잔여 위험의 명시적 수용). Accepted 050-B 두 Save Metadata 계산과 상수는 바뀌지 않는다. **추가 승인(2026-10-02, 사용자 승인) — 결과 처리 P1–P6 · P8(D8.5a):** Prior Snapshot 시점, Editor Reconciliation 차단, U1 / U2 정확한 문구, Save 오류 뒤 `completed` 처리, Projects 갱신과 Load 실패 = 모름, `priorConfirmed` 임시 경계, Select Clips의 `replaceProject` 연결이 Accepted(Production 미구현); P7(동기 Editor 변경)은 보류. **추가 승인(2026-10-02, 사용자 승인) — Lifecycle Gate 직렬화 전제조건 구현:** Home Project 삭제와 Editor Add / Replace의 Target 재확인 · Materialize · Commit을 공유 Gate로 직렬화(D6 구현 항목); 050-D의 다른 결정은 승인하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인) — OD-10 관측 구현 정책:** 관측마다 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`), Save Context · 공유 Context Object 재사용 없음; 구현 정책이며 모든 공유 Cache를 우회하거나 모든 실패에서 독립적인 Durable 진실을 확립한다는 보장이 아니고, 여러 Fetch로 이루어져 원자적 Snapshot이 아니다. **추가 부분 승인(2026-10-02, 사용자 승인) — Save Outcome 분류 규칙(050-D D8.0):** Save 성공 + Intended 확인 → 완료; Save 성공 + 확인 불가 · 모순 → Commit됨 · 확인 안 됨(참조 가능 Media 보존, Rollback 금지); Save 오류 + Intended 확인 → 완료; Save 오류 + Prior 확인(만든 Project · Clip ID의 Store 전체 부재 확인 포함) → Commit 전 Rollback 대상; Save 오류 + 그 밖 → 미확정(참조 가능 Media 보존, `다시 시도` 금지); 명확화: Save 오류 뒤 완료에는 만든 모든 ID의 완전하고 일치하는 Store 전체 증거가 필요하다(D8.0). 이 규칙은 해당 Save / 확인 결과 의미만 개정한다(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Ownership, ARCHITECTURE Commit 경계, ROADMAP Task 14의 Read-back · Persist 실패 분기). C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 그 밖의 050-D(D8.1–D8.5의 결과별 처리 · Prior Snapshot 시점 · Gate 안 Prior Snapshot · 판정 연결 · Rollback 구현 · 새 안내 Copy · Retry · Startup Cleanup 개정 등; 2026-10-02 갱신: 이 가운데 D8.5a P1–P6 · P8로 Accepted된 부분은 제외), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다. **추가 승인(2026-10-05, 사용자 승인) — Select Clips 한정 안내(D8.5b):** Save 전 Project 확인 실패, Projects Load 실패 · "모름" 상태, 대체 Target 무효, 그 밖의 Save 전 준비 실패의 Select Clips 문구와 처리; Editor Stale 상태 안내, U3 / U4, 그 밖의 미결 항목은 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — Editor 결과 처리와 P7(D8.5c):** Reorder · Delete · Undo · Redo의 공유 Lifecycle Gate 직렬화(P7), Editor의 Save 전 정지 안내, 이 네 편집의 `priorConfirmed` 안내, 진행 중 표시 · Navigation 규칙; Rollback, 같은 Set Retry, 일반 Late Result 정책, Startup Cleanup 개정과 그 밖의 050-D · 050-E는 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — 제한된 복구 계약(D7a):** Rollback 자격 · 같은 Set Retry · 취소 경계 · Target 무효화 규칙과 그 안내(문서만, 미구현); 050-C 검사 경계 · 부족 Presentation, Startup Cleanup · 빈 Store 보호(OD-12), 일반 Late Result 정책, 050-E는 바뀌지 않는다.
 
 이 ADR은 서로 독립적으로 검토 · 승인할 수 있는 다섯 Decision Unit(050-A–050-E)으로 나뉜 제안이다.
 
@@ -4134,7 +4134,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ## Decision Unit 050-D — Transaction, Rollback, Retry, Target 무효화
 
-**Unit Status:** Proposed. 수치와 무관하게 독립 승인 가능한 정확성 규칙이다. D1–D3은 승인된 문구(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Decision 2 Ownership, ARCHITECTURE Commit 경계)의 개정 제안이다(이 ADR 서두의 예외 참조). 승인되지 않은 Presentation 세 가지(아래 표시)는 별도 소유자 선택이다.
+**Unit Status:** Proposed. 수치와 무관하게 독립 승인 가능한 정확성 규칙이다. (2026-10-05 갱신: D4–D7 가운데 D7a에 적힌 복구 계약만 Accepted — 미구현; 나머지는 Proposed로 남는다.) D1–D3은 승인된 문구(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Decision 2 Ownership, ARCHITECTURE Commit 경계)의 개정 제안이다(이 ADR 서두의 예외 참조). 승인되지 않은 Presentation 세 가지(아래 표시)는 별도 소유자 선택이다.
 
 **범위 밖:** ADR-038 Undo / Redo도 `update` + Read-back 검증과 실패 시 현재 State 유지라는 같은 Pattern을 쓰며 Save 성공 뒤 Read-back 실패에서 In-memory 상태와 Store가 어긋날 수 있다. 이 ADR은 Undo / Redo를 다루지 않으며 별도 검토 대상으로 남긴다.
 
@@ -4163,6 +4163,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ### D4. Durable Commit 전 Rollback-to-Workspace
 
+> 2026-10-05: 아래 Rollback 자격 · 복원 · 실패 처리는 D7a로 Accepted되었다(미구현). 1–3항과 5–6항은 D7a와 일치하며 7항의 Rename-back은 D7a 1항(Ready 파일을 원래 Workspace 경로로 복원)과 일치한다; ROADMAP Task 14 문구의 해석 확인(OD-4)은 그대로 남는다. 4항(새 Project의 빈 `Projects/<P>/` 제거)은 D7a에 명시되지 않아 Proposed로 남는다; 5항의 Presentation은 D7a 안내로 결정되었다.
+
 **소유와 경로**
 
 - Operation Workspace `ProjectWorkspace/<op>/`는 Live Registry(`liveWorkspaceIDs`)에 등록된 Operation 소유다.
@@ -4183,10 +4185,14 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ### D5. 취소
 
+> 2026-10-05: D7a 3항으로 대체 · Accepted(미구현) — Save 호출 직전까지 받은 취소는 Restoration 없는 제거가 아니라 D7a 1항의 확인된 Rollback 뒤에 끝난다.
+
 - 취소는 Durable Save 호출 전까지 받는다. Materialize 이후의 취소는 R4 §2대로 Operation을 끝내므로 Restoration 없이 D4 1항 규칙으로 Materialize 후보 전부(Ready 포함)를 제거 · 확인하고 Workspace를 Discard한다.
 - Save는 MainActor에서 동기로 실행되므로 Save 도중 취소가 끼어들 지점이 없다. 마지막 취소 확인 지점은 Save 직전이다. Save가 성공한 뒤 도착한 취소는 Rollback을 일으키지 않으며 Operation은 성공이다(Editor Add / Replace의 되돌리기는 기존 Undo 경로이며 Select Clips 새 Project에는 Undo가 없다).
 
 ### D6. Target 무효화
+
+> 2026-10-05: Target 무효화의 확인 시점 · 거부 · 후보 정리 규칙은 D7a 4항으로 Accepted(미구현). 후보 정리는 D7a 1항의 Rollback 규칙(Ready 파일 복원 포함)을 따르므로 아래 2번째 항목의 "D4 1항 규칙으로 … (Restoration 없음)"은 대체된다. 아래의 Late Result 폐기와 Retry Source Discard 문구는 일반 Late Result 정책과 함께 미결로 남는다.
 
 - Lifecycle Gate 안에서 Materialize 직전과 Durable Save 직전에 Target을 확인한다: Add / Replace는 Project Row 존재와 Orientation, Replace는 대상 Clip이 같은 Identity로 여전히 Active인지.
 - Target이 무효이면 Materialize하지 않거나 D4 1항 규칙으로 후보를 제거하고(Restoration 없음), 삭제된 Project의 `Projects/<P>/`를 다시 만들지 않으며, Operation을 끝내고 `다시 시도`를 제공하지 않는다. Retry Source는 소비자가 없으므로 Discard한다.
@@ -4195,6 +4201,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 - **구현(2026-10-02, 사용자 승인 — 직렬화 전제조건만):** Home의 Project 삭제(`HomeModel.delete(_:)`, `async`; Alert는 표시 중인 Project를 넘기고 `confirmDeletion`은 이를 위임)와 Editor Add / Replace의 Target 재확인 → Materialize → Repository Commit(Commit하지 못한 파일 제거 포함 — 2026-10-02 갱신: Save 시도 전 실패에 한함, D8.0 "Save 뒤 Media 보존 수리")이 같은 `ProjectLifecycleOperationGate`를 잡는다; Picker 전송, 예약 공간 확인과 검증은 Gate 밖에서 실행되며 Workspace는 기존 Live-workspace Registry가 보호한다. Gate 안에서 Materialize 전에 Repository를 다시 읽어 Project Row가 없거나 읽을 수 없으면, 또는 Replace 대상이 Editor와 Store 모두에서 같은 Identity의 Active Clip이 아니면 Materialize하지 않고 끝낸다(Directory 재생성 없음, Save 없음, 기존 `addFailed` / `replaceFailed` 안내 재사용). 알려진 차이: 그 안내의 "다시 시도해주세요. 프로젝트는 그대로 있어요."는 Project가 삭제된 경우 사실과 다르고 D6(`다시 시도` 없음)와 OD-8(삭제된 Project는 안내 없음) 제안과도 어긋나며, 이 임시 재사용을 바꾸는 것은 소유자 결정이다. Gate를 기다린 삭제는 Alert가 잡은 Project에만 적용되고, 끝난 뒤의 Recent 복귀는 확인 시점 이후 Navigation이 바뀌지 않았거나 현재 경로가 삭제된 Project의 Route를 담고 있을 때만 일어난다(기존 `openedProject` Identity 확인 유지; 나중의 무관한 Navigation은 되돌리지 않음). 결과 판정 연결 전 필수 후속: (1) Target 무효 시 재사용 중인 `addFailed` / `replaceFailed` 안내 문구의 소유자 결정, (2) Save 뒤 Media 삭제 결함(`.replacingSaved`에서 A 삭제 실패에도 A Media를 지우는 기존 코드 등) 수정 — 2026-10-02 수리됨(D8.0의 "Save 뒤 Media 보존 수리" 항목; 안내 · 다시 읽기는 Pending). 이 Slice는 둘 다 해결하지 않으며 모든 Editor 변경을 직렬화하지도 않는다(동기 Reorder · Delete · Undo · Redo Commit은 Gate 밖). (2026-10-05 갱신: 모든 Editor 변경이 이제 같은 Gate 안의 하나의 내부 Commit을 쓰며, 재사용되던 `addFailed` / `replaceFailed`의 Target 무효 안내는 D8.5c의 정지 안내로 대체되었다.) Materialize부터 Commit까지는 같은 Gate Section이므로 Save 직전의 별도 재확인은 두지 않았다(Orientation 불변은 기존 `update`가 강제). 이것은 D6 · OD-7의 나머지(Retry 없음 안내, Late Result 폐기, 사라진 Replace 대상 안내)를 승인하지 않는다. Prior Snapshot 시점, `observePersistedState` · 분류기 · `replaceProject` 연결, Save 결과별 처리, Rollback, Retry, 취소 정책, Late Result 처리, 안내 Copy는 Pending · 미승인이다. (2026-10-02 갱신: Prior Snapshot 시점 · Save 결과별 처리 · U1 / U2 문구 가운데 D8.5a P1–P6 · P8에 적힌 부분은 Accepted — 미구현; Rollback · Retry · 취소 · Late Result · U3 / U4는 미결.)
 
 ### D7. 같은 Accepted Set Retry
+
+> 2026-10-05: 시작 조건과 정리 실패 시 Retry 금지는 D7a 2항으로 Accepted(미구현). 4항(CR 검사)의 연결과 부족 Presentation은 050-C 결정과 함께 미결이다.
 
 `다시 시도`는 다음이 모두 확인될 때만 새 Attempt를 시작한다.
 
@@ -4206,6 +4214,45 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 - 1이 실패하면(정리 실패) 미해결 Artifact 위에 새 Attempt를 시작하지 않는다. 2가 Mellow 자신의 연산 실패 때문에 실패하면 D4 5항과 같은 내부 실패다. 두 경우 모두 R4 §3의 외부 Source 무효 조항으로 분류하지 않으며 Presentation은 D4 5항과 같은 **소유자 선택**이다. 남은 Workspace는 Best-effort Discard 뒤 기존 시작 시 Sweep(ADR-047)이 회수한다.
 - 2가 외부 원인(예: Live Session 밖의 Source Handle 무효)이라면 R4 §3의 "Source 접근 무효 → Mutation 없이 안전 실패"가 적용된다. V1 Import의 Retry Source는 Mellow 소유 File이므로 이 경우는 Process 안에서 생기지 않을 것으로 예상하지만 확인되지 않았다.
 - 4가 실패하면 050-C의 Retry 전 검사 부족 처리를 따른다.
+
+### D7a. Accepted 제한된 복구 계약(2026-10-05, 사용자 승인 — 문서만, 미구현)
+
+이 절은 D4–D7 가운데 아래 규칙만 Accepted로 기록한다. Production 구현은 없다. D8.0 분류 규칙, D8.5a–c의 Accepted 처리, 050-B Estimate, 정책 상수는 바뀌지 않는다. 050-C 검사 경계 연결과 부족 Presentation, Startup Cleanup · 빈 Store 보호(OD-12), 일반 Late Result · Navigation 정책, OD-13, 050-E는 이 승인에 포함되지 않는다.
+
+1. **Rollback 자격:**
+   - Save 시도 전의 실패나 받아들인 취소는 그 Operation이 Materialize한 자기 후보를 되돌릴 수 있다.
+   - Save 시도 뒤에는 `priorConfirmed`일 때만 Rollback할 수 있다; Save 성공, `committedUnverified`, `indeterminate`는 파괴적 Rollback을 결코 허용하지 않는다.
+   - Ready 파일은 원래 Workspace 경로로 되돌리고, 실패한 Attempt가 소유한 정규화 출력은 제거한다; 실패한 항목을 포함한 부분 Materialize도 다룬다.
+   - 기존 Workspace 파일을 덮어쓰지 않고, Symlink를 따라가지 않으며, 관계없는 Media를 건드리지 않는다.
+   - Workspace를 다시 쓸 수 있다고 선언하기 전에 복원과 제거를 확인한다.
+   - 복원이나 정리가 실패하면 Retry를 막고, 풀리지 않은 파일은 안전하게 보존하며, 정리가 성공한 것처럼 말하지 않는다.
+2. **같은 Set Retry:**
+   - Retry는 새 Picker 선택이 아니라 같은 Accepted Set과 유효한 보존 Source를 쓴다.
+   - 확인된 복원 · 정리, 유효한 Source, 유효한 Target이 모두 성립한 뒤에만 시작한다.
+   - 새 Attempt마다 새 Storage Work Set(`ImportStorageWorkSet`, 단일 Attempt 모델)을 만든다.
+   - 용량 재검사 연결과 부족 Presentation은 별도의 미결 050-C 결정이며, 그것 없이 Retry가 Production 준비가 되었다고 보지 않는다.
+   - Process 종료 뒤 재개는 없고 Durable Journal도 없다(ADR-047).
+3. **취소 경계:**
+   - 취소는 Save 호출 직전까지 받는다; 마지막 취소 확인과 동기 Save 호출 사이에 `await`을 두지 않는다.
+   - Save 호출이 시도되면 관측 · 분류를 끝내며, 취소만으로 참조 가능 Media의 정리를 허용하지 않는다.
+   - `completed`는 성공이다(오류를 던진 뒤 `completed`로 확인된 Save 포함).
+   - `priorConfirmed`에서 이미 취소가 요청되어 있었다면 확인된 Rollback 뒤 Retry를 제공하지 않고 끝낸다.
+   - 미확정 결과는 Accepted U1 / U2 처리를 그대로 따른다.
+4. **Target 무효화:**
+   - 공유 Gate 안에서 Save 전에 감지하고 Operation을 거부한다; Retry도, B만 생성하는 Fallback도 없다.
+   - Add / Replace는 Materialize 전에 확인하고, 필요하면 Save 전에 다시 확인한다.
+   - 후보 준비 뒤 · Save 전에 무효화되면 그 Operation 자신의 후보만 D7a 1항의 Rollback 규칙으로 정리한다.
+   - Save 시도 뒤의 오류는 D8.0을 따르며 오류 이름만으로 Commit되지 않았다고 추론하지 않는다.
+   - 일반 Late Result · Navigation 정책은 넓히지 않는다(미결로 남는다).
+5. **안내:**
+   - 성공한 취소: 안내나 제외 성공 안내 없이 준비 화면을 닫는다.
+   - 확인된 Rollback 뒤 Retry 자격이 있는 준비 실패: 기존 ADR-042 R4 §3 문구와 `다시 시도` / `취소`.
+   - Source 복원 · 정리 실패(Commit되지 않았음이 확정된 경우에만): `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 영상을 다시 선택해주세요.` / Action `확인`; `다시 시도` 없음.
+   - 기존 Editor의 Project 없음 · Replace Clip 없음 Reconciliation 안내(D8.5c)와 Select Clips 대체 Target 무효 안내(D8.5b)는 바뀌지 않는다.
+   - 미확정 Save 결과는 Accepted U1 / U2를 쓰며 "저장되지 않았어요"를 쓰지 않는다.
+   - 이 미래의 준비 · Retry 규칙은 복구 통합이 구현되기 전까지 현재 구현된 D8.5a P6 확인 전용 경로를 조용히 대체하지 않는다.
+
+**남은 안내 공백(결정되지 않음):** 복원이 확인된 뒤 `다시 시도` 시점에 보존 Source가 더 이상 유효하지 않거나(외부 원인 포함, R4 §3의 "Mutation 없이 안전하게 실패"), Retry 시점에 Target이 무효이거나(Select Clips와 Editor의 기존 안내가 그 시점에도 적용되는지), CR 용량 검사가 부족한 경우(050-C)의 Retry 거부 안내는 승인 문서에 없다. D4 4항(새 Project의 빈 Directory 제거)도 명시적으로 승인되지 않았다.
 
 ### D8. Save Outcome 판정(Save 오류 또는 확인 실패 뒤)
 
@@ -4265,8 +4312,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 | 결과 | Media · Workspace | `다시 시도` | Editor / 화면 | 안내 |
 | --- | --- | --- | --- | --- |
-| 확인된 이전 상태 | D4 Pre-commit Rollback(Ready Rename-back, 정규화 출력 제거) | 가능(R4 §3) | 이전 상태 유지 | R4 §3 그대로(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`); 이 경우 "저장되지 않았어요"는 확인된 사실이다 (2026-10-02: 이 행은 Proposed로 남는다; 이번 Slice의 임시 경계는 D8.5a P6 — Rollback · Retry 없음, 확인 전용 문구) |
-| 확인된 이전 상태 + Restoration 또는 정리 실패(D4 5항, D7) | D4 5항대로; 새 Attempt 없음 | 없음 | 이전 상태 유지 | **새 안내 제안 U3:** `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 영상을 다시 선택해주세요.` / `확인` |
+| 확인된 이전 상태 | D4 Pre-commit Rollback(Ready Rename-back, 정규화 출력 제거) | 가능(R4 §3) | 이전 상태 유지 | R4 §3 그대로(`영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.`); 이 경우 "저장되지 않았어요"는 확인된 사실이다 (2026-10-02: 이 행은 Proposed로 남는다; 이번 Slice의 임시 경계는 D8.5a P6 — Rollback · Retry 없음, 확인 전용 문구) (2026-10-05: 확인된 Rollback 뒤 Retry 자격이 있으면 R4 §3 문구와 `다시 시도` / `취소` — D7a로 Accepted, 미구현; 복구 통합 전까지 구현된 P6 경로가 유지된다) |
+| 확인된 이전 상태 + Restoration 또는 정리 실패(D4 5항, D7) | D4 5항대로; 새 Attempt 없음 | 없음 | 이전 상태 유지 | **새 안내 제안 U3:** `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 영상을 다시 선택해주세요.` / `확인` (2026-10-05: D7a 5항으로 Accepted — Commit되지 않았음이 확정된 경우에만, Retry 없음, 미구현) |
 | 확인된 새 상태(Save가 오류를 던졌지만 Durable 새 상태) | 참조된 Media 보존; Workspace의 남은 Source Discard | 없음 | Durable 값으로 갱신 | 정상 완료로 처리(R4는 별도 성공 Alert 없음); 오류는 Log에만; "저장되지 않았어요" 금지 |
 | Save 성공 + 확인 불가(Commit됨 · 확인 안 됨, D3) | 참조 가능 Media 보존; Workspace의 남은 Source Discard; A 보존(`.replacingSaved`) | 없음 | Editor는 Reload 필요 상태, 추가 Edit 차단 | **새 안내 제안 U1:** `저장 확인이 필요해요` / `변경사항은 저장되었지만 지금은 확인하지 못했어요. 프로젝트를 다시 열어 확인해주세요.` / `확인` (2026-10-02: 문구는 D8.5a P3로 대체, Editor 처리는 P2) |
 | 미확정 | 이 Operation이 `Projects/` 아래에 둔 모든 File 보존; Rename-back · 후보 제거 · A 삭제 등 파괴적 정리 금지; 어떤 Durable Row도 참조할 수 없는 Workspace 안의 File만 Discard 가능 | 없음(중복 Commit 위험) | Editor는 Reload 필요 상태, 추가 Edit 차단 | **새 안내 제안 U2:** `저장 결과를 확인하지 못했어요` / `영상이 저장되었는지 지금은 알 수 없어요. 같은 영상을 다시 추가하기 전에 프로젝트를 확인해주세요.` / `확인` (2026-10-02: 문구는 D8.5a P3로 대체, Editor 처리는 P2) |
@@ -4278,7 +4325,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 #### D8.5a Accepted 결과 처리(2026-10-02, 사용자 승인 — P1–P6, P8 Accepted, P7 보류)
 
-이 절은 D8.1–D8.5 · D8.6a 가운데 아래 항목만 Accepted로 기록한다. Production 구현은 아직 없다(Accepted 동작이며 미구현). (2026-10-05 갱신: Select Clips 부분 — P1 · P4 · P5 · P6 Select Clips · P8과 U1 / U2 Select Clips — 은 D8.5b대로 연결되었다; Editor 부분 — P1 Editor 정지 · P2 · U1 / U2 Editor · P6 Editor Add / Replace — 과 P7은 미구현이다.) (2026-10-05 추가 갱신: Editor 부분과 P7은 D8.5c대로 결정 · 연결되었다.) D8.0 분류 규칙은 바꾸지 않는다. Rollback(D4 · OD-4), 같은 Set Retry(D7), U3(OD-5), U4와 Target 무효 안내(OD-8), Late Result 처리, Startup Cleanup 개정(OD-12), OD-13, 050-E는 이 승인에 포함되지 않으며 Proposed · 미결로 남는다.
+이 절은 D8.1–D8.5 · D8.6a 가운데 아래 항목만 Accepted로 기록한다. Production 구현은 아직 없다(Accepted 동작이며 미구현). (2026-10-05 갱신: Select Clips 부분 — P1 · P4 · P5 · P6 Select Clips · P8과 U1 / U2 Select Clips — 은 D8.5b대로 연결되었다; Editor 부분 — P1 Editor 정지 · P2 · U1 / U2 Editor · P6 Editor Add / Replace — 과 P7은 미구현이다.) (2026-10-05 추가 갱신: Editor 부분과 P7은 D8.5c대로 결정 · 연결되었다.) D8.0 분류 규칙은 바꾸지 않는다. Rollback(D4 · OD-4), 같은 Set Retry(D7), U3(OD-5), U4와 Target 무효 안내(OD-8), Late Result 처리, Startup Cleanup 개정(OD-12), OD-13, 050-E는 이 승인에 포함되지 않으며 Proposed · 미결로 남는다. (2026-10-05 갱신: Rollback, 같은 Set Retry, U3, 취소 경계, Target 무효화 규칙은 D7a로 Accepted — 미구현; Late Result, OD-12, OD-13, 050-E는 그대로 미결.)
 
 - **P1 — Prior Snapshot 시점(Accepted):** Prior Snapshot은 Accepted Fresh-read 정책(OD-10)으로 Lifecycle Gate 안에서 Materialize 전에 읽는다. Save, 관측, 분류(D8.0)는 Gate를 놓기 전에 끝낸다. Editor의 메모리 상태가 Prior와 다르거나(Stale Editor) Prior를 읽을 수 없으면 Materialize 전에 멈춘다. 이 정지의 안내는 정해지지 않았다(소유자 결정 대기); Prior를 읽을 수 없을 때 Project가 그대로라고 말하지 않는다. (2026-10-05: Select Clips의 Prior 읽기 불가 안내만 D8.5b로 결정되었다; Editor의 Stale · Prior 읽기 불가 정지 안내는 미정.) (2026-10-05 추가: Editor 정지 안내는 D8.5c로 결정.)
 - **P2 — Editor Reconciliation(Accepted):** 결과가 `committedUnverified` 또는 `indeterminate`이면 Editor는 저장되지 않는(Non-persisted) "Reconciliation 필요" 상태가 되고 Add, Replace, Delete, Reorder, Undo, Redo 등 모든 Editor 변경을 막는다. 자동 Reload는 하지 않으며 메모리의 이전 상태를 저장 결과로 보여 주지 않는다. 사용자는 프로젝트 화면으로 돌아가고, 기존 Gate 안 Load로 다시 열면 빈 History의 새 Editor Session이 만들어진다. 다시 열기가 실패하면 기존 Unavailable 상태로 남는다. 다시 열기 성공은 지금 읽을 수 있는 Project가 있다는 사실만 뜻하며 앞선 Save의 결과를 확정하지 않는다. 이 차단은 P7(동기 변경의 결과 처리 연결)이 보류된 동안에도 모든 변경에 적용된다.
@@ -4300,7 +4347,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 #### D8.5b Select Clips 추가 안내와 결과 처리 연결(2026-10-05, 사용자 승인 — Select Clips 한정)
 
-이 절은 Select Clips에만 적용되는 소유자 결정 네 가지를 기록하고 D8.5a의 Select Clips 부분 구현을 적는다. Editor Stale 상태 · Editor Prior 읽기 불가 정지의 안내, U3(OD-5), U4(살아 있는 Editor의 Target 무효, OD-8), P7, Rollback(D4 · OD-4), 같은 Set Retry(D7), Late Result 처리, Startup Cleanup 개정(OD-12), OD-13, 050-E는 이 결정에 포함되지 않으며 미결로 남는다. D8.0 분류 규칙과 Accepted 050-B의 보수적 두 Save Metadata Estimate는 바뀌지 않는다.
+이 절은 Select Clips에만 적용되는 소유자 결정 네 가지를 기록하고 D8.5a의 Select Clips 부분 구현을 적는다. Editor Stale 상태 · Editor Prior 읽기 불가 정지의 안내, U3(OD-5; 2026-10-05: D7a로 결정), U4(살아 있는 Editor의 Target 무효, OD-8), P7, Rollback(D4 · OD-4), 같은 Set Retry(D7), Late Result 처리, Startup Cleanup 개정(OD-12), OD-13, 050-E는 이 결정에 포함되지 않으며 미결로 남는다. D8.0 분류 규칙과 Accepted 050-B의 보수적 두 Save Metadata Estimate는 바뀌지 않는다.
 
 - **Save 전 Project 확인 실패(Prior 읽기 불가):** `프로젝트를 확인하지 못했어요` / `프로젝트 화면에서 다시 확인해주세요.` / Action `확인`. 프로젝트 화면에 머물며 Project 상태를 다시 읽는다; 다시 읽기가 실패하면 "모름"으로 남고 부재로 추론하지 않으며 자동 반복 재시도는 없다.
 - **Projects Load 실패 · "모름" 상태:** `프로젝트를 불러오지 못했어요` / `저장된 프로젝트를 확인할 수 없어요. 다시 불러와주세요.` / Action `다시 불러오기`(D8.5a P5의 Action).
@@ -4319,7 +4366,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 #### D8.5c Editor 결과 처리와 P7(2026-10-05, 사용자 승인)
 
-이 절은 Editor에 대한 소유자 결정을 기록한다. D8.0 분류 규칙, D8.5a P2 · P3 · P4 · P6의 Accepted 내용, 050-B Estimate는 바뀌지 않는다. Rollback-to-Workspace, 같은 Set Retry, 일반 Late Result · 취소 정책, Startup Cleanup 개정, OD-13, 050-E는 이 결정에 포함되지 않으며 미결로 남는다.
+이 절은 Editor에 대한 소유자 결정을 기록한다. D8.0 분류 규칙, D8.5a P2 · P3 · P4 · P6의 Accepted 내용, 050-B Estimate는 바뀌지 않는다. Rollback-to-Workspace, 같은 Set Retry, 일반 Late Result · 취소 정책, Startup Cleanup 개정, OD-13, 050-E는 이 결정에 포함되지 않으며 미결로 남는다. (2026-10-05 갱신: Rollback-to-Workspace, 같은 Set Retry, 취소 경계는 D7a로 Accepted — 미구현; 일반 Late Result 정책과 Startup Cleanup 개정은 그대로 미결.)
 
 - **P7 — 직렬화(Accepted):** Reorder · Delete · Undo · Redo는 Editor Add / Replace와 같은 공유 Lifecycle Gate를 쓴다. Prior 관측, Expectation 생성, Save, 저장 상태 관측, 분류가 그 Gate 안에서 실행된다. Gate 없는 동기 예외는 승인하지 않는다. Gate를 잡은 상태를 전제로 하는 내부 Commit 하나를 쓰며 Add / Replace는 Gate를 두 번 잡지 않는다.
 - **Save 전 정지:** Fresh Prior가 Editor의 기준 상태와 정확히(전체 상태) 같지 않거나 읽을 수 없으면 `프로젝트를 다시 확인해주세요` / `프로젝트 화면에서 다시 열어 확인해주세요.` / Action `프로젝트 화면으로`; Project Row가 없으면 `프로젝트를 찾을 수 없어요` / `프로젝트 화면에서 다시 확인해주세요.` / Action `프로젝트 화면으로`. 모든 변경을 막고 프로젝트 화면으로 돌아가 다시 열어야 한다. 읽을 수 없을 때 저장 상태가 그대로라고 말하지 않는다.
@@ -4520,10 +4567,10 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 | OD-1 | Durable Commit = Save 성공; Read-back 실패는 Post-commit(050-D D1) | **ADR-037 STEP 11 Note · ADR-040 §9 · ADR-047 Ownership · ARCHITECTURE Commit 경계의 개정 제안** | Crash 경계에서는 Save 단위 PRIOR / NEW만 관측(첫 Commit은 `Z_PRIMARYKEY`만); 오류를 던진 Save · Commit 뒤 오류 · 전원 손실은 미확인 | 개정 문구; Process 안 Save 오류 뒤 Durable 상태 확인; Integration Test | 예(개정으로서) — **2026-10-02: D8.0 분류 규칙에 담긴 Save / 확인 결과 의미만 Accepted; 나머지(Editor Reload 등)는 Proposed** — **2026-10-02: Editor 처리는 D8.5a P2로 Accepted(미구현)** |
 | OD-2 | Post-commit 확인 실패 = "Commit됨 · 확인 안 됨": Media / Row 보존, Editor Reload, A 보존(050-D D3) | **같은 승인 문구의 개정 제안**(현재 코드와도 다름) | D2 Trace | OD-1; 구현 | 예(개정으로서) — **2026-10-02: D8.0 분류 규칙에 담긴 Save / 확인 결과 의미만 Accepted; 나머지(Editor Reload 등)는 Proposed** — **2026-10-02: Editor 처리는 D8.5a P2로 Accepted(자동 Reload 없음, 모든 변경 차단, 프로젝트 화면으로 돌아가 다시 열기); 미구현** |
 | OD-3 | U1(Commit됨 · 확인 안 됨) · U2(미확정) 안내와 Action(050-D D8.5); 읽을 수 없는 B Row = 미확정 | 새 UX | 기존 `저장되지 않았어요` / `만들지 못했어요` / `그대로 있어요` 사용 불가 | OD-2, OD-9 | OD-2 · OD-9 뒤 — **2026-10-02: U1 / U2의 Editor · Select Clips 정확한 문구와 Action이 D8.5a P3로 Accepted(미구현); "읽을 수 없는 B Row = 미확정" 일괄 규칙은 승인되지 않음(D8.0 유지)** |
-| OD-4 | Pre-commit Rollback-to-Workspace(Ready Rename-back, 정규화 출력 제거)(050-D D4) | Task 13 / 14와 ADR-047 Boundary F의 해석 | Filesystem 실패 시 Retry 불가 | 구현 | 예(Task 14 해석 확인 필요) — **2026-10-02: 미결 유지; 이번 Slice는 D8.5a P6의 임시 경계(Rollback 없음)** |
-| OD-5 | U3: Restoration · 정리 실패(확인된 이전 상태, `다시 시도` 없음) 안내(050-D D8.5) | 새 UX(R4 §3 외부 Source 무효와 구별) | "저장되지 않았어요"는 확인된 이전 상태에서만 | OD-4, OD-9 | OD-4 뒤 |
-| OD-6 | 취소 경계: Save 직전까지 받고 Save 성공 뒤 취소는 성공(050-D D5) | R4 §2 적용 | — | 없음 | 예 |
-| OD-7 | Target 무효화: Retry 없음, Project Directory 재생성 금지, Late Result 폐기(050-D D6) | Task 15 적용 + 새 규칙 | — | Lifecycle Gate 적용 구현 | 예 — **2026-10-02: Gate 적용 · Materialize 전 Target 재확인(Directory 재생성 금지)만 직렬화 전제조건으로 구현; Retry · Late Result · 안내 결정은 미승인** |
+| OD-4 | Pre-commit Rollback-to-Workspace(Ready Rename-back, 정규화 출력 제거)(050-D D4) | Task 13 / 14와 ADR-047 Boundary F의 해석 | Filesystem 실패 시 Retry 불가 | 구현 | 예(Task 14 해석 확인 필요) — **2026-10-02: 미결 유지; 이번 Slice는 D8.5a P6의 임시 경계(Rollback 없음)** — **2026-10-05: D7a 1항으로 Accepted(미구현) — Save 시도 전 실패 · 취소와 `priorConfirmed`에서만 Rollback, Ready 복원 · 정규화 출력 제거 · 확인; D4 4항은 Proposed** |
+| OD-5 | U3: Restoration · 정리 실패(확인된 이전 상태, `다시 시도` 없음) 안내(050-D D8.5) | 새 UX(R4 §3 외부 Source 무효와 구별) | "저장되지 않았어요"는 확인된 이전 상태에서만 | OD-4, OD-9 | OD-4 뒤 — **2026-10-05: 복원 · 정리 실패 안내는 D7a 5항으로 결정(Commit되지 않았음이 확정된 경우에만, Retry 없음); Retry 시점 Source 무효 안내는 미결** |
+| OD-6 | 취소 경계: Save 직전까지 받고 Save 성공 뒤 취소는 성공(050-D D5) | R4 §2 적용 | — | 없음 | 예 — **2026-10-05: D7a 3항으로 Accepted(미구현)** |
+| OD-7 | Target 무효화: Retry 없음, Project Directory 재생성 금지, Late Result 폐기(050-D D6) | Task 15 적용 + 새 규칙 | — | Lifecycle Gate 적용 구현 | 예 — **2026-10-02: Gate 적용 · Materialize 전 Target 재확인(Directory 재생성 금지)만 직렬화 전제조건으로 구현; Retry · Late Result · 안내 결정은 미승인** — **2026-10-05: 감지 · 거부 · 후보 정리는 D7a 4항으로 Accepted(미구현); Late Result 폐기는 일반 정책과 함께 미결** |
 | OD-8 | U4: Target 무효 안내(살아 있는 Editor의 Add / Replace); 삭제된 Project는 안내 없음(050-D D8.5) | 새 UX | — | OD-7 | OD-7 뒤 — **2026-10-02: Gate 적용 구현은 Target 무효 시 기존 `addFailed` / `replaceFailed` 안내(재시도 · "그대로" 문구)를 임시 재사용한다 — 이 제안과 어긋나는 알려진 차이이며 결정은 Pending** — **2026-10-05: Select Clips 대체 Target 무효 안내만 D8.5b로 결정; Editor U4는 미결** — **2026-10-05: Editor의 Project 없음 · 다시 확인 정지 안내는 D8.5c로 결정(살아 있는 Editor에서의 별도 U4 문구는 쓰지 않음)** |
 | OD-9 | Save Outcome 판정: Save 오류 · 확인 실패 뒤 독립 Read로 확인된 이전 / 확인된 새 / 미확정을 정하고 결과별 처리(050-D D8.1–D8.5); 확인된 이전 상태는 새 ID 부재 확인 필수 | **ADR-040 §9 · ADR-037 STEP 11 Note · ROADMAP Task 14의 Persist 실패 분기 개정 제안**(확인된 이전 상태의 Save 오류는 기존 문구와 R4 §3 그대로) | 재구성 경계 관측은 측정한 경우에 한함; 독립 Read의 Coordinator Cache 독립성 미확인 | OD-10; Lifecycle Gate 적용(D8.4); 구현 | 예(개정으로서) — **분류 규칙 Accepted(2026-10-02, D8.0); 순수 분류기 구현, 독립 Read · Gate · Rollback 연결은 Pending** — **2026-10-02: 결과별 처리 가운데 D8.5a P1 · P2 · P4 · P5 · P6(임시) · P8이 Accepted(미구현); P7 보류, Rollback · Retry는 Proposed** |
 | OD-10 | 독립 Read 방법: 같은 Container의 새 `ModelContext`(권장) 또는 별도 `ModelContainer` | 구현 정책 | 권장안의 Coordinator Cache 독립성 미검증; 대안의 동시 열기 동작 미검증; 파괴적 Rollback은 새 ID 부재 확인으로 보강(OD-9) | 없음 | 예 — **Accepted(2026-10-02): 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`) — 구현 정책일 뿐 Cache 우회 · 원자적 Snapshot 보장 아님; `observePersistedState(for:)` 구현(연결 없음)** — **2026-10-05: Select Clips에 연결(D8.5b); Editor 연결(D8.5c)** |
