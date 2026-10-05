@@ -3939,7 +3939,7 @@ ADR-048 Canonical Preflight Order의 1–7단계(Duration → Readable / Video /
 # ADR-050 — Import Storage Estimate, Safety Reserve, and Check Boundaries
 
 **Date:** 2026-10-02
-**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인):** OD-14 (a) — `.replacingSaved`의 단일 Save 대체와 그에 따른 ADR-033 Revision 1(B Media 존재 · Metadata 변환의 Save 전 확인, Lifecycle Gate 안 Target 재확인, A 소실 시 Target 무효화(B만 생성하는 Fallback 없음), 성공 · 미확정 결과의 Media 보존, B 완전 저장과 A Metadata 부재 확인 뒤에만 A Media 제거, Commit 뒤 A Metadata는 이미 없다는 잔여 위험의 명시적 수용). Accepted 050-B 두 Save Metadata 계산과 상수는 바뀌지 않는다. **추가 승인(2026-10-02, 사용자 승인) — 결과 처리 P1–P6 · P8(D8.5a):** Prior Snapshot 시점, Editor Reconciliation 차단, U1 / U2 정확한 문구, Save 오류 뒤 `completed` 처리, Projects 갱신과 Load 실패 = 모름, `priorConfirmed` 임시 경계, Select Clips의 `replaceProject` 연결이 Accepted(Production 미구현); P7(동기 Editor 변경)은 보류. **추가 승인(2026-10-02, 사용자 승인) — Lifecycle Gate 직렬화 전제조건 구현:** Home Project 삭제와 Editor Add / Replace의 Target 재확인 · Materialize · Commit을 공유 Gate로 직렬화(D6 구현 항목); 050-D의 다른 결정은 승인하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인) — OD-10 관측 구현 정책:** 관측마다 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`), Save Context · 공유 Context Object 재사용 없음; 구현 정책이며 모든 공유 Cache를 우회하거나 모든 실패에서 독립적인 Durable 진실을 확립한다는 보장이 아니고, 여러 Fetch로 이루어져 원자적 Snapshot이 아니다. **추가 부분 승인(2026-10-02, 사용자 승인) — Save Outcome 분류 규칙(050-D D8.0):** Save 성공 + Intended 확인 → 완료; Save 성공 + 확인 불가 · 모순 → Commit됨 · 확인 안 됨(참조 가능 Media 보존, Rollback 금지); Save 오류 + Intended 확인 → 완료; Save 오류 + Prior 확인(만든 Project · Clip ID의 Store 전체 부재 확인 포함) → Commit 전 Rollback 대상; Save 오류 + 그 밖 → 미확정(참조 가능 Media 보존, `다시 시도` 금지); 명확화: Save 오류 뒤 완료에는 만든 모든 ID의 완전하고 일치하는 Store 전체 증거가 필요하다(D8.0). 이 규칙은 해당 Save / 확인 결과 의미만 개정한다(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Ownership, ARCHITECTURE Commit 경계, ROADMAP Task 14의 Read-back · Persist 실패 분기). C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 그 밖의 050-D(D8.1–D8.5의 결과별 처리 · Prior Snapshot 시점 · Gate 안 Prior Snapshot · 판정 연결 · Rollback 구현 · 새 안내 Copy · Retry · Startup Cleanup 개정 등; 2026-10-02 갱신: 이 가운데 D8.5a P1–P6 · P8로 Accepted된 부분은 제외), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다. **추가 승인(2026-10-05, 사용자 승인) — Select Clips 한정 안내(D8.5b):** Save 전 Project 확인 실패, Projects Load 실패 · "모름" 상태, 대체 Target 무효, 그 밖의 Save 전 준비 실패의 Select Clips 문구와 처리; Editor Stale 상태 안내, U3 / U4, 그 밖의 미결 항목은 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — Editor 결과 처리와 P7(D8.5c):** Reorder · Delete · Undo · Redo의 공유 Lifecycle Gate 직렬화(P7), Editor의 Save 전 정지 안내, 이 네 편집의 `priorConfirmed` 안내, 진행 중 표시 · Navigation 규칙; Rollback, 같은 Set Retry, 일반 Late Result 정책, Startup Cleanup 개정과 그 밖의 050-D · 050-E는 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — 제한된 복구 계약(D7a):** Rollback 자격 · 같은 Set Retry · 취소 경계 · Target 무효화 규칙과 그 안내(문서만, 미구현); 050-C 검사 경계 · 부족 Presentation, Startup Cleanup · 빈 Store 보호(OD-12), 일반 Late Result 정책, 050-E는 바뀌지 않는다.
+**Status:** Proposed — **부분 승인(2026-10-02, 사용자 승인):** Unit 050-A 전체, Unit 050-B, Unit 050-C의 계산 정책(Volume별 추가 쓰기 계산, 256 MiB Import Reserve, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed)만 Accepted다. 이 값들은 Policy Estimate이며 증명된 상한이 아니고, Reserve는 측정되지 않은 위험을 덮는다고 보장하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인):** OD-14 (a) — `.replacingSaved`의 단일 Save 대체와 그에 따른 ADR-033 Revision 1(B Media 존재 · Metadata 변환의 Save 전 확인, Lifecycle Gate 안 Target 재확인, A 소실 시 Target 무효화(B만 생성하는 Fallback 없음), 성공 · 미확정 결과의 Media 보존, B 완전 저장과 A Metadata 부재 확인 뒤에만 A Media 제거, Commit 뒤 A Metadata는 이미 없다는 잔여 위험의 명시적 수용). Accepted 050-B 두 Save Metadata 계산과 상수는 바뀌지 않는다. **추가 승인(2026-10-02, 사용자 승인) — 결과 처리 P1–P6 · P8(D8.5a):** Prior Snapshot 시점, Editor Reconciliation 차단, U1 / U2 정확한 문구, Save 오류 뒤 `completed` 처리, Projects 갱신과 Load 실패 = 모름, `priorConfirmed` 임시 경계, Select Clips의 `replaceProject` 연결이 Accepted(Production 미구현); P7(동기 Editor 변경)은 보류. **추가 승인(2026-10-02, 사용자 승인) — Lifecycle Gate 직렬화 전제조건 구현:** Home Project 삭제와 Editor Add / Replace의 Target 재확인 · Materialize · Commit을 공유 Gate로 직렬화(D6 구현 항목); 050-D의 다른 결정은 승인하지 않는다. **추가 부분 승인(2026-10-02, 사용자 승인) — OD-10 관측 구현 정책:** 관측마다 새 전용 `ModelContext`(Autosave 꺼짐, `includePendingChanges = false`), Save Context · 공유 Context Object 재사용 없음; 구현 정책이며 모든 공유 Cache를 우회하거나 모든 실패에서 독립적인 Durable 진실을 확립한다는 보장이 아니고, 여러 Fetch로 이루어져 원자적 Snapshot이 아니다. **추가 부분 승인(2026-10-02, 사용자 승인) — Save Outcome 분류 규칙(050-D D8.0):** Save 성공 + Intended 확인 → 완료; Save 성공 + 확인 불가 · 모순 → Commit됨 · 확인 안 됨(참조 가능 Media 보존, Rollback 금지); Save 오류 + Intended 확인 → 완료; Save 오류 + Prior 확인(만든 Project · Clip ID의 Store 전체 부재 확인 포함) → Commit 전 Rollback 대상; Save 오류 + 그 밖 → 미확정(참조 가능 Media 보존, `다시 시도` 금지); 명확화: Save 오류 뒤 완료에는 만든 모든 ID의 완전하고 일치하는 Store 전체 증거가 필요하다(D8.0). 이 규칙은 해당 Save / 확인 결과 의미만 개정한다(ADR-037 STEP 11 Note, ADR-040 §9, ADR-047 Ownership, ARCHITECTURE Commit 경계, ROADMAP Task 14의 Read-back · Persist 실패 분기). C0 / C0a의 Phase 5 Admission 변경, 검사 경계 연결과 부족 Presentation, 그 밖의 050-D(D8.1–D8.5의 결과별 처리 · Prior Snapshot 시점 · Gate 안 Prior Snapshot · 판정 연결 · Rollback 구현 · 새 안내 Copy · Retry · Startup Cleanup 개정 등; 2026-10-02 갱신: 이 가운데 D8.5a P1–P6 · P8로 Accepted된 부분은 제외), 050-E는 Proposed로 남는다. ADR-050 전체는 Accepted가 아니다. **추가 승인(2026-10-05, 사용자 승인) — Select Clips 한정 안내(D8.5b):** Save 전 Project 확인 실패, Projects Load 실패 · "모름" 상태, 대체 Target 무효, 그 밖의 Save 전 준비 실패의 Select Clips 문구와 처리; Editor Stale 상태 안내, U3 / U4, 그 밖의 미결 항목은 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — Editor 결과 처리와 P7(D8.5c):** Reorder · Delete · Undo · Redo의 공유 Lifecycle Gate 직렬화(P7), Editor의 Save 전 정지 안내, 이 네 편집의 `priorConfirmed` 안내, 진행 중 표시 · Navigation 규칙; Rollback, 같은 Set Retry, 일반 Late Result 정책, Startup Cleanup 개정과 그 밖의 050-D · 050-E는 바뀌지 않는다. **추가 승인(2026-10-05, 사용자 승인) — 제한된 복구 계약(D7a):** Rollback 자격 · 같은 Set Retry · 취소 경계 · Target 무효화 규칙과 그 안내(문서만, 미구현); 050-C 검사 경계 · 부족 Presentation, Startup Cleanup · 빈 Store 보호(OD-12), 일반 Late Result 정책, 050-E는 바뀌지 않는다. **추가 승인(2026-10-06, 사용자 승인) — 050-C 실행 경계와 부족 안내:** C0 / C0a / C1 / C2 / C3 / CR의 위치 · 대상 Volume · 계산과 부족 안내, Phase 5 Admission 개정(문서만, 미구현); 용량 API 선택 · 신선도 보장, Startup Cleanup, 일반 Late Result, 050-E는 바뀌지 않는다.
 
 이 ADR은 서로 독립적으로 검토 · 승인할 수 있는 다섯 Decision Unit(050-A–050-E)으로 나뉜 제안이다.
 
@@ -4072,13 +4072,13 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 
 ## Decision Unit 050-C — Capacity와 Transfer Admission
 
-**Unit Status:** 부분 승인(2026-10-02, 사용자 승인). **Accepted — 계산 정책만:** Occupancy / Additional 분리와 Volume별 추가 쓰기 계산, `Reserve_import = 256 MiB`, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed, `Additional + Reserve = U`는 통과. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.requirement` / `check`(주입 가능한 Capacity 입력, 연결 없음). **구현됨 · 연결 없음(독립 승인 정책이 아님):** `NSFileWriteOutOfSpaceError` / `ENOSPC` / `AVError.diskFull`(Underlying 포함)의 Typed 분류 `ImportWriteFailureClassifier`; 그 Logging과 Presentation 연결은 Proposed다. **Proposed 유지:** 검사 경계 C0 / C0a / C1 / C2 / C3 / CR의 연결, 부족 Presentation 대응, Phase 5 Admission 변경, Provider / Transfer 해석.
+**Unit Status:** 부분 승인(2026-10-02, 사용자 승인). **Accepted — 계산 정책만:** Occupancy / Additional 분리와 Volume별 추가 쓰기 계산, `Reserve_import = 256 MiB`, Unknown Capacity · 잘못된 Estimate 입력 · 산술 Overflow의 Fail-closed, `Additional + Reserve = U`는 통과. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.requirement` / `check`(주입 가능한 Capacity 입력, 연결 없음). **구현됨 · 연결 없음(독립 승인 정책이 아님):** `NSFileWriteOutOfSpaceError` / `ENOSPC` / `AVError.diskFull`(Underlying 포함)의 Typed 분류 `ImportWriteFailureClassifier`; 그 Logging과 Presentation 연결은 Proposed다. **Proposed 유지:** 검사 경계 C0 / C0a / C1 / C2 / C3 / CR의 연결, 부족 Presentation 대응, Phase 5 Admission 변경, Provider / Transfer 해석. (2026-10-06 갱신: 검사 경계 · 부족 안내 · Phase 5 Admission 개정 · Provider / Transfer 해석은 아래 "050-C 실행 경계 승인"으로 Accepted — 미구현.)
 
 ### Occupancy와 Additional
 
 - **Occupancy:** 검사 시점에 이미 Volume에 존재하는 모든 Byte(Commit된 Media, Replace 대상 기존 Clip Media, 다른 Draft, System Provider File, 이미 Adopt된 Source, 이미 쓰인 출력, Store / WAL). Occupancy는 Capacity 측정값에 이미 반영된 것으로 간주하며 Required에 더하지도, Capacity에서 빼지도 않는다.
 - **Additional:** 검사 시점 이후 이 Operation이 끝나기 전에 해당 Volume에 새로 Allocate될 수 있는 Byte의 추정 Peak.
-- **검사:** 각 검사는 그 단계의 쓰기 대상 Directory가 속한 Volume 하나에 대해서만 수행하고 `Additional(그 Volume) + Reserve_import ≤ U(그 Volume)`일 때만 통과한다. U는 그 시점에 읽은 `volumeAvailableCapacityForImportantUsage`다. 한 Volume의 쓰기를 다른 Volume의 Capacity에 청구하지 않는다.
+- **검사:** 각 검사는 그 단계의 쓰기 대상 Directory가 속한 Volume 하나에 대해서만 수행하고 `Additional(그 Volume) + Reserve_import ≤ U(그 Volume)`일 때만 통과한다. U는 그 시점에 읽은 `volumeAvailableCapacityForImportantUsage`다(2026-10-06: 현재 코드가 읽는 값을 설명할 뿐 용량 API의 선택이나 신선도 보장으로 승인된 것이 아니다). 한 Volume의 쓰기를 다른 Volume의 Capacity에 청구하지 않는다.
 - U의 신선도는 증명되지 않았다(Context). 검사는 부족을 줄이는 장치일 뿐이며 Runtime Disk Full 처리를 대체하지 않는다.
 - 삭제 예정 File, Provider File의 해제, Replace로 대체될 기존 Media에 대해 공간을 미리 차감(Credit)하지 않는다.
 - Replace의 기존 Clip Media는 Commit까지 보호되는 Occupancy이며 새 Allocation으로 다시 계산하지 않는다. 대체 후보는 단일 항목 Accepted Set과 같은 Formula를 쓴다.
@@ -4092,6 +4092,8 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 - Tradeoff: 값이 클수록 거의 가득 찬 기기에서 실제로는 성공했을 Import가 더 자주 차단된다. 값이 작을수록 Runtime Disk Full이 더 자주 난다. 대안: 200 MiB(209,715,200 B) 또는 512 MiB(536,870,912 B).
 
 ### 검사 경계
+
+> 2026-10-06: 아래 표의 경계는 "050-C 실행 경계 승인"으로 Accepted(미구현)되었다; C3은 정규화 출력이 모두 끝난 뒤 Materialize 직전에 Metadata + Reserve만 검사하며 Save 전 Target · 파일 · Metadata 확인을 대체하지 않는다.
 
 | 경계 | 시점 | 대상 Volume | Additional | 부족 시 |
 | --- | --- | --- | --- | --- |
@@ -4108,6 +4110,8 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 
 ### 부족 Presentation(ADR-042 Revision 4 보존)
 
+> 2026-10-06: 2항 가운데 C2 / C3 부족의 안내(원인 비표시, R4 §3)만 "050-C 실행 경계 승인"으로 결정되었다(미구현) — Durable Commit 전 Runtime Disk Full은 Runtime 쓰기 실패로 따로 처리된다. 3항(CR 부족)은 위 권장안(R4 §3 재표시)도 대안(R4 §4 + 종료)도 채택되지 않았고, R4 밖의 새 CR 부족 안내로 결정되었다(미구현); 4항의 `outOfSpace` 분류는 구현 · 연결 없음이며 별도로 승인된 Logging · Presentation 정책이 아니다.
+
 1. **초기 Preflight 부족(C0, C0a, C1):** R4 §4 그대로 — Media 미생성, Project 무변경, Replace 기존 Clip 보존, `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`. §4에는 `다시 시도`가 없으므로 Operation이 끝나고 그 Operation의 Transfer File · Workspace를 Discard한다. 아직 Attempt가 시작되지 않았으므로 Retry Source를 없애는 것이 아니다.
 2. **Attempt 중 부족(C2, C3, Durable Commit 전 Runtime Disk Full):** Preparation이 이미 시작되었으므로 R4 §4가 아니라 R4 §3의 Runtime 실패로 분류하고 050-D의 Pre-commit Rollback을 따른다. 새 Copy를 만들지 않으며 그 결과 사용자는 원인이 저장 공간임을 이 안내에서 알 수 없다(→ 소유자 선택).
 3. **Retry 전 검사 부족(CR):** 승인 문서가 정하지 않은 경우다. 권장안은 실패한 Retry Attempt로 보고 R4 §3을 다시 표시하며 Retry Source를 보존하는 것이다("Retry 재실패 시 동일 정리"). 대안인 R4 §4 표시 + Operation 종료는 R4 개정이다. 어느 쪽도 기존 Copy를 근거로 Retry Source를 Discard하거나 `다시 시도`를 없애지 않는다.
@@ -4115,11 +4119,45 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 
 ### Phase 5 Admission 변경(제안)
 
-C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며 Task 23이 세 경로를 같은 경로로 통합하므로, 승인되어 연결되면 Phase 5 Admission의 동작을 바꾼다: Reserve가 100 MiB에서 256 MiB가 되고, 크기를 읽지 못한 File이 현재처럼 0 B로 통과하지 않고 거부되며, C0a가 추가된다. Phase 5 Reserve는 Phase 6 Import 경로가 Select Clips / Add / Replace를 대체하는 연결 단계에서 적용을 멈춘다.
+> 2026-10-06: C0 · C0a로 Accepted(미구현) — Phase 5 Admission의 100 MiB Reserve와 크기를 읽지 못한 File의 처리가 개정된다. 현재 코드는 아직 Phase 5 Admission(100 MiB)을 쓴다. Phase 5 Commit 직전 최종 Guard(추가 0 + 100 MiB)의 퇴역 시점은 이 승인에 명시되지 않았다.
+
+(2026-10-06: 이 문단 끝의 "Phase 5 Reserve는 … 연결 단계에서 적용을 멈춘다"는 승인되지 않았다 — Commit 직전 최종 Guard의 퇴역 시점은 미명시로 남는다.) C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며 Task 23이 세 경로를 같은 경로로 통합하므로, 승인되어 연결되면 Phase 5 Admission의 동작을 바꾼다: Reserve가 100 MiB에서 256 MiB가 되고, 크기를 읽지 못한 File이 현재처럼 0 B로 통과하지 않고 거부되며, C0a가 추가된다. Phase 5 Reserve는 Phase 6 Import 경로가 Select Clips / Add / Replace를 대체하는 연결 단계에서 적용을 멈춘다.
 
 ### Provider File vs Mellow Transfer File
 
+> 2026-10-06: 해석 확인됨 — Provider 자신의 File은 Mellow 소유 Disk 사용으로 계산하지도 건드리지도 않는다("050-C 실행 경계 승인" C0).
+
 `ReceivedTransferredFile.file`은 System 소유이며 Mellow는 열거 · 수정 · 삭제하지 않고 Additional로 계산하지 않는다(C0 시점에 이미 존재하는 Occupancy). Mellow의 `tmp/ProjectMediaTransfer/<UUID>.<ext>` 복사본은 Mellow 소유이며 C0에서 Logical 크기 전체를 계산한다. ADR-024 Clarification과 ROADMAP의 "Picker Transient 복사본"은 이 Mellow 소유 복사본으로 해석한다(해석 확인 필요).
+
+### 050-C 실행 경계 승인(2026-10-06, 사용자 승인 — 문서만, 미구현)
+
+이 절은 050-C의 검사 경계와 부족 안내만 Accepted로 기록한다. Production 구현은 없다. 050-A · 050-B · 050-C 계산 정책과 상수, D7a, D8.0은 바뀌지 않는다. 용량 API의 선택이나 그 신선도 보장, Startup Cleanup 개정(OD-12), 일반 Late Result 정책, 050-E는 포함되지 않는다.
+
+| 경계 | 위치 | 대상 Volume | 요구량 | 부족 시 |
+| --- | --- | --- | --- | --- |
+| C0 | Mellow의 Picker Transfer 복사 직전, File마다 | `tmp/ProjectMediaTransfer`의 Volume | Source Logical Byte + 256 MiB Import Reserve | 초기 부족 안내 |
+| C0a | `adopt`가 Move 실패 뒤 Copy로 넘어가기 직전에만 | Mellow Root의 Volume | Source Logical Byte + Import Reserve | 초기 부족 안내 |
+| C1 | Accepted Set 분류 뒤 · 준비 시작 전 | Mellow Root | 남은 정규화 출력 + 작업 Metadata + Import Reserve | 준비를 시작하지 않음, 초기 부족 안내 |
+| C2 | 두 번째와 그 뒤 각 정규화 항목 직전 | Mellow Root | 아직 쓰이지 않은 모든 출력 + 작업 Metadata + Import Reserve | R4 §3 실패 안내(아래) |
+| C3 | Materialize 직전(모든 정규화 출력이 끝난 뒤) | Mellow Root | 작업 Metadata + Import Reserve | R4 §3 실패 안내(아래) |
+| CR | 모든 Retry Attempt 시작 전(이전 정리 · 복원 확인과 Source · Target 확인 뒤) | Mellow Root | 새 Work Set으로 C1과 같은 요구량(남은 정규화 출력 + 작업 Metadata + Import Reserve) | CR 부족 안내(아래) |
+
+- **C0:** 크기 · 용량을 읽을 수 없거나 산술 Overflow면 Fail-closed다. Phase 5 Admission(이전 100 MiB Reserve와 크기를 읽지 못한 File의 이전 처리 포함)을 명시적으로 개정한다. Provider 자신의 File은 Mellow 소유 Disk 사용으로 계산하지도 건드리지도 않는다.
+- **C0a:** 두 Volume을 하나의 용량 읽기에 함께 청구하지 않고 APFS Clone을 가정하지 않는다. 기존 Move / Copy Fallback 정책은 이 결정으로 바뀌지 않는다.
+- **C2:** 이미 쓰인 출력과 이미 Disk에 있는 Source는 다시 청구하지 않는다.
+- **C3:** Save 전 Target · 파일 · Metadata 확인을 대체하지 않는다.
+- **CR:** 실패해도 Attempt를 시작하지 않으며 유효한 보존 Source를 버리지 않는다.
+- **계산과 신선도:** Estimate · Allowance · Reserve는 따로 유지하며 같으면 통과, 모름 · 무효 · Overflow는 Fail-closed다. 작업 Metadata 입력은 적절한 직렬화 경계 안에서 얻거나 다시 확인한다. 용량 재검사는 Admission 검사이며 읽은 값의 신선도나 쓰기 중 충분한 공간을 보장하지 않는다; Runtime 쓰기 실패는 따로 처리된다. 새 용량 API를 고르지 않으며 그 신선도가 증명되었다고 말하지 않는다.
+
+**안내:**
+
+- C0 / C0a / C1 부족: 기존 ADR-042 R4 §4 저장 공간 부족 확인 문구(`저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`).
+- C2 / C3 부족: Rollback이 확인되고 Retry 자격이 성립한 뒤에만 기존 R4 §3 준비 실패 문구와 `다시 시도` / `취소`. 복원 · 정리가 실패하면 대신 Accepted D7a U3를 쓰며 Retry를 결코 제공하지 않는다.
+- CR 부족(ADR-042 R4 밖의 새 안내): `저장 공간이 부족해요` / `기기의 저장 공간을 확보한 후 다시 시도해주세요.` / Actions `다시 시도` / `취소`. `다시 시도`를 누를 때마다 자격을 다시 확인하고 CR을 다시 실행하며 자동 반복은 없다. Source는 그 Operation의 Retry 상태가 유효한 동안에만 보존되며 취소는 D7a에 따라 그 상태를 끝낸다.
+- Retry 시점의 Source 무효 · Target 무효 거부 안내는 미결이다.
+- 성공 또는 미확정 Save 결과는 D8.0 처리를 그대로 따르며 이 부족들은 Save 뒤 파괴적 Rollback을 결코 허용하지 않는다.
+
+**구현 상태:** 경계 연결, 부족 안내, Phase 5 Admission 개정은 모두 미구현이다; 현재 코드는 Phase 5 Admission(100 MiB Reserve, File별 Pre-copy 검사)과 Commit 직전 최종 Guard를 그대로 쓴다. 계산(`ImportStorageEstimator`, `ImportStorageWorkSet`)은 구현 · 연결 없음이다. **남은 명확화:** Phase 6 경로가 세 흐름을 대체할 때 Phase 5 Commit 직전 최종 Guard(추가 0 + 100 MiB)를 퇴역할지는 이 승인에 명시되지 않았다.
 
 ### 예시(050-A와 050-B 제안 상수)
 
@@ -4202,7 +4240,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ### D7. 같은 Accepted Set Retry
 
-> 2026-10-05: 시작 조건과 정리 실패 시 Retry 금지는 D7a 2항으로 Accepted(미구현). 4항(CR 검사)의 연결과 부족 Presentation은 050-C 결정과 함께 미결이다.
+> 2026-10-05: 시작 조건과 정리 실패 시 Retry 금지는 D7a 2항으로 Accepted(미구현). 4항(CR 검사)의 연결과 부족 Presentation은 050-C 결정과 함께 미결이다. (2026-10-06 갱신: CR 위치 · 계산 · 부족 안내는 "050-C 실행 경계 승인"으로 Accepted — 미구현.)
 
 `다시 시도`는 다음이 모두 확인될 때만 새 Attempt를 시작한다.
 
@@ -4230,7 +4268,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
    - Retry는 새 Picker 선택이 아니라 같은 Accepted Set과 유효한 보존 Source를 쓴다.
    - 확인된 복원 · 정리, 유효한 Source, 유효한 Target이 모두 성립한 뒤에만 시작한다.
    - 새 Attempt마다 새 Storage Work Set(`ImportStorageWorkSet`, 단일 Attempt 모델)을 만든다.
-   - 용량 재검사 연결과 부족 Presentation은 별도의 미결 050-C 결정이며, 그것 없이 Retry가 Production 준비가 되었다고 보지 않는다.
+   - 용량 재검사 연결과 부족 Presentation은 별도의 미결 050-C 결정이며, 그것 없이 Retry가 Production 준비가 되었다고 보지 않는다. (2026-10-06 갱신: 그 결정은 "050-C 실행 경계 승인"으로 Accepted되었으나 미구현이다.)
    - Process 종료 뒤 재개는 없고 Durable Journal도 없다(ADR-047).
 3. **취소 경계:**
    - 취소는 Save 호출 직전까지 받는다; 마지막 취소 확인과 동기 Save 호출 사이에 `await`을 두지 않는다.
@@ -4254,7 +4292,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 **구현(2026-10-05, 내부 · 연결 없음):** D7a 1항의 Rollback 실행기 `ProjectMediaStore.rollBackAttempt(_:)`가 구현되었다 — Attempt가 기록한 정확한 Record(`ImportRollbackRecord`: 정규 Materialize 경로, Ready 파일의 Workspace 이름 · 기록 크기 또는 정규화 출력)만 다루고, Ready 파일은 덮어쓰지 않고 원래 Workspace 경로로 되돌리며, 소유한 정규화 출력과 Attempt 자신의 Workspace 하위 Directory를 제거하고, Symlink · 소유 경로 밖 · Live가 아닌 Workspace를 거부하며, 모든 결과를 확인해 `verifiedClean` 또는 Record별 사유를 담은 `unresolved`(Retry 금지)를 돌려준다; 한 Record가 실패해도 나머지를 처리한다. 호출자가 D7a 자격과 직렬화를 먼저 확립해야 하며 실행기는 오류에서 자격을 추론하지 않는다. 빈 Project Directory는 제거하지 않는다(D4 4항 미결). Coordinator · UI · Save 분류 · Retry · Startup Cleanup에 연결되지 않았고 ROADMAP Task 14 해석(OD-4)도 그대로 남는다.
 
-**남은 안내 공백(결정되지 않음):** 복원이 확인된 뒤 `다시 시도` 시점에 보존 Source가 더 이상 유효하지 않거나(외부 원인 포함, R4 §3의 "Mutation 없이 안전하게 실패"), Retry 시점에 Target이 무효이거나(Select Clips와 Editor의 기존 안내가 그 시점에도 적용되는지), CR 용량 검사가 부족한 경우(050-C)의 Retry 거부 안내는 승인 문서에 없다. D4 4항(새 Project의 빈 Directory 제거)도 명시적으로 승인되지 않았다.
+**남은 안내 공백(결정되지 않음):** 복원이 확인된 뒤 `다시 시도` 시점에 보존 Source가 더 이상 유효하지 않거나(외부 원인 포함, R4 §3의 "Mutation 없이 안전하게 실패"), Retry 시점에 Target이 무효이거나(Select Clips와 Editor의 기존 안내가 그 시점에도 적용되는지), CR 용량 검사가 부족한 경우(050-C)의 Retry 거부 안내는 승인 문서에 없다. (2026-10-06 갱신: CR 부족 안내는 "050-C 실행 경계 승인"으로 결정되었다; Source 무효 · Target 무효 Retry 거부 안내는 그대로 미결.) D4 4항(새 Project의 빈 Directory 제거)도 명시적으로 승인되지 않았다.
 
 ### D8. Save Outcome 판정(Save 오류 또는 확인 실패 뒤)
 
