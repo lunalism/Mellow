@@ -492,6 +492,8 @@ Feature Layer와 Persistence 사이에는 `ProjectRepository` Boundary를 사용
 
 **Save 뒤 Media 보존(ADR-050 050-D D8.0, 2026-10-02):** `ProjectCompositionCoordinator.compose`와 `ProjectEditorModel`의 Add / Replace는 Save 시도 전 실패에서만 이번 Operation이 만든 Media를 지운다. Save 시도 뒤에는(오류를 던진 Save, 성공한 Save 뒤의 확인 실패) Row를 되돌리지 않고 Media를 보존하며, 두 Save `.replacingSaved`는 B 확인 + A 삭제 반환 + 다시 읽은 A Row 부재가 모두 성립할 때만 A Media를 지운다. 참조되지 않는 보존 파일은 기존 Startup Recovery가 다음 실행에서 정리한다. 실패 안내의 부정확성, Editor의 이전 메모리 상태 복귀(이후 편집 거부 가능), 결과 판정 연결, Startup Cleanup 개정은 Pending이다. `.replacingSaved`에서 B의 Save가 오류를 던졌지만 반영되었거나 Save 뒤 확인이 실패하면 B Row는 보존되고 A는 건드리지 않으므로 A와 B가 함께 저장된 상태로 남을 수 있다(Single Saved Project에서 벗어남, A가 B 뒤에 가려짐) — 이 처리는 OD-13 / D8.5와 함께 Pending이다.
 
+**Save 결과 처리 결정(ADR-050 050-D D8.5a, 2026-10-02 Accepted — Production 미구현):** Prior Snapshot은 Gate 안에서 Materialize 전에 Fresh-read로 읽고 Save · 관측 · 분류를 Gate 안에서 끝낸다(P1). `committedUnverified` / `indeterminate`이면 Editor는 저장되지 않는 Reconciliation 필요 상태로 모든 변경을 막고 자동 Reload 없이 프로젝트 화면으로 돌아가 기존 Gate 안 Load로 다시 연다(P2, U1 / U2 문구 P3). Save 오류 뒤 `completed`는 오류를 Log에만 남기고 실패 Alert 없이 정상 성공(P4), Projects는 완료가 아닌 결과 뒤 다시 읽고 Load 실패는 "모름"으로 만들기 · 열기를 막으며 `다시 불러오기` Action을 둔다(P5). `priorConfirmed`는 이번 Slice에서 Rollback · Retry 없이 확인 전용 문구를 쓰며, 그 "저장되지 않았어요" 문구는 Save 오류 뒤의 `priorConfirmed`에만 쓰고 Save 성공이나 `indeterminate`에는 쓰지 않는다(P6, 임시). Select Clips `.replacingSaved`는 `replaceProject`로 연결하고 두 Save 분기를 제거한다(P8). 동기 Editor 변경의 결과 처리(P7)는 보류이며, Stale Editor · Prior 읽기 불가 정지의 안내와 Projects "모름" 상태 문구는 미정이다.
+
 ### Responsibilities
 
 - Project 생성

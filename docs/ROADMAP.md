@@ -1797,7 +1797,8 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 | Import Source Inspection · Selection Preflight 구성요소 | 구현(`5416111`, `c570d5b`, Phase 6 확장은 `75c2cb9` · `da1f337`) |
 | Direct-camera H.264 SDR Enforcement(Task 29b) | 구현(`bfc4451`) |
 | Select Clips / Editor Add / Replace 통합 | 미구현 |
-| Save 뒤 Media 보존(ADR-050 050-D D8.0 보존 규칙) | Select Clips 생성 · 확인 실패, Editor Add / Replace Save 시도 실패, 두 Save `.replacingSaved`의 A Media 제거 조건 수리 · Test; 실패 안내 · Editor 다시 읽기 · 결과 판정 연결 · Startup Cleanup 개정은 Pending |
+| Save 결과 처리 결정(ADR-050 050-D D8.5a) | P1–P6 · P8 Accepted(2026-10-02), Production 미구현; P7(동기 Editor 변경) 보류; 구현 Slice 순서는 정해지지 않음 |
+| Save 뒤 Media 보존(ADR-050 050-D D8.0 보존 규칙) | Select Clips 생성 · 확인 실패, Editor Add / Replace Save 시도 실패, 두 Save `.replacingSaved`의 A Media 제거 조건 수리 · Test; 실패 안내 · Editor 다시 읽기(2026-10-02: D8.5a P2 · P3 · P6으로 결정됨, 미구현) · 결과 판정 연결 · Startup Cleanup 개정은 Pending |
 | Lifecycle Gate 적용(ADR-039 §8 확장 / 050-D D6 · D8.4 직렬화 전제조건) | Home Project 삭제 · Editor Add / Replace의 Target 재확인 · Materialize · Commit을 공유 Gate로 직렬화 구현 · Test; Prior Snapshot 시점 · 결과 판정 연결 · Rollback · Retry · Late Result · 안내는 Pending |
 | Save 결과 관측(ADR-050 050-D OD-10) | 구현 정책 Accepted · `observePersistedState(for:)` 구현 · Test(연결 없음); Lifecycle Gate 직렬화 · 분류기 / Coordinator 연결 · Integration은 Pending (2026-10-02 갱신: Gate 적용 범위는 위 행대로 구현, 관측 Helper의 Gate 안 연결은 Pending) |
 | Save Outcome 분류(ADR-050 050-D D8.0) | 분류 규칙 Accepted · 순수 `ProjectSaveOutcomeClassifier` 구현(연결 없음); 독립 Read(OD-10) · Lifecycle Gate · Rollback · 안내 · Integration은 Pending (2026-10-02 갱신: OD-10 구현 정책 Accepted · 관측 Helper 구현, 연결은 Pending) |
