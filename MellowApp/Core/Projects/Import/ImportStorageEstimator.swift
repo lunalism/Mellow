@@ -37,6 +37,8 @@ enum ImportStorageEstimateError: Error, Hashable, Sendable {
     /// An internal exact-rational value was outside its domain (negative numerator or non-positive
     /// denominator). Not reachable from validated public inputs; reported instead of mislabelled.
     case invalidRational
+    /// AAC passthrough is planned but `S_audio` is unavailable: fail closed (050-A — never a pass, never zero).
+    case sourceAudioPayloadUnavailable
 }
 
 /// How a normalized output's audio is estimated (050-A).
@@ -151,6 +153,26 @@ enum ImportStorageCheck: Hashable, Sendable {
 }
 
 enum ImportStorageEstimator {
+    // MARK: Output audio input (050-A / OA-4)
+
+    /// The estimate's audio input from the ACTUAL normalization plan's audio strategy and the measured
+    /// source payload. The plan decides (never "non-AAC" alone): no output audio → `.none`; transcode →
+    /// the accepted transcode estimate; AAC passthrough → the measured `S_audio` (max of the track's stored
+    /// and delivered bytes), and without a measurement the estimate fails closed.
+    static func outputAudio(for strategy: WorkingMediaAudioStrategy, sourcePayload: ImportAudioPayloadMeasurement) throws(ImportStorageEstimateError) -> ImportOutputAudioEstimate {
+        switch strategy {
+        case .none:
+            return .none
+        case .transcode:
+            return .transcode
+        case .passthroughAAC:
+            // S_audio = max(stored, delivered) of the selected track (OA-4 clarification 2026-10-05).
+            guard let bytes = sourcePayload.sAudioBytes else { throw .sourceAudioPayloadUnavailable }
+            guard bytes >= 0 else { throw .negativeByteCount }
+            return .passthrough(sourcePayloadBytes: bytes)
+        }
+    }
+
     // MARK: Normalized output (050-A)
 
     static func normalizedOutput(sourceDuration: MediaTime, audio: ImportOutputAudioEstimate) throws(ImportStorageEstimateError) -> ImportNormalizedOutputEstimate {

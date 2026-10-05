@@ -20,9 +20,34 @@ protocol ImportSourceInspecting: Sendable {
     func inspect(url: URL) async throws -> ImportSourceFacts
 }
 
+/// The one rule for which source audio track AAC passthrough copies: the first audio track the asset
+/// reports. Used by the normalizer and by the `S_audio` measurement, so the two cannot diverge.
+enum ImportAudioTrackSelection {
+    static func passthroughSourceTrack(of asset: AVAsset) async throws -> AVAssetTrack? {
+        try await asset.loadTracks(withMediaType: .audio).first
+    }
+}
+
+/// Checked running total of compressed sample sizes for `S_audio`.
+struct ImportAudioPayloadAccumulator: Equatable, Sendable {
+    private(set) var total: Int64 = 0
+
+    /// Adds one buffer. A buffer that reports samples but no sample data, a negative size, or a total
+    /// that would overflow `Int64` is a problem (the caller reports the value as unavailable).
+    mutating func add(sampleCount: Int, totalSampleSize: Int) -> ImportAudioPayloadProblem? {
+        guard totalSampleSize >= 0, sampleCount >= 0 else { return .invalidSampleSize }
+        if sampleCount > 0, totalSampleSize == 0 { return .invalidSampleSize }
+        guard let size = Int64(exactly: totalSampleSize) else { return .arithmeticOverflow }
+        let (sum, overflow) = total.addingReportingOverflow(size)
+        guard !overflow else { return .arithmeticOverflow }
+        total = sum
+        return nil
+    }
+}
+
 /// AVFoundation-backed inspector (ADR-045 §11, ADR-046 §4). Stateless and safe to call from
-/// concurrent tasks. Reads metadata only — no decode of the sample stream, no mutation of the
-/// source, no copy. The caller owns the URL: Photos-import sources reach this adapter only after
+/// concurrent tasks. Reads metadata plus the audio track's compressed sample sizes (`S_audio`) — no decode
+/// of the sample stream, no mutation of the source, no copy. The caller owns the URL: Photos-import sources reach this adapter only after
 /// the selector has copied them into a Mellow-owned workspace, so no security-scoped access is
 /// started here.
 struct AVAssetImportSourceInspector: ImportSourceInspecting {
@@ -109,8 +134,85 @@ struct AVAssetImportSourceInspector: ImportSourceInspecting {
             if let description = descriptions?.first {
                 facts.audio = Self.audioFacts(from: description)
             }
+            // Measured only where AAC passthrough can happen — the same ADR-048 assessment the plan builder
+            // uses — and only for a duration preflight could accept, so long or transcoded sources are never
+            // read in full. Otherwise the value stays "not measured" (a passthrough estimate fails closed).
+            if Self.mayPassAudioThrough(facts) {
+                facts.audioPayload = try await Self.measureAudioPayload(asset: asset, inspectedTrackID: audio.trackID)
+            }
+        } else {
+            facts.audioPayload = .noAudioTrack
         }
         return facts
+    }
+
+    // MARK: Audio payload (ADR-050 050-A `S_audio`)
+
+    static func mayPassAudioThrough(_ facts: ImportSourceFacts) -> Bool {
+        guard ImportPreflightClassifier.assessAudio(facts) == .passthroughAAC, case .exact(let duration) = facts.duration else { return false }
+        return !(ImportPreflightPolicy.maximumDuration < duration)
+    }
+
+    /// Measures the track the normalizer passes through: its stored sample-data bytes and the bytes the
+    /// passthrough read delivers (S_audio is their maximum). The selection must resolve to the track whose
+    /// format facts were inspected. Any failure is a fact (`.unavailable`), never an inspection error;
+    /// cancellation throws.
+    static func measureAudioPayload(asset: AVAsset, inspectedTrackID: CMPersistentTrackID) async throws -> ImportAudioPayloadMeasurement {
+        let track: AVAssetTrack?
+        do { track = try await ImportAudioTrackSelection.passthroughSourceTrack(of: asset) } catch let cancellation as CancellationError {
+            throw cancellation
+        } catch {
+            return .unavailable(.trackLoadFailed)
+        }
+        try Task.checkCancellation()
+        guard let track, track.trackID == inspectedTrackID else { return .unavailable(.trackSelectionMismatch) }
+        // OA-4 clarification (2026-10-05): S_audio = max(stored, delivered) of this ONE track.
+        let stored: ImportAudioByteCount
+        do { stored = .bytes(try await track.load(.totalSampleDataLength)) } catch let cancellation as CancellationError {
+            throw cancellation
+        } catch {
+            stored = .unavailable(.storedSizeUnavailable)
+        }
+        try Task.checkCancellation()
+        if case .unavailable(let problem) = stored { return .unavailable(problem) }
+        let delivered = try readDeliveredBytes(asset: asset, track: track)
+        return .combining(trackID: track.trackID, stored: stored, delivered: delivered)
+    }
+
+    /// The compressed bytes the normalizer's passthrough read delivers for `track`.
+    static func readDeliveredBytes(asset: AVAsset, track: AVAssetTrack) throws -> ImportAudioByteCount {
+        let reader: AVAssetReader
+        do { reader = try AVAssetReader(asset: asset) } catch { return .unavailable(.readerSetupFailed) }
+        // Exactly the normalizer's passthrough read: no output settings (compressed samples as stored),
+        // no time range (the whole asset), no copying of sample data.
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return .unavailable(.readerSetupFailed) }
+        reader.add(output)
+        guard reader.startReading() else { return .unavailable(.readerSetupFailed) }
+        return try drainAudioPayload(next: { output.copyNextSampleBuffer() }, finalStatus: { reader.status }, cancelReading: { reader.cancelReading() })
+    }
+
+    /// Sums `CMSampleBufferGetTotalSampleSize` one buffer at a time (each released before the next), with
+    /// checked arithmetic. Cancellation stops reading and throws `CancellationError`; a reader that does
+    /// not finish `.completed` makes the value unavailable.
+    static func drainAudioPayload(next: () -> CMSampleBuffer?, finalStatus: () -> AVAssetReader.Status,
+                                  cancelReading: () -> Void) throws -> ImportAudioByteCount {
+        var accumulator = ImportAudioPayloadAccumulator()
+        while true {
+            if Task.isCancelled {
+                cancelReading()
+                throw CancellationError()
+            }
+            guard let buffer = next() else { break }
+            if let problem = accumulator.add(sampleCount: CMSampleBufferGetNumSamples(buffer), totalSampleSize: CMSampleBufferGetTotalSampleSize(buffer)) {
+                cancelReading()
+                return .unavailable(problem)
+            }
+        }
+        try Task.checkCancellation()
+        guard finalStatus() == .completed else { return .unavailable(.readingFailed) }
+        return .bytes(accumulator.total)
     }
 
     // MARK: Format-description mapping (pure over a CMFormatDescription; unit-tested directly)

@@ -227,6 +227,90 @@ enum ImportNormalizationTransform {
     }
 }
 
+/// Why the source audio payload (`S_audio`) could not be measured. Diagnostic only; a passthrough
+/// estimate without a measurement fails closed (ADR-050 050-A).
+enum ImportAudioPayloadProblem: Hashable, Sendable {
+    /// No measurement was taken: unreadable source, facts built without one, or a source that cannot be
+    /// passed through (not AAC per the ADR-048 assessment, or longer than the eligible maximum).
+    case notMeasured
+    /// The audio tracks could not be loaded for selection.
+    case trackLoadFailed
+    /// The passthrough track selection did not resolve to the inspected audio track.
+    case trackSelectionMismatch
+    case readerSetupFailed
+    case readingFailed
+    /// A sample buffer reported samples but no sample data size.
+    case invalidSampleSize
+    case arithmeticOverflow
+    /// The selected track's stored sample-data size could not be loaded.
+    case storedSizeUnavailable
+    /// The selected track reported a negative stored sample-data size.
+    case invalidStoredSize
+    /// One count is zero while the other is positive: the two do not describe the same payload, and
+    /// taking the maximum would silently fall back to the other count.
+    case contradictoryCounts
+}
+
+/// One byte count of the selected audio track: a value, or why it is unavailable.
+enum ImportAudioByteCount: Hashable, Sendable {
+    case bytes(Int64)
+    case unavailable(ImportAudioPayloadProblem)
+}
+
+/// Both measurements of ONE selected source audio track (ADR-050 050-A, OA-4 clarification 2026-10-05).
+/// Compressed sample data only — not decoded PCM, not container size, not `estimatedDataRate`, never the
+/// whole-file size. Built only through `ImportAudioPayloadMeasurement.combining`, so both counts are valid.
+struct ImportAudioPayload: Hashable, Sendable {
+    let trackID: Int32
+    /// The track's stored sample-data bytes (`AVAssetTrack.totalSampleDataLength`).
+    let storedBytes: Int64
+    /// The compressed sample bytes the normalizer-equivalent passthrough reader delivers.
+    let deliveredBytes: Int64
+
+    /// `S_audio = max(stored, delivered)`: a conservative policy input, not a proven output-size bound.
+    var sAudioBytes: Int64 { max(storedBytes, deliveredBytes) }
+
+    fileprivate init(trackID: Int32, storedBytes: Int64, deliveredBytes: Int64) {
+        self.trackID = trackID
+        self.storedBytes = storedBytes
+        self.deliveredBytes = deliveredBytes
+    }
+}
+
+/// ADR-050 050-A `S_audio` for the source audio track AAC passthrough copies (`ImportAudioTrackSelection`).
+enum ImportAudioPayloadMeasurement: Hashable, Sendable {
+    /// The source has no audio track: nothing to pass through.
+    case noAudioTrack
+    case measured(ImportAudioPayload)
+    case unavailable(ImportAudioPayloadProblem)
+
+    /// Both counts must exist and be valid; otherwise the value is unavailable — never zero, never the
+    /// other count alone. The stored-size problem is reported first. Zero on one side with a positive count
+    /// on the other is contradictory (unavailable); zero on both sides is a valid empty track.
+    static func combining(trackID: Int32, stored: ImportAudioByteCount, delivered: ImportAudioByteCount) -> ImportAudioPayloadMeasurement {
+        let storedBytes: Int64
+        switch stored {
+        case .unavailable(let problem): return .unavailable(problem)
+        case .bytes(let value):
+            guard value >= 0 else { return .unavailable(.invalidStoredSize) }
+            storedBytes = value
+        }
+        switch delivered {
+        case .unavailable(let problem): return .unavailable(problem)
+        case .bytes(let value):
+            guard value >= 0 else { return .unavailable(.invalidSampleSize) }
+            guard (storedBytes == 0) == (value == 0) else { return .unavailable(.contradictoryCounts) }
+            return .measured(ImportAudioPayload(trackID: trackID, storedBytes: storedBytes, deliveredBytes: value))
+        }
+    }
+
+    /// The measured `S_audio`, or nil when there is none.
+    var sAudioBytes: Int64? {
+        if case .measured(let payload) = self { return payload.sAudioBytes }
+        return nil
+    }
+}
+
 struct ImportAudioFacts: Hashable, Sendable {
     var fourCC: String
     var sampleRate: Double
@@ -276,6 +360,9 @@ struct ImportSourceFacts: Hashable, Sendable {
     var audio: ImportAudioFacts?
     var byteCount: Int64
     var modificationDate: Date?
+    /// `S_audio` (050-A). Defaults to "not measured" so a value built without a measurement can never
+    /// pass for zero payload.
+    var audioPayload: ImportAudioPayloadMeasurement = .unavailable(.notMeasured)
 
     // MARK: Derived
 

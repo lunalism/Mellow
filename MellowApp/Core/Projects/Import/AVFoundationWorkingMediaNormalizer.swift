@@ -819,7 +819,8 @@ private final class NormalizationRun: @unchecked Sendable {
             (timeRange, naturalSize, segments) = try await track.load(.timeRange, .naturalSize, .segments)
             videoFormats = try await track.load(.formatDescriptions)
             if plan.audio != .none {
-                guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
+                // The same selection the `S_audio` measurement uses (ADR-050 050-A).
+                guard let track = try await ImportAudioTrackSelection.passthroughSourceTrack(of: asset) else {
                     throw WorkingMediaNormalizationError.missingSourceTrack(.audio)
                 }
                 audioTrack = track

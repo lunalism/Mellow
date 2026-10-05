@@ -3989,7 +3989,7 @@ IMG_0130 출력은 H.264 High Level 4.0을 신호했지만 합성 출력의 Leve
 
 ## Decision Unit 050-A — 정규화 출력 Estimate와 정책 Allowance
 
-**Unit Status:** **Accepted(2026-10-02, 사용자 부분 승인)**. Policy Estimate이며 증명된 상한이 아니다. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` — Passthrough의 `S_audio`는 호출자가 명시적으로 넘기며(Source File 전체 크기로 대체하지 않는다) Inspector Fact 연결은 Pending이다.
+**Unit Status:** **Accepted(2026-10-02, 사용자 부분 승인)**. Policy Estimate이며 증명된 상한이 아니다. Step 5B(2026-10-02) 구현: `ImportStorageEstimator.normalizedOutput` / `remainingOutputBytes` — Passthrough의 `S_audio`는 호출자가 명시적으로 넘기며(Source File 전체 크기로 대체하지 않는다) Inspector Fact 연결은 Pending이다. (2026-10-05 갱신: `ImportSourceFacts.audioPayload` — 정규화 Passthrough와 같은 Track 선택(`ImportAudioTrackSelection`)과 같은 읽기 범위(설정 없는 Track Output, Asset 전체)의 압축 Sample 크기 합, Checked 산술, 측정 불가는 명시적 `.unavailable`(0으로 대체하지 않음), 취소는 별도로 전파 — 와 순수 대응 `ImportStorageEstimator.outputAudio(for:sourcePayload:)`(계획 기준: 없음 → 0, Transcode → Accepted 추정, AAC Passthrough → 측정값, 측정 없음 → `sourceAudioPayloadUnavailable` Fail-closed)가 구현되었다; 연결 없음. 측정은 AAC Passthrough가 가능한 Source(ADR-048 평가가 `passthroughAAC`이고 Duration이 최대 이하)에만 하며 그 밖은 "측정 안 함"이다. 미결 질문: 합성 AAC에서 측정값이 정규화 출력의 저장 Payload보다 작게 관측되었다(원인 미확인) — 아래 OA-4 참고.) (2026-10-05 추가 갱신: 이 질문은 OA-4 명확화로 해결 — `S_audio`는 선택된 같은 Track의 저장 Sample Data Byte와 Passthrough Reader 전달 Byte 가운데 큰 값이며 둘 다 유효해야 한다; 구현됨.)
 
 정규화가 필요한 항목 j마다:
 
@@ -4007,7 +4007,7 @@ E_norm(j)  = V(j) + A(j) + C_out
 | `R_video` | 7,500,000 B/s | 경험적 표본 통계(정책 선택으로 반올림) | 1080p-class 출력의 Logical 최대 관측 7,450,709 B/s(합성 Noise, Audio 없음)를 올린 값이다. Allocated 기준 관측 최대 7,649,690 B/s보다 작으며 관측된 24개 출력에서는 그 차이가 `C_out` 안에 들어갔으며 그 밖의 출력에 대해서는 보장하지 않는다. 실제 4K60 HDR / Dolby Vision · 고움직임 · 저조도 Source는 측정되지 않았다. 상한이 아니다. |
 | `m` | 1/2 | 소유자 선택 정책 Margin | 측정에서 유도하지 않았다. 관측 사실은 같은 Source 출력의 Run 간 약 8.5% 변동과 미측정 Source 범주의 존재뿐이다. |
 | `C_out` | 2,097,152 B / 출력 File | 소유자 선택 정책 Allowance | 관측 Allocated − Logical 최대 1,006,513 B(출력 38 MB 이하 24개)이다. 더 큰 출력의 여유분과 Passthrough Audio의 Sample Table 증가는 측정되지 않았다. |
-| `S_audio` | Source에서 읽는 정확한 값 | Source Fact | AAC Passthrough는 Audio Bitstream을 그대로 복사하므로 Priming Packet을 포함한 Source Audio Payload가 출력 Audio Payload의 근거다. 현재 `ImportSourceFacts`에는 이 값이 없다. Container 증가분은 `C_out`에 포함되는 것으로 가정하며 측정되지 않았다. |
+| `S_audio` | Source에서 읽는 정확한 값 | Source Fact | AAC Passthrough는 Audio Bitstream을 그대로 복사하므로 Priming Packet을 포함한 Source Audio Payload가 출력 Audio Payload의 근거다. 현재 `ImportSourceFacts`에는 이 값이 없다. (2026-10-05: `ImportSourceFacts.audioPayload`로 추가 — 위 Unit Status 참고.) Container 증가분은 `C_out`에 포함되는 것으로 가정하며 측정되지 않았다. |
 | `R_tx` | 32,000 B/s | 소유자 선택 정책 Allowance | ADR-048의 AAC-LC 요청값(Mono 96 kbps / Stereo 128 kbps = 16,000 B/s)의 2배다. 요청은 상한이 아니며 Transcode 출력은 측정되지 않았다. `3136/48000 s`는 AAC Encoder Priming 2,112 Sample과 마지막 Frame 1,024 Sample을 위한 정책상 시간 여유이며 측정되지 않았다. |
 
 - 이전 초안의 "AAC Channel당 Frame당 6144 bit" 기반 Audio 상한은 철회한다. 그 값이 무엇을 제한하는지(NCC 정의, LFE / CCE, 960-sample Frame, Implicit SBR의 Sample Rate 보고)가 이 ADR에서 권위 있게 확인되지 않았기 때문이다.
@@ -4487,7 +4487,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 
 ## 미해결 의존성(Import Storage Gate를 닫기 전 필요)
 
-- 050-A: `S_audio` Inspector Fact와 Estimator 연결.
+- 050-A: `S_audio` Inspector Fact와 Estimator 연결. (2026-10-05: Inspector Fact와 순수 Estimator 입력 대응 구현 — 실제 검사 경계 연결은 050-C 결정 뒤; 측정 범위 질문은 OA-4 명확화로 해결.)
 - 050-D 검토 후속 2: `.replacingSaved` — OD-14 (a) Accepted와 ADR-033 Revision 1(2026-10-02), 결합 Save 측정(Exploratory), Repository API `replaceProject(previousID:with:)` 구현 · Test 완료; Coordinator 연결, D8 결과 판정, 확인 방법(OD-10), 안내는 Pending. (2026-10-02 갱신: OD-10 구현 정책 Accepted · `observePersistedState(for:)` 구현; 연결은 Pending.)
 - 050-B(선택, Gate를 막지 않음): Operation 도중 Checkpoint, 210 Row를 넘는 큰 기존 Store / WAL(Store 크기 효과), 동시 Reader 조건의 추가 Metadata Evidence. 이 조건들은 Accepted Estimate 밖이며 아래 필수 Integration Gate와 구별된다.
 - 050-C: C0a 구현, U의 신선도와 Purgeable 공간 동작 확인.
@@ -4496,6 +4496,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 - 필수 Integration Gate(통과 주장 없음):
   - 실제 System PhotosPicker Transfer(iPhone 12): Provider File 위치 · Volume · 해제 시점 · Clone 여부, `.current` Encoding.
   - 실제 Source: 4K30 SDR, 4K60 HDR / Dolby Vision, 1080p60, Phase-5-ready Camera Clip, Portrait Aspect Mismatch, 고Detail / 고움직임, 저조도 Noise, AAC Passthrough(Stereo 및 2 Channel 초과), non-AAC `audioTranscode`.
+    - 미검증 재생 관측(2026-10-05, 소유자 보고): Mellow 재생이 약간 작게 들렸다고 보고되었으나 비교는 결론이 나지 않았다. 원인은 정해지지 않았고 `S_audio`와 연결하지 않으며 Gain 변경은 없다; 실제 Source 검증에서 확인할 항목이다.
   - Low-storage: C0–C3 / CR 부족, Runtime Disk Full, 공간 확보 뒤 Retry, Replace 보존, U의 신선도.
   - Rollback-to-Workspace: 부분 Materialize, Save 실패, Restoration 실패, Mixed Set Retry 성공; Post-commit 확인 실패에서 Media 보존.
   - Device: Workspace Sweep End-to-end(Attempt 하위 Directory 포함).
@@ -4507,7 +4508,7 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
 | OA-1 | `R_video = 7,500,000 B/s` | 새 정책(ADR-024 Formula 공백) | 관측 Logical 최대 7,450,709 B/s; 합성 · 미측정 범주 다수; 상한 아님 | 없음(실제 Fixture로 재검토 권장) | **Accepted** |
 | OA-2 | `m = 1/2` | 새 정책 | 측정에서 유도하지 않음; Run 간 8.5% 변동만 관측 | 없음 | **Accepted** |
 | OA-3 | `C_out = 2 MiB` | 새 정책 | 관측 최대 1,006,513 B(≤ 38 MB 출력) | 없음 | **Accepted** |
-| OA-4 | Passthrough `S_audio`; Transcode `R_tx = 32,000 B/s` + `3136/48000 s` | 새 정책 | `S_audio`는 정확한 Source 값; `R_tx`와 Priming 여유는 측정되지 않음 | `S_audio` Inspector Fact | **Accepted**(Inspector 연결은 Pending) |
+| OA-4 | Passthrough `S_audio`; Transcode `R_tx = 32,000 B/s` + `3136/48000 s` | 새 정책 | `S_audio`는 정확한 Source 값; `R_tx`와 Priming 여유는 측정되지 않음 | `S_audio` Inspector Fact | **Accepted**(Inspector 연결은 Pending) — **2026-10-05: Inspector Fact 구현(`audioPayload`, 정규화와 같은 Track · 읽기 범위); 미결 질문(Proposed 아님 · 결정 필요): 합성 AAC(Priming 정보 없음)에서 Source 저장 21,320 B, Reader 전달(= 측정) 21,080 B, 정규화 출력 저장 21,320 B로 측정이 출력보다 240 B(Priming Packet 2개) 작았다; Encoder가 만든 AAC에서는 세 값이 같았다. 실제 iPhone / Photos AAC에서의 차이는 확인되지 않았다** — **명확화(2026-10-05, 사용자 승인 — Byte 범위만): `S_audio = max(선택된 Source Audio Track의 저장 Sample Data Byte, 정규화와 같은 Passthrough Reader가 전달하는 압축 Sample Data Byte)`; 두 값은 같은 선택 Track을 설명해야 하고 둘 다 성공 · 유효해야 하며, 어느 하나라도 없거나 무효이거나 Overflow면 미측정(0이나 다른 값으로 대체하지 않음, Passthrough 추정은 Fail-closed); 구현은 한쪽이 0이고 다른 쪽이 양수인 경우를 모순(무효)으로 보아 미측정으로 처리하고 양쪽 모두 0은 빈 Track의 유효한 0으로 본다; 보수적 정책 입력이며 증명된 출력 크기 상한이 아니다. 위 관측(21,320 / 21,080 / 21,320 B)은 그대로 보존되며 이 규칙의 `S_audio`는 21,320 B다. 구현됨(연결 없음)** |
 | OB-1 | `W_op = Σ_saves (W_save + W_row × R_s)`, `W_save = 196,608 B`, `W_row = 512 B` | 새 정책(경험적 관측 + 정책 Margin) | 측정점(D ≤ 200, n ≤ 10, Store ≤ 210 Row) 안 관측 최대값 대비 약 1.33배 / 1.57배; Store 크기 효과는 별도 항 없음; 도중 Checkpoint · 큰 Store · 동시 Reader 미측정; 상한 아님 | 없음(위 미측정 조건은 Estimate 밖이며 Reserve가 덮는다고 보장하지 않음; 초과 시 Runtime 쓰기 실패 처리) | **Accepted** |
 | OC-1 | Volume별 Occupancy / Additional 검사, 경계 C0 / C0a / C1 / C2 / C3 / CR, Fail-closed | ADR-024 적용 + 새 정책 | Capacity 값의 신선도 미증명 | C0a 구현; 경계 연결 | 계산 정책(Volume별 계산 · Fail-closed) **Accepted**; 경계 C0 / C0a / C1 / C2 / C3 / CR 연결은 Proposed |
 | OC-2 | `Reserve_import = 256 MiB` | 새 정책(ADR-024: 0 아님) | 측정에서 유도하지 않음; 측정되지 않은 위험을 덮는다고 보장하지 않음 | 없음 | **Accepted** |
