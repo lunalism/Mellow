@@ -1409,6 +1409,33 @@ final class MellowUITests: XCTestCase {
         backToCamera(in: app)
     }
 
+    /// D8.5a P5 / D8.5b: a failed saved-Project lookup is "unknown" — approved copy, creating and opening
+    /// unavailable, an explicit `다시 불러오기` — and a successful reload restores the normal screen. Simulator
+    /// store only (`-uiTestProjectsEntry` starts from an emptied store); one injected lookup failure.
+    @MainActor
+    func testProjectsScreenUnknownLookupBlocksActionsUntilExplicitReload() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestProjectsLookupFailures=1"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "프로젝트를 불러오지 못했어요")
+        XCTAssertEqual(app.staticTexts["projectsEntrySupporting"].label, "저장된 프로젝트를 확인할 수 없어요. 다시 불러와주세요.")
+        let startNew = app.buttons["startNewProject"]
+        XCTAssertTrue(startNew.exists)
+        XCTAssertFalse(startNew.isEnabled, "creation disabled while unknown")
+        XCTAssertFalse(app.buttons["loadExistingProject"].exists, "opening unavailable while unknown")
+        let reload = app.buttons["reloadProjects"]
+        XCTAssertTrue(reload.exists)
+        XCTAssertEqual(reload.label, "다시 불러오기")
+        XCTAssertTrue(reload.isEnabled)
+        try auditAndCapture(app, name: "Projects Screen Unknown Lookup")
+
+        reload.tap()
+        XCTAssertTrue(app.buttons["loadExistingProject"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["projectsEntryHeadline"].label, "아직 프로젝트가 없어요", "successful empty load")
+        XCTAssertFalse(app.buttons["reloadProjects"].exists)
+        XCTAssertTrue(app.buttons["startNewProject"].isEnabled, "actions restored after a successful load")
+    }
+
     @MainActor
     func testProjectsScreenLoadExistingOpensSavedProjectEditorDirectly() throws {
         let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestSeedEditorProject", "-uiTestProjectsEntry"])

@@ -144,15 +144,75 @@ final class ProjectsEntryModelTests: XCTestCase {
         XCTAssertEqual(model.savedProjectID, saved.id, "the entry still reports the same saved Project")
     }
 
-    func testLoadFailureFallsBackToNoSavedProjectWithoutCreating() throws {
+    func testLoadFailureIsUnknownAndBlocksCreatingAndOpening() throws {
         let repository = FailingLookupRepository()
         let recorder = Recorder()
         let model = makeModel(repository: repository, recorder: recorder)
         model.load()
+        XCTAssertEqual(model.lookup, .unknown, "a failed lookup is unknown, not 'no saved Project' (D8.5a P5)")
+        XCTAssertTrue(model.isLookupUnknown)
         XCTAssertNil(model.savedProjectID)
-        XCTAssertFalse(model.hasSavedProject)
-        XCTAssertTrue(recorder.newProject.isEmpty)
+        XCTAssertFalse(model.canStartNewProject)
+        model.requestNewProject()
+        model.continueEditing()
+        XCTAssertFalse(model.isReplacementConfirmationPresented)
+        XCTAssertTrue(recorder.newProject.isEmpty, "creation is disabled while unknown")
+        XCTAssertTrue(recorder.continued.isEmpty, "opening is disabled while unknown")
         XCTAssertEqual(repository.created, 0, "a failed lookup never creates a Project")
+    }
+
+    func testActionsStayDisabledUntilTheFirstSuccessfulLookup() {
+        let recorder = Recorder()
+        let model = makeModel(repository: InMemoryProjectRepository(), recorder: recorder)
+        XCTAssertEqual(model.lookup, .notLoaded)
+        XCTAssertFalse(model.canStartNewProject)
+        model.requestNewProject()
+        XCTAssertTrue(recorder.newProject.isEmpty)
+    }
+
+    func testExplicitReloadRestoresActionsOnlyAfterASuccessfulLoad() throws {
+        let repository = FailableProjectRepository()
+        let saved = try VlogProject(orientation: .portrait9x16)
+        try repository.create(saved)
+        repository.recentProjectsFails = true
+        let recorder = Recorder()
+        let model = makeModel(repository: repository, recorder: recorder)
+        model.load()
+        XCTAssertEqual(model.lookup, .unknown)
+
+        model.reload()
+        XCTAssertEqual(model.lookup, .unknown, "a failed reload stays unknown")
+        XCTAssertFalse(model.canStartNewProject)
+
+        repository.recentProjectsFails = false
+        model.reload()
+        XCTAssertEqual(model.lookup, .loaded(saved.id))
+        XCTAssertTrue(model.canStartNewProject)
+        model.continueEditing()
+        XCTAssertEqual(recorder.continued, [saved.id])
+
+        // A later failure (after a success) is unknown again — never "no saved Project".
+        repository.recentProjectsFails = true
+        model.load()
+        XCTAssertEqual(model.lookup, .unknown)
+        XCTAssertFalse(model.hasSavedProject)
+    }
+
+    func testSuccessfulEmptyLookupAllowsCreation() {
+        let recorder = Recorder()
+        let model = makeModel(repository: InMemoryProjectRepository(), recorder: recorder)
+        model.load()
+        XCTAssertEqual(model.lookup, .loaded(nil))
+        XCTAssertFalse(model.isLookupUnknown)
+        XCTAssertTrue(model.canStartNewProject)
+    }
+
+    func testUnknownLookupContentUsesTheApprovedCopy() {
+        let content = ProjectsEntryContent.unknownLookup
+        XCTAssertEqual(content.headline, "프로젝트를 불러오지 못했어요")
+        XCTAssertEqual(content.supporting, "저장된 프로젝트를 확인할 수 없어요. 다시 불러와주세요.")
+        XCTAssertEqual(content.visual, .placeholder)
+        XCTAssertEqual(ProjectsEntryModel.UnknownLookupCopy.reloadAction, "다시 불러오기")
     }
 
     // MARK: - Select Clips flow
@@ -206,7 +266,7 @@ final class ProjectsEntryModelTests: XCTestCase {
         let model = makeModel(repository: repository, recorder: recorder, selector: FakeProjectMediaSelector(script: .fail))
         model.load()
         await model.runSelectClips(.fresh)
-        XCTAssertEqual(model.compositionMessage, .failed)
+        XCTAssertEqual(model.compositionMessage, .preparationFailed)
         XCTAssertTrue(try repository.recentProjects().isEmpty)
         XCTAssertEqual(workspaceCount(), 0)
     }
@@ -229,12 +289,153 @@ final class ProjectsEntryModelTests: XCTestCase {
             XCTAssertEqual(Message.requiresImportPreparation(reason).title, "이 영상은 바로 사용할 수 없어요", "\(reason)")
             XCTAssertEqual(Message.requiresImportPreparation(reason).message, "다른 영상을 선택해주세요.", "\(reason)")
         }
-        let all: [Message] = [.requiresImportPreparation(.tooLong), .requiresImportPreparation(.orientation), .requiresImportPreparation(.highDynamicRange), .requiresImportPreparation(.resolution), .requiresImportPreparation(.frameRate), .invalidMedia, .insufficientStorage, .failed]
+        let all: [Message] = [.requiresImportPreparation(.tooLong), .requiresImportPreparation(.orientation), .requiresImportPreparation(.highDynamicRange), .requiresImportPreparation(.resolution), .requiresImportPreparation(.frameRate), .invalidMedia, .insufficientStorage, .projectInspectionFailed, .replacementTargetInvalidated, .preparationFailed, .saveUnverified, .saveIndeterminate, .notSaved]
         for message in all {
             for banned in ["Phase", "가져오기 단계", "HDR", "transcod", "프레임", "normaliz", "정규화"] {
                 XCTAssertFalse((message.title + message.message).localizedCaseInsensitiveContains(banned), "\(message) exposes '\(banned)'")
             }
         }
+    }
+
+    func testSelectClipsOutcomeCopyIsExact() {
+        typealias Message = ProjectsEntryModel.CompositionMessage
+        let expected: [(Message, String, String)] = [
+            (.projectInspectionFailed, "프로젝트를 확인하지 못했어요", "프로젝트 화면에서 다시 확인해주세요."),
+            (.replacementTargetInvalidated, "프로젝트를 교체하지 못했어요", "교체하려던 프로젝트를 찾을 수 없어요."),
+            (.preparationFailed, "영상을 준비하지 못했어요", "영상을 다시 선택해주세요."),
+            (.saveUnverified, "저장 확인이 필요해요", "새 프로젝트는 저장되었지만 지금은 확인하지 못했어요. 프로젝트 화면에서 다시 확인해주세요."),
+            (.saveIndeterminate, "저장 결과를 확인하지 못했어요", "새 프로젝트가 만들어졌는지 지금은 알 수 없어요. 다시 만들기 전에 프로젝트 화면에서 확인해주세요."),
+            (.notSaved, "프로젝트를 만들지 못했어요", "새 프로젝트가 저장되지 않았어요."),
+        ]
+        for (message, title, body) in expected {
+            XCTAssertEqual(message.title, title, "\(message)")
+            XCTAssertEqual(message.message, body, "\(message)")
+            XCTAssertFalse(body.contains("다시 시도"), "no Retry wording (D8.5a P6)")
+        }
+    }
+
+    // MARK: - Save outcomes → presentation and refresh (ADR-050 050-D D8.5a)
+
+    private func composeModel(_ repository: FailableProjectRepository, _ recorder: Recorder) async throws -> ProjectsEntryModel {
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let model = makeModel(repository: repository, recorder: recorder, selector: FakeProjectMediaSelector(script: .fixtures([fixture])))
+        model.load()
+        return model
+    }
+
+    func testCompletedAfterAThrownSaveNavigatesWithoutAnAlert() async throws {
+        let repository = FailableProjectRepository()
+        repository.createThrowsAfterCommit = true
+        let recorder = Recorder()
+        let model = try await composeModel(repository, recorder)
+        await model.runSelectClips(.fresh)
+        XCTAssertNil(model.compositionMessage, "P4: logged only, no failure alert")
+        XCTAssertEqual(recorder.committed.count, 1)
+        XCTAssertEqual(model.lookup, .loaded(recorder.committed.first))
+    }
+
+    func testNonCompletedOutcomesShowTheirCopyStayAndRefresh() async throws {
+        // priorConfirmed (P6)
+        var repository = FailableProjectRepository()
+        var recorder = Recorder()
+        var model = try await composeModel(repository, recorder)
+        repository.createFails = true
+        repository.onSave = { [unowned repository] in repository.recentProjectsFails = true }
+        await model.runSelectClips(.fresh)
+        XCTAssertEqual(model.compositionMessage, .notSaved)
+        XCTAssertEqual(model.lookup, .unknown, "the lookup ran again after the outcome and its failure is unknown")
+        XCTAssertTrue(recorder.committed.isEmpty, "stays on Projects")
+
+        // committedUnverified (U1): the save returned, the observation could not read B.
+        repository = FailableProjectRepository()
+        recorder = Recorder()
+        model = try await composeModel(repository, recorder)
+        repository.stateObservationOverride = { expectation, observed in
+            PersistedStateObservation(projects: observed.projects.mapValues { _ in .unreadable }, createdIdentityHolders: observed.createdIdentityHolders)
+        }
+        await model.runSelectClips(.fresh)
+        XCTAssertEqual(model.compositionMessage, .saveUnverified)
+        XCTAssertTrue(recorder.committed.isEmpty)
+        let saved = try XCTUnwrap(try repository.recentProjects().first, "the saved row is never rolled back")
+        XCTAssertEqual(model.lookup, .loaded(saved.id), "refreshed after a non-completed outcome")
+
+        // indeterminate (U2): the save threw and the observation is unreadable.
+        repository = FailableProjectRepository()
+        recorder = Recorder()
+        model = try await composeModel(repository, recorder)
+        repository.createFails = true
+        repository.stateObservationOverride = { _, observed in
+            PersistedStateObservation(projects: observed.projects.mapValues { _ in .unreadable }, createdIdentityHolders: nil)
+        }
+        await model.runSelectClips(.fresh)
+        XCTAssertEqual(model.compositionMessage, .saveIndeterminate)
+        XCTAssertTrue(recorder.committed.isEmpty)
+        XCTAssertEqual(model.lookup, .loaded(nil))
+    }
+
+    func testInspectionFailureStaysAndRefreshesTheLookup() async throws {
+        let repository = FailableProjectRepository()
+        let recorder = Recorder()
+        let model = try await composeModel(repository, recorder)
+        repository.priorObservationOverride = { [unowned repository] _ in
+            repository.recentProjectsFails = true
+            return .unreadable
+        }
+        await model.runSelectClips(.fresh)
+        XCTAssertEqual(model.compositionMessage, .projectInspectionFailed)
+        XCTAssertEqual(model.lookup, .unknown, "refreshed; the failed refresh stays unknown (no inferred absence)")
+        XCTAssertEqual(repository.createCount, 0)
+        XCTAssertTrue(TestSupport.noProjectMedia(under: root), "nothing materialized")
+    }
+
+    func testInvalidatedReplacementTargetStaysWithoutCreatingB() async throws {
+        let repository = FailableProjectRepository()
+        let a = try VlogProject(orientation: .portrait9x16)
+        try repository.create(a)
+        let recorder = Recorder()
+        let model = try await composeModel(repository, recorder)
+        XCTAssertEqual(model.savedProjectID, a.id)
+        try repository.inner.deleteProject(id: a.id)
+        await model.runSelectClips(.replacingSaved(a.id))
+        XCTAssertEqual(model.compositionMessage, .replacementTargetInvalidated)
+        XCTAssertEqual(model.lookup, .loaded(nil), "refreshed exactly once after invalidation (D8.5b)")
+        XCTAssertTrue(recorder.committed.isEmpty)
+        XCTAssertEqual(repository.createCount, 1, "only the seed: B is never created alone")
+        XCTAssertEqual(repository.replaceCount, 0)
+        XCTAssertTrue(try repository.recentProjects().isEmpty)
+        XCTAssertTrue(TestSupport.noProjectMedia(under: root))
+    }
+
+    func testInvalidationRefreshesOnceAndAFailedRefreshIsUnknownWithoutRetry() async throws {
+        let repository = FailableProjectRepository()
+        let a = try VlogProject(orientation: .portrait9x16)
+        try repository.create(a)
+        let recorder = Recorder()
+        let fixture = try await TestMediaFixtures.shared.portrait(seconds: 2)
+        let selector = FakeProjectMediaSelector(script: .fixtures([fixture]))
+        let model = makeModel(repository: repository, recorder: recorder, selector: selector)
+        model.load()
+        XCTAssertEqual(model.lookup, .loaded(a.id))
+        // A newer Project takes over (A is no longer current) and the post-outcome refresh fails.
+        let newer = try VlogProject(createdAt: Date(timeIntervalSinceNow: 60), updatedAt: Date(timeIntervalSinceNow: 60), orientation: .portrait9x16)
+        try repository.inner.create(newer)
+        repository.recentProjectsFails = true
+
+        await model.runSelectClips(.replacingSaved(a.id))
+        XCTAssertEqual(model.compositionMessage, .replacementTargetInvalidated)
+        XCTAssertEqual(model.lookup, .unknown, "the one refresh failed: unknown, never inferred absence")
+        XCTAssertFalse(model.canStartNewProject)
+        XCTAssertEqual(selector.selectionCount, 1, "no automatic composition retry")
+        XCTAssertEqual(repository.currentProjectObservations, 1, "one gated composition attempt")
+        XCTAssertEqual(repository.replaceCount, 0)
+        XCTAssertEqual(repository.createCount, 1, "only the seed: no B-only fallback")
+        XCTAssertTrue(recorder.committed.isEmpty)
+
+        // The explicit reload is the only way back.
+        repository.recentProjectsFails = false
+        model.reload()
+        XCTAssertEqual(model.lookup, .loaded(newer.id))
+        XCTAssertEqual(selector.selectionCount, 1)
     }
 
     // MARK: - Pre-copy storage admission (STEP 6B)

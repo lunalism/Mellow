@@ -202,6 +202,7 @@ extension SwiftDataProjectRepository {
         case project(UUID)
         case createdProjects(batch: Int)
         case createdClips(batch: Int)
+        case currentProject
     }
 
     #if DEBUG
@@ -267,6 +268,34 @@ extension SwiftDataProjectRepository {
             }
         }
         return PersistedStateObservation(projects: projects, createdIdentityHolders: holders)
+    }
+
+    /// One Project under the same OD-10 policy as `observePersistedState(for:)`: a NEW dedicated context
+    /// (autosave off, `includePendingChanges = false`); the save context and shared objects are never reused.
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord {
+        let context = ModelContext(modelContext.container)
+        context.autosaveEnabled = false
+        return observeProject(id, in: context)
+    }
+
+    /// Same ordering as `recentProjects()` (fetch sorted by `updatedAt` / `createdAt`, every row converted,
+    /// then `RecentProjectOrdering`), read through a NEW dedicated context (autosave off,
+    /// `includePendingChanges = false`): unsaved shared-context edits are invisible, and any failure is
+    /// `.unreadable`.
+    func observeCurrentProjectID() -> ObservedCurrentProject {
+        let context = ModelContext(modelContext.container)
+        context.autosaveEnabled = false
+        do {
+            try injectObservationFault(.currentProject)
+            var descriptor = FetchDescriptor<PersistedVlogProject>(
+                sortBy: [SortDescriptor(\.updatedAt, order: .reverse), SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.includePendingChanges = false
+            let projects = try context.fetch(descriptor).map { try $0.domainValue() }
+            return projects.sorted(by: RecentProjectOrdering.precedes).first.map { .project($0.id) } ?? .none
+        } catch {
+            return .unreadable
+        }
     }
 
     private func observeProject(_ id: UUID, in context: ModelContext) -> ObservedProjectRecord {

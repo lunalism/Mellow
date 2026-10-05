@@ -64,4 +64,24 @@ final class InMemoryProjectRepository: ProjectRepository {
             throw ProjectRepositoryError.projectNotFound
         }
     }
+
+    /// In-memory reads cannot fail and hold no pending changes, so a lookup is the whole observation.
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord {
+        projects[id].map(ObservedProjectRecord.present) ?? .absent
+    }
+
+    func observeCurrentProjectID() -> ObservedCurrentProject {
+        projects.values.sorted(by: RecentProjectOrdering.precedes).first.map { .project($0.id) } ?? .none
+    }
+
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation {
+        var observed: [UUID: ObservedProjectRecord] = [:]
+        for id in Set(expectation.prior.keys).union(expectation.intended.keys) { observed[id] = observePersistedProject(id: id) }
+        var holders: [UUID: Set<UUID>] = [:]
+        for id in expectation.createdProjectIDs { holders[id] = projects[id] == nil ? [] : [id] }
+        for id in expectation.createdClipOwners.keys {
+            holders[id] = Set(projects.values.filter { $0.durableClips.contains { $0.id == id } }.map(\.id))
+        }
+        return PersistedStateObservation(projects: observed, createdIdentityHolders: holders)
+    }
 }

@@ -21,7 +21,9 @@ struct ProjectsEntryView: View {
     var representativeImage: UIImage? = nil
 
     private var content: ProjectsEntryContent {
-        .resolve(hasSavedProject: model.hasSavedProject, representativeImage: representativeImage)
+        model.isLookupUnknown
+            ? .unknownLookup
+            : .resolve(hasSavedProject: model.hasSavedProject, representativeImage: representativeImage)
     }
 
     var body: some View {
@@ -46,16 +48,24 @@ struct ProjectsEntryView: View {
                         .accessibilityIdentifier("projectsEntrySupporting")
                         .padding(.bottom, 28)
                     ProjectsPrimaryButton("새 프로젝트 시작", action: model.requestNewProject)
-                        .disabled(model.isComposing)
-                        .accessibilityHint(model.hasSavedProject
+                        .disabled(!model.canStartNewProject)
+                        .accessibilityHint(!model.canStartNewProject ? ""
+                            : model.hasSavedProject
                             ? "마지막으로 저장한 프로젝트를 교체하기 전에 확인을 요청합니다"
                             : "영상을 골라 새 프로젝트를 시작합니다")
                         .accessibilityIdentifier("startNewProject")
                         .padding(.bottom, 6)
-                    ProjectsSecondaryButton("기존 프로젝트 불러오기", action: model.continueEditing)
-                        .disabled(!model.hasSavedProject)
-                        .accessibilityHint(model.hasSavedProject ? "저장된 프로젝트를 편집기에서 엽니다" : "")
-                        .accessibilityIdentifier("loadExistingProject")
+                    // While the saved-Project lookup is unknown (D8.5a P5), opening is unavailable and the
+                    // quiet slot holds the explicit reload action instead.
+                    if model.isLookupUnknown {
+                        ProjectsSecondaryButton(ProjectsEntryModel.UnknownLookupCopy.reloadAction, action: model.reload)
+                            .accessibilityIdentifier("reloadProjects")
+                    } else {
+                        ProjectsSecondaryButton("기존 프로젝트 불러오기", action: model.continueEditing)
+                            .disabled(!model.hasSavedProject)
+                            .accessibilityHint(model.hasSavedProject ? "저장된 프로젝트를 편집기에서 엽니다" : "")
+                            .accessibilityIdentifier("loadExistingProject")
+                    }
                 }
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
@@ -77,7 +87,7 @@ struct ProjectsEntryView: View {
         } message: {
             Text("새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다.")
         }
-        // One recoverable message for every non-success Select-Clips outcome (never for cancel).
+        // One message for every non-success Select-Clips outcome (never for cancel); the user stays here.
         .alert(
             model.compositionMessage?.title ?? "",
             isPresented: Binding(
@@ -131,6 +141,13 @@ struct ProjectsEntryContent: Equatable {
     let visual: Visual
     let headline: String
     let supporting: String
+
+    /// The saved-Project lookup failed: the state is unknown, not "no Project" (ADR-050 050-D D8.5a P5).
+    static let unknownLookup = ProjectsEntryContent(
+        visual: .placeholder,
+        headline: ProjectsEntryModel.UnknownLookupCopy.title,
+        supporting: ProjectsEntryModel.UnknownLookupCopy.message
+    )
 
     static func resolve(hasSavedProject: Bool, representativeImage: UIImage?) -> ProjectsEntryContent {
         guard hasSavedProject else {

@@ -23,6 +23,26 @@ protocol ProjectRepository {
     /// media until B's complete saved state and A's absence are confirmed. A thrown error does not prove
     /// the prior durable state, and one save call is not a crash / power-loss atomicity guarantee.
     func replaceProject(previousID: UUID, with project: VlogProject) throws
+    /// One Project's persisted state under the accepted OD-10 observation policy (ADR-050 050-D): a read
+    /// failure is `.unreadable`, never absence. Used for the in-gate prior snapshot (D8.5a P1).
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord
+    /// The persisted state a save expectation needs, under the same OD-10 policy, for
+    /// `ProjectSaveOutcomeClassifier`. Several fetches, not one atomic snapshot: callers serialize it with
+    /// lifecycle mutations (the lifecycle gate).
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation
+    /// The current saved Project's ID under the same OD-10 policy, with the existing current-Project ordering
+    /// (`recentProjects()` order: every row decoded, `RecentProjectOrdering`). Any fetch or conversion failure
+    /// is `.unreadable` — never "no Project". Not a cache-independence or atomic-snapshot guarantee; callers
+    /// serialize it with lifecycle mutations.
+    func observeCurrentProjectID() -> ObservedCurrentProject
+}
+
+/// Result of a fresh-read lookup of the current saved Project.
+enum ObservedCurrentProject: Equatable, Sendable {
+    /// The read succeeded and found no Project.
+    case none
+    case project(UUID)
+    case unreadable
 }
 
 enum ProjectRepositoryError: Error, Equatable {

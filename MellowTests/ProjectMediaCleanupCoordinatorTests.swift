@@ -82,6 +82,9 @@ final class ProbingRepository: ProjectRepository {
     }
     func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
     func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation { inner.observePersistedState(for: expectation) }
+    func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
 }
 
 // MARK: - Tests

@@ -216,7 +216,7 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         let repository = InMemoryProjectRepository()
         let workspace = try await store.beginWorkspace()
         let outcome = await coordinator(repository: repository).compose(.fresh, sources: [], workspace: workspace)
-        XCTAssertEqual(outcome, .failed(.noSources))
+        XCTAssertEqual(outcome, .preparationFailed)
         XCTAssertTrue(try repository.recentProjects().isEmpty)
         XCTAssertFalse(TestSupport.exists(workspace.directory))
     }
@@ -252,7 +252,7 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         // Validation passes via a fake inspector, then the workspace file is gone at materialization.
         try FileManager.default.removeItem(at: selected[0].url)
         let outcome = await coordinator(repository: repository, inspector: FakeProjectMediaInspector(.ready())).compose(.fresh, sources: selected, workspace: workspace)
-        XCTAssertEqual(outcome, .failed(.materialization))
+        XCTAssertEqual(outcome, .preparationFailed)
         XCTAssertTrue(try repository.recentProjects().isEmpty)
         XCTAssertTrue(TestSupport.noProjectMedia(under: root))
     }
@@ -263,10 +263,9 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         let workspace = try await store.beginWorkspace()
         let selected = try await sources([try await TestMediaFixtures.shared.portrait(seconds: 2)], in: workspace)
         let outcome = await coordinator(repository: repository).compose(.fresh, sources: selected, workspace: workspace)
-        XCTAssertEqual(outcome, .failed(.persistence))
+        XCTAssertEqual(outcome, .priorConfirmed, "thrown save + confirmed prior state (D8.0)")
         XCTAssertTrue(try repository.recentProjects().isEmpty)
-        // ADR-050 050-D D8.0: a thrown save does not prove nothing committed — B's media is preserved
-        // (an unreferenced copy is startup recovery's).
+        // ADR-050 050-D D8.5a P6: candidate files are left to startup recovery (no rollback-to-workspace).
         XCTAssertFalse(TestSupport.noProjectMedia(under: root), "materialized B media preserved after a save error")
         XCTAssertFalse(TestSupport.exists(workspace.directory))
     }
@@ -337,20 +336,20 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         selected = try await sources([external], in: workspace)
         try FileManager.default.removeItem(at: selected[0].url)
         let outcome5 = await coordinator(repository: repository, inspector: FakeProjectMediaInspector(.ready())).compose(.replacingSaved(a.id), sources: selected, workspace: workspace)
-        XCTAssertEqual(outcome5, .failed(.materialization))
+        XCTAssertEqual(outcome5, .preparationFailed)
         try await assertAIntact("materialization")
 
-        // B persistence failure
-        repository.createFails = true
+        // B persistence failure: the single replacement save throws and nothing landed
+        repository.replaceFails = true
         workspace = try await store.beginWorkspace()
         selected = try await sources([external], in: workspace)
         let outcome6 = await coordinator(repository: repository).compose(.replacingSaved(a.id), sources: selected, workspace: workspace)
-        XCTAssertEqual(outcome6, .failed(.persistence))
+        XCTAssertEqual(outcome6, .priorConfirmed)
         try await assertAIntact("persistence")
         XCTAssertTrue(repository.deletedIDs.isEmpty, "A is never deleted on any failure path")
 
         // storage
-        repository.createFails = false
+        repository.replaceFails = false
         workspace = try await store.beginWorkspace()
         selected = try await sources([external], in: workspace)
         let outcome7 = await coordinator(repository: repository, storage: .insufficient(requiredBytes: 1, usableBytes: 0)).compose(.replacingSaved(a.id), sources: selected, workspace: workspace)
@@ -371,7 +370,8 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         XCTAssertNotEqual(bID, a.id)
         XCTAssertEqual(try repository.recentProjects().map(\.id), [bID], "B is the only saved Project")
         XCTAssertNil(try repository.project(id: a.id))
-        XCTAssertEqual(repository.deletedIDs, [a.id], "A removed exactly once, after B")
+        XCTAssertEqual(repository.replaceCount, 1, "one single-save replacement (ADR-033 Revision 1)")
+        XCTAssertEqual(repository.deletedIDs, [], "no separate deleteProject save")
         await assertFileExists(store, aMedia, false, "A app-owned media cleaned up")
         let b = try XCTUnwrap(repository.project(id: bID))
         await assertFileExists(store, b.clips[0].mediaRelativePath, true)
@@ -379,16 +379,18 @@ final class ProjectCompositionCoordinatorTests: XCTestCase {
         XCTAssertFalse(TestSupport.exists(workspace.directory))
     }
 
-    func testReplacementOrderIsBCommittedBeforeADeleted() async throws {
-        // If deleting A fails, B still stands as the committed saved Project (A was never deleted first).
+    func testReplacementNeverFallsBackToTheTwoSavePath() async throws {
+        // `create` and `deleteProject` both fail: the replacement still completes through `replaceProject`.
         let repository = FailableProjectRepository()
         let (a, _) = try await seedSavedProject(in: repository)
+        let createsAfterSeed = repository.createCount
+        repository.createFails = true
         repository.deleteFails = true
         let workspace = try await store.beginWorkspace()
         let selected = try await sources([try await TestMediaFixtures.shared.portrait(seconds: 2)], in: workspace)
         guard case .committed(let bID) = await coordinator(repository: repository).compose(.replacingSaved(a.id), sources: selected, workspace: workspace) else { return XCTFail() }
-        XCTAssertNotNil(try repository.project(id: bID))
-        XCTAssertNotNil(try repository.project(id: a.id), "A survives a failed cleanup rather than being destroyed first")
-        XCTAssertEqual(try coordinator(repository: repository).lastSavedProject()?.id, bID, "B is current by recency")
+        XCTAssertEqual(repository.createCount, createsAfterSeed, "no create(B)")
+        XCTAssertEqual(repository.deletedIDs, [], "no deleteProject(A)")
+        XCTAssertEqual(try repository.recentProjects().map(\.id), [bID])
     }
 }

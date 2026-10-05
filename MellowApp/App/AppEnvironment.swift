@@ -605,8 +605,21 @@ final class AppEnvironment {
             for project in existing { try? projectRepository.deleteProject(id: project.id) }
         }
         let selector = FakeProjectMediaSelector(script: .cancel)
+        // `-uiTestProjectsLookupFailures=<n>`: the first n saved-Project lookups of this screen fail, so the
+        // unknown state and its explicit reload can be driven on the simulator store (never a device store).
+        var composition = projectComposition
+        if let failures = arguments.first(where: { $0.hasPrefix("-uiTestProjectsLookupFailures=") })
+            .flatMap({ Int($0.replacingOccurrences(of: "-uiTestProjectsLookupFailures=", with: "")) }), failures > 0 {
+            composition = ProjectCompositionCoordinator(
+                repository: LookupFailingProjectRepository(inner: projectRepository, failures: failures),
+                mediaStore: projectMediaStore,
+                validator: Phase5ReadyMediaValidator(inspector: AVAssetProjectMediaInspector()),
+                storage: projectStorageGate,
+                lifecycle: projectLifecycle
+            )
+        }
         uiTestProjectsEntry = ProjectsEntryModel(
-            composition: projectComposition,
+            composition: composition,
             mediaStore: projectMediaStore,
             mediaSelector: selector,
             storageGate: projectStorageGate,
@@ -830,6 +843,28 @@ final class AppEnvironment {
 }
 
 #if DEBUG
+/// UI-test double: the first `failures` `recentProjects()` lookups throw; everything else forwards.
+@MainActor
+private final class LookupFailingProjectRepository: ProjectRepository {
+    private let inner: any ProjectRepository
+    private var remainingFailures: Int
+    struct LookupFailure: Error {}
+    init(inner: any ProjectRepository, failures: Int) { self.inner = inner; remainingFailures = failures }
+    func create(_ project: VlogProject) throws { try inner.create(project) }
+    func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
+    func recentProjects() throws -> [VlogProject] {
+        if remainingFailures > 0 { remainingFailures -= 1; throw LookupFailure() }
+        return try inner.recentProjects()
+    }
+    func update(_ project: VlogProject) throws { try inner.update(project) }
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
+    func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation { inner.observePersistedState(for: expectation) }
+    func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
+}
+
 /// UI-test double: forwards everything except `update`, which always fails.
 @MainActor
 private final class UpdateFailingProjectRepository: ProjectRepository {
@@ -843,6 +878,9 @@ private final class UpdateFailingProjectRepository: ProjectRepository {
     func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
     func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
     func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation { inner.observePersistedState(for: expectation) }
+    func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
 }
 #endif
 

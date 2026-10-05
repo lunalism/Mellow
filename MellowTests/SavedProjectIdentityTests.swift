@@ -112,20 +112,23 @@ final class SavedProjectIdentityTests: XCTestCase {
         let model = model(repository, selector: selector) { opened.append($0) }
         model.load()
 
-        // Session 1: replacement with one confirmed 4 s clip → B committed, A retired.
+        // Session 1: replacement with one confirmed 4 s clip → one single-save `replaceProject` (ADR-033
+        // Revision 1): B committed, A retired, no `create` / `deleteProject` pair.
         await model.runSelectClips(.replacingSaved(a.id))
         let b = try XCTUnwrap(coordinator(repository).lastSavedProject())
         XCTAssertNotEqual(b.id, a.id)
-        XCTAssertEqual(repository.createCount, createsAfterSeed + 1)
-        XCTAssertEqual(repository.deletedIDs, [a.id])
+        XCTAssertEqual(repository.replaceCount, 1)
+        XCTAssertEqual(repository.createCount, createsAfterSeed)
+        XCTAssertEqual(repository.deletedIDs, [])
 
         // Session 2: the picker is presented again and cancelled — nothing from session 1 is reused.
         selector.script = .cancel
         model.load()
         await model.runSelectClips(.replacingSaved(b.id))
         XCTAssertNil(model.compositionMessage)
-        XCTAssertEqual(repository.createCount, createsAfterSeed + 1, "repository.create never called on cancel")
-        XCTAssertEqual(repository.deletedIDs, [a.id], "repository.deleteProject never called on cancel")
+        XCTAssertEqual(repository.replaceCount, 1, "repository.replaceProject never called on cancel")
+        XCTAssertEqual(repository.createCount, createsAfterSeed, "repository.create never called on cancel")
+        XCTAssertEqual(repository.deletedIDs, [], "repository.deleteProject never called on cancel")
         XCTAssertEqual(try repository.recentProjects().map(\.id), [b.id])
         let bMedia = try XCTUnwrap(repository.project(id: b.id)).clips[0].mediaRelativePath
         await assertFileExists(store, bMedia, true, "current Project media unchanged")
@@ -139,16 +142,17 @@ final class SavedProjectIdentityTests: XCTestCase {
         model.compositionMessage = nil
         selector.script = .cancel
         await model.runSelectClips(.replacingSaved(b.id))
-        XCTAssertEqual(repository.createCount, createsAfterSeed + 1)
-        XCTAssertEqual(repository.deletedIDs, [a.id])
+        XCTAssertEqual(repository.replaceCount, 1)
+        XCTAssertEqual(repository.createCount, createsAfterSeed)
 
         // cancel → reopen → a new confirmed selection composes normally (isolated session).
         selector.script = .fixtures([ready])
         await model.runSelectClips(.replacingSaved(b.id))
         let c = try XCTUnwrap(coordinator(repository).lastSavedProject())
         XCTAssertNotEqual(c.id, b.id)
-        XCTAssertEqual(repository.createCount, createsAfterSeed + 2)
-        XCTAssertEqual(repository.deletedIDs, [a.id, b.id])
+        XCTAssertEqual(repository.replaceCount, 2)
+        XCTAssertEqual(repository.createCount, createsAfterSeed)
+        XCTAssertEqual(repository.deletedIDs, [])
     }
 
     func testCurrentProjectSurvivesRepositoryReopenUnchanged() throws {
