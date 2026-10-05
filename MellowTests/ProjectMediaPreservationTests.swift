@@ -60,27 +60,31 @@ final class ProjectMediaPreservationTests: XCTestCase {
         return Editor(model: model, repository: repository, project: project, existing: mediaFiles(id))
     }
 
-    func testAddWhoseUpdateCommittedThenThrewKeepsTheNewMedia() async throws {
+    func testAddWhoseUpdateCommittedThenThrewIsCompletedWithOneHistoryEntry() async throws {
         let e = try await makeEditor()
         e.repository.updateThrowsAfterCommit = true
         let added = await e.model.addClips()
-        XCTAssertEqual(added, 0)
-        XCTAssertEqual(e.model.editorMessage, .addFailed, "presentation unchanged (pending D8.5)")
+        XCTAssertEqual(added, 1, "P4: complete evidence after a thrown save is a normal success")
+        XCTAssertNil(e.model.editorMessage)
+        XCTAssertNil(e.model.reconciliation)
+        XCTAssertEqual(e.model.undoStack.map(\.kind), [.add], "exactly one history transition")
         let stored = try XCTUnwrap(try e.repository.project(id: e.project.id))
-        XCTAssertEqual(stored.clips.count, 2, "the update landed")
-        guard stored.clips.count == 2 else { return }
+        XCTAssertEqual(e.model.project, stored, "the confirmed intended state is adopted")
         await assertFileExists(store, stored.clips[1].mediaRelativePath, true, "the saved row's media is preserved")
         XCTAssertTrue(Set(mediaFiles(e.project.id)).isSuperset(of: e.existing), "existing media untouched")
-        XCTAssertEqual(e.model.project, e.project, "known gap: the model keeps its previous in-memory state (reload pending)")
     }
 
-    func testAddWithFailedReadBackVerificationKeepsTheNewMedia() async throws {
+    func testAddWithUnavailableVerificationLocksTheEditorAndKeepsTheNewMedia() async throws {
         let e = try await makeEditor()
-        // The gated target check still sees the Project; from the update on, the read-back cannot.
-        let repository = e.repository, projectID = e.project.id
-        repository.onUpdate = { repository.hiddenIDs = [projectID] }
+        // The save returns, but the observation cannot read the Project.
+        e.repository.stateObservationOverride = { _, observed in
+            PersistedStateObservation(projects: observed.projects.mapValues { _ in .unreadable }, createdIdentityHolders: observed.createdIdentityHolders)
+        }
         let added = await e.model.addClips()
         XCTAssertEqual(added, 0)
+        XCTAssertEqual(e.model.reconciliation, .saveUnverified)
+        XCTAssertEqual(e.model.project, e.project, "the unverified state is not adopted as saved")
+        XCTAssertTrue(e.model.undoStack.isEmpty)
         let stored = try XCTUnwrap(try e.repository.inner.project(id: e.project.id))
         XCTAssertEqual(stored.clips.count, 2, "the update landed")
         guard stored.clips.count == 2 else { return }
@@ -98,15 +102,16 @@ final class ProjectMediaPreservationTests: XCTestCase {
         XCTAssertTrue(Set(mediaFiles(e.project.id)).isSuperset(of: e.existing))
     }
 
-    func testReplaceWhoseUpdateCommittedThenThrewKeepsTheReplacementMedia() async throws {
+    func testReplaceWhoseUpdateCommittedThenThrewIsCompletedAndKeepsTheMedia() async throws {
         let e = try await makeEditor(withUnavailable: true)
         e.model.select(e.project.clips[1].id)
         XCTAssertTrue(e.model.canReplaceSelectedClip)
         e.repository.updateThrowsAfterCommit = true
         let replaced = await e.model.replaceSelectedClip()
-        XCTAssertNil(replaced)
-        XCTAssertEqual(e.model.editorMessage, .replaceFailed)
+        XCTAssertNotNil(replaced, "P4: completed despite the thrown save")
+        XCTAssertEqual(e.model.undoStack.map(\.kind), [.replace])
         let stored = try XCTUnwrap(try e.repository.project(id: e.project.id))
+        XCTAssertEqual(e.model.project, stored)
         let d = try XCTUnwrap(stored.clips.first { !e.project.durableClips.map(\.id).contains($0.id) }, "D was saved")
         await assertFileExists(store, d.mediaRelativePath, true, "the saved replacement's media is preserved")
         XCTAssertTrue(Set(mediaFiles(e.project.id)).isSuperset(of: e.existing))

@@ -185,3 +185,35 @@ func assertFileExists(_ store: ProjectMediaStore, _ path: RelativeMediaPath, _ e
     let exists = await store.fileExists(path)
     XCTAssertEqual(exists, expected, message, file: file, line: line)
 }
+
+// MARK: - Async assertions (Editor mutations commit through the lifecycle gate and are async)
+
+@MainActor
+func XCTAssertTrueAsync(_ expression: @autoclosure () async -> Bool, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) async {
+    let value = await expression()
+    XCTAssertTrue(value, message(), file: file, line: line)
+}
+
+@MainActor
+func XCTAssertFalseAsync(_ expression: @autoclosure () async -> Bool, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) async {
+    let value = await expression()
+    XCTAssertFalse(value, message(), file: file, line: line)
+}
+
+@MainActor
+func XCTAssertNilAsync<T>(_ expression: @autoclosure () async -> T?, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) async {
+    let value = await expression()
+    XCTAssertNil(value, message(), file: file, line: line)
+}
+
+@MainActor
+func XCTAssertEqualAsync<T: Equatable>(_ expression: @autoclosure () async -> T, _ expected: @autoclosure () -> T, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) async {
+    let value = await expression()
+    XCTAssertEqual(value, expected(), message(), file: file, line: line)
+}
+
+@MainActor
+func XCTAssertNotNilAsync<T>(_ expression: @autoclosure () async -> T?, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) async {
+    let value = await expression()
+    XCTAssertNotNil(value, message(), file: file, line: line)
+}

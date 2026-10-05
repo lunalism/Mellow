@@ -28,6 +28,13 @@ final class AppRouter {
         }
     }
 
+    /// Leaves the Editor for `projectID`: removes its route and everything above it, so the screen below
+    /// (the Projects screen on the canonical stack) is shown again. The usual route-removal boundary fires.
+    func leaveProjectEditor(_ projectID: UUID) {
+        guard let index = path.lastIndex(of: .projectEditor(projectID)) else { return }
+        path.removeSubrange(index...)
+    }
+
     /// True while an Editor route for the Project is on the stack — a live Editor session.
     func hasLiveProjectEditor(for projectID: UUID) -> Bool {
         path.contains(.projectEditor(projectID))

@@ -141,7 +141,8 @@ final class ProjectLifecycleGateCoverageTests: XCTestCase {
         XCTAssertNil(home.failure)
         XCTAssertNil(try repository.project(id: project.id), "no Project is silently created")
         XCTAssertFalse(FileManager.default.fileExists(atPath: projectDirectory(project.id).path), "deleted Project directory not recreated")
-        XCTAssertEqual(editor.editorMessage, .addFailed)
+        XCTAssertEqual(editor.reconciliation, .projectMissing, "the Editor locks and must return to Projects")
+        XCTAssertNil(editor.editorMessage)
         XCTAssertTrue(editor.undoStack.isEmpty)
         XCTAssertEqual(editor.project, project)
         let liveWorkspaces = await store.liveWorkspaceCount
@@ -170,7 +171,7 @@ final class ProjectLifecycleGateCoverageTests: XCTestCase {
         XCTAssertNil(replaced)
         XCTAssertNil(try repository.project(id: project.id))
         XCTAssertEqual(mediaFiles(project.id), filesBefore, "no replacement file materialised")
-        XCTAssertEqual(editor.editorMessage, .replaceFailed)
+        XCTAssertEqual(editor.reconciliation, .projectMissing)
         XCTAssertEqual(editor.project, project)
         XCTAssertTrue(editor.undoStack.isEmpty)
         XCTAssertFalse(gate.isHeld)
@@ -301,7 +302,8 @@ final class ProjectLifecycleGateCoverageTests: XCTestCase {
         let replaced = await replace.value
 
         XCTAssertNil(replaced)
-        XCTAssertEqual(editor.editorMessage, .replaceFailed)
+        // A missing Replace clip in an otherwise present Project is a stale Editor, never "Project missing".
+        XCTAssertEqual(editor.reconciliation, .recheckRequired)
         XCTAssertEqual(mediaFiles(project.id), filesBefore, "nothing materialised")
         XCTAssertEqual(try repository.project(id: project.id), changed, "store left exactly as the other writer saved it")
         XCTAssertEqual(editor.project, project)

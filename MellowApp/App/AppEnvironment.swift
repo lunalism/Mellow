@@ -56,6 +56,17 @@ final class AppEnvironment {
     /// The single-screen onboarding model, created only while onboarding is shown.
     private(set) var permissionOnboarding: PermissionOnboardingModel?
     private let arguments: [String]
+
+    #if DEBUG
+    /// `-uiTestEditorGateHold=<ms>`: before each Reorder / Delete / Undo / Redo enters the shared lifecycle gate,
+    /// a separate holder takes that real gate for `ms` milliseconds (released on its own, never left held), so a
+    /// UI test can observe a queued edit. DEBUG / simulator UI tests only.
+    var uiTestEditorGateHoldMilliseconds: Int? {
+        arguments.first { $0.hasPrefix("-uiTestEditorGateHold=") }
+            .flatMap { Int($0.replacingOccurrences(of: "-uiTestEditorGateHold=", with: "")) }
+            .flatMap { $0 > 0 ? $0 : nil }
+    }
+    #endif
     private var prewarmTask: Task<Void, Never>?
 
     #if DEBUG
@@ -235,8 +246,15 @@ final class AppEnvironment {
         // `-uiTestEditorSaveFailure`: every whole-Project autosave (`update`) fails, so the Editor's
         // rollback paths (reorder / delete / undo) can be exercised deterministically. Seeding and
         // reads go through unchanged.
-        self.projectRepository = arguments.contains("-uiTestEditorSaveFailure")
-            ? UpdateFailingProjectRepository(inner: repository) : repository
+        // `-uiTestEditorSaveUnverified`: saves land, but every post-save observation is unreadable, so the
+        // Editor's reconciliation lock (ADR-050 050-D D8.5a P2) can be driven on the simulator store.
+        if arguments.contains("-uiTestEditorSaveFailure") {
+            self.projectRepository = UpdateFailingProjectRepository(inner: repository)
+        } else if arguments.contains("-uiTestEditorSaveUnverified") {
+            self.projectRepository = UnverifiedSaveProjectRepository(inner: repository)
+        } else {
+            self.projectRepository = repository
+        }
         #else
         self.projectRepository = repository
         #endif
@@ -862,6 +880,27 @@ private final class LookupFailingProjectRepository: ProjectRepository {
     func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
     func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
     func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation { inner.observePersistedState(for: expectation) }
+    func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
+}
+
+/// UI-test double: forwards everything; a post-save observation reports every Project unreadable. It rewrites
+/// EVERY `observePersistedState` call, so Select Clips under this seam would also see unverifiable saves.
+@MainActor
+private final class UnverifiedSaveProjectRepository: ProjectRepository {
+    private let inner: any ProjectRepository
+    init(inner: any ProjectRepository) { self.inner = inner }
+    func create(_ project: VlogProject) throws { try inner.create(project) }
+    func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
+    func recentProjects() throws -> [VlogProject] { try inner.recentProjects() }
+    func update(_ project: VlogProject) throws { try inner.update(project) }
+    func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
+    func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+    func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
+    func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
+    func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation {
+        let observed = inner.observePersistedState(for: expectation)
+        return PersistedStateObservation(projects: observed.projects.mapValues { _ in .unreadable }, createdIdentityHolders: observed.createdIdentityHolders)
+    }
     func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
 }
 

@@ -25,13 +25,18 @@ enum ClipThumbnailPresentation: Equatable {
     }
 }
 
-/// Recoverable outcome of an Editor mutation whose autosave did not land (ARCHITECTURE §57). The
-/// committed state was restored before this is shown; nothing else about the Project changed.
+/// Recoverable, dismissible outcome of an Editor mutation (ARCHITECTURE §57). The Editor still shows
+/// the last confirmed state; nothing was published for the failed edit.
 enum ProjectEditorMessage: Equatable {
-    case reorderSaveFailed
-    case deleteSaveFailed
+    /// Undo / Redo could not even build the target state (before any save attempt).
     case undoFailed
     case redoFailed
+    /// `priorConfirmed` after a thrown save of Reorder / Delete / Undo / Redo (owner decision 2026-10-05):
+    /// acknowledgement only, never used for a successful save or an uncertain outcome.
+    case changesNotSaved
+    /// `priorConfirmed` after a thrown save of Add / Replace (ADR-050 050-D D8.5a P6): acknowledgement only.
+    case addNotSaved
+    case replaceNotSaved
     /// Clip acquisition (Add, ADR-037 — and Replace, ADR-040, which reuses the SAME preparation
     /// outcomes and copy): the typed outcomes of Select Clips, one message per operation.
     case addRequiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
@@ -43,10 +48,11 @@ enum ProjectEditorMessage: Equatable {
 
     var title: String {
         switch self {
-        case .reorderSaveFailed: return "순서를 저장하지 못했어요."
-        case .deleteSaveFailed: return "클립을 삭제하지 못했어요."
         case .undoFailed: return "실행 취소하지 못했어요."
         case .redoFailed: return "다시 실행하지 못했어요."
+        case .changesNotSaved: return "변경사항을 저장하지 못했어요"
+        case .addNotSaved: return "영상을 추가하지 못했어요"
+        case .replaceNotSaved: return "클립을 교체하지 못했어요"
         case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationTitle(reason)
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
         case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
@@ -60,7 +66,42 @@ enum ProjectEditorMessage: Equatable {
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
         case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
         case .addFailed, .replaceFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
-        default: return "다시 시도해주세요."
+        case .changesNotSaved, .addNotSaved, .replaceNotSaved: return "프로젝트에 변경사항이 저장되지 않았어요."
+        case .undoFailed, .redoFailed: return "다시 시도해주세요."
+        }
+    }
+}
+
+/// Why the Editor is locked and must be left for the Projects screen (ADR-050 050-D D8.5a P2 / P3 and the
+/// owner's Editor decisions of 2026-10-05). While set, every mutation entry point is refused; there is no
+/// automatic reload — the user returns to Projects and reopens through the gated load (empty history).
+enum EditorReconciliation: Equatable {
+    /// U1: the save returned but its result could not be confirmed (`committedUnverified`).
+    case saveUnverified
+    /// U2: the save threw and nothing could be confirmed (`indeterminate`).
+    case saveIndeterminate
+    /// Before any save: the stored Project differs from this Editor's state, or could not be read.
+    case recheckRequired
+    /// Before any save: the Project row is gone.
+    case projectMissing
+
+    static let returnAction = "프로젝트 화면으로"
+
+    var title: String {
+        switch self {
+        case .saveUnverified: return "저장 확인이 필요해요"
+        case .saveIndeterminate: return "저장 결과를 확인하지 못했어요"
+        case .recheckRequired: return "프로젝트를 다시 확인해주세요"
+        case .projectMissing: return "프로젝트를 찾을 수 없어요"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .saveUnverified: return "변경사항은 저장되었지만 지금은 확인하지 못했어요. 프로젝트 화면에서 다시 열어 확인해주세요."
+        case .saveIndeterminate: return "변경사항이 저장되었는지 지금은 알 수 없어요. 프로젝트 화면에서 다시 열어 확인해주세요."
+        case .recheckRequired: return "프로젝트 화면에서 다시 열어 확인해주세요."
+        case .projectMissing: return "프로젝트 화면에서 다시 확인해주세요."
         }
     }
 }
@@ -147,8 +188,10 @@ enum EditorClipAcquisitionMode: Equatable, Sendable {
 /// Reorder state is deliberately small and explicit: `project` is the committed state, `previewOrder`
 /// the temporary order shown while a drag is in flight, `draggingClipID` the lifted Clip. Nothing is
 /// written until the drop; cancel simply drops the preview. Every mutation (reorder, delete, undo,
-/// redo) goes through one synchronous commit path: apply on a copy → write → read back → publish,
-/// or roll back and surface a recoverable message. Only a successful edit enters the history.
+/// redo, add, replace) commits through the shared lifecycle gate and ONE inner commit path (ADR-050
+/// 050-D D8.5a P1 / P7, accepted 2026-10-05): fresh prior read compared with this Editor's state →
+/// update expectation → save → fresh observation → classification. Nothing is published before the
+/// outcome is `completed`; only then do the state and its single history transition change together.
 @Observable
 @MainActor
 final class ProjectEditorModel {
@@ -161,6 +204,8 @@ final class ProjectEditorModel {
     @ObservationIgnored private let repository: any ProjectRepository
     @ObservationIgnored private let thumbnails: any ClipThumbnailProviding
     @ObservationIgnored private let acquisition: EditorClipAcquisition?
+    /// The app's single shared lifecycle gate (ADR-039); every Editor commit runs inside it.
+    @ObservationIgnored private let lifecycle: ProjectLifecycleOperationGate
     /// Derived media availability (ADR-040). Nil (unit tests that never load) = every Clip available.
     @ObservationIgnored private let availabilityChecker: (any ClipAvailabilityChecking)?
     private(set) var selectedClipID: UUID?
@@ -182,14 +227,22 @@ final class ProjectEditorModel {
     /// Temporary logical order shown during the drag (Clip ids). Nil outside a drag. Never persisted
     /// as such — only the drop turns it into a committed order.
     private(set) var previewOrder: [UUID]?
-    /// True while a mutation (reorder / delete / undo) is being written; a second commit is refused
-    /// rather than raced.
+    /// True from the moment an edit is requested until its outcome is applied — including the wait for
+    /// the lifecycle gate, which is not guaranteed to be short. Every other mutation and drag is refused
+    /// meanwhile, and leaving the Editor is disabled (`isNavigationLocked`).
     private(set) var isCommittingMutation = false
+    /// Set when the Editor can no longer present its state as the saved one; never cleared by this model.
+    private(set) var reconciliation: EditorReconciliation?
     /// Incremented once per successful reorder-mode activation — the haptic trigger and the only
     /// observable of the activation event.
     private(set) var reorderActivationCount = 0
     /// Recoverable autosave failure to present; the committed state has already been rolled back.
     var editorMessage: ProjectEditorMessage?
+    #if DEBUG
+    /// UI-test seam (`-uiTestEditorGateHold=<ms>`): awaited after the in-flight flag is set and before the gate
+    /// is requested. Nil in every production path; absent from Release.
+    @ObservationIgnored var debugBeforeEditGate: (@MainActor () async -> Void)?
+    #endif
 
     // MARK: Session history (ADR-038)
 
@@ -205,11 +258,22 @@ final class ProjectEditorModel {
     /// second acquisition of either kind — is refused meanwhile, so two pickers can never be presented.
     private(set) var acquisitionMode: EditorClipAcquisitionMode?
 
-    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil, availability: (any ClipAvailabilityChecking)? = nil) {
+    /// `lifecycle` must be the app's shared gate (the acquisition boundary carries the same instance). Unit
+    /// tests that pass neither get a private gate in DEBUG only; Release requires the shared one.
+    init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil, availability: (any ClipAvailabilityChecking)? = nil, lifecycle: ProjectLifecycleOperationGate? = nil) {
         self.project = project
         self.repository = repository
         self.thumbnails = thumbnails
         self.acquisition = acquisition
+        if let lifecycle, let acquisition {
+            precondition(lifecycle === acquisition.lifecycle, "the Editor and its acquisition boundary must share one lifecycle gate")
+        }
+        #if DEBUG
+        self.lifecycle = lifecycle ?? acquisition?.lifecycle ?? ProjectLifecycleOperationGate()
+        #else
+        guard let gate = lifecycle ?? acquisition?.lifecycle else { preconditionFailure("ProjectEditorModel needs the shared lifecycle gate") }
+        self.lifecycle = gate
+        #endif
         self.availabilityChecker = availability
         // Default selection: the first clip when the project has clips, otherwise none.
         self.selectedClipID = project.clips.first?.id
@@ -234,8 +298,11 @@ final class ProjectEditorModel {
         return false
     }
 
-    /// No mutation may start while another (including an acquisition) is in flight or a clip is lifted.
-    private var isMutationBlocked: Bool { isCommittingMutation || isAcquiringClips || draggingClipID != nil }
+    /// No mutation may start while another (including an acquisition) is in flight, a clip is lifted, or
+    /// the Editor requires reconciliation.
+    private var isMutationBlocked: Bool { isCommittingMutation || isAcquiringClips || draggingClipID != nil || reconciliation != nil }
+    /// Back / navigation out of the Editor is unavailable only while an edit is being committed.
+    var isNavigationLocked: Bool { isCommittingMutation }
 
     var canUndo: Bool { !undoStack.isEmpty && !isMutationBlocked }
     var canRedo: Bool { !redoStack.isEmpty && !isMutationBlocked }
@@ -270,7 +337,8 @@ final class ProjectEditorModel {
     /// Selects a clip by identity. Ignores ids that are not part of this project; never mutates the
     /// persisted project and never touches thumbnail state.
     func select(_ clipID: UUID) {
-        guard project.clips.contains(where: { $0.id == clipID }) else { return }
+        // Not a mutation, but a locked or in-flight timeline keeps its selection (the outcome sets it).
+        guard reconciliation == nil, !isCommittingMutation, project.clips.contains(where: { $0.id == clipID }) else { return }
         selectedClipID = clipID
     }
 
@@ -306,13 +374,18 @@ final class ProjectEditorModel {
     }
 
     /// Drops the lifted Clip: commits the preview order through the single reorder path when it
-    /// differs from the committed order; a drop at the original position writes nothing.
-    /// Selection stays on the dropped Clip either way.
-    func commitReorder() {
-        guard let clipID = draggingClipID, let index = dragTargetIndex else { return }
+    /// differs from the committed order; a drop at the original position writes nothing. The preview
+    /// ends at once and the committed order stays visible until the save is `completed` (no optimistic
+    /// publish). Selection stays on the dropped Clip either way. Synchronous so the gesture can settle at
+    /// once: the in-flight flag is reserved here, before the returned task awaits the gate.
+    @discardableResult
+    func commitReorder() -> Task<Bool, Never>? {
+        guard let clipID = draggingClipID, let index = dragTargetIndex else { return nil }
         draggingClipID = nil
         previewOrder = nil
-        reorder(clipID: clipID, toIndex: index)
+        guard !isMutationBlocked, let updated = reordered(clipID: clipID, toIndex: index) else { return nil }
+        isCommittingMutation = true
+        return Task { await runReservedEdit(updated, selecting: clipID, transition: .push(.reorder), label: "reorder") }
     }
 
     /// Abandons the drag (gesture cancelled, interruption, screen left): the committed order is
@@ -333,38 +406,34 @@ final class ProjectEditorModel {
     }
 
     /// Non-drag accessibility reorder: index N → N-1 through the same commit path as a drop.
-    /// Returns the new 1-based position on success, nil when refused or unchanged.
+    /// Returns the new 1-based position once the save is `completed`, nil when refused or not saved.
     @discardableResult
-    func moveClipEarlier(id clipID: UUID) -> Int? {
+    func moveClipEarlier(id clipID: UUID) async -> Int? {
         guard canMoveEarlier(clipID), let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return nil }
-        return reorder(clipID: clipID, toIndex: index - 1) ? index : nil
+        return await reorder(clipID: clipID, toIndex: index - 1) ? index : nil
     }
 
     /// Non-drag accessibility reorder: index N → N+1 through the same commit path as a drop.
     @discardableResult
-    func moveClipLater(id clipID: UUID) -> Int? {
+    func moveClipLater(id clipID: UUID) async -> Int? {
         guard canMoveLater(clipID), let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return nil }
-        return reorder(clipID: clipID, toIndex: index + 1) ? index + 2 : nil
+        return await reorder(clipID: clipID, toIndex: index + 1) ? index + 2 : nil
     }
 
-    /// The one reorder + autosave path (drag drop and accessibility actions both end here).
-    ///
-    /// 1. Compute the new order on a copy (`VlogProject.reorderClip` normalises `sortOrder` 0…n-1).
-    /// 2. Same order → no mutation, no write.
-    /// 3. Publish the new committed order, write it with `repository.update` — the clip set is
-    ///    identical, so the repository's clip reconciliation removes nothing — and read it back.
-    /// 4. On any failure or read-back mismatch: restore the previous committed order, keep the
-    ///    selection, surface a recoverable message. Nothing partial is ever left behind.
-    ///
-    /// Synchronous on the Main Actor, so two commits can never interleave; `isCommittingMutation`
-    /// additionally refuses a re-entrant commit from inside the repository call.
+    /// The one reorder path (drag drop and accessibility actions both end here): the new order is
+    /// computed on a copy (`VlogProject.reorderClip` normalises `sortOrder` 0…n-1); the same order writes
+    /// nothing; otherwise it is committed through the gated edit path.
     @discardableResult
-    private func reorder(clipID: UUID, toIndex index: Int) -> Bool {
-        guard !isMutationBlocked else { return false }
+    private func reorder(clipID: UUID, toIndex index: Int) async -> Bool {
+        guard !isMutationBlocked, let updated = reordered(clipID: clipID, toIndex: index) else { return false }
+        return await runEdit(updated, selecting: clipID, transition: .push(.reorder), label: "reorder")
+    }
+
+    /// The committed Project with `clipID` moved to `index`, or nil when invalid or unchanged.
+    private func reordered(clipID: UUID, toIndex index: Int) -> VlogProject? {
         var updated = project
-        do { try updated.reorderClip(id: clipID, toIndex: index) } catch { return false }
-        guard updated.clips.map(\.id) != project.clips.map(\.id) else { return false }
-        return commitEdit(.reorder, updated, selecting: clipID, failure: .reorderSaveFailed, label: "reorder")
+        do { try updated.reorderClip(id: clipID, toIndex: index) } catch { return nil }
+        return updated.clips.map(\.id) != project.clips.map(\.id) ? updated : nil
     }
 
     // MARK: - Delete (STEP 10, ADR-021)
@@ -374,13 +443,13 @@ final class ProjectEditorModel {
     /// edit enters the session history. Metadata and media stay durable (pending deletion). Nothing
     /// is hidden unless the pending-deletion state was written and read back.
     @discardableResult
-    func deleteSelectedClip() -> Bool {
+    func deleteSelectedClip() async -> Bool {
         guard let clipID = selectedClipID else { return false }
-        return deleteClip(id: clipID)
+        return await deleteClip(id: clipID)
     }
 
     @discardableResult
-    func deleteClip(id clipID: UUID) -> Bool {
+    func deleteClip(id clipID: UUID) async -> Bool {
         guard !isMutationBlocked, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
         var updated = project
         do { try updated.deleteClip(id: clipID) } catch { return false }
@@ -390,7 +459,7 @@ final class ProjectEditorModel {
         } else {
             selection = selectedClipID
         }
-        return commitEdit(.delete, updated, selecting: selection, failure: .deleteSaveFailed, label: "delete")
+        return await runEdit(updated, selecting: selection, transition: .push(.delete), label: "delete")
     }
 
     // MARK: - Add Clips (ADR-037)
@@ -430,12 +499,10 @@ final class ProjectEditorModel {
 
     /// The one acquisition path Add and Replace share (ADR-037 / ADR-040): workspace → selector
     /// session → reserve guard + validation, all OUTSIDE the lifecycle gate (the workspace is
-    /// protected by the store's live-workspace registry) → then, INSIDE the shared lifecycle gate
-    /// (ADR-039 / ADR-050 serialization prerequisite): revalidate the target → materialise → commit,
-    /// or remove the files this operation created. Project deletion, composition / replacement,
-    /// cleanup and startup recovery therefore cannot interleave with the target check, the new
-    /// Project-directory files or the repository write. The workspace is always discarded here.
-    /// Returns the committed new Clips (picker order), or nil on cancel / failure.
+    /// protected by the store's live-workspace registry) → then, INSIDE the shared lifecycle gate:
+    /// prior check → materialise → the inner commit. The in-flight flag (navigation lock) is set before
+    /// the gate is awaited. The workspace is always discarded here. Returns the committed new Clips
+    /// (picker order), or nil on cancel / failure.
     private func acquireAndCommit(using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
         guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
             editorMessage = failure
@@ -443,9 +510,12 @@ final class ProjectEditorModel {
         }
         var committed: [VlogClip]?
         if let validated = await selectAndValidate(using: acquisition, workspace: workspace, selectionLimit: targetID == nil ? nil : 1, failure: failure) {
-            committed = await acquisition.lifecycle.withExclusiveAccess {
-                await materializeAndCommit(validated, using: acquisition, replacing: targetID, failure: failure)
+            let base = project, baseSelection = selectedClipID
+            isCommittingMutation = true
+            committed = await lifecycle.withExclusiveAccess {
+                await materializeAndCommit(validated, using: acquisition, base: base, baseSelection: baseSelection, replacing: targetID, failure: failure)
             }
+            isCommittingMutation = false
         }
         await acquisition.mediaStore.discard(workspace)
         return committed
@@ -483,13 +553,15 @@ final class ProjectEditorModel {
         return nil
     }
 
-    /// Runs INSIDE the lifecycle gate. The target is revalidated against the repository first: if the
-    /// Project row is gone (or unreadable), or a Replace target is no longer an active Clip, nothing is
-    /// materialised — no Project directory is (re)created and nothing is saved. A materialised batch that
-    /// fails BEFORE the save attempt is removed again before the gate is released; after the save attempt
-    /// it is preserved.
-    private func materializeAndCommit(_ validated: ProjectClipAppendCoordinator.ValidatedSources, using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
-        guard isTargetCurrent(replacing: targetID) else {
+    /// Runs INSIDE the lifecycle gate (never acquires it). The fresh prior state must equal this Editor's
+    /// base exactly BEFORE anything is materialised; a stale, unreadable or missing Project stops here and
+    /// locks the Editor. A batch that fails before the save attempt is removed again; from the save attempt
+    /// on it is preserved for every non-`completed` outcome (ADR-050 050-D D8.0 / P6) — no rollback-to-
+    /// workspace, no same-set Retry.
+    private func materializeAndCommit(_ validated: ProjectClipAppendCoordinator.ValidatedSources, using acquisition: EditorClipAcquisition, base: VlogProject, baseSelection: UUID?, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
+        guard let prior = verifiedPriorInsideGate(base: base, label: targetID == nil ? "add" : "replace") else { return nil }
+        // The Replace target is an active Clip of the verified base (and therefore of the store).
+        if let targetID, !base.clips.contains(where: { $0.id == targetID }) {
             editorMessage = failure
             return nil
         }
@@ -498,14 +570,14 @@ final class ProjectEditorModel {
             editorMessage = failure
             return nil
         }
-        guard case .ready(let newClips) = await acquisition.appender.materialize(validated, for: project) else {
+        guard case .ready(let newClips) = await acquisition.appender.materialize(validated, for: base) else {
             editorMessage = failure
             return nil
         }
         #if DEBUG
         acquisition.debugAfterMaterialize?()
         #endif
-        var updated = project
+        var updated = base
         do {
             if let targetID { try updated.replaceClip(id: targetID, with: newClips[0]) } else { try updated.appendClips(newClips) }
         } catch {
@@ -513,85 +585,53 @@ final class ProjectEditorModel {
             editorMessage = failure
             return nil
         }
-        let committed = targetID == nil
-            ? commitEdit(.add, updated, selecting: newClips.first?.id, failure: failure, label: "add")
-            : commitEdit(.replace, updated, selecting: newClips.first?.id, failure: failure, label: "replace")
-        guard committed else {
-            // The save was attempted: it either threw (which does not prove nothing committed) or returned
-            // and failed read-back verification (committed). Either way these files may be referenced
-            // (ADR-050 050-D D8.0), so they are preserved, never discarded; an unreferenced copy is startup
-            // recovery's once the Editor session has ended. The model still restores its previous in-memory
-            // state and shows the existing failure message — reload / presentation is pending (D8.5).
-            MellowLog.app.info("Project editor preserved acquired media after an unverified save project=\(String(self.project.id.uuidString.prefix(8)), privacy: .public)")
+        let result = commitInsideGate(
+            updated, prior: prior, base: base, baseSelection: baseSelection, selecting: newClips.first?.id,
+            transition: .push(targetID == nil ? .add : .replace),
+            notSaved: targetID == nil ? .addNotSaved : .replaceNotSaved,
+            label: targetID == nil ? "add" : "replace"
+        )
+        if result == .lockedBeforeSave {
+            // No save was attempted: the batch is still this operation's own (pre-save cleanup).
+            await acquisition.appender.discard(newClips)
+            return nil
+        }
+        guard result == .completed else {
+            MellowLog.app.info("Project editor preserved acquired media after a non-completed save project=\(String(base.id.uuidString.prefix(8)), privacy: .public)")
             return nil
         }
         return newClips
     }
 
-    /// Fresh repository check of the acquisition target, inside the gate: the Project still exists and,
-    /// for Replace, the target is still an active Clip both here and in the store.
-    private func isTargetCurrent(replacing targetID: UUID?) -> Bool {
-        let label = String(project.id.uuidString.prefix(8))
-        let stored: VlogProject?
-        do { stored = try repository.project(id: project.id) } catch {
-            MellowLog.app.error("Project editor acquisition target unreadable project=\(label, privacy: .public)")
-            return false
-        }
-        guard let stored else {
-            MellowLog.app.info("Project editor acquisition stopped project=\(label, privacy: .public) reason=projectAbsent")
-            return false
-        }
-        if let targetID, !(project.clips.contains { $0.id == targetID } && stored.clips.contains { $0.id == targetID }) {
-            MellowLog.app.info("Project editor acquisition stopped project=\(label, privacy: .public) reason=replaceTargetNotActive")
-            return false
-        }
-        return true
-    }
-
     // MARK: - Undo / Redo (ADR-038)
 
     /// Reverses the most recent successful edit: its BEFORE state (clip sets + selection) is
-    /// re-applied to the current Project as a new autosave. On success the entry moves to the
-    /// Redo stack; on failure nothing changes (state, stacks) and a recoverable message is shown.
+    /// re-applied to the current Project as a new save. Only a `completed` save moves the entry to the
+    /// Redo stack (with the state, in one step); otherwise state and stacks are unchanged.
     @discardableResult
-    func undo() -> Bool {
+    func undo() async -> Bool {
         guard canUndo, let entry = undoStack.last else { return false }
-        guard commitHistory(entry.before, failure: .undoFailed, label: "undo") else { return false }
-        undoStack.removeLast()
-        redoStack.append(entry)
-        return true
+        guard let target = restoredState(entry.before, failure: .undoFailed) else { return false }
+        return await runEdit(target.project, selecting: target.selection, transition: .undo, label: "undo")
     }
 
-    /// Re-applies the most recently undone edit (its AFTER state) as a new autosave; the entry
-    /// moves back to the Undo stack. Failure leaves state and stacks untouched.
+    /// Re-applies the most recently undone edit (its AFTER state) as a new save; the entry moves back
+    /// to the Undo stack only when the save is `completed`.
     @discardableResult
-    func redo() -> Bool {
+    func redo() async -> Bool {
         guard canRedo, let entry = redoStack.last else { return false }
-        guard commitHistory(entry.after, failure: .redoFailed, label: "redo") else { return false }
-        redoStack.removeLast()
-        undoStack.append(entry)
-        return true
+        guard let target = restoredState(entry.after, failure: .redoFailed) else { return false }
+        return await runEdit(target.project, selecting: target.selection, transition: .redo, label: "redo")
     }
 
-    /// A history-capable edit: commit, then (only on success) push one entry and discard any Redo
-    /// future — a new edit after Undo abandons the undone branch.
-    private func commitEdit(_ kind: EditorHistoryEntry.Kind, _ updated: VlogProject, selecting selection: UUID?, failure: ProjectEditorMessage, label: StaticString) -> Bool {
-        let before = EditorEditState(project: project, selectedClipID: selectedClipID)
-        guard commit(updated, selecting: selection, failure: failure, label: label) else { return false }
-        undoStack.append(EditorHistoryEntry(kind: kind, before: before, after: EditorEditState(project: project, selectedClipID: selectedClipID)))
-        redoStack.removeAll()
-        return true
-    }
-
-    /// Restores a captured state onto the CURRENT Project (same identity, orientation, createdAt;
-    /// fresh `updatedAt`) through the common commit path. A captured selection that is no longer
-    /// active falls back to the first active Clip.
+    /// Builds a captured state onto the CURRENT Project (same identity, orientation, createdAt; fresh
+    /// `updatedAt`). A captured selection that is no longer active falls back to the first active Clip.
     ///
     /// History never forgets durable media: a Clip the current Project owns but the target state
     /// does not know (it was added by an edit that is now being undone) is kept as a pending-
     /// deleted, inactive Clip with its position recorded (ADR-037 / ADR-038) — recoverable by Redo,
     /// visible to the future cleanup slice, never an orphaned file, never physically removed here.
-    private func commitHistory(_ state: EditorEditState, failure: ProjectEditorMessage, label: StaticString) -> Bool {
+    private func restoredState(_ state: EditorEditState, failure: ProjectEditorMessage) -> (project: VlogProject, selection: UUID?)? {
         let restored: VlogProject
         do {
             let known = Set(state.clips.map(\.id) + state.deletedClips.map(\.id))
@@ -608,38 +648,130 @@ final class ProjectEditorModel {
             )
         } catch {
             editorMessage = failure
-            return false
+            return nil
         }
         let selection = state.selectedClipID.flatMap { id in restored.clips.contains { $0.id == id } ? id : nil } ?? restored.clips.first?.id
-        return commit(restored, selecting: selection, failure: failure, label: label)
+        return (project: restored, selection: selection)
     }
 
-    /// The one autosave path for every Editor mutation: publish the new committed state, write it,
-    /// read it back and compare the durable clip sets; on any failure or mismatch restore the
-    /// previous state and selection and surface a recoverable message. Nothing partial is ever left.
-    private func commit(_ updated: VlogProject, selecting selection: UUID?, failure: ProjectEditorMessage, label: StaticString) -> Bool {
-        let previous = project
-        let previousSelection = selectedClipID
+    // MARK: - Gated commit (ADR-050 050-D D8.0 / D8.5a P1 · P2 · P4 · P7)
+
+    /// How a `completed` save changes the session history — applied exactly once, together with the state.
+    private enum HistoryTransition {
+        /// A new edit: push one entry, abandon the Redo branch.
+        case push(EditorHistoryEntry.Kind)
+        /// Move the newest Undo entry to the Redo stack.
+        case undo
+        /// Move the newest Redo entry back to the Undo stack.
+        case redo
+    }
+
+    private enum CommitResult: Equatable {
+        case completed, notSaved, locked
+        /// Locked before any save attempt (no valid expectation): files this operation created are still its own.
+        case lockedBeforeSave
+    }
+
+    /// Gate-acquiring entry for Reorder / Delete / Undo / Redo. The in-flight flag is set before the gate
+    /// is awaited (blocking every other mutation, drag and navigation) and cleared once the outcome is
+    /// applied. Returns true only for a `completed` save.
+    private func runEdit(_ updated: VlogProject, selecting selection: UUID?, transition: HistoryTransition, label: StaticString) async -> Bool {
+        guard !isMutationBlocked else { return false }
         isCommittingMutation = true
+        return await runReservedEdit(updated, selecting: selection, transition: transition, label: label)
+    }
+
+    /// The edit after its in-flight flag was reserved (synchronously, by the caller).
+    private func runReservedEdit(_ updated: VlogProject, selecting selection: UUID?, transition: HistoryTransition, label: StaticString) async -> Bool {
         defer { isCommittingMutation = false }
-        project = updated
-        selectedClipID = selection
-        do {
-            try repository.update(updated)
-            guard let stored = try repository.project(id: updated.id),
-                  stored.clips == updated.clips, stored.deletedClips == updated.deletedClips else {
-                throw ProjectRepositoryError.invalidPersistedMetadata
+        let base = project, baseSelection = selectedClipID
+        #if DEBUG
+        // UI-test seam: lets another holder take the shared gate first, so the edit visibly waits for it.
+        await debugBeforeEditGate?()
+        #endif
+        return await lifecycle.withExclusiveAccess {
+            guard let prior = verifiedPriorInsideGate(base: base, label: label) else { return false }
+            return commitInsideGate(updated, prior: prior, base: base, baseSelection: baseSelection, selecting: selection,
+                                    transition: transition, notSaved: .changesNotSaved, label: label) == .completed
+        }
+    }
+
+    /// INSIDE the gate: the fresh prior read (OD-10) must equal the Editor's base exactly (full state,
+    /// timestamps included). Otherwise the Editor is locked before any save or materialisation — stale or
+    /// unreadable → `recheckRequired` (never claiming the store is unchanged), absent → `projectMissing`.
+    private func verifiedPriorInsideGate(base: VlogProject, label: StaticString) -> VlogProject? {
+        let short = String(base.id.uuidString.prefix(8))
+        switch repository.observePersistedProject(id: base.id) {
+        case .present(let stored) where ProjectStateSnapshot(stored) == ProjectStateSnapshot(base):
+            return stored
+        case .present:
+            MellowLog.app.error("Project editor \(label, privacy: .public) stopped project=\(short, privacy: .public) reason=stale")
+            reconciliation = .recheckRequired
+        case .unreadable:
+            MellowLog.app.error("Project editor \(label, privacy: .public) stopped project=\(short, privacy: .public) reason=priorUnreadable")
+            reconciliation = .recheckRequired
+        case .absent:
+            MellowLog.app.error("Project editor \(label, privacy: .public) stopped project=\(short, privacy: .public) reason=projectAbsent")
+            reconciliation = .projectMissing
+        }
+        return nil
+    }
+
+    /// The ONE inner commit every Editor mutation uses. Assumes the lifecycle gate is held and never
+    /// acquires it. Builds the update expectation from the verified prior, saves once, observes (OD-10)
+    /// and classifies (D8.0) with no suspension point, then applies the outcome:
+    /// `completed` (also after a thrown save, P4) → the intended state and its history transition are
+    /// published together; `priorConfirmed` → state and history unchanged, acknowledgement-only copy;
+    /// `committedUnverified` / `indeterminate` → the Editor locks for reconciliation (P2), media preserved.
+    private func commitInsideGate(_ updated: VlogProject, prior: VlogProject, base: VlogProject, baseSelection: UUID?, selecting selection: UUID?, transition: HistoryTransition, notSaved: ProjectEditorMessage, label: StaticString) -> CommitResult {
+        assert(lifecycle.isHeld, "the Editor commit runs inside the shared lifecycle gate")
+        let short = String(updated.id.uuidString.prefix(8))
+        let expectation: ProjectSaveExpectation
+        do { expectation = try ProjectSaveExpectation.update(from: prior, to: updated) } catch {
+            reconciliation = .recheckRequired
+            return .lockedBeforeSave
+        }
+        guard expectation.isStructurallyValid, !expectation.isIndistinguishable else {
+            reconciliation = .recheckRequired
+            return .lockedBeforeSave
+        }
+        var saveError: Error?
+        do { try repository.update(updated) } catch { saveError = error }
+        let observation = repository.observePersistedState(for: expectation)
+        switch ProjectSaveOutcomeClassifier.classify(saveError == nil ? .succeeded : .threw, expectation: expectation, observation: observation) {
+        case .completed:
+            if let saveError {
+                MellowLog.app.error("Project editor \(label, privacy: .public) completed despite save error project=\(short, privacy: .public): \(String(describing: saveError), privacy: .public)")
+            }
+            // State and history change together, synchronously: no observer sees one without the other.
+            let after = EditorEditState(project: updated, selectedClipID: selection)
+            project = updated
+            selectedClipID = selection
+            switch transition {
+            case .push(let kind):
+                undoStack.append(EditorHistoryEntry(kind: kind, before: EditorEditState(project: base, selectedClipID: baseSelection), after: after))
+                redoStack.removeAll()
+            case .undo:
+                redoStack.append(undoStack.removeLast())
+            case .redo:
+                undoStack.append(redoStack.removeLast())
             }
             #if DEBUG
             MellowLog.app.info("Project editor \(label, privacy: .public) saved \(updated.id.uuidString, privacy: .public) active=\(updated.clips.count, privacy: .public) pendingDeleted=\(updated.deletedClips.count, privacy: .public)")
             #endif
-            return true
-        } catch {
-            project = previous
-            selectedClipID = previousSelection
-            MellowLog.app.error("Project editor \(label, privacy: .public) save failed \(updated.id.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
-            editorMessage = failure
-            return false
+            return .completed
+        case .priorConfirmed:
+            MellowLog.app.error("Project editor \(label, privacy: .public) not saved project=\(short, privacy: .public): \(String(describing: saveError), privacy: .public)")
+            editorMessage = notSaved
+            return .notSaved
+        case .committedUnverified(let reason):
+            MellowLog.app.error("Project editor \(label, privacy: .public) save unverified project=\(short, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
+            reconciliation = .saveUnverified
+            return .locked
+        case .indeterminate(let reason):
+            MellowLog.app.error("Project editor \(label, privacy: .public) save indeterminate project=\(short, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
+            reconciliation = .saveIndeterminate
+            return .locked
         }
     }
 

@@ -174,7 +174,7 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let editor = ProjectEditorModel(project: project, repository: h.repository, thumbnails: FakeClipThumbnailProvider())
 
         editor.select(b.id)
-        XCTAssertTrue(editor.deleteSelectedClip())
+        await XCTAssertTrueAsync(await editor.deleteSelectedClip())
         XCTAssertEqual(editor.orderedClips.map(\.id), [a.id, c.id])
         XCTAssertEqual(try h.repository.project(id: project.id)?.deletedClips.map(\.id), [b.id], "B pending, durable")
 
@@ -186,14 +186,14 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let existsPending = await exists(b.mediaRelativePath)
         XCTAssertTrue(existsPending, "B file stays while the Editor is live")
 
-        XCTAssertTrue(editor.undo())
+        await XCTAssertTrueAsync(await editor.undo())
         XCTAssertEqual(editor.orderedClips.map(\.id), [a.id, b.id, c.id])
         XCTAssertTrue(try h.repository.project(id: project.id)?.deletedClips.isEmpty ?? false)
         _ = await h.coordinator.reconcile(projectID: project.id)
         let existsRestored = await exists(b.mediaRelativePath)
         XCTAssertTrue(existsRestored, "no cleanup after Undo")
 
-        XCTAssertTrue(editor.redo())
+        await XCTAssertTrueAsync(await editor.redo())
         XCTAssertEqual(try h.repository.project(id: project.id)?.deletedClips.map(\.id), [b.id])
         report = await h.coordinator.reconcile(projectID: project.id)
         XCTAssertTrue(report.skippedForLiveEditor)
@@ -250,7 +250,7 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let cExists = await exists(c.mediaRelativePath)
         XCTAssertTrue(cExists)
 
-        XCTAssertTrue(editor.undo())
+        await XCTAssertTrueAsync(await editor.undo())
         XCTAssertEqual(editor.orderedClips.map(\.id), [a, b])
         XCTAssertEqual(try h.repository.project(id: project.id)?.deletedClips.map(\.id), [c.id], "C pending, Redo available")
         XCTAssertTrue(editor.canRedo)
@@ -258,10 +258,10 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let cStill = await exists(c.mediaRelativePath)
         XCTAssertTrue(cStill, "file protected while the Editor is live")
 
-        XCTAssertTrue(editor.redo())
+        await XCTAssertTrueAsync(await editor.redo())
         XCTAssertEqual(editor.orderedClips.map(\.id), [a, b, c.id], "C returns exactly")
         XCTAssertEqual(editor.orderedClips.last?.mediaRelativePath, c.mediaRelativePath)
-        XCTAssertTrue(editor.undo())
+        await XCTAssertTrueAsync(await editor.undo())
         XCTAssertEqual(try h.repository.project(id: project.id)?.deletedClips.map(\.id), [c.id])
 
         h.sessions.live = []
@@ -285,11 +285,11 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
         let added = await editor.addClips()
         XCTAssertEqual(added, 1)
         let c = try XCTUnwrap(editor.orderedClips.last)
-        XCTAssertTrue(editor.undo())
+        await XCTAssertTrueAsync(await editor.undo())
         XCTAssertTrue(editor.canRedo)
 
         // New edit clears Redo: C is logically unreachable, but still not cleaned in-session.
-        XCTAssertNotNil(editor.moveClipLater(id: a))
+        await XCTAssertNotNilAsync(await editor.moveClipLater(id: a))
         XCTAssertFalse(editor.canRedo)
         XCTAssertEqual(editor.orderedClips.map(\.id), [b, a])
         XCTAssertEqual(try h.repository.project(id: project.id)?.deletedClips.map(\.id), [c.id], "still durable pending")
@@ -743,7 +743,7 @@ final class ProjectMediaCleanupCoordinatorTests: XCTestCase {
 
         // A later autosave from that Editor cannot bring the finalized Clip back.
         let editor = ProjectEditorModel(project: snapshot, repository: h.repository, thumbnails: FakeClipThumbnailProvider())
-        XCTAssertEqual(editor.moveClipLater(id: a.id), 2)
+        await XCTAssertEqualAsync(await editor.moveClipLater(id: a.id), 2)
         XCTAssertEqual(h.repository.updateCount, 2, "seed + the Editor's autosave")
         let persisted = try XCTUnwrap(try h.repository.project(id: project.id))
         XCTAssertEqual(persisted.clips.map(\.id), [b.id, a.id])

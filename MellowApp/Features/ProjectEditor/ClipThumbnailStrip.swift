@@ -242,8 +242,8 @@ struct ClipThumbnailStrip: View {
             select: { model.select(clip.id) },
             canMoveEarlier: model.canMoveEarlier(clip.id),
             canMoveLater: model.canMoveLater(clip.id),
-            moveEarlier: { announce(model.moveClipEarlier(id: clip.id)) },
-            moveLater: { announce(model.moveClipLater(id: clip.id)) }
+            moveEarlier: { Task { announce(await model.moveClipEarlier(id: clip.id)) } },
+            moveLater: { Task { announce(await model.moveClipLater(id: clip.id)) } }
         )
         .opacity(isLifted ? 0 : 1)
         .background {
@@ -351,6 +351,7 @@ struct ClipThumbnailStrip: View {
 
     private func finishDrag() {
         stopAutoScroll()
+        // The committed order stays visible until the save is `completed` (no optimistic publish).
         settle { model.commitReorder() }
     }
 
@@ -359,10 +360,10 @@ struct ClipThumbnailStrip: View {
         settle { model.cancelReorder() }
     }
 
-    /// Ends the drag in the model (`resolve`: commit or cancel — synchronous, so the resulting
-    /// committed order is known here) and lets the lifted copy settle onto the clip's final slot
-    /// with a short, highly damped spring before the real cell takes over. A rollback (persistence
-    /// failure) reflows the neighbours with the same spring. Under Reduce Motion the copy is
+    /// Ends the drag in the model (`resolve`: commit request or cancel — synchronous; the committed order
+    /// shown here is the last CONFIRMED one, which the drop's save may later replace) and lets the lifted copy settle onto the clip's final slot
+    /// with a short, highly damped spring before the real cell takes over. A drop settles onto the last
+    /// CONFIRMED order (no optimistic publish); the saved order appears once the save is `completed`. Under Reduce Motion the copy is
     /// dropped in place at once.
     private func settle(_ resolve: @escaping () -> Void) {
         guard let session = drag else { return resolve() }

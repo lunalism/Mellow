@@ -763,8 +763,8 @@ final class MellowUITests: XCTestCase {
         clip2.tap()
         app.buttons["deleteSelectedClip"].tap()
 
-        XCTAssertTrue(app.alerts["클립을 삭제하지 못했어요."].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.alerts.staticTexts["다시 시도해주세요."].exists)
+        XCTAssertTrue(app.alerts["변경사항을 저장하지 못했어요"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.alerts.staticTexts["프로젝트에 변경사항이 저장되지 않았어요."].exists)
         app.alerts.buttons["확인"].tap()
         expectLabel(clip2, "Clip 2 of 3, 3.0s")
         XCTAssertTrue(app.buttons["editorClip-3"].exists, "nothing was hidden")
@@ -773,6 +773,64 @@ final class MellowUITests: XCTestCase {
         XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "a failed edit is not history")
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
+    /// ADR-050 050-D D8.5a P2: a save that landed but cannot be confirmed locks the Editor behind the
+    /// exact U1 copy; the one action leaves the Editor (reopen with empty history is covered by unit tests).
+    /// Simulator store only (`-uiTestSeedEditorProject`), unreadable post-save observation injected.
+    @MainActor
+    func testEditorUnverifiedSaveLocksAndReturnsToTheScreenBelow() throws {
+        let app = legacyRecentApp(Self.editorArguments + ["-uiTestEditorSaveUnverified"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["editorClip-2"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+
+        XCTAssertTrue(app.alerts["저장 확인이 필요해요"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts.staticTexts["변경사항은 저장되었지만 지금은 확인하지 못했어요. 프로젝트 화면에서 다시 열어 확인해주세요."].exists)
+        let leave = app.alerts.buttons["프로젝트 화면으로"].firstMatch
+        XCTAssertTrue(leave.exists)
+        XCTAssertFalse(app.alerts.buttons["확인"].exists, "no dismiss-and-stay action: the only way out is back")
+        try auditAndCapture(app, name: "editor-reconciliation-required")
+        leave.tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5), "the Editor was left for the screen below")
+        XCTAssertFalse(app.otherElements["projectEditor"].exists)
+        removeProjects(in: app)
+    }
+
+    /// D8.5c in-flight rule: while an edit waits for the shared lifecycle gate (held by a DEBUG seam for
+    /// 8 s, released on its own), the Back button is gone and the interactive edge swipe does not leave the
+    /// Editor; the last confirmed timeline stays visible; once the edit completes, Back returns.
+    /// Simulator store only (`-uiTestSeedEditorProject`).
+    @MainActor
+    func testEditorBackIsUnavailableOnlyWhileAnEditIsInFlight() throws {
+        let app = legacyRecentApp(Self.editorArguments + ["-uiTestEditorGateHold=8000"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.exists)
+        let backLabel = back.label
+        XCTAssertNotEqual(backLabel, "실행 취소", "element 0 is the system Back button")
+
+        app.buttons["editorClip-2"].tap()
+        app.buttons["deleteSelectedClip"].tap()
+        // Queued behind the held gate: Back hidden, nothing published yet.
+        XCTAssertTrue(app.navigationBars.buttons[backLabel].waitForNonExistence(timeout: 2), "Back unavailable while in flight")
+        XCTAssertTrue(app.buttons["editorClip-3"].exists, "the last confirmed timeline stays visible")
+        // The interactive back gesture does not leave the Editor either.
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+        XCTAssertTrue(app.otherElements["projectEditor"].exists, "edge swipe did not pop the Editor")
+
+        // Processing ends: the delete completes and navigation returns.
+        XCTAssertTrue(app.navigationBars.buttons[backLabel].waitForExistence(timeout: 15), "Back restored after processing")
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForNonExistence(timeout: 2), "the confirmed delete is now shown")
+        XCTAssertTrue(app.buttons["editorUndo"].isEnabled)
+        app.navigationBars.buttons[backLabel].tap()
         XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
         removeProjects(in: app)
     }
@@ -1883,7 +1941,7 @@ final class MellowUITests: XCTestCase {
         save.buttons["editorClip-2"].tap()
         save.buttons["replaceSelectedClip"].tap()
         XCTAssertTrue(save.alerts["클립을 교체하지 못했어요"].waitForExistence(timeout: 10))
-        XCTAssertTrue(save.alerts.staticTexts["다시 시도해주세요. 프로젝트는 그대로 있어요."].exists)
+        XCTAssertTrue(save.alerts.staticTexts["프로젝트에 변경사항이 저장되지 않았어요."].exists)
         save.alerts.buttons["확인"].tap()
         expectLabel(save.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
         XCTAssertEqual(save.buttons["editorClip-2"].value as? String, "Selected")

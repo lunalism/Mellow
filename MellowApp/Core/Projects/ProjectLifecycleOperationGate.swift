@@ -2,8 +2,9 @@ import Foundation
 
 /// The one async critical section for cross-resource Project lifecycle mutations (ADR-039):
 /// pending-Clip physical cleanup, startup recovery, Project composition / Safe Atomic Replacement, the
-/// Editor's Project load, Home Project deletion and the Editor's Add / Replace target check →
-/// materialise → commit all enter through `withExclusiveAccess`, so cleanup can never interleave with a
+/// Editor's Project load, Home Project deletion and every Editor commit (Add / Replace prior check →
+/// materialise → commit, and Reorder / Delete / Undo / Redo — ADR-050 050-D D8.5c) all enter through
+/// `withExclusiveAccess`, so cleanup can never interleave with a
 /// composition that touches the same Project files / metadata, and a new Editor never reads a
 /// half-reconciled Project (file gone, row still pending) that a later autosave could resurrect.
 ///

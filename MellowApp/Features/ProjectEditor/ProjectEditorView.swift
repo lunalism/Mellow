@@ -17,7 +17,11 @@ struct ProjectEditorDestination: View {
     var body: some View {
         Group {
             if let model {
-                ProjectEditorView(model: model, photosSelector: environment.editorPhotosSelector)
+                ProjectEditorView(model: model, photosSelector: environment.editorPhotosSelector) {
+                    // Reconciliation (ADR-050 050-D D8.5a P2): back to the screen below; reopening goes
+                    // through this gated load again with an empty session history.
+                    environment.router.leaveProjectEditor(projectID)
+                }
             } else if unavailable {
                 ProjectEditorUnavailableView()
             } else {
@@ -37,8 +41,22 @@ struct ProjectEditorDestination: View {
                         repository: environment.projectRepository,
                         thumbnails: environment.clipThumbnails,
                         acquisition: environment.editorClipAcquisition,
-                        availability: environment.clipAvailability
+                        availability: environment.clipAvailability,
+                        lifecycle: environment.projectLifecycle
                     )
+                    #if DEBUG
+                    if let hold = environment.uiTestEditorGateHoldMilliseconds {
+                        let gate = environment.projectLifecycle
+                        model?.debugBeforeEditGate = {
+                            let holder = Task { @MainActor in
+                                await gate.withExclusiveAccess { try? await Task.sleep(for: .milliseconds(hold)) }
+                            }
+                            // The holder owns the gate before the edit queues behind it.
+                            while !gate.isHeld { await Task.yield() }
+                            _ = holder
+                        }
+                    }
+                    #endif
                     #if DEBUG
                     MellowLog.app.info("Project editor loaded \(project.id.uuidString, privacy: .public) clips=\(project.clips.count, privacy: .public) total=\(ClipDurationText.string(project.totalDuration), privacy: .public)")
                     // Physical-review aid (ADR-040 fixture flow): the active Clip identities in logical
@@ -63,6 +81,8 @@ struct ProjectEditorView: View {
     @Bindable var model: ProjectEditorModel
     /// The production Add Clips boundary the view hosts (`.photosPicker`); nil under a test fake.
     var photosSelector: PhotosVideoSelector? = nil
+    /// `프로젝트 화면으로`: leaves the Editor (reconciliation required).
+    var returnToProjects: () -> Void = {}
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
@@ -108,6 +128,20 @@ struct ProjectEditorView: View {
         } message: { message in
             Text(message.message)
         }
+        // Reconciliation required (ADR-050 050-D D8.5a P2 / Editor decisions 2026-10-05): the one action
+        // leaves for Projects; the locked timeline stays behind it and is never presented as saved.
+        .alert(
+            model.reconciliation?.title ?? "",
+            isPresented: Binding(get: { model.reconciliation != nil }, set: { _ in }),
+            presenting: model.reconciliation
+        ) { _ in
+            Button(EditorReconciliation.returnAction, action: returnToProjects)
+        } message: { reconciliation in
+            Text(reconciliation.message)
+        }
+        // Leaving the Editor is unavailable only while an edit is being committed (not a general
+        // late-result or cancellation policy).
+        .navigationBarBackButtonHidden(model.isNavigationLocked)
         // Editor-only workspace appearance: the subtree and its navigation bar render dark whatever
         // the app appearance is; nothing global changes (Projects / Camera are untouched).
         .environment(\.colorScheme, .dark)
@@ -154,20 +188,27 @@ struct ProjectEditorView: View {
     }
 
     private func deleteSelectedClip() {
-        guard model.deleteSelectedClip() else { return }
-        AccessibilityNotification.Announcement("클립을 삭제했어요. 실행 취소할 수 있어요.").post()
+        guard model.canDeleteSelectedClip else { return }
+        Task {
+            guard await model.deleteSelectedClip() else { return }
+            AccessibilityNotification.Announcement("클립을 삭제했어요. 실행 취소할 수 있어요.").post()
+        }
     }
 
     private func undo() {
         let kind = model.undoTarget
-        guard model.undo() else { return }
-        AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 실행 취소했어요.").post()
+        Task {
+            guard await model.undo() else { return }
+            AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 실행 취소했어요.").post()
+        }
     }
 
     private func redo() {
         let kind = model.redoTarget
-        guard model.redo() else { return }
-        AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 다시 실행했어요.").post()
+        Task {
+            guard await model.redo() else { return }
+            AccessibilityNotification.Announcement("\(kind?.description ?? "편집") 다시 실행했어요.").post()
+        }
     }
 }
 
