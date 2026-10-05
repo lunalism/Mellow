@@ -319,6 +319,260 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectM
     }
 }
 
+
+// MARK: - Attempt rollback (ADR-050 050-D D7a §1; internal, unwired)
+
+/// One materialized candidate of a failed import attempt, as the attempt recorded it. Nothing is
+/// discovered by enumeration: the executor acts only on these exact records.
+struct ImportRollbackRecord: Hashable, Sendable {
+    enum Kind: Hashable, Sendable {
+        /// A fast-path file that was renamed out of the workspace: it goes back to exactly
+        /// `workspaceFileName` inside the attempt's workspace, and must then have `recordedByteCount` bytes.
+        case ready(workspaceFileName: String, recordedByteCount: Int64)
+        /// A normalization output owned by the failed attempt: it is removed.
+        case normalizedOutput
+    }
+
+    let clipID: UUID
+    /// Must be exactly the canonical `Projects/<projectID>/Media/<clipID>.mov`.
+    let materializedPath: RelativeMediaPath
+    let kind: Kind
+}
+
+/// One failed attempt to roll back: its live workspace, the target Project, every candidate record
+/// (including the failing item's, whose file may still be on either side), and optionally the
+/// attempt's own output directory inside the workspace (e.g. `attempt-<n>`), removed as a whole.
+struct ImportRollbackPlan: Hashable, Sendable {
+    let workspace: ProjectMediaWorkspace
+    let projectID: UUID
+    let records: [ImportRollbackRecord]
+    /// A direct child of the workspace directory, or nil when the attempt wrote none.
+    let attemptDirectoryName: String?
+}
+
+/// Why one record (or the attempt directory) could not be brought to its verified rolled-back state.
+enum ImportRollbackProblem: Hashable, Sendable {
+    case workspaceNotLive
+    case workspaceNotADirectory
+    case pathNotOwned
+    case symbolicLink
+    /// A path component that must be a directory is something else.
+    case notADirectory
+    case notARegularFile
+    /// The path could not be inspected (anything but "does not exist"): never read as absent.
+    case uninspectable
+    case destinationOccupied
+    case fileMissing
+    case sizeMismatch(expected: Int64, actual: Int64?)
+    case restoreFailed
+    case removalFailed
+    case duplicateRecord
+}
+
+/// What happened to one record. Only the first four are verified states.
+enum ImportRollbackRecordResult: Hashable, Sendable {
+    /// Moved back to the workspace and verified (size, materialized path empty).
+    case restored
+    /// Already at its workspace path with the recorded size, materialized path empty (the failing
+    /// item never moved, or a repeated call) — verified, nothing done.
+    case alreadyInWorkspace
+    /// The owned normalization output was removed and its absence verified.
+    case removed
+    /// The owned normalization output was not there — verified absent, nothing done.
+    case alreadyAbsent
+    case unresolved(ImportRollbackProblem)
+
+    var isVerified: Bool {
+        if case .unresolved = self { return false }
+        return true
+    }
+}
+
+/// The executor's answer. `verifiedClean` only when EVERY record and the attempt directory reached a
+/// verified state; anything else is `unresolved` with the per-record detail, and D7a forbids Retry.
+enum ImportRollbackOutcome: Hashable, Sendable {
+    case verifiedClean(records: [UUID: ImportRollbackRecordResult])
+    case unresolved(records: [UUID: ImportRollbackRecordResult], attemptDirectory: ImportRollbackProblem?)
+
+    /// Verified cleanup is NECESSARY for Retry under D7a §2, not sufficient: valid sources and a valid
+    /// target must still be established by the caller.
+    var isVerifiedClean: Bool {
+        if case .verifiedClean = self { return true }
+        return false
+    }
+}
+
+extension ProjectMediaStore {
+    /// Rolls back one failed attempt's own candidates (D7a §1): ready files are renamed back to their
+    /// recorded workspace paths without overwriting; owned normalization outputs (materialized copies and
+    /// the attempt's own workspace directory) are removed; every result is verified. Symlinks are never
+    /// followed and nothing outside the exact owned paths is touched; empty Project directories are left
+    /// alone (that rule is unresolved). Independent records are still handled after one fails.
+    ///
+    /// The caller must already have established D7a eligibility (before any save attempt, or after a
+    /// thrown save classified `priorConfirmed`) and the appropriate serialization; this never infers
+    /// eligibility from an error. Repeated calls are safe: an already rolled-back record verifies again.
+    func rollBackAttempt(_ plan: ImportRollbackPlan) async -> ImportRollbackOutcome {
+        var results: [UUID: ImportRollbackRecordResult] = [:]
+        // Without a live, real workspace nothing is mutated and nothing can be reported clean.
+        if let workspaceProblem = workspaceRollbackProblem(plan.workspace) {
+            for record in plan.records { results[record.clipID] = .unresolved(workspaceProblem) }
+            return .unresolved(records: results, attemptDirectory: workspaceProblem)
+        }
+        // Duplicate identities are rejected before any mutation; the other records still proceed.
+        var counts: [UUID: Int] = [:]
+        for record in plan.records { counts[record.clipID, default: 0] += 1 }
+        for record in plan.records {
+            if counts[record.clipID, default: 0] > 1 {
+                results[record.clipID] = .unresolved(.duplicateRecord)
+                continue
+            }
+            results[record.clipID] = rollBack(record, projectID: plan.projectID, workspace: plan.workspace)
+        }
+        var directoryProblem: ImportRollbackProblem?
+        if let name = plan.attemptDirectoryName {
+            directoryProblem = removeAttemptDirectory(named: name, in: plan.workspace)
+        }
+        let clean = directoryProblem == nil && results.values.allSatisfy(\.isVerified)
+        return clean ? .verifiedClean(records: results) : .unresolved(records: results, attemptDirectory: directoryProblem)
+    }
+
+    private enum RollbackNode: Equatable { case missing, regularFile(Int64), directory, symbolicLink, other, uninspectable, outsideRoot }
+
+    /// `lstat` classification: a symbolic link is reported as itself, never followed. Only "does not
+    /// exist" (`ENOENT` / `ENOTDIR`) is `.missing`; any other failure is `.uninspectable`.
+    private func rollbackNode(_ url: URL) -> RollbackNode {
+        var info = stat()
+        var failure: Int32 = 0
+        let status = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return -1 }
+            let result = lstat(path, &info)
+            failure = result == 0 ? 0 : errno   // captured once, immediately after the call
+            return result
+        }
+        guard status == 0 else { return failure == ENOENT || failure == ENOTDIR ? .missing : .uninspectable }
+        switch info.st_mode & S_IFMT {
+        case S_IFLNK: return .symbolicLink
+        case S_IFDIR: return .directory
+        case S_IFREG: return .regularFile(Int64(info.st_size))
+        default: return .other
+        }
+    }
+
+    /// Every component from the root down to `directory` must be a real directory. Returns the first
+    /// problem: `.missing` when a component does not exist, otherwise the component's offending kind.
+    private func directoryChainProblem(_ directory: URL) -> RollbackNode? {
+        let rootPath = root.standardizedFileURL.path
+        let target = directory.standardizedFileURL.path
+        guard target == rootPath || target.hasPrefix(rootPath + "/") else { return .outsideRoot }
+        var current = root.standardizedFileURL
+        var node = rollbackNode(current)
+        guard node == .directory else { return node }
+        for component in target.dropFirst(rootPath.count).split(separator: "/") {
+            current = current.appendingPathComponent(String(component), isDirectory: true)
+            node = rollbackNode(current)
+            guard node == .directory else { return node }
+        }
+        return nil
+    }
+
+    private func workspaceRollbackProblem(_ workspace: ProjectMediaWorkspace) -> ImportRollbackProblem? {
+        guard liveWorkspaceIDs.contains(workspace.id) else { return .workspaceNotLive }
+        let expected = workspacesDirectory.appendingPathComponent(workspace.id.uuidString, isDirectory: true).standardizedFileURL
+        guard workspace.directory.standardizedFileURL.path == expected.path, directoryChainProblem(expected) == nil else { return .workspaceNotADirectory }
+        return nil
+    }
+
+    private static func problem(for node: RollbackNode) -> ImportRollbackProblem {
+        switch node {
+        case .symbolicLink: return .symbolicLink
+        case .uninspectable: return .uninspectable
+        case .outsideRoot: return .pathNotOwned
+        case .missing: return .fileMissing
+        case .regularFile, .other: return .notADirectory
+        case .directory: return .notARegularFile
+        }
+    }
+
+    /// A plain file name (one path component, not "." / ".."), resolved inside the workspace directory.
+    private func workspaceChild(_ name: String, in workspace: ProjectMediaWorkspace) -> URL? {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { return nil }
+        return workspacesDirectory.appendingPathComponent(workspace.id.uuidString, isDirectory: true).appendingPathComponent(name)
+    }
+
+    private func rollBack(_ record: ImportRollbackRecord, projectID: UUID, workspace: ProjectMediaWorkspace) -> ImportRollbackRecordResult {
+        guard let canonical = try? Self.committedMediaPath(projectID: projectID, clipID: record.clipID),
+              record.materializedPath == canonical else { return .unresolved(.pathNotOwned) }
+        let materialized = root.appendingPathComponent(canonical.value)
+        // A missing directory on the way means the candidate is absent; any other non-directory component
+        // (symlink, file, uninspectable) is refused.
+        let materializedNode: RollbackNode
+        switch directoryChainProblem(materialized.deletingLastPathComponent()) {
+        case nil: materializedNode = rollbackNode(materialized)
+        case .missing?: materializedNode = .missing
+        case let node?: return .unresolved(Self.problem(for: node))
+        }
+
+        switch record.kind {
+        case .normalizedOutput:
+            switch materializedNode {
+            case .missing: return .alreadyAbsent
+            case .symbolicLink: return .unresolved(.symbolicLink)
+            case .uninspectable: return .unresolved(.uninspectable)
+            case .outsideRoot: return .unresolved(.pathNotOwned)
+            case .directory, .other: return .unresolved(.notARegularFile)
+            case .regularFile:
+                try? fileManager.removeItem(at: materialized)
+                return rollbackNode(materialized) == .missing ? .removed : .unresolved(.removalFailed)
+            }
+
+        case .ready(let name, let recordedByteCount):
+            guard let original = workspaceChild(name, in: workspace) else { return .unresolved(.pathNotOwned) }
+            let originalNode = rollbackNode(original)
+            switch (materializedNode, originalNode) {
+            case (.symbolicLink, _), (_, .symbolicLink):
+                return .unresolved(.symbolicLink)
+            case (.uninspectable, _), (_, .uninspectable):
+                return .unresolved(.uninspectable)
+            case (.regularFile(let size), .missing):
+                // Only a file that matches the record leaves the Project.
+                guard size == recordedByteCount else { return .unresolved(.sizeMismatch(expected: recordedByteCount, actual: size)) }
+                do { try fileManager.moveItem(at: materialized, to: original) } catch { return .unresolved(.restoreFailed) }
+                return verifyRestored(original: original, materialized: materialized, recordedByteCount: recordedByteCount, moved: true)
+            case (.missing, .regularFile):
+                return verifyRestored(original: original, materialized: materialized, recordedByteCount: recordedByteCount, moved: false)
+            case (.regularFile, .regularFile), (.regularFile, .directory), (.regularFile, .other):
+                return .unresolved(.destinationOccupied)
+            case (.missing, .missing):
+                return .unresolved(.fileMissing)
+            default:
+                return .unresolved(.notARegularFile)
+            }
+        }
+    }
+
+    private func verifyRestored(original: URL, materialized: URL, recordedByteCount: Int64, moved: Bool) -> ImportRollbackRecordResult {
+        guard rollbackNode(materialized) == .missing else { return .unresolved(.restoreFailed) }
+        guard case .regularFile(let size) = rollbackNode(original) else { return .unresolved(.fileMissing) }
+        guard size == recordedByteCount else { return .unresolved(.sizeMismatch(expected: recordedByteCount, actual: size)) }
+        return moved ? .restored : .alreadyInWorkspace
+    }
+
+    private func removeAttemptDirectory(named name: String, in workspace: ProjectMediaWorkspace) -> ImportRollbackProblem? {
+        guard let directory = workspaceChild(name, in: workspace) else { return .pathNotOwned }
+        switch rollbackNode(directory) {
+        case .missing: return nil
+        case .symbolicLink: return .symbolicLink
+        case .uninspectable: return .uninspectable
+        case .outsideRoot: return .pathNotOwned
+        case .regularFile, .other: return .notADirectory
+        case .directory:
+            try? fileManager.removeItem(at: directory)
+            return rollbackNode(directory) == .missing ? nil : .removalFailed
+        }
+    }
+}
+
 #if DEBUG
 /// UI-test / physical-review fixture helpers (never Release): write, probe or remove one file by a
 /// root-relative path. Containment is enforced; they never touch anything outside the Mellow root.

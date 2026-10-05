@@ -1806,7 +1806,7 @@ Camera 정수 Preset은 Photos Import와 무관하며 전체 Source가 1.0–5.0
 | Accepted Set Storage Estimate · Safety Reserve | Pending 유지(부분): 계산 정책 부분 승인(ADR-050 050-A / 050-B / 050-C 계산 정책, 2026-10-02) · 순수 `ImportStorageEstimator` 구현(Step 5B, 연결 없음); 검사 경계 연결 · Phase 5 Admission 변경 · Integration은 Pending — 2026-10-05: `S_audio` Inspector Fact(`audioPayload`)와 순수 Estimator 오디오 입력 대응 구현(연결 없음); `S_audio` 측정 범위는 OA-4 명확화(2026-10-05: 같은 Track의 저장 · 전달 Byte 중 큰 값, 하나라도 무효면 미측정)로 해결 · 구현 — 2026-10-05: Accepted Set 조합(`ImportStorageWorkSet`: 계획 기준 항목 입력, 남은 출력, 작업별 Metadata) 구현, 연결 없음 |
 | Free-space API / Race 처리 | Pending 유지 |
 | Blocking Preparation Progress UI · Aggregate Progress | Preparation / Progress UI 미구현(ADR-042 Revision 4로 UX 확정) · Aggregate Progress 계산은 Pending 유지(구현 세부 결정) |
-| 실제 사용자 흐름의 취소 / `다시 시도` Source-handle 조정 | Pending 유지 — 2026-10-05: 제한된 복구 계약(ADR-050 050-D D7a: Rollback 자격, 같은 Set Retry, 취소 경계, Target 무효화, 안내) Accepted · 미구현; 050-C 용량 재검사 · 부족 Presentation, Startup Cleanup, 일반 Late Result는 미결 |
+| 실제 사용자 흐름의 취소 / `다시 시도` Source-handle 조정 | Pending 유지 — 2026-10-05: 제한된 복구 계약(ADR-050 050-D D7a: Rollback 자격, 같은 Set Retry, 취소 경계, Target 무효화, 안내) Accepted · 미구현; 2026-10-05: 내부 Rollback 실행기(`ProjectMediaStore.rollBackAttempt`) 구현 · 연결 없음; 050-C 용량 재검사 · 부족 Presentation, Startup Cleanup, 일반 Late Result는 미결 |
 | Project로의 Atomic Materialization / Commit 통합 | 미구현(계약은 확정) |
 | Relaunch Resume / Checkpoint | 정책상 구현하지 않음(ADR-047) |
 | 버려진 Workspace 산출물의 시작 시 정리 | 기존 Phase 5 안전망 존재; Normalizer 통합 의무는 End-to-end 연결 · 검증 필요 |

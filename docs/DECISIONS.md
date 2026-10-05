@@ -4252,6 +4252,8 @@ C0은 세 경로가 공유하는 `ReceivedVideoFile` Closure 안의 검사이며
    - 미확정 Save 결과는 Accepted U1 / U2를 쓰며 "저장되지 않았어요"를 쓰지 않는다.
    - 이 미래의 준비 · Retry 규칙은 복구 통합이 구현되기 전까지 현재 구현된 D8.5a P6 확인 전용 경로를 조용히 대체하지 않는다.
 
+**구현(2026-10-05, 내부 · 연결 없음):** D7a 1항의 Rollback 실행기 `ProjectMediaStore.rollBackAttempt(_:)`가 구현되었다 — Attempt가 기록한 정확한 Record(`ImportRollbackRecord`: 정규 Materialize 경로, Ready 파일의 Workspace 이름 · 기록 크기 또는 정규화 출력)만 다루고, Ready 파일은 덮어쓰지 않고 원래 Workspace 경로로 되돌리며, 소유한 정규화 출력과 Attempt 자신의 Workspace 하위 Directory를 제거하고, Symlink · 소유 경로 밖 · Live가 아닌 Workspace를 거부하며, 모든 결과를 확인해 `verifiedClean` 또는 Record별 사유를 담은 `unresolved`(Retry 금지)를 돌려준다; 한 Record가 실패해도 나머지를 처리한다. 호출자가 D7a 자격과 직렬화를 먼저 확립해야 하며 실행기는 오류에서 자격을 추론하지 않는다. 빈 Project Directory는 제거하지 않는다(D4 4항 미결). Coordinator · UI · Save 분류 · Retry · Startup Cleanup에 연결되지 않았고 ROADMAP Task 14 해석(OD-4)도 그대로 남는다.
+
 **남은 안내 공백(결정되지 않음):** 복원이 확인된 뒤 `다시 시도` 시점에 보존 Source가 더 이상 유효하지 않거나(외부 원인 포함, R4 §3의 "Mutation 없이 안전하게 실패"), Retry 시점에 Target이 무효이거나(Select Clips와 Editor의 기존 안내가 그 시점에도 적용되는지), CR 용량 검사가 부족한 경우(050-C)의 Retry 거부 안내는 승인 문서에 없다. D4 4항(새 Project의 빈 Directory 제거)도 명시적으로 승인되지 않았다.
 
 ### D8. Save Outcome 판정(Save 오류 또는 확인 실패 뒤)

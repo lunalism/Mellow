@@ -85,6 +85,7 @@
 		000000000000000000000288 /* SelectClipsSaveOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000188 /* SelectClipsSaveOutcomeTests.swift */; };
 		000000000000000000000289 /* EditorSaveOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000189 /* EditorSaveOutcomeTests.swift */; };
 		00000000000000000000028A /* ImportAudioPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018A /* ImportAudioPayloadTests.swift */; };
+		00000000000000000000028B /* ImportAttemptRollbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018B /* ImportAttemptRollbackTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -232,6 +233,7 @@
 		000000000000000000000188 /* SelectClipsSaveOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectClipsSaveOutcomeTests.swift; sourceTree = "<group>"; };
 		000000000000000000000189 /* EditorSaveOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSaveOutcomeTests.swift; sourceTree = "<group>"; };
 		00000000000000000000018A /* ImportAudioPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportAudioPayloadTests.swift; sourceTree = "<group>"; };
+		00000000000000000000018B /* ImportAttemptRollbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportAttemptRollbackTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -374,6 +376,7 @@
 				000000000000000000000188 /* SelectClipsSaveOutcomeTests.swift */,
 				000000000000000000000189 /* EditorSaveOutcomeTests.swift */,
 				00000000000000000000018A /* ImportAudioPayloadTests.swift */,
+				00000000000000000000018B /* ImportAttemptRollbackTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -926,6 +929,7 @@
 				000000000000000000000288 /* SelectClipsSaveOutcomeTests.swift in Sources */,
 				000000000000000000000289 /* EditorSaveOutcomeTests.swift in Sources */,
 				00000000000000000000028A /* ImportAudioPayloadTests.swift in Sources */,
+				00000000000000000000028B /* ImportAttemptRollbackTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,
