@@ -250,16 +250,18 @@ final class AppEnvironment {
         // reads go through unchanged.
         // `-uiTestEditorSaveUnverified`: saves land, but every post-save observation is unreadable, so the
         // Editor's reconciliation lock (ADR-050 050-D D8.5a P2) can be driven on the simulator store.
+        let sessionRepository: any ProjectRepository
         if arguments.contains("-uiTestEditorSaveFailure") {
-            self.projectRepository = UpdateFailingProjectRepository(inner: repository)
+            sessionRepository = UpdateFailingProjectRepository(inner: repository)
         } else if arguments.contains("-uiTestEditorSaveUnverified") {
-            self.projectRepository = UnverifiedSaveProjectRepository(inner: repository)
+            sessionRepository = UnverifiedSaveProjectRepository(inner: repository)
         } else {
-            self.projectRepository = repository
+            sessionRepository = repository
         }
         #else
-        self.projectRepository = repository
+        let sessionRepository: any ProjectRepository = repository
         #endif
+        self.projectRepository = sessionRepository
         // Phase 5 Select-Clips composition (ADR-034 §2 / ADR-020 / ADR-024). The UI-test harness
         // injects a fake gate so deterministic scenarios never depend on the simulator's disk.
         let projectMediaStore = ProjectMediaStore()
@@ -285,6 +287,9 @@ final class AppEnvironment {
         let transferAdmission: any ProjectStorageGating = ImportTransferCopyGate.transferVolume()
         #endif
         let projectLifecycle = ProjectLifecycleOperationGate()
+        // Phase 6 imports in an Editor, so an Editor-route removal can let them finish before Editor-exit cleanup.
+        let importActivity = ImportOperationActivity()
+        let editorRouteProbe: (UUID) -> () -> Bool = { [router] projectID in router.routeProbe(for: .projectEditor(projectID)) }
         self.projectLifecycle = projectLifecycle
         self.projectComposition = ProjectCompositionCoordinator(
             repository: repository,
@@ -324,17 +329,27 @@ final class AppEnvironment {
             // under the Project, no row references them yet, and the process dies before commit.
             if arguments.contains("-uiTestCrashAfterAddMaterialize") {
                 acquisition.debugAfterMaterialize = { exit(0) }
+            } else {
+                // Phase 6 Add / Replace with the real normalizer (optionally delayed / failing via UI-test seams).
+                acquisition.importServices = Self.makeImportFlowServices(repository: sessionRepository, store: projectMediaStore, lifecycle: projectLifecycle,
+                                                                         normalizer: UITestScriptedNormalizer(arguments: arguments))
+                acquisition.importActivity = importActivity
+                acquisition.makeRouteProbe = editorRouteProbe
             }
             self.editorClipAcquisition = acquisition
         } else {
             let editorSelector = PhotosVideoSelector()
             self.editorPhotosSelector = editorSelector
-            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle)
+            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle,
+                                                               importServices: Self.makeImportFlowServices(repository: sessionRepository, store: projectMediaStore, lifecycle: projectLifecycle),
+                                                               importActivity: importActivity, makeRouteProbe: editorRouteProbe)
         }
         #else
         let editorSelector = PhotosVideoSelector()
         self.editorPhotosSelector = editorSelector
-        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle)
+        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle,
+                                                               importServices: Self.makeImportFlowServices(repository: sessionRepository, store: projectMediaStore, lifecycle: projectLifecycle),
+                                                               importActivity: importActivity, makeRouteProbe: editorRouteProbe)
         #endif
         // The Projects screen stays below the Editor so Back returns Editor → 프로젝트 → Camera.
         self.projectsEntry = ProjectsEntryModel(
@@ -342,7 +357,7 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: photosVideoSelector,
             storageGate: transferAdmission,
-            importServices: Self.makeSelectClipsImportServices(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle),
+            importServices: Self.makeImportFlowServices(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle),
             routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { projectID in router.path.append(.projectEditor(projectID)) },
             onProjectCommitted: { projectID in router.path.append(.projectEditor(projectID)) }
@@ -407,8 +422,20 @@ final class AppEnvironment {
         self.projectCleanup = projectCleanup
         let productionProjectsEntry = projectsEntry
         router.onProjectsEntryRouteRemoved = { productionProjectsEntry.originatingRouteRemoved() }
-        router.onProjectEditorRouteRemoved = { [projectCleanup] projectID in
-            projectCleanup.scheduleReconcile(projectID: projectID)
+        router.onProjectEditorRouteInstanceRemoved = { [importActivity] projectID in importActivity.routeRemoved(projectID: projectID) }
+        router.onProjectEditorRouteRemoved = { [projectCleanup, importActivity] projectID in
+            // Editor decision 3 (2026-10-06): a Phase 6 import for this Project first finishes its outcome processing and
+            // attempt cleanup (an unanswerable Retry wait ends now); only then does the gated Editor-exit cleanup run. The
+            // wait never holds the lifecycle gate.
+            importActivity.routeRemoved(projectID: projectID)
+            guard importActivity.isActive(projectID: projectID) else {
+                projectCleanup.scheduleReconcile(projectID: projectID)
+                return
+            }
+            Task { @MainActor in
+                await importActivity.waitUntilIdle(projectID: projectID)
+                projectCleanup.scheduleReconcile(projectID: projectID)
+            }
         }
         self.projectRecovery = ProjectStartupRecoveryCoordinator(
             repository: projectRepository,
@@ -656,7 +683,7 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: selector,
             storageGate: projectStorageGate,
-            importServices: Self.makeSelectClipsImportServices(
+            importServices: Self.makeImportFlowServices(
                 repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle,
                 normalizer: UITestScriptedNormalizer(arguments: arguments)),
             routeProbe: { [router] in router.projectsEntryRouteProbe() },
@@ -695,7 +722,7 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: selector,
             storageGate: ImportTransferCopyGate.transferVolume(),
-            importServices: Self.makeSelectClipsImportServices(repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle),
+            importServices: Self.makeImportFlowServices(repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle),
             routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { [weak self] projectID in
                 self?.router.path.append(.projectEditor(projectID))
@@ -862,12 +889,12 @@ final class AppEnvironment {
 
     #endif
 
-    /// The Phase 6 Select Clips services (ADR-050 050-C / 050-D): the real selection preflight and the internal
+    /// The Phase 6 import services for Select Clips and Editor Add / Replace (ADR-050 050-C / 050-D): the real selection preflight and the internal
     /// attempt coordinator over the shared repository, media store and lifecycle gate; C1 / C2 / C3 / CR read the
     /// Mellow-root volume (unknown capacity fails closed).
-    static func makeSelectClipsImportServices(repository: any ProjectRepository, store: ProjectMediaStore, lifecycle: ProjectLifecycleOperationGate,
-                                              normalizer: any WorkingMediaNormalizing = AVFoundationWorkingMediaNormalizer()) -> SelectClipsImportServices {
-        SelectClipsImportServices(
+    static func makeImportFlowServices(repository: any ProjectRepository, store: ProjectMediaStore, lifecycle: ProjectLifecycleOperationGate,
+                                              normalizer: any WorkingMediaNormalizing = AVFoundationWorkingMediaNormalizer()) -> ImportFlowServices {
+        ImportFlowServices(
             store: store,
             preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()),
             attempts: ImportAttemptCoordinator(repository: repository, mediaStore: store, normalizer: normalizer, lifecycle: lifecycle,

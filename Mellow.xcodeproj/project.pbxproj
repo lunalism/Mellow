@@ -95,6 +95,8 @@
 		000000000000000000000292 /* ImportPreparationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000192 /* ImportPreparationPresentation.swift */; };
 		000000000000000000000293 /* ImportPreparationProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000193 /* ImportPreparationProgressTests.swift */; };
 		000000000000000000000294 /* SelectClipsImportFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000194 /* SelectClipsImportFlowTests.swift */; };
+		000000000000000000000295 /* ImportOperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000195 /* ImportOperationPresenter.swift */; };
+		000000000000000000000296 /* EditorImportFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000196 /* EditorImportFlowTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -252,6 +254,8 @@
 		000000000000000000000192 /* ImportPreparationPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreparationPresentation.swift; sourceTree = "<group>"; };
 		000000000000000000000193 /* ImportPreparationProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreparationProgressTests.swift; sourceTree = "<group>"; };
 		000000000000000000000194 /* SelectClipsImportFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectClipsImportFlowTests.swift; sourceTree = "<group>"; };
+		000000000000000000000195 /* ImportOperationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportOperationPresenter.swift; sourceTree = "<group>"; };
+		000000000000000000000196 /* EditorImportFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorImportFlowTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -400,6 +404,7 @@
 				000000000000000000000191 /* ImportCopyAdmissionTests.swift */,
 				000000000000000000000193 /* ImportPreparationProgressTests.swift */,
 				000000000000000000000194 /* SelectClipsImportFlowTests.swift */,
+				000000000000000000000196 /* EditorImportFlowTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -670,6 +675,7 @@
 				00000000000000000000018E /* ImportRetryController.swift */,
 				000000000000000000000190 /* ImportCopyAdmission.swift */,
 				000000000000000000000192 /* ImportPreparationPresentation.swift */,
+				000000000000000000000195 /* ImportOperationPresenter.swift */,
 			);
 			path = Import;
 			sourceTree = "<group>";
@@ -868,6 +874,7 @@
 				00000000000000000000028E /* ImportRetryController.swift in Sources */,
 				000000000000000000000290 /* ImportCopyAdmission.swift in Sources */,
 				000000000000000000000292 /* ImportPreparationPresentation.swift in Sources */,
+				000000000000000000000295 /* ImportOperationPresenter.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,
 				00000000000000000000024D /* ProjectMediaSelection.swift in Sources */,
 				00000000000000000000024E /* PhotosVideoSelector.swift in Sources */,
@@ -966,6 +973,7 @@
 				000000000000000000000291 /* ImportCopyAdmissionTests.swift in Sources */,
 				000000000000000000000293 /* ImportPreparationProgressTests.swift in Sources */,
 				000000000000000000000294 /* SelectClipsImportFlowTests.swift in Sources */,
+				000000000000000000000296 /* EditorImportFlowTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,

@@ -30,6 +30,9 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
     static let confirmationGrace: Duration = .milliseconds(800)
 
     private struct Session {
+        /// Identity for deferred checks: a session resolved early (`cancelPendingSelection`) must not let its
+        /// dismissal timer act on a later session.
+        let id = UUID()
         let continuation: CheckedContinuation<ProjectMediaSelectionOutcome, Never>
         let workspace: ProjectMediaWorkspace
         let store: any ProjectMediaStoring
@@ -58,15 +61,21 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
         }
     }
 
+    func cancelPendingSelection() {
+        guard let session, !session.transferStarted else { return }
+        resolve(.cancelled)
+    }
+
     /// Called when the picker sheet goes away. The confirmed selection, when any, is delivered into
     /// the binding around dismissal, so the decision is made once the grace period has elapsed.
     func pickerDismissed() {
         guard session != nil, session?.dismissed == false else { return }
         session?.dismissed = true
+        let dismissedID = session?.id
         evaluate()
         Task {
             try? await Task.sleep(for: Self.confirmationGrace)
-            guard let session, !session.transferStarted else { return }
+            guard let session, session.id == dismissedID, !session.transferStarted else { return }
             if items.isEmpty { resolve(.cancelled) }
         }
     }

@@ -109,4 +109,41 @@ final class PhotosVideoSelectorTests: XCTestCase {
         guard case .cancelled = await task.value else { return XCTFail() }
         XCTAssertFalse(selector.isPresented)
     }
+
+    // MARK: - Route removal at the picker stage (Phase 6 Editor, 2026-10-06)
+
+    func testCancelPendingSelectionResolvesAnOpenSessionAsCancelled() async throws {
+        let selector = PhotosVideoSelector()
+        let (_, task) = try await begin(selector)
+        selector.cancelPendingSelection()   // the host view is gone; no dismissal arrives
+        guard case .cancelled = await task.value else { return XCTFail() }
+        XCTAssertFalse(selector.isPresented)
+        selector.cancelPendingSelection()   // no session: no-op
+    }
+
+    func testCancelPendingSelectionNeverInterruptsAStartedTransfer() async throws {
+        let selector = PhotosVideoSelector()
+        let (_, task) = try await begin(selector)
+        selector.items = [item]
+        selector.isPresented = false
+        selector.pickerDismissed()          // confirmed: the transfer starts synchronously
+        selector.cancelPendingSelection()
+        let outcome = await task.value
+        guard case .failed = outcome else { return XCTFail("the started transfer decides the outcome: \(outcome)") }
+    }
+
+    func testEarlyResolvedSessionsDismissalTimerDoesNotCancelTheNextSession() async throws {
+        let selector = PhotosVideoSelector()
+        let (_, first) = try await begin(selector)
+        selector.isPresented = false
+        selector.pickerDismissed()          // starts the confirmation-grace timer for THIS session
+        selector.cancelPendingSelection()   // ...which is resolved early
+        guard case .cancelled = await first.value else { return XCTFail() }
+        let (_, second) = try await begin(selector)
+        try await Task.sleep(for: PhotosVideoSelector.confirmationGrace + .milliseconds(400))
+        XCTAssertTrue(selector.isPresented, "the earlier session's timer left the new session alone")
+        selector.isPresented = false
+        selector.pickerDismissed()
+        guard case .cancelled = await second.value else { return XCTFail() }
+    }
 }

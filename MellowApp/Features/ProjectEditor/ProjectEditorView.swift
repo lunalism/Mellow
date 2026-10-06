@@ -139,8 +139,33 @@ struct ProjectEditorView: View {
         } message: { reconciliation in
             Text(reconciliation.message)
         }
-        // Leaving the Editor is unavailable only while an edit is being committed (not a general
-        // late-result or cancellation policy).
+        // Phase 6 Add / Replace (D7b): the Blocking Preparation Sheet and the explicit Retry decision.
+        .overlay {
+            if let progress = model.importPreparation {
+                ImportPreparationSheet(progress: progress, isCancelling: model.isCancellingImport, cancel: model.cancelImport)
+            }
+        }
+        .alert(
+            model.importRetryPrompt?.title ?? "",
+            isPresented: Binding(get: { model.importRetryPrompt != nil }, set: { _ in }),
+            presenting: model.importRetryPrompt
+        ) { _ in
+            Button(ImportRetryPrompt.retryAction) { model.retryImport() }
+            Button(ImportRetryPrompt.cancelAction, role: .cancel) { model.cancelImport() }
+        } message: { prompt in
+            Text(prompt.message)
+        }
+        // A success reached through `다시 시도` gets the same announcement as a first-attempt success.
+        .onChange(of: model.completedRetryImport) { _, completion in
+            guard let completion else { return }
+            if completion.replaced {
+                AccessibilityNotification.Announcement("클립을 교체했어요. 실행 취소할 수 있어요.").post()
+            } else {
+                AccessibilityNotification.Announcement("클립 \(completion.count)개를 추가했어요.").post()
+            }
+        }
+        // Leaving the Editor is unavailable while an edit is being committed or an import operation runs / waits
+        // (D7b §4; not a general late-result policy).
         .navigationBarBackButtonHidden(model.isNavigationLocked)
         // Editor-only workspace appearance: the subtree and its navigation bar render dark whatever
         // the app appearance is; nothing global changes (Projects / Camera are untouched).

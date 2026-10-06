@@ -48,6 +48,13 @@ enum ProjectEditorMessage: Equatable {
     case addFailed
     /// Replace (ADR-040) generic failure: the original unavailable Clip is exactly as it was.
     case replaceFailed
+    /// Phase 6 Add / Replace: the consolidated exclusion notice (after a confirmed Add) or the single-candidate
+    /// rejection (ADR-042 R2–R4, ADR-043 R1, ADR-044 R1) — shared accepted copy.
+    case selectionNotice(ImportSelectionNotice)
+    /// D7b §1: a retained source became invalid for a Retry.
+    case sourceUnavailableForRetry
+    /// D7a §5 U3: restoration / cleanup could not be verified (not committed); no Retry.
+    case cleanupUnresolved
 
     var title: String {
         switch self {
@@ -61,6 +68,9 @@ enum ProjectEditorMessage: Equatable {
         case .addInsufficientStorage, .addImportStorageInsufficient: return ProjectMediaValidationCopy.insufficientStorageTitle
         case .addFailed: return "클립을 추가하지 못했어요."
         case .replaceFailed: return "클립을 교체하지 못했어요"
+        case .selectionNotice(let notice): return notice.title
+        case .sourceUnavailableForRetry: return ProjectsEntryModel.CompositionMessage.sourceUnavailableForRetry.title
+        case .cleanupUnresolved: return ProjectsEntryModel.CompositionMessage.cleanupUnresolved.title
         }
     }
     var message: String {
@@ -72,6 +82,9 @@ enum ProjectEditorMessage: Equatable {
         case .addFailed, .replaceFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
         case .changesNotSaved, .addNotSaved, .replaceNotSaved: return "프로젝트에 변경사항이 저장되지 않았어요."
         case .undoFailed, .redoFailed: return "다시 시도해주세요."
+        case .selectionNotice(let notice): return notice.message
+        case .sourceUnavailableForRetry: return ProjectsEntryModel.CompositionMessage.sourceUnavailableForRetry.message
+        case .cleanupUnresolved: return ProjectsEntryModel.CompositionMessage.cleanupUnresolved.message
         }
     }
 }
@@ -122,6 +135,13 @@ struct EditorClipAcquisition {
     /// The shared Project lifecycle gate (ADR-039): target revalidation, materialisation and the commit
     /// run inside it. Must be the app's single instance, the same one cleanup / composition use.
     let lifecycle: ProjectLifecycleOperationGate
+    /// Phase 6 Add / Replace (2026-10-06): preflight + `ImportAttemptCoordinator` + `ImportRetryController`. With these
+    /// set, the Phase 5 validator / materialization path and its commit-time final guard are not used (D7b §3).
+    var importServices: ImportFlowServices? = nil
+    /// Lets an Editor-route removal wait for this Project's import before the Editor-exit cleanup (decision 3).
+    var importActivity: ImportOperationActivity? = nil
+    /// Route identity of `.projectEditor(projectID)` at operation start (D7b §4).
+    var makeRouteProbe: ((UUID) -> () -> Bool)? = nil
     #if DEBUG
     /// UI-test seam (`-uiTestCrashAfterAddMaterialize`): runs right after the batch is materialised
     /// and before it is committed — the STEP 12B crash window. Nil in every production path.
@@ -143,6 +163,13 @@ struct EditorEditState: Equatable, Sendable {
         deletedClips = project.deletedClips
         self.selectedClipID = selectedClipID
     }
+}
+
+/// A Phase 6 Add / Replace that completed through `다시 시도` (accessibility announcement only).
+struct EditorImportCompletion: Equatable {
+    let id = UUID()
+    let replaced: Bool
+    let count: Int
 }
 
 /// One successful, persisted Editor edit in the session history (ADR-038): the state before and
@@ -264,6 +291,20 @@ final class ProjectEditorModel {
 
     /// `lifecycle` must be the app's shared gate (the acquisition boundary carries the same instance). Unit
     /// tests that pass neither get a private gate in DEBUG only; Release requires the shared one.
+    /// Set when an Add / Replace completed through a later `다시 시도` (the original call had already returned), so the
+    /// view can post the same accessibility announcement as a first-attempt success.
+    private(set) var completedRetryImport: EditorImportCompletion?
+    /// The shared Phase 6 import operation (sheet, Retry, cancellation, route removal) for Add / Replace.
+    @ObservationIgnored let importPresenter = ImportOperationPresenter()
+    var importPreparation: ImportPreparationProgress? { importPresenter.preparation }
+    var isCancellingImport: Bool { importPresenter.isCancellingPreparation }
+    var importRetryPrompt: ImportRetryPrompt? {
+        get { importPresenter.retryPrompt }
+        set { importPresenter.retryPrompt = newValue }
+    }
+    func retryImport() { importPresenter.retry() }
+    func cancelImport() { importPresenter.cancel() }
+
     init(project: VlogProject, repository: any ProjectRepository, thumbnails: any ClipThumbnailProviding, acquisition: EditorClipAcquisition? = nil, availability: (any ClipAvailabilityChecking)? = nil, lifecycle: ProjectLifecycleOperationGate? = nil) {
         self.project = project
         self.repository = repository
@@ -342,7 +383,7 @@ final class ProjectEditorModel {
     /// persisted project and never touches thumbnail state.
     func select(_ clipID: UUID) {
         // Not a mutation, but a locked or in-flight timeline keeps its selection (the outcome sets it).
-        guard reconciliation == nil, !isCommittingMutation, project.clips.contains(where: { $0.id == clipID }) else { return }
+        guard reconciliation == nil, !isCommittingMutation, !isAcquiringClips, project.clips.contains(where: { $0.id == clipID }) else { return }
         selectedClipID = clipID
     }
 
@@ -508,6 +549,9 @@ final class ProjectEditorModel {
     /// the gate is awaited. The workspace is always discarded here. Returns the committed new Clips
     /// (picker order), or nil on cancel / failure.
     private func acquireAndCommit(using acquisition: EditorClipAcquisition, replacing targetID: UUID?, failure: ProjectEditorMessage) async -> [VlogClip]? {
+        if let services = acquisition.importServices {
+            return await acquireAndImport(using: acquisition, services: services, replacing: targetID, failure: failure)
+        }
         guard let workspace = try? await acquisition.mediaStore.beginWorkspace() else {
             editorMessage = failure
             return nil
@@ -523,6 +567,204 @@ final class ProjectEditorModel {
         }
         await acquisition.mediaStore.discard(workspace)
         return committed
+    }
+
+    // MARK: - Phase 6 Add / Replace (2026-10-06; D7b, Editor decisions 1–3)
+
+    /// Phase 6 Add / Replace: selection with C0 / C0a → preflight (inclusive 1.0–5.0 s; per-item exclusion for Add, a
+    /// single candidate for Replace) → excluded copies removed → `ImportRetryController` (C1, preparation + C2, C3, one
+    /// `update`, observation, classification; CR on Retry). Every mutation, selection, drag and Back stay blocked from
+    /// selection until the operation's terminal processing, Retry waits included; the last confirmed timeline stays
+    /// visible until `completed`. Returns the new Clips when the FIRST attempt completed (a later Retry applies its
+    /// result the same way, through the settlement).
+    private func acquireAndImport(using acquisition: EditorClipAcquisition, services: ImportFlowServices, replacing targetID: UUID?,
+                                  failure: ProjectEditorMessage) async -> [VlogClip]? {
+        let projectID = project.id
+        // Route identity and activity are captured when the operation starts (before the picker), so a route removed
+        // at any later point — picker transfer, preflight, attempt or Retry wait — is seen by this operation, and the
+        // Editor-exit cleanup waits for it (decision 3). Ordinary picker presentation does not change the path.
+        let isRouteLive = acquisition.makeRouteProbe?(projectID) ?? { true }
+        let activity = acquisition.importActivity
+        // A route removed while the picker is still up cancels that untransferred session (its host view is gone and may
+        // never report dismissal), so the operation — and the Editor-exit cleanup waiting for it — cannot stall.
+        let selector = acquisition.mediaSelector
+        let token = activity?.begin(projectID: projectID, presenter: importPresenter, onRouteRemoved: { [weak selector] in
+            if !isRouteLive() { selector?.cancelPendingSelection() }
+        })
+        func finish(_ workspace: ProjectMediaWorkspace?, _ message: ProjectEditorMessage?) async {
+            if let workspace { await services.store.discard(workspace) }
+            isCommittingMutation = false
+            if let token { activity?.end(token) }
+            if let message, isRouteLive() { editorMessage = message }   // late UI on a removed route is suppressed
+        }
+        guard let workspace = try? await services.store.beginWorkspace() else {
+            await finish(nil, failure)
+            return nil
+        }
+        let sources: [SelectedVideoSource]
+        switch await acquisition.mediaSelector.selectVideos(into: workspace, store: services.store, admission: acquisition.storageGate,
+                                                            selectionLimit: targetID == nil ? nil : 1) {
+        case .cancelled:
+            await finish(workspace, nil)
+            return nil
+        case .insufficientStorage:
+            await finish(workspace, .addImportStorageInsufficient)
+            return nil
+        case .failed:
+            await finish(workspace, failure)
+            return nil
+        case .selected(let selected):
+            sources = selected
+        }
+        // A late picker result never starts an operation on a removed route: its transferred (Mellow-owned) copies go
+        // with the workspace.
+        guard isRouteLive() else {
+            await finish(workspace, nil)
+            return nil
+        }
+        // Cardinality is the model's rule, not the picker's: Replace needs exactly one source.
+        guard !sources.isEmpty, targetID == nil || sources.count == 1 else {
+            await finish(workspace, sources.isEmpty ? nil : failure)
+            return nil
+        }
+
+        // From here the operation blocks the Editor (selection is already blocked while the picker transfers).
+        isCommittingMutation = true
+        func finishEarly(_ message: ProjectEditorMessage?) async { await finish(workspace, message) }
+        let candidates = sources.map { ImportCandidate(url: $0.url) }
+        let preflight: ImportSelectionPreflightOutcome
+        do {
+            preflight = try await services.preflight.run(candidates, context: targetID != nil || candidates.count == 1 ? .singleCandidate : .multipleItems)
+        } catch {
+            MellowLog.app.error("Project editor import preflight failed: \(String(describing: error), privacy: .public)")
+            await finishEarly(failure)
+            return nil
+        }
+        for excluded in preflight.excluded where await !services.store.removeWorkspaceFile(excluded.candidate.url, in: workspace) {
+            MellowLog.app.error("Project editor excluded source could not be removed; it stays with the workspace")
+        }
+        guard !preflight.accepted.isEmpty else {
+            await finishEarly(preflight.notice.map(ProjectEditorMessage.selectionNotice))
+            return nil
+        }
+        var plans: [ImportCandidateID: WorkingMediaNormalizationPlan] = [:]
+        do {
+            for item in preflight.accepted where item.preparationPath.normalization != nil { plans[item.candidate.id] = try WorkingMediaPlanBuilder.plan(for: item) }
+        } catch {
+            await finishEarly(failure)
+            return nil
+        }
+        // The route may also have gone during preflight: no attempt starts then (an attempt that already started is
+        // never cancelled by route removal).
+        guard isRouteLive() else {
+            await finishEarly(nil)
+            return nil
+        }
+        let base = project, baseSelection = selectedClipID
+        let target: ImportAttemptTarget = targetID.map { .replaceClip(base: base, clipID: $0) } ?? .add(base: base)
+        let request = ImportAttemptRequest(accepted: preflight.accepted, plans: plans, workspace: workspace, target: target)
+        let normalizationIDs = preflight.accepted.filter { $0.preparationPath.normalization != nil }.map(\.candidate.id)
+        let notice = targetID == nil ? preflight.notice : nil
+        var committed: [VlogClip]?
+        var firstAttemptReturned = false
+        // Ownership of the workspace passes to the controller here.
+        await importPresenter.run(
+            controller: ImportRetryController(coordinator: services.attempts, workspaces: services.store, request: request),
+            normalizationIDs: normalizationIDs, isRouteLive: isRouteLive,
+            onSettle: { [weak self] settlement, live in
+                let clips = self?.applyImport(settlement, base: base, baseSelection: baseSelection, replacing: targetID,
+                                              notice: notice, failure: failure, live: live)
+                committed = clips
+                // A success reached through a later `다시 시도` is announced like a first-attempt success.
+                if firstAttemptReturned, live, let clips, !clips.isEmpty {
+                    self?.completedRetryImport = EditorImportCompletion(replaced: targetID != nil, count: clips.count)
+                }
+            },
+            onIdle: { [weak self] in
+                self?.isCommittingMutation = false
+                if let token { activity?.end(token) }
+            })
+        firstAttemptReturned = true
+        return committed
+    }
+
+    /// Applies one terminal settlement of an Editor import. `completed` (also after a thrown save confirmed by
+    /// evidence) adopts the confirmed Project, selection and exactly ONE history entry together, then — Add only, when
+    /// the route is live — the one exclusion notice. Uncertain saves lock the Editor (P2). Late UI on a removed route is
+    /// suppressed (the confirmed state is still adopted; nothing is undone).
+    private func applyImport(_ settlement: ImportOperationSettlement, base: VlogProject, baseSelection: UUID?, replacing targetID: UUID?,
+                             notice: ImportSelectionNotice?, failure: ProjectEditorMessage, live: Bool) -> [VlogClip]? {
+        switch settlement {
+        case .succeeded(let commit):
+            guard commit.project.id == base.id else {
+                if live { reconciliation = .recheckRequired }
+                return nil
+            }
+            let selection = commit.clipIDs.first
+            // State and history change together, synchronously: no observer sees one without the other.
+            project = commit.project
+            selectedClipID = selection
+            undoStack.append(EditorHistoryEntry(kind: targetID == nil ? .add : .replace,
+                                                before: EditorEditState(project: base, selectedClipID: baseSelection),
+                                                after: EditorEditState(project: commit.project, selectedClipID: selection)))
+            redoStack.removeAll()
+            if live, let notice { editorMessage = .selectionNotice(notice) }
+            let byID = Dictionary(uniqueKeysWithValues: commit.project.durableClips.map { ($0.id, $0) })
+            return commit.clipIDs.compactMap { byID[$0] }
+        case .uncertain(let outcome):
+            MellowLog.app.error("Project editor import save uncertain; media preserved")
+            if live { reconciliation = Self.reconciliation(for: outcome) }   // P2: U1 / U2 lock
+            return nil
+        case .retainedUnresolved:
+            if live { editorMessage = .cleanupUnresolved }
+            return nil
+        case .ended(let reason, let result, let isRetryAttempt):
+            guard live else { return nil }
+            switch reason {
+            case .cancelled:
+                break   // a successful cancel closes silently (D7a §5)
+            case .targetInvalidated:
+                // Decision 2 / D8.5c: a missing Project and a changed (or unreadable-at-first-admission) Project keep
+                // their distinct reconciliation stops; an unreadable target at Retry admission never reaches here.
+                reconciliation = Self.targetProblem(result) == .projectAbsent ? .projectMissing : .recheckRequired
+            case .sourceInvalidated:
+                if case .sourceInvalid = result { editorMessage = .sourceUnavailableForRetry }
+                else if isRetryAttempt { editorMessage = .sourceUnavailableForRetry }
+                else { editorMessage = failure }
+            case .initialAdmissionRefusal:
+                if case .attempted(.refused(.storage(let check))) = result, Self.isShortage(check) {
+                    editorMessage = .addImportStorageInsufficient   // C1 shortage: R4 §4
+                } else {
+                    editorMessage = failure                          // estimate / state defect: never a shortage
+                }
+            case .nonRetryableFailure, .retryAdmissionDefect, .cleanupUnresolved, .notStarted, .operationEnded, .completed, .uncertainPersistence:
+                editorMessage = failure
+            }
+            return nil
+        }
+    }
+
+    private static func reconciliation(for outcome: ImportAttemptOutcome) -> EditorReconciliation {
+        if case .committedUnverified = outcome { return .saveUnverified }
+        return .saveIndeterminate
+    }
+
+    /// The coordinator / controller report a target problem only through these shapes (first-admission refusal,
+    /// Retry-admission `targetInvalid`, the commit-time recheck); anything else is not a target problem.
+    private static func targetProblem(_ result: ImportRetryResult) -> ImportAttemptTargetProblem? {
+        switch result {
+        case .targetInvalid(let problem): return problem
+        case .attempted(.refused(.target(let problem))): return problem
+        case .attempted(.failedBeforeSave(.target(let problem), _)): return problem
+        default: return nil
+        }
+    }
+
+    private static func isShortage(_ check: ImportBoundaryCheckResult) -> Bool {
+        switch check.outcome {
+        case .insufficient, .capacityUnknown: return true
+        case .sufficient, .invalidEstimate, .invalidBoundaryState: return false
+        }
     }
 
     /// Selector session (`selectionLimit` bounds the picker) → `ProjectClipAppendCoordinator.validate`.

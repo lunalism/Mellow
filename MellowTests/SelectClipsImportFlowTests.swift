@@ -69,7 +69,7 @@ final class SelectClipsImportFlowTests: XCTestCase {
             mediaStore: store,
             mediaSelector: FakeProjectMediaSelector(script: .fixtures(fixtures)),
             storageGate: FakeProjectStorageGate(verdict: .sufficient),
-            importServices: SelectClipsImportServices(store: store, preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()), attempts: coordinator),
+            importServices: ImportFlowServices(store: store, preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()), attempts: coordinator),
             routeProbe: { [unowned self] in { self.routeLive } },
             onContinueEditing: { _ in },
             onProjectCommitted: { [unowned self] id in self.committed.append(id) })
@@ -216,8 +216,13 @@ final class SelectClipsImportFlowTests: XCTestCase {
         await model.runSelectClips(.fresh)
         XCTAssertEqual(model.retryPrompt, .preparationFailed)
         model.cancelPreparation()
+        // `isComposing` (Back / `기존 프로젝트 불러오기`) must be OBSERVED to change when the operation ends, not
+        // merely readable: the view only re-renders on a tracked change.
+        let observedChange = ObservedFlag()
+        withObservationTracking { _ = model.isComposing } onChange: { observedChange.set() }
         let settled = await eventually { !model.isComposing }
         XCTAssertTrue(settled)
+        XCTAssertTrue(observedChange.value, "the end of the operation notifies observers")
         XCTAssertNil(model.compositionMessage)
         XCTAssertEqual(workspaceCount(), 0)
     }
@@ -400,7 +405,7 @@ final class SelectClipsImportFlowTests: XCTestCase {
                                                        storage: legacyGuard, lifecycle: gate),
             mediaStore: store, mediaSelector: FakeProjectMediaSelector(script: .fixtures([try await fixture("n1", seconds: 2, fps: 60)])),
             storageGate: FakeProjectStorageGate(verdict: .sufficient),
-            importServices: SelectClipsImportServices(store: store, preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()), attempts: coordinator),
+            importServices: ImportFlowServices(store: store, preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()), attempts: coordinator),
             onContinueEditing: { opened.append($0) }, onProjectCommitted: { _ in })
         model.load()
         await normalizer.script([.park])
@@ -549,4 +554,12 @@ final class SelectClipsImportFlowTests: XCTestCase {
         try swiftData.create(project)
         return project
     }
+}
+
+/// A flag set from an Observation `onChange` callback.
+final class ObservedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    var value: Bool { lock.withLock { flag } }
+    func set() { lock.withLock { flag = true } }
 }

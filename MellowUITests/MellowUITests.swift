@@ -841,6 +841,51 @@ final class MellowUITests: XCTestCase {
         Self.editorArguments + ["-uiTestEditorAddSelection=\(mode)"] + extra
     }
 
+    /// Phase 6 Editor Add (2026-10-06): a mixed selection (ready + two normalized) shows the Blocking
+    /// Preparation Sheet over the last confirmed timeline with Back hidden, then appends all three in
+    /// Accepted Set order as ONE history entry.
+    @MainActor
+    func testEditorAddPreparationSheetThenOneHistoryEntry() throws {
+        let app = legacyRecentApp(addArguments("mixed", extra: ["-uiTestNormalizerDelay=2500"]))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["addClips"].tap()
+        let sheet = app.descendants(matching: .any)["preparationSheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["영상을 준비하고 있어요"].exists)
+        XCTAssertTrue(app.staticTexts["preparationPosition"].exists, "two normalization items show a position")
+        XCTAssertFalse(app.buttons["editorClip-4"].exists, "the last confirmed timeline stays until completed")
+        XCTAssertEqual(app.navigationBars.firstMatch.buttons.matching(NSPredicate(format: "label == %@", "Back")).count, 0, "Back hidden")
+        try auditAndCapture(app, name: "Editor Preparation Sheet")
+        XCTAssertTrue(app.buttons["editorClip-6"].waitForExistence(timeout: 30))
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertEqual(app.buttons["editorClip-4"].value as? String, "Selected", "first added clip is selected")
+        app.buttons["editorUndo"].tap()
+        XCTAssertTrue(app.buttons["editorClip-4"].waitForNonExistence(timeout: 5), "one Undo removes the whole Add")
+        XCTAssertTrue(app.buttons["editorClip-3"].exists)
+    }
+
+    /// Phase 6 Editor Add: `취소` on the sheet closes silently and changes nothing.
+    @MainActor
+    func testEditorAddPreparationCancelChangesNothing() throws {
+        let app = legacyRecentApp(addArguments("normalized", extra: ["-uiTestNormalizerDelay=6000"]))
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 2))
+        app.buttons["addClips"].tap()
+        let sheet = app.descendants(matching: .any)["preparationSheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts["preparationPosition"].exists, "a single item shows no position")
+        app.buttons["cancelPreparation"].tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 1), "a successful cancel is silent")
+        XCTAssertFalse(app.buttons["editorClip-4"].exists)
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "no history")
+        XCTAssertTrue(app.buttons["addClips"].isEnabled)
+    }
+
     /// A + B: `+` appends the fixture clip (2.0s) after the seeded A B C, selects it, updates Total and
     /// enables Undo; Undo removes it (Redo enabled), Redo brings the same clip back.
     @MainActor
@@ -1930,8 +1975,9 @@ final class MellowUITests: XCTestCase {
     }
 
     /// Q: a persistence failure during Replace rolls everything back (unavailable clip, selection,
-    /// Total, no history) behind the generic Replace alert; more than one returned source is also a
-    /// failure with the same rollback.
+    /// Total, no history); more than one returned source is a failure with the same rollback behind the
+    /// generic Replace alert. Phase 6 (2026-10-06): a confirmed prior state after a failed save is verified
+    /// rollback + the R4 §3 `다시 시도` / `취소` decision (D7a), no longer the Phase 5 P6 acknowledgement.
     @MainActor
     func testEditorReplaceFailureRollsBackWithoutHistory() throws {
         let save = legacyRecentApp(unavailableArguments("2", mode: "ready", extra: ["-uiTestEditorSaveFailure"]))
@@ -1940,9 +1986,11 @@ final class MellowUITests: XCTestCase {
         XCTAssertTrue(save.buttons["editorClip-3"].waitForExistence(timeout: 2))
         save.buttons["editorClip-2"].tap()
         save.buttons["replaceSelectedClip"].tap()
-        XCTAssertTrue(save.alerts["클립을 교체하지 못했어요"].waitForExistence(timeout: 10))
-        XCTAssertTrue(save.alerts.staticTexts["프로젝트에 변경사항이 저장되지 않았어요."].exists)
-        save.alerts.buttons["확인"].tap()
+        XCTAssertTrue(save.alerts["영상을 준비하지 못했어요"].waitForExistence(timeout: 10))
+        XCTAssertTrue(save.alerts.staticTexts["프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요."].exists)
+        XCTAssertTrue(save.alerts.buttons["다시 시도"].exists)
+        save.alerts.buttons["취소"].tap()
+        XCTAssertTrue(save.alerts.firstMatch.waitForNonExistence(timeout: 5))
         expectLabel(save.buttons["editorClip-2"], "Clip 2 of 3, 3.0s, unavailable")
         XCTAssertEqual(save.buttons["editorClip-2"].value as? String, "Selected")
         XCTAssertEqual(save.staticTexts["projectTotalDuration"].label, "Total duration 6.0s")

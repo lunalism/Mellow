@@ -32,6 +32,9 @@ protocol ProjectMediaSelecting: AnyObject {
     /// still verifies the returned cardinality, so a boundary that ignores the limit cannot widen a
     /// Replace into a batch.
     func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome
+    /// The route that opened the session is gone: a session still waiting for the picker resolves `.cancelled`
+    /// (its host view may never report dismissal); a transfer already started finishes normally.
+    func cancelPendingSelection()
 }
 
 extension ProjectMediaSelecting {
@@ -39,6 +42,9 @@ extension ProjectMediaSelecting {
     func selectVideos(into workspace: ProjectMediaWorkspace, store: any ProjectMediaStoring, admission: any ProjectStorageGating, selectionLimit: Int?) async -> ProjectMediaSelectionOutcome {
         await selectVideos(into: workspace, store: store, admission: admission)
     }
+
+    /// Default: boundaries whose sessions always resolve on their own.
+    func cancelPendingSelection() {}
 }
 
 /// Thrown when copy admission refuses an incoming file: C0 in the transfer bridge, or C0a in `adopt`'s copy
