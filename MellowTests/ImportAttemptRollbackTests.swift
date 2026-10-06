@@ -333,4 +333,55 @@ final class ImportAttemptRollbackTests: XCTestCase {
         }
         XCTAssertTrue(exists(workspace.directory))
     }
+
+    // MARK: Attempt preparation surface
+
+    func testAttemptDirectoryNeedsALiveWorkspaceAndIsNeverReused() async throws {
+        let workspace = try await store.beginWorkspace()
+        let directory = try await store.createAttemptDirectory(named: "attempt-1", in: workspace)
+        XCTAssertEqual(directory.deletingLastPathComponent().standardizedFileURL.path, workspace.directory.standardizedFileURL.path)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory) && isDirectory.boolValue)
+        try bytes(10, 0x01).write(to: directory.appendingPathComponent("keep.mov"))
+
+        do {
+            _ = try await store.createAttemptDirectory(named: "attempt-1", in: workspace)
+            XCTFail("an existing entry is never reused")
+        } catch { XCTAssertEqual(error as? ProjectMediaStoreError, .destinationAlreadyExists) }
+        XCTAssertTrue(exists(directory.appendingPathComponent("keep.mov")))
+
+        for name in ["..", "", "a/b", "."] {
+            do {
+                _ = try await store.createAttemptDirectory(named: name, in: workspace)
+                XCTFail("name \(name.debugDescription) is not a plain child")
+            } catch { XCTAssertEqual(error as? ProjectMediaStoreError, .pathNotCanonical) }
+        }
+
+        await store.discard(workspace)
+        do {
+            _ = try await store.createAttemptDirectory(named: "attempt-2", in: workspace)
+            XCTFail("a discarded workspace is not live")
+        } catch { XCTAssertEqual(error as? ProjectMediaStoreError, .workspaceNotLive) }
+        XCTAssertFalse(exists(workspace.directory), "nothing is recreated for a discarded workspace")
+    }
+
+    func testWorkspaceFileByteCountOnlyForRegularDirectChildrenOfALiveWorkspace() async throws {
+        let workspace = try await store.beginWorkspace()
+        let file = try await workspaceFile(workspace, 1_234)
+        await XCTAssertEqualAsync(await store.workspaceFileByteCount(file, in: workspace), 1_234)
+
+        let link = workspace.directory.appendingPathComponent("link.mov")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+        await XCTAssertNilAsync(await store.workspaceFileByteCount(link, in: workspace), "a symlink is never followed")
+
+        let nested = try await store.createAttemptDirectory(named: "attempt-1", in: workspace).appendingPathComponent("nested.mov")
+        try bytes(5, 0x02).write(to: nested)
+        await XCTAssertNilAsync(await store.workspaceFileByteCount(nested, in: workspace), "only direct children")
+        await XCTAssertNilAsync(await store.workspaceFileByteCount(nested.deletingLastPathComponent(), in: workspace), "a directory is not a source")
+
+        let other = try await store.beginWorkspace()
+        await XCTAssertNilAsync(await store.workspaceFileByteCount(file, in: other), "another workspace's file")
+        await XCTAssertNilAsync(await store.workspaceFileByteCount(workspace.directory.appendingPathComponent("missing.mov"), in: workspace))
+
+    }
 }

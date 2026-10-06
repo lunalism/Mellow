@@ -112,6 +112,8 @@ enum ProjectMediaStoreError: Error, Equatable {
     case removalFailed
     /// A recovery candidate is (or sits behind) a symbolic link; it is never followed or removed.
     case symbolicLink
+    /// The operation workspace is not live in this process (or is not a real directory).
+    case workspaceNotLive
 }
 
 actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectMediaCleanupStoring, ProjectOrphanRecoveryStoring {
@@ -367,6 +369,9 @@ enum ImportRollbackProblem: Hashable, Sendable {
     case restoreFailed
     case removalFailed
     case duplicateRecord
+    /// The normalizer reported that it could not remove (or had to quarantine) something in the attempt
+    /// directory; the directory is preserved as evidence instead of being removed (D7a §1).
+    case normalizerCleanupUnresolved
 }
 
 /// What happened to one record. Only the first four are verified states.
@@ -401,6 +406,32 @@ enum ImportRollbackOutcome: Hashable, Sendable {
         return false
     }
 }
+
+/// The media surface one import attempt uses (`ImportAttemptCoordinator`): its own attempt directory, the
+/// recorded size of each workspace source, materialization by the existing store convention, the `lstat`
+/// view of a canonical path (destination free; pre-save regular file of the expected size), the replaced
+/// Project's media removal after a confirmed replacement, and D7a rollback. Nothing else (no enumeration,
+/// no workspace discard).
+protocol ImportAttemptMediaStoring: Sendable {
+    func createAttemptDirectory(named name: String, in workspace: ProjectMediaWorkspace) async throws -> URL
+    func workspaceFileByteCount(_ url: URL, in workspace: ProjectMediaWorkspace) async -> Int64?
+    /// `lstat` view of a canonical committed path (never follows a symlink).
+    func mediaNode(_ path: RelativeMediaPath) async -> ImportMediaNode
+    func materialize(_ url: URL, projectID: UUID, clipID: UUID) async throws -> RelativeMediaPath
+    func removeProjectMedia(projectID: UUID) async
+    func rollBackAttempt(_ plan: ImportRollbackPlan) async -> ImportRollbackOutcome
+}
+
+/// What sits at a canonical committed path, without following symlinks.
+enum ImportMediaNode: Equatable, Sendable {
+    /// Nothing exists there (every directory component may be missing too).
+    case missing
+    case regularFile(byteCount: Int64)
+    /// A symlink, directory, other type, an uninspectable path or a non-directory component on the way.
+    case other
+}
+
+extension ProjectMediaStore: ImportAttemptMediaStoring {}
 
 extension ProjectMediaStore {
     /// Rolls back one failed attempt's own candidates (D7a §1): ready files are renamed back to their
@@ -556,6 +587,42 @@ extension ProjectMediaStore {
         guard case .regularFile(let size) = rollbackNode(original) else { return .unresolved(.fileMissing) }
         guard size == recordedByteCount else { return .unresolved(.sizeMismatch(expected: recordedByteCount, actual: size)) }
         return moved ? .restored : .alreadyInWorkspace
+    }
+
+    // MARK: Attempt preparation surface (ADR-050 D7a; internal, unwired)
+
+    /// Creates the attempt's own output directory `name` directly inside a live, real workspace. Never
+    /// reuses an existing entry (`destinationAlreadyExists`) and never creates intermediate directories.
+    func createAttemptDirectory(named name: String, in workspace: ProjectMediaWorkspace) async throws -> URL {
+        guard workspaceRollbackProblem(workspace) == nil else { throw ProjectMediaStoreError.workspaceNotLive }
+        guard let directory = workspaceChild(name, in: workspace) else { throw ProjectMediaStoreError.pathNotCanonical }
+        guard rollbackNode(directory) == .missing else { throw ProjectMediaStoreError.destinationAlreadyExists }
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: false)
+        return directory
+    }
+
+    /// The `lstat` size of `url` when it is a regular file (never a symlink) directly inside a live, real
+    /// workspace; nil otherwise. Read-only.
+    func workspaceFileByteCount(_ url: URL, in workspace: ProjectMediaWorkspace) async -> Int64? {
+        guard workspaceRollbackProblem(workspace) == nil,
+              let child = workspaceChild(url.lastPathComponent, in: workspace),
+              child.standardizedFileURL.path == url.standardizedFileURL.path,
+              case .regularFile(let size) = rollbackNode(child) else { return nil }
+        return size
+    }
+
+    func mediaNode(_ path: RelativeMediaPath) async -> ImportMediaNode {
+        let url = root.appendingPathComponent(path.value)
+        switch directoryChainProblem(url.deletingLastPathComponent()) {
+        case nil: break
+        case .missing?: return .missing
+        case _?: return .other
+        }
+        switch rollbackNode(url) {
+        case .missing: return .missing
+        case .regularFile(let size): return .regularFile(byteCount: size)
+        default: return .other
+        }
     }
 
     private func removeAttemptDirectory(named name: String, in workspace: ProjectMediaWorkspace) -> ImportRollbackProblem? {
