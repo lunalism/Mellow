@@ -87,11 +87,18 @@ final class PhotosVideoSelector: ProjectMediaSelecting {
                 guard let received = try await item.loadTransferable(type: ReceivedVideoFile.self) else {
                     resolve(.failed); return
                 }
-                let url = try await store.adopt(received.url, into: workspace)
+                let url: URL
+                do {
+                    url = try await store.adopt(received.url, into: workspace)
+                } catch {
+                    // The operation ends: its own transfer copy (Mellow-owned, never the provider's file) goes too.
+                    try? FileManager.default.removeItem(at: received.url)
+                    throw error
+                }
                 let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
                 sources.append(SelectedVideoSource(url: url, byteCount: bytes))
             } catch let refusal as ProjectMediaAdmissionRefused {
-                MellowLog.app.info("Select Clips pre-copy admission refused: required=\(refusal.requiredBytes, privacy: .public) usable=\(refusal.usableBytes, privacy: .public)")
+                MellowLog.app.info("Select Clips copy admission refused boundary=\(String(describing: refusal.boundary), privacy: .public) reason=\(String(describing: refusal.reason), privacy: .public) required=\(refusal.requiredBytes, privacy: .public) usable=\(refusal.usableBytes, privacy: .public)")
                 resolve(.insufficientStorage); return
             } catch {
                 MellowLog.app.error("Select Clips transfer failed: \((error as NSError).domain, privacy: .public)/\((error as NSError).code)")
@@ -125,38 +132,52 @@ final class TransferAdmissionSlot: @unchecked Sendable {
 /// selector then adopts it into the workspace. Photos' own file is never modified.
 ///
 /// `received.file` is a plain file URL that is only guaranteed to exist for the duration of the
-/// importing closure, so both the pre-copy storage admission (ADR-024: incoming size + Safety Reserve
-/// against the *current* usable capacity) and the copy happen inside it. A refused file is never
-/// copied; the provider's own temporary representation is system-controlled and not counted.
+/// importing closure, so both the pre-copy admission and the copy happen inside it. Production publishes
+/// the ADR-050 050-C C0 gate (`ImportTransferCopyGate`: source logical bytes + 256 MiB Import reserve
+/// against the transfer directory's volume). A refused file is never copied; the provider's own file is
+/// system-controlled, never counted as Mellow usage and never touched.
 struct ReceivedVideoFile: Transferable {
     let url: URL
     static let admission = TransferAdmissionSlot()
 
+    static var transferDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("ProjectMediaTransfer", isDirectory: true)
+    }
+
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .movie) { received in
-            try await admit(received.file)
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ProjectMediaTransfer", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let ext = received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension
-            let destination = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
-            do {
-                try FileManager.default.copyItem(at: received.file, to: destination)
-            } catch {
-                // Runtime write failure (e.g. disk full after admission): leave no partial temp behind.
-                try? FileManager.default.removeItem(at: destination)
-                throw error
-            }
-            return ReceivedVideoFile(url: destination)
+            ReceivedVideoFile(url: try await receive(received.file, into: transferDirectory, gate: admission.current()))
         }
     }
 
-    /// Pre-copy admission for one incoming file. Without a published gate the transfer is refused
-    /// rather than silently un-gated.
-    static func admit(_ incoming: URL) async throws {
-        let size = Int64((try? incoming.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        guard let gate = admission.current() else {
-            throw ProjectMediaAdmissionRefused(requiredBytes: size, usableBytes: 0)
+    /// C0 then the transfer copy, for one provider file: admission runs immediately before the copy, with the
+    /// file's actual logical size. Refusal copies nothing; a failed copy leaves no partial file behind.
+    static func receive(_ source: URL, into directory: URL, gate: (any ProjectStorageGating)?) async throws -> URL {
+        try await admit(source, gate: gate)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let ext = source.pathExtension.isEmpty ? "mov" : source.pathExtension
+        let destination = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            // Runtime write failure (e.g. disk full after admission): leave no partial temp behind.
+            try? FileManager.default.removeItem(at: destination)
+            throw error
         }
+        return destination
+    }
+
+    /// `admit(_:gate:)` with the gate the current selection published.
+    static func admit(_ incoming: URL) async throws { try await admit(incoming, gate: admission.current()) }
+
+    /// Pre-copy admission for one incoming file. Without a published gate the transfer is refused rather than
+    /// silently un-gated, and an unreadable size is refused rather than read as 0 bytes (050-C C0, revising the
+    /// Phase 5 admission).
+    static func admit(_ incoming: URL, gate: (any ProjectStorageGating)?) async throws {
+        guard let size = ImportCopyAdmission.sourceByteCount(of: incoming) else {
+            throw ProjectMediaAdmissionRefused(requiredBytes: 0, usableBytes: 0, reason: .sourceSizeUnknown)
+        }
+        guard let gate else { throw ProjectMediaAdmissionRefused(requiredBytes: size, usableBytes: 0, reason: .admissionUnavailable) }
         if case .insufficient(let required, let usable) = await gate.check(additionalBytes: size) {
             throw ProjectMediaAdmissionRefused(requiredBytes: required, usableBytes: usable)
         }

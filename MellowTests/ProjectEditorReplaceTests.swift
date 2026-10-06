@@ -447,7 +447,7 @@ final class ProjectEditorReplaceTests: XCTestCase {
             ("cancel", .cancel, .sufficient, nil),
             ("transfer failure", .fail, .sufficient, .replaceFailed),
             ("too long", .fixtures([tooLong]), .sufficient, .addRequiresImportPreparation(.tooLong)),
-            ("storage", .fixtures([fixture]), .insufficient(requiredBytes: 1, usableBytes: 0), .addInsufficientStorage),
+            ("storage", .fixtures([fixture]), .insufficient(requiredBytes: 1, usableBytes: 0), .addImportStorageInsufficient),   // selection-time C0 refusal (R4 §4)
             ("two sources", .fixtures([fixture, tooLong]), .sufficient, .replaceFailed)
         ]
         for (label, script, storage, expected) in cases {

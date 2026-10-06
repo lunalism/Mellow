@@ -1190,7 +1190,7 @@ final class ProjectEditorModelTests: XCTestCase {
         let (model, repository, _) = try makeAddEditor(harness: harness)
         let added6 = await model.addClips()
         XCTAssertEqual(added6, 0)
-        XCTAssertEqual(model.editorMessage, .addInsufficientStorage)
+        XCTAssertEqual(model.editorMessage, .addImportStorageInsufficient, "selection-time C0 refusal uses R4 §4")
         XCTAssertEqual(repository.updateCount, 0)
         XCTAssertTrue(mediaFiles(harness.root, projectID: model.project.id).isEmpty)
     }

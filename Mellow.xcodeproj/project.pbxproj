@@ -90,6 +90,8 @@
 		00000000000000000000028D /* ImportAttemptCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018D /* ImportAttemptCoordinatorTests.swift */; };
 		00000000000000000000028E /* ImportRetryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018E /* ImportRetryController.swift */; };
 		00000000000000000000028F /* ImportRetryControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018F /* ImportRetryControllerTests.swift */; };
+		000000000000000000000290 /* ImportCopyAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000190 /* ImportCopyAdmission.swift */; };
+		000000000000000000000291 /* ImportCopyAdmissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000191 /* ImportCopyAdmissionTests.swift */; };
 		00000000000000000000024C /* ProjectStorageGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* ProjectStorageGate.swift */; };
 		00000000000000000000024D /* ProjectMediaSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* ProjectMediaSelection.swift */; };
 		00000000000000000000024E /* PhotosVideoSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* PhotosVideoSelector.swift */; };
@@ -242,6 +244,8 @@
 		00000000000000000000018D /* ImportAttemptCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportAttemptCoordinatorTests.swift; sourceTree = "<group>"; };
 		00000000000000000000018E /* ImportRetryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportRetryController.swift; sourceTree = "<group>"; };
 		00000000000000000000018F /* ImportRetryControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportRetryControllerTests.swift; sourceTree = "<group>"; };
+		000000000000000000000190 /* ImportCopyAdmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCopyAdmission.swift; sourceTree = "<group>"; };
+		000000000000000000000191 /* ImportCopyAdmissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCopyAdmissionTests.swift; sourceTree = "<group>"; };
 		00000000000000000000014C /* ProjectStorageGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStorageGate.swift; sourceTree = "<group>"; };
 		00000000000000000000014D /* ProjectMediaSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectMediaSelection.swift; sourceTree = "<group>"; };
 		00000000000000000000014E /* PhotosVideoSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosVideoSelector.swift; sourceTree = "<group>"; };
@@ -387,6 +391,7 @@
 				00000000000000000000018B /* ImportAttemptRollbackTests.swift */,
 				00000000000000000000018D /* ImportAttemptCoordinatorTests.swift */,
 				00000000000000000000018F /* ImportRetryControllerTests.swift */,
+				000000000000000000000191 /* ImportCopyAdmissionTests.swift */,
 				00000000000000000000015B /* ClipThumbnailServiceTests.swift */,
 				000000000000000000000160 /* ProjectMediaCleanupCoordinatorTests.swift */,
 				000000000000000000000162 /* ProjectStartupRecoveryCoordinatorTests.swift */,
@@ -655,6 +660,7 @@
 				000000000000000000000181 /* ImportStorageEstimator.swift */,
 				00000000000000000000018C /* ImportAttemptCoordinator.swift */,
 				00000000000000000000018E /* ImportRetryController.swift */,
+				000000000000000000000190 /* ImportCopyAdmission.swift */,
 			);
 			path = Import;
 			sourceTree = "<group>";
@@ -851,6 +857,7 @@
 				000000000000000000000281 /* ImportStorageEstimator.swift in Sources */,
 				00000000000000000000028C /* ImportAttemptCoordinator.swift in Sources */,
 				00000000000000000000028E /* ImportRetryController.swift in Sources */,
+				000000000000000000000290 /* ImportCopyAdmission.swift in Sources */,
 				00000000000000000000024C /* ProjectStorageGate.swift in Sources */,
 				00000000000000000000024D /* ProjectMediaSelection.swift in Sources */,
 				00000000000000000000024E /* PhotosVideoSelector.swift in Sources */,
@@ -946,6 +953,7 @@
 				00000000000000000000028B /* ImportAttemptRollbackTests.swift in Sources */,
 				00000000000000000000028D /* ImportAttemptCoordinatorTests.swift in Sources */,
 				00000000000000000000028F /* ImportRetryControllerTests.swift in Sources */,
+				000000000000000000000291 /* ImportCopyAdmissionTests.swift in Sources */,
 				00000000000000000000025B /* ClipThumbnailServiceTests.swift in Sources */,
 				000000000000000000000260 /* ProjectMediaCleanupCoordinatorTests.swift in Sources */,
 				000000000000000000000262 /* ProjectStartupRecoveryCoordinatorTests.swift in Sources */,

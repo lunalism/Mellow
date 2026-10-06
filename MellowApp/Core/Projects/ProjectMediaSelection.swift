@@ -11,7 +11,7 @@ enum ProjectMediaSelectionOutcome: Sendable {
     /// Normal, silent result — the user dismissed the picker.
     case cancelled
     case selected([SelectedVideoSource])
-    /// Pre-copy storage admission refused an incoming file (ADR-024); nothing more was copied. The
+    /// Copy admission (ADR-050 050-C C0 / C0a) refused an incoming file; nothing more was copied. The
     /// workspace (with any earlier adopted files) is left for the caller to discard.
     case insufficientStorage
     /// Transfer / read failure of the selected item(s); the workspace is left for the caller to discard.
@@ -41,8 +41,14 @@ extension ProjectMediaSelecting {
     }
 }
 
-/// Thrown by the transfer bridge when pre-copy admission refuses an incoming file.
+/// Thrown when copy admission refuses an incoming file: C0 in the transfer bridge, or C0a in `adopt`'s copy
+/// fallback (ADR-050 050-C). `usableBytes` 0 also means the capacity could not be read; `requiredBytes` 0 means
+/// the source size could not be read. Both are refusals.
 struct ProjectMediaAdmissionRefused: Error, Equatable {
     let requiredBytes: Int64
     let usableBytes: Int64
+    var boundary: ImportCopyBoundary = .c0TransferCopy
+    /// Typed reason for logs. Through the C0 gate (`ProjectStorageVerdict`) an unknown capacity reports `.insufficient`
+    /// with `usableBytes` 0; C0a reports every reason exactly.
+    var reason: ImportCopyRefusalReason = .insufficient
 }

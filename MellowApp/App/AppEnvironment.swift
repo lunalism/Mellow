@@ -273,6 +273,14 @@ final class AppEnvironment {
         let projectStorageGate: any ProjectStorageGating = volumeGate
         #endif
         self.projectStorageGate = projectStorageGate
+        // ADR-050 050-C C0: the per-file copy admission of the selection boundary (source bytes + 256 MiB Import
+        // reserve on the transfer directory's volume). The gate above stays the Phase 5 commit-time final guard.
+        #if DEBUG
+        let transferAdmission: any ProjectStorageGating = arguments.contains("-uiTestProjectsEntry")
+            ? FakeProjectStorageGate(verdict: .sufficient) : ImportTransferCopyGate.transferVolume()
+        #else
+        let transferAdmission: any ProjectStorageGating = ImportTransferCopyGate.transferVolume()
+        #endif
         let projectLifecycle = ProjectLifecycleOperationGate()
         self.projectLifecycle = projectLifecycle
         self.projectComposition = ProjectCompositionCoordinator(
@@ -318,19 +326,19 @@ final class AppEnvironment {
         } else {
             let editorSelector = PhotosVideoSelector()
             self.editorPhotosSelector = editorSelector
-            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender, lifecycle: projectLifecycle)
+            self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle)
         }
         #else
         let editorSelector = PhotosVideoSelector()
         self.editorPhotosSelector = editorSelector
-        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: projectStorageGate, appender: appender, lifecycle: projectLifecycle)
+        self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle)
         #endif
         // The Projects screen stays below the Editor so Back returns Editor → 프로젝트 → Camera.
         self.projectsEntry = ProjectsEntryModel(
             composition: projectComposition,
             mediaStore: projectMediaStore,
             mediaSelector: photosVideoSelector,
-            storageGate: projectStorageGate,
+            storageGate: transferAdmission,
             onContinueEditing: { projectID in router.path.append(.projectEditor(projectID)) },
             onProjectCommitted: { projectID in router.path.append(.projectEditor(projectID)) }
         )

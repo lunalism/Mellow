@@ -41,7 +41,10 @@ enum ProjectEditorMessage: Equatable {
     /// outcomes and copy): the typed outcomes of Select Clips, one message per operation.
     case addRequiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
     case addInvalidMedia
+    /// The Phase 5 final guard in the appender's validation (unchanged copy).
     case addInsufficientStorage
+    /// Copy admission (ADR-050 050-C C0 / C0a) refused an incoming file for Add or Replace: ADR-042 R4 §4.
+    case addImportStorageInsufficient
     case addFailed
     /// Replace (ADR-040) generic failure: the original unavailable Clip is exactly as it was.
     case replaceFailed
@@ -55,7 +58,7 @@ enum ProjectEditorMessage: Equatable {
         case .replaceNotSaved: return "클립을 교체하지 못했어요"
         case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationTitle(reason)
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
-        case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
+        case .addInsufficientStorage, .addImportStorageInsufficient: return ProjectMediaValidationCopy.insufficientStorageTitle
         case .addFailed: return "클립을 추가하지 못했어요."
         case .replaceFailed: return "클립을 교체하지 못했어요"
         }
@@ -65,6 +68,7 @@ enum ProjectEditorMessage: Equatable {
         case .addRequiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationMessage(reason)
         case .addInvalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
         case .addInsufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
+        case .addImportStorageInsufficient: return ProjectMediaValidationCopy.importStorageInsufficientMessage
         case .addFailed, .replaceFailed: return "다시 시도해주세요. 프로젝트는 그대로 있어요."
         case .changesNotSaved, .addNotSaved, .replaceNotSaved: return "프로젝트에 변경사항이 저장되지 않았어요."
         case .undoFailed, .redoFailed: return "다시 시도해주세요."
@@ -530,7 +534,7 @@ final class ProjectEditorModel {
         case .cancelled:
             return nil
         case .insufficientStorage:
-            editorMessage = .addInsufficientStorage
+            editorMessage = .addImportStorageInsufficient
             return nil
         case .failed:
             editorMessage = failure

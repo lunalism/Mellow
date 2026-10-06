@@ -131,14 +131,20 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectM
         try RelativeMediaPath("Projects/\(projectID.uuidString)/Media/\(clipID.uuidString).mov")
     }
 
-    /// `root` defaults to `Application Support/Mellow`; tests inject a temporary root.
-    init(root: URL? = nil) {
+    /// The Mellow-root volume's usable capacity for C0a; nil = unknown (fails closed). Read only when `adopt`
+    /// actually falls back to copying.
+    private let copyFallbackCapacity: @Sendable (URL) -> Int64?
+
+    /// `root` defaults to `Application Support/Mellow`; tests inject a temporary root and may inject the C0a
+    /// capacity reader (default: the existing `volumeAvailableCapacityForImportantUsage` convention on `root`).
+    init(root: URL? = nil, copyFallbackCapacity: (@Sendable (URL) -> Int64?)? = nil) {
         if let root {
             self.root = root
         } else {
             let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             self.root = support.appendingPathComponent("Mellow", isDirectory: true)
         }
+        self.copyFallbackCapacity = copyFallbackCapacity ?? { ImportCopyAdmission.usableCapacity(forVolumeOf: $0) }
     }
 
     private var projectsDirectory: URL { root.appendingPathComponent("Projects", isDirectory: true) }
@@ -162,7 +168,18 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectM
         do {
             try fileManager.moveItem(at: url, to: destination)
         } catch {
-            // Cross-volume (e.g. a picker-provided location): copy, then drop the original we own.
+            // Cross-volume (e.g. a picker-provided location): copy, then drop the original we own. ADR-050 050-C
+            // C0a runs only here, immediately before the fallback copy: the source's logical bytes + the Import
+            // reserve against the Mellow-root volume (one reading of that volume only; a rename never gets here). The
+            // reader is synchronous, so adoption keeps no suspension point on this actor.
+            let sourceBytes = ImportCopyAdmission.sourceByteCount(of: url)
+            let check = ImportCopyAdmission.check(sourceBytes: sourceBytes, usableCapacity: copyFallbackCapacity(workspace.directory))
+            if let reason = ImportCopyAdmission.refusalReason(check) {
+                var required: Int64 = 0, usable: Int64 = 0
+                if case .insufficient(let r, let u) = ImportCopyAdmission.verdict(check) { (required, usable) = (r, u) }
+                throw ProjectMediaAdmissionRefused(requiredBytes: required, usableBytes: usable, boundary: .c0aAdoptionCopyFallback,
+                                                   reason: sourceBytes == nil ? .sourceSizeUnknown : reason)
+            }
             try fileManager.copyItem(at: url, to: destination)
             try? fileManager.removeItem(at: url)
         }

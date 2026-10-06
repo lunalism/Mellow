@@ -1627,7 +1627,7 @@ Presentation은 ADR-038에 따라 Delete 즉시 UI 제거, 시간순 Session Und
 
 ### Project Materialization Storage Technical Gate — Resolved 2026-09-15
 
-> 2026-10-06: 아래 Phase 5 Admission(100 MiB Reserve, 크기를 읽지 못한 File 처리)은 ADR-050 050-C C0 / C0a로 개정이 Accepted되었다(Transfer Volume에서 C0, Copy Fallback 때 Mellow Root Volume에서 C0a; Source Logical Byte + 256 MiB Import Reserve, 크기 · 용량 불명 = Fail-closed) — 미구현이며 현재 코드는 아래 계약을 그대로 쓴다. Commit 직전 최종 Guard의 퇴역 시점은 명시되지 않았다.
+> 2026-10-06: 아래 Phase 5 Admission(100 MiB Reserve, 크기를 읽지 못한 File 처리)은 ADR-050 050-C C0 / C0a로 개정이 Accepted되었다(Transfer Volume에서 C0, Copy Fallback 때 Mellow Root Volume에서 C0a; Source Logical Byte + 256 MiB Import Reserve, 크기 · 용량 불명 = Fail-closed) — 미구현이며(2026-10-06: C0 / C0a는 아래 갱신대로 구현) 현재 코드는 아래 계약을 그대로 쓴다. Commit 직전 최종 Guard의 퇴역 시점은 명시되지 않았다. (2026-10-06 갱신: C0 / C0a는 구현되어 현재 Phase 5 선택 흐름(Select Clips · Editor Add · Replace)에 연결되었다(2026-10-06): `ReceivedVideoFile.receive`가 Transfer 복사 직전 실제 Logical 크기로 Transfer Directory Volume의 `Source + 256 MiB Import Reserve`를 검사하고(`ImportTransferCopyGate`; 크기 · 용량 불명 · 잘못된 입력 · Overflow는 거부, 같으면 통과; Provider 파일은 계산 · 변경하지 않음), `ProjectMediaStore.adopt`는 Rename이 실패해 Copy로 넘어갈 때만 쓰기 전에 Mellow Root Volume을 한 번 읽어 같은 요구량을 검사한다(Rename 성공 시 용량을 읽지 않음, 두 Volume을 한 읽기에 청구하지 않음). 거부는 세 흐름 모두 R4 §4 확인 문구(`저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.` / `확인`)를 쓰고 취소는 따로 남는다. Phase 5 Commit 직전 최종 Guard(100 MiB, 추가 0)와 그 기존 문구는 바꾸지 않았고 퇴역 시점은 미결이다. 내부 정규화 Coordinator · Retry Controller는 여전히 연결되지 않았다. iPhone 12 실제 Picker Transfer · Adopt 검증은 남아 있다.)
 
 ADR-024의 `Required Free Space = Estimated Peak Additional Storage + Safety Reserve` 계약을 Phase-5-ready Select-Clips Bootstrap에 대해 다음과 같이 확정한다(사용자 승인).
 

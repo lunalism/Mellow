@@ -89,8 +89,9 @@ final class FakeProjectMediaSelector: ProjectMediaSelecting {
         case .fixtures(let urls):
             var sources: [SelectedVideoSource] = []
             for fixture in urls {
-                // Same sequence as the production bridge: size → admission → first Mellow-owned copy → adopt.
-                let incoming = Int64((try? fixture.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                // Same sequence as the production bridge: size (unknown refuses) → C0 admission → first Mellow-owned copy
+                // → adopt (whose C0a refusal is a storage outcome too).
+                guard let incoming = ImportCopyAdmission.sourceByteCount(of: fixture) else { return .insufficientStorage }
                 admittedBytes.append(incoming)
                 if case .insufficient = await admission.check(additionalBytes: incoming) { return .insufficientStorage }
                 let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
@@ -99,7 +100,11 @@ final class FakeProjectMediaSelector: ProjectMediaSelecting {
                     let adopted = try await store.adopt(temp, into: workspace)
                     let bytes = (try? adopted.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
                     sources.append(SelectedVideoSource(url: adopted, byteCount: bytes))
+                } catch is ProjectMediaAdmissionRefused {
+                    try? FileManager.default.removeItem(at: temp)
+                    return .insufficientStorage
                 } catch {
+                    try? FileManager.default.removeItem(at: temp)
                     return .failed
                 }
             }

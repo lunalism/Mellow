@@ -32,7 +32,10 @@ final class ProjectsEntryModel {
         /// implementation (no roadmap phases, no HDR / transcoding / frame-rate terms).
         case requiresImportPreparation(Phase5ReadyVerdict.PreparationReason)
         case invalidMedia
+        /// The Phase 5 commit-time final guard (unchanged copy).
         case insufficientStorage
+        /// Copy admission (ADR-050 050-C C0 / C0a) refused an incoming file: ADR-042 R4 §4 acknowledgement.
+        case importStorageInsufficient
         /// Before any save, the saved-Project state could not be read.
         case projectInspectionFailed
         /// The Project being replaced is gone or no longer current; nothing was created instead.
@@ -50,7 +53,7 @@ final class ProjectsEntryModel {
             switch self {
             case .requiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationTitle(reason)
             case .invalidMedia: return ProjectMediaValidationCopy.invalidMediaTitle
-            case .insufficientStorage: return ProjectMediaValidationCopy.insufficientStorageTitle
+            case .insufficientStorage, .importStorageInsufficient: return ProjectMediaValidationCopy.insufficientStorageTitle
             case .projectInspectionFailed: return "프로젝트를 확인하지 못했어요"
             case .replacementTargetInvalidated: return "프로젝트를 교체하지 못했어요"
             case .preparationFailed: return "영상을 준비하지 못했어요"
@@ -64,6 +67,7 @@ final class ProjectsEntryModel {
             case .requiresImportPreparation(let reason): return ProjectMediaValidationCopy.preparationMessage(reason)
             case .invalidMedia: return ProjectMediaValidationCopy.invalidMediaMessage
             case .insufficientStorage: return ProjectMediaValidationCopy.insufficientStorageMessage
+            case .importStorageInsufficient: return ProjectMediaValidationCopy.importStorageInsufficientMessage
             case .projectInspectionFailed: return "프로젝트 화면에서 다시 확인해주세요."
             case .replacementTargetInvalidated: return "교체하려던 프로젝트를 찾을 수 없어요."
             case .preparationFailed: return "영상을 다시 선택해주세요."
@@ -217,7 +221,7 @@ final class ProjectsEntryModel {
         case .insufficientStorage:
             // Refused before any further copy; earlier adopted files of this operation go with the workspace.
             await mediaStore.discard(workspace)
-            compositionMessage = .insufficientStorage
+            compositionMessage = .importStorageInsufficient
         case .failed:
             await mediaStore.discard(workspace)
             compositionMessage = .preparationFailed
@@ -286,4 +290,6 @@ enum ProjectMediaValidationCopy {
     static let invalidMediaMessage = "선택한 영상을 읽을 수 없어요. 다른 영상을 골라 주세요."
     static let insufficientStorageTitle = "저장 공간이 부족해요"
     static let insufficientStorageMessage = "공간을 확보한 뒤 다시 시도해 주세요."
+    /// ADR-042 Revision 4 §4 (C0 / C0a / C1 initial storage refusal); the action stays `확인`.
+    static let importStorageInsufficientMessage = "영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요."
 }
