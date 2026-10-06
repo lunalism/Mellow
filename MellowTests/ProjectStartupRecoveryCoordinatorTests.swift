@@ -239,6 +239,7 @@ final class ProjectStartupRecoveryCoordinatorTests: XCTestCase {
     /// 16: a partially removed directory from a previous crash is just a canonical dir again.
     func testPartialOrphanProjectDirectoryIsRecoveredNextPass() async throws {
         let h = makeHarness()
+        _ = try seedProject(h)   // a nonempty store: the OD-12 empty-store guard keeps folders when there are no rows
         let absent = UUID()
         _ = try mkdir("Projects/\(absent.uuidString)/Media")   // nothing left inside
         let report = await h.recovery.recoverOrphans()
@@ -538,5 +539,125 @@ final class ProjectStartupRecoveryCoordinatorTests: XCTestCase {
         XCTAssertTrue(exists(active.mediaRelativePath.value))
         XCTAssertEqual(try repository.project(id: id)?.clips.map(\.id), [active.id])
         XCTAssertTrue(try repository.project(id: id)?.deletedClips.isEmpty ?? false)
+    }
+
+    // MARK: - OD-12 minimum empty-store protection (owner decision 2026-10-06)
+
+    /// Records whether the Project-row read happens inside the shared lifecycle gate.
+    @MainActor final class RowReadProbe: ProjectRepository {
+        let inner: any ProjectRepository
+        let gate: ProjectLifecycleOperationGate
+        private(set) var rowReadsInsideGate: [Bool] = []
+        init(_ inner: any ProjectRepository, gate: ProjectLifecycleOperationGate) { self.inner = inner; self.gate = gate }
+        func create(_ project: VlogProject) throws { try inner.create(project) }
+        func project(id: UUID) throws -> VlogProject? { try inner.project(id: id) }
+        func recentProjects() throws -> [VlogProject] { rowReadsInsideGate.append(gate.isHeld); return try inner.recentProjects() }
+        func update(_ project: VlogProject) throws { try inner.update(project) }
+        func finalizeDeletedClip(projectID: UUID, clipID: UUID) throws { try inner.finalizeDeletedClip(projectID: projectID, clipID: clipID) }
+        func deleteProject(id: UUID) throws { try inner.deleteProject(id: id) }
+        func replaceProject(previousID: UUID, with project: VlogProject) throws { try inner.replaceProject(previousID: previousID, with: project) }
+        func observePersistedProject(id: UUID) -> ObservedProjectRecord { inner.observePersistedProject(id: id) }
+        func observePersistedState(for expectation: ProjectSaveExpectation) -> PersistedStateObservation { inner.observePersistedState(for: expectation) }
+        func observeCurrentProjectID() -> ObservedCurrentProject { inner.observeCurrentProjectID() }
+    }
+
+    /// Canonical Project folders an empty store must not erase: one with media and extras, one empty.
+    private func seedOrphanFolders() throws -> (withMedia: String, emptyFolder: String, extras: String) {
+        let a = UUID(), b = UUID()
+        let media = mediaPath(a, UUID())
+        _ = try write(media)
+        _ = try write("Projects/\(a.uuidString)/Extras/future.dat")
+        _ = try mkdir("Projects/\(b.uuidString)/Media")
+        return (media, "Projects/\(b.uuidString)/Media", "Projects/\(a.uuidString)/Extras/future.dat")
+    }
+
+    func testEmptyReadableStoreKeepsProjectFoldersAndTheirMedia() async throws {
+        let h = makeHarness()
+        let seeded = try seedOrphanFolders()
+        _ = try write("Projects/not-a-project/x.mov")
+        let report = await h.recovery.recoverOrphans()
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 2)
+        XCTAssertEqual(report.orphanProjectDirsRemoved, 0)
+        XCTAssertEqual(report.orphanMediaRemoved, 0)
+        XCTAssertEqual(report.noncanonicalPreserved, 1, "noncanonical entries are still only preserved")
+        XCTAssertTrue(exists(seeded.withMedia), "media inside the folder is kept")
+        XCTAssertTrue(exists(seeded.extras))
+        XCTAssertTrue(exists(seeded.emptyFolder), "an empty Project folder is kept by the guard too")
+        XCTAssertTrue(exists("Projects/not-a-project/x.mov"))
+        let attempts = await h.recoveryStore.removalAttempts
+        XCTAssertTrue(attempts.isEmpty, "no directory or media removal was even attempted")
+    }
+
+    func testEmptyStoreWithoutProjectFoldersIsUnchanged() async throws {
+        let h = makeHarness()
+        _ = try write("Projects/not-a-project/x.mov")
+        let report = await h.recovery.recoverOrphans()
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 0)
+        XCTAssertEqual(report.noncanonicalPreserved, 1)
+        XCTAssertEqual(report.orphanProjectDirsRemoved, 0)
+    }
+
+    func testNonemptyStoreKeepsExistingOrphanAndUnreferencedCleanup() async throws {
+        let h = makeHarness()
+        let (project, _) = try seedProject(h)
+        let absent = UUID()
+        _ = try write(mediaPath(absent, UUID()))
+        let stray = UUID()
+        _ = try write(mediaPath(project.id, stray))
+        let report = await h.recovery.recoverOrphans()
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 0)
+        XCTAssertEqual(report.orphanProjectDirsRemoved, 1)
+        XCTAssertEqual(report.orphanMediaRemoved, 1)
+        XCTAssertFalse(exists("Projects/\(absent.uuidString)"))
+        XCTAssertFalse(exists(mediaPath(project.id, stray)))
+        XCTAssertEqual(report.preservedReferenced, 2)
+    }
+
+    func testUnreadableRowsNeverInferAbsence() async throws {
+        let failing = FailableProjectRepository()
+        failing.recentProjectsFails = true
+        let h = makeHarness(repository: failing)
+        let seeded = try seedOrphanFolders()
+        let report = await h.recovery.recoverOrphans()
+        XCTAssertEqual(report.skippedRowsUnreadable, 2)
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 0)
+        XCTAssertTrue(exists(seeded.withMedia) && exists(seeded.emptyFolder))
+        let attempts = await h.recoveryStore.removalAttempts
+        XCTAssertTrue(attempts.isEmpty)
+    }
+
+    func testWorkspaceSweepIsUnchangedUnderTheGuard() async throws {
+        let h = makeHarness()
+        let seeded = try seedOrphanFolders()
+        let abandoned = UUID()
+        _ = try mkdir("ProjectWorkspace/\(abandoned.uuidString)")
+        let report = await h.runStartupMaintenance()
+        XCTAssertEqual(report.workspacesRemoved, 1, "abandoned workspaces are still swept")
+        XCTAssertFalse(exists("ProjectWorkspace/\(abandoned.uuidString)"))
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 2)
+        XCTAssertTrue(exists(seeded.withMedia))
+    }
+
+    func testSymlinkedProjectEntryStaysNoncanonicalUnderTheGuard() async throws {
+        let h = makeHarness()
+        _ = try seedOrphanFolders()
+        let target = try mkdir("elsewhere")
+        _ = try write("elsewhere/keep.mov")
+        try fm.createSymbolicLink(at: root.appendingPathComponent("Projects/\(UUID().uuidString)"), withDestinationURL: target)
+        let report = await h.recovery.recoverOrphans()
+        XCTAssertEqual(report.skippedByEmptyStoreGuard, 2, "a symlink never counts as a canonical Project folder")
+        XCTAssertEqual(report.noncanonicalPreserved, 1)
+        XCTAssertTrue(exists("elsewhere/keep.mov"))
+    }
+
+    func testRowReadIsSerializedWithTheDirectoryEnumeration() async throws {
+        let gate = ProjectLifecycleOperationGate()
+        let probe = RowReadProbe(InMemoryProjectRepository(), gate: gate)
+        let recoveryStore = FailableRecoveryStore(store)
+        let recovery = ProjectStartupRecoveryCoordinator(repository: probe, store: recoveryStore, lifecycle: gate, isEditorSessionLive: { _ in false })
+        _ = try seedOrphanFolders()
+        _ = await recovery.recoverOrphans()
+        XCTAssertEqual(probe.rowReadsInsideGate, [true])
+        XCTAssertFalse(gate.isHeld)
     }
 }

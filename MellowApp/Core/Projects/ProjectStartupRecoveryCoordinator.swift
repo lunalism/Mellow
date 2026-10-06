@@ -15,6 +15,11 @@ struct ProjectStartupRecoveryReport: Equatable, Sendable {
     var noncanonicalPreserved = 0
     /// Projects whose scan was skipped because an Editor session was live for them.
     var skippedLiveProjects = 0
+    /// Canonical Project directories left entirely untouched (no directory OR media removal) because the store
+    /// read succeeded with zero Project rows (OD-12 minimum empty-store protection).
+    var skippedByEmptyStoreGuard = 0
+    /// Canonical Project directories left untouched because the Project rows could not be read (unknown).
+    var skippedRowsUnreadable = 0
 
     static func + (lhs: Self, rhs: Self) -> Self {
         var sum = lhs
@@ -27,6 +32,8 @@ struct ProjectStartupRecoveryReport: Equatable, Sendable {
         sum.preservedReferenced += rhs.preservedReferenced
         sum.noncanonicalPreserved += rhs.noncanonicalPreserved
         sum.skippedLiveProjects += rhs.skippedLiveProjects
+        sum.skippedByEmptyStoreGuard += rhs.skippedByEmptyStoreGuard
+        sum.skippedRowsUnreadable += rhs.skippedRowsUnreadable
         return sum
     }
 }
@@ -116,23 +123,50 @@ final class ProjectStartupRecoveryCoordinator {
     /// Absent-Project directories first (whole directory), then the narrow media scan of each
     /// existing Project. Each Project is its own gate section so a queued Editor load / composition
     /// is never held behind unrelated work.
+    ///
+    /// OD-12 minimum empty-store protection (owner decision 2026-10-06): the first gate section reads the persisted
+    /// Project rows together with the canonical Project directories. Zero rows read successfully with at least one
+    /// canonical Project directory → this pass skips BOTH orphan-directory removal and unreferenced-media removal for
+    /// every Project directory. Rows that cannot be read → unknown, skipped the same way (never inferred absent).
+    /// The guard establishes no store identity, recovers no metadata and does not protect against partial store
+    /// loss; the abandoned-workspace sweep is separate and unchanged.
     func recoverOrphans() async -> ProjectStartupRecoveryReport {
         var report = ProjectStartupRecoveryReport()
         let entries: [ProjectRecoveryEntry]
+        let rowCount: Int?
         do {
-            entries = try await lifecycle.withExclusiveAccess {
+            (entries, rowCount) = try await lifecycle.withExclusiveAccess {
                 #if DEBUG
                 if let debugHold { await debugHold() }
                 #endif
-                return try await store.enumerateProjectDirectories()
+                let directories = try await store.enumerateProjectDirectories()
+                do { return (directories, try repository.recentProjects().count) } catch {
+                    log(error: error, "Recovery project rows unreadable")   // unknown, never absence
+                    return (directories, nil)
+                }
             }
         } catch {
             log(error: error, "Recovery project enumeration failed")
             return report
         }
+        let canonicalCount = entries.filter { if case .canonical = $0 { return true } else { return false } }.count
+        let skipAllProjects: Bool
+        if rowCount == nil, canonicalCount > 0 {
+            skipAllProjects = true
+            report.skippedRowsUnreadable = canonicalCount
+            MellowLog.app.error("Recovery project rows unreadable; project directories and media left untouched count=\(canonicalCount, privacy: .public)")
+        } else if rowCount == 0, canonicalCount > 0 {
+            skipAllProjects = true
+            report.skippedByEmptyStoreGuard = canonicalCount
+            MellowLog.app.error("Recovery empty-store guard: zero Project rows with project directories; directories and media left untouched count=\(canonicalCount, privacy: .public)")
+        } else {
+            skipAllProjects = false
+        }
         MellowLog.app.info("Recovery started projectDirectories=\(entries.count, privacy: .public)")
         for entry in entries {
             switch entry {
+            case .canonical where skipAllProjects:
+                continue
             case .canonical(let projectID):
                 report = report + (await lifecycle.withExclusiveAccess { await recoverProjectExclusively(projectID) })
             case .noncanonical(_, let reason):
@@ -140,7 +174,7 @@ final class ProjectStartupRecoveryCoordinator {
                 MellowLog.app.info("Recovery noncanonical preserved kind=projectDir reason=\(reason, privacy: .public)")
             }
         }
-        MellowLog.app.info("Recovery complete dirsRemoved=\(report.orphanProjectDirsRemoved, privacy: .public) mediaRemoved=\(report.orphanMediaRemoved, privacy: .public) referenced=\(report.preservedReferenced, privacy: .public) noncanonical=\(report.noncanonicalPreserved, privacy: .public) failures=\(report.orphanProjectDirFailures + report.orphanMediaFailures, privacy: .public) skippedLive=\(report.skippedLiveProjects, privacy: .public)")
+        MellowLog.app.info("Recovery complete dirsRemoved=\(report.orphanProjectDirsRemoved, privacy: .public) mediaRemoved=\(report.orphanMediaRemoved, privacy: .public) referenced=\(report.preservedReferenced, privacy: .public) noncanonical=\(report.noncanonicalPreserved, privacy: .public) failures=\(report.orphanProjectDirFailures + report.orphanMediaFailures, privacy: .public) skippedLive=\(report.skippedLiveProjects, privacy: .public) emptyStoreGuard=\(report.skippedByEmptyStoreGuard, privacy: .public) rowsUnreadable=\(report.skippedRowsUnreadable, privacy: .public)")
         return report
     }
 

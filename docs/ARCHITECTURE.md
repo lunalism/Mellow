@@ -1728,6 +1728,8 @@ Replacement가 Same Clip Identity를 유지할지 또는 새 Clip Identity와 Sl
 
 ### Phase 5 STEP 12B Implementation — Startup Orphan Media + Workspace Recovery (ADR-039 Implementation Note)
 
+**OD-12 최소 빈 Store 보호(2026-10-06):** 첫 Gate Section이 Project Row와 Canonical Project Directory를 함께 읽고, Row 0개(읽기 성공) + Directory ≥ 1이면 그 Pass의 Orphan Directory 제거와 참조 없는 Media 제거를 둘 다 건너뛴다; Row 읽기 실패도 모름으로 같은 처리다. Workspace Sweep은 바뀌지 않는다. Store Identity · 부분 손실 보호가 아니다. 이것은 D7a 미해결 후보의 Process 수명 한정 보존(Process 종료 뒤 기존 Cleanup이 회수 가능)과 다른 장치다.
+
 `Core/Projects/ProjectStartupRecoveryCoordinator.swift`가 위 Reconciliation Contract 중 "Media + Missing Committed Metadata + No Recoverable Operation → Confirmed Orphan"과 "Confirmed Disposable Artifacts(버려진 Workspace)"의 첫 Production 구현이다. Phase-5 Composition / Add는 Durable Operation Identity를 갖지 않으므로(Repository Row 자체가 Commit) Recoverable Operation은 정의상 존재하지 않고, 남은 판정은 Committed Metadata 참조 여부와 Confirmed Ownership뿐이다.
 
 - **Trigger:** App 시작 Maintenance Task 하나(`AppEnvironment.scheduleStartupMaintenance`): Workspace Sweep → STEP 12A `reconcileAll()` → Orphan Recovery. Camera Prewarm / Staging Recovery와 독립이며 어떤 Editor 이벤트도 Scan을 촉발하지 않는다.
