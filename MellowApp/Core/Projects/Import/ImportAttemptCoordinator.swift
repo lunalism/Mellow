@@ -22,6 +22,16 @@ enum ImportAttemptTarget: Equatable, Sendable {
     case replaceClip(base: VlogProject, clipID: UUID)
 }
 
+/// Which accepted 050-C boundary the admission section checks. Both use the same requirement (remaining
+/// normalization outputs + current metadata + Import reserve) at the same serialized point, after the
+/// source and target checks; only the boundary — and so its refusal route — differs.
+enum ImportAttemptAdmission: Equatable, Sendable {
+    /// The operation's first attempt: C1 (initial storage refusal).
+    case initial
+    /// A same-set Retry attempt: CR (retry-capacity refusal) in place of C1, never in addition to it.
+    case retry
+}
+
 struct ImportAttemptRequest: Sendable {
     /// The Accepted Set in its accepted order (Step 3 preflight output; ready and normalization items).
     let accepted: [ImportAcceptedItem]
@@ -30,6 +40,21 @@ struct ImportAttemptRequest: Sendable {
     /// The operation's live workspace; every accepted source is a direct child of it.
     let workspace: ProjectMediaWorkspace
     let target: ImportAttemptTarget
+    let admission: ImportAttemptAdmission
+
+    init(accepted: [ImportAcceptedItem], plans: [ImportCandidateID: WorkingMediaNormalizationPlan], workspace: ProjectMediaWorkspace,
+         target: ImportAttemptTarget, admission: ImportAttemptAdmission = .initial) {
+        self.accepted = accepted
+        self.plans = plans
+        self.workspace = workspace
+        self.target = target
+        self.admission = admission
+    }
+
+    /// The same operation inputs for a Retry attempt.
+    var forRetry: ImportAttemptRequest {
+        ImportAttemptRequest(accepted: accepted, plans: plans, workspace: workspace, target: target, admission: .retry)
+    }
 }
 
 /// Internal stage markers (diagnostics / tests). Not a progress policy: no counts, no fractions, no copy.
@@ -79,7 +104,8 @@ enum ImportAttemptRefusal: Equatable, Sendable {
     case cancelled
     case invalidInput(ImportAttemptInputProblem)
     case target(ImportAttemptTargetProblem)
-    /// C1 did not pass (initial storage refusal route; unknown capacity fails closed onto it too).
+    /// The admission check did not pass: C1 for `.initial` (initial storage refusal route), CR for `.retry`
+    /// (retry-capacity refusal route). Unknown capacity fails closed onto the same route.
     case storage(ImportBoundaryCheckResult)
 }
 
@@ -319,7 +345,8 @@ final class ImportAttemptCoordinator {
 
     // MARK: - Admission section
 
-    /// INSIDE the gate (never acquires it): the work set's metadata inputs come from this fresh read.
+    /// INSIDE the gate (never acquires it): the work set's metadata inputs come from this fresh read. Order:
+    /// sources (already checked before the gate), target, then the single admission capacity check.
     private func admitInsideGate(_ attempt: Attempt) async -> ImportAttemptRefusal? {
         let resolved: ResolvedTarget
         switch resolveTargetInsideGate(attempt) {
@@ -334,10 +361,12 @@ final class ImportAttemptCoordinator {
         } catch {
             return .invalidInput(.workSet(error))
         }
-        switch await check(.c1BeforePreparation, workSet, attempt) {
+        // One admission capacity check: C1 for the first attempt, CR (same requirement) for a Retry.
+        let boundary: ImportAttemptBoundary = attempt.request.admission == .retry ? .crBeforeRetry : .c1BeforePreparation
+        switch await check(boundary, workSet, attempt) {
         case .cancelled: return .cancelled
         case .refused(let result):
-            MellowLog.app.info("Import attempt C1 refused project=\(attempt.short, privacy: .public)")
+            MellowLog.app.info("Import attempt admission refused project=\(attempt.short, privacy: .public) boundary=\(String(describing: boundary), privacy: .public)")
             return .storage(result)
         case .passed:
             attempt.workSet = workSet
