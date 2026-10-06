@@ -66,6 +66,8 @@ final class ImportAttemptCoordinatorTests: XCTestCase {
         case park
         /// Leaves a file it could not resolve beside the destination and reports `cleanupFailed`.
         case cleanupFailure(cancelled: Bool)
+        /// Fails and keeps its progress callback, which the test fires later (`fireLateProgress`) — a stale callback.
+        case failWithLateProgress
     }
 
     actor NormalizerScript {
@@ -78,6 +80,11 @@ final class ImportAttemptCoordinatorTests: XCTestCase {
         var gateProbe: (@Sendable () async -> Bool)?
 
         func script(_ steps: [NormalizerStep]) { self.steps = steps }
+        private var lateProgress: (@Sendable (Double) -> Void)?
+        private(set) var lateProgressFired = false
+        func keepLateProgress(_ progress: (@Sendable (Double) -> Void)?) { lateProgress = progress }
+        /// Delivers the kept stale callback now (deterministic, test-triggered).
+        func fireLateProgress(_ value: Double) { lateProgress?(value); lateProgressFired = lateProgress != nil }
         func setProbe(_ probe: @escaping @Sendable () async -> Bool) { gateProbe = probe }
 
         func nextStep(source: URL) async -> NormalizerStep {
@@ -110,9 +117,20 @@ final class ImportAttemptCoordinatorTests: XCTestCase {
         enum Failure: Error { case injected }
 
         func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan) async throws -> WorkingMediaNormalizationResult {
+            try await normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: nil)
+        }
+
+        /// Reports progress 0.5 before parking (so a parked item shows real callback-driven progress).
+        func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
+                       progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult {
             try Task.checkCancellation()
             var step = await script.nextStep(source: sourceURL)
+            if case .failWithLateProgress = step {
+                await script.keepLateProgress(progress)
+                throw Failure.injected
+            }
             if case .park = step {
+                progress?(0.5)
                 await script.park()
                 step = .succeed(outputDuration: nil)
             }

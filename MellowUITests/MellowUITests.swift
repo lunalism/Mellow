@@ -2352,6 +2352,91 @@ final class MellowUITests: XCTestCase {
         assertPersistedProjectCountAfterRelaunch(1)
     }
 
+    // MARK: - Phase 6 Select Clips: Preparation Sheet, Retry, notices (simulator fixtures; never the real picker)
+
+    @MainActor
+    func testSelectClipsPreparationSheetShowsProgressThenOpensEditor() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=mixed", "-uiTestNormalizerDelay=2500"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let sheet = app.descendants(matching: .any)["preparationSheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["영상을 준비하고 있어요"].exists)
+        XCTAssertTrue(app.staticTexts["잠시만 기다려주세요."].exists)
+        XCTAssertTrue(app.staticTexts["preparationPosition"].exists, "two normalization items show a position")
+        XCTAssertTrue(app.buttons["cancelPreparation"].exists)
+        XCTAssertEqual(app.navigationBars["프로젝트"].buttons.count, 0, "Back is unavailable while preparing")
+        try auditAndCapture(app, name: "Select Clips Preparation Sheet")
+        // Ready + two normalized items → one Project with three clips, opened after the sheet closes.
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["editorClip-3"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
+    @MainActor
+    func testSelectClipsPreparationCancelReturnsWithoutProject() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=normalized", "-uiTestNormalizerDelay=6000"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["preparationSheet"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts["preparationPosition"].exists, "a single item shows no position")
+        app.buttons["cancelPreparation"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["preparationSheet"].waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 1), "a successful cancel is silent")
+        XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled, "nothing was created")
+        XCTAssertTrue(app.buttons["startNewProject"].isEnabled)
+        assertPersistedProjectCountAfterRelaunch(0)
+    }
+
+    @MainActor
+    func testSelectClipsPreparationFailureOffersRetryThenSucceeds() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=normalized", "-uiTestNormalizerFailures=1"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let alert = app.alerts["영상을 준비하지 못했어요"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
+        XCTAssertTrue(alert.staticTexts["프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요."].exists)
+        XCTAssertTrue(alert.buttons["취소"].exists)
+        try auditAndCapture(app, name: "Select Clips Preparation Failure")
+        alert.buttons["다시 시도"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 30))
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
+    @MainActor
+    func testSelectClipsExclusionNoticeFollowsSuccess() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=shortAndReady"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let notice = app.alerts["짧은 영상이 제외되었어요"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 20))
+        XCTAssertTrue(notice.staticTexts["1초 미만의 영상은 추가할 수 없어요."].exists)
+        notice.buttons["확인"].tap()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["editorClip-1"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["editorClip-2"].exists, "the short item was excluded")
+        assertPersistedProjectCountAfterRelaunch(1)
+    }
+
+    @MainActor
+    func testSelectClipsSingleShortItemIsRejected() throws {
+        let app = legacyRecentApp(["-uiTestSkipOnboarding", "-uiTestProjectsEntry", "-uiTestMediaSelection=short"])
+        app.launch()
+        XCTAssertTrue(app.navigationBars["프로젝트"].waitForExistence(timeout: 5))
+        app.buttons["startNewProject"].tap()
+        let alert = app.alerts["영상이 너무 짧아요"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
+        XCTAssertTrue(alert.staticTexts["1초 이상의 영상을 선택해주세요."].exists)
+        alert.buttons["확인"].tap()
+        XCTAssertFalse(app.buttons["loadExistingProject"].isEnabled)
+        assertPersistedProjectCountAfterRelaunch(0)
+    }
+
     /// Relaunches without any seeding / clearing argument and counts what the persisted store holds,
     /// then removes it so the shared container stays clean for other tests.
     @MainActor

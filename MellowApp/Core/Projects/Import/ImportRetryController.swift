@@ -60,6 +60,11 @@ enum ImportRetryEligibility: Equatable, Sendable {
                 case .sufficient, .invalidEstimate, .invalidBoundaryState: return .ineligible(.nonRetryableFailure)
                 }
             case .normalizationFailed(_, .cleanupFailed?): return .ineligible(.cleanupUnresolved)
+            case .target(.unreadable):
+                // D7b §2: an unreadable target before any save attempt waits for an explicit Retry (the rollback gate
+                // above already required verified cleanup and no accepted cancellation; sources are revalidated by
+                // the Retry's own admission). Confirmed absence / change below stays target invalidation.
+                return .eligible
             case .normalizationFailed, .normalizationResultRejected, .materializationFailed, .mediaVerificationFailed, .attemptDirectoryUnavailable:
                 return .eligible
             case .cancelled: return .ineligible(.cancelled)
@@ -82,11 +87,13 @@ enum ImportRetryEligibility: Equatable, Sendable {
 @MainActor
 protocol ImportAttemptRunning: AnyObject {
     /// Must not be called while holding the lifecycle gate (the coordinator takes its own sections).
-    func runAttempt(_ request: ImportAttemptRequest) async -> ImportAttemptOutcome
+    func runAttempt(_ request: ImportAttemptRequest, events: ((ImportAttemptEvent) -> Void)?) async -> ImportAttemptOutcome
 }
 
 extension ImportAttemptCoordinator: ImportAttemptRunning {
-    func runAttempt(_ request: ImportAttemptRequest) async -> ImportAttemptOutcome { await run(request, events: nil) }
+    func runAttempt(_ request: ImportAttemptRequest, events: ((ImportAttemptEvent) -> Void)?) async -> ImportAttemptOutcome {
+        await run(request, events: events)
+    }
 }
 
 /// Ends the operation's ownership of its workspace (`ProjectMediaStore.discard`). Called only when the evidence
@@ -178,7 +185,7 @@ final class ImportRetryController {
     /// Cancellation is only `cancel()` / `requestCancellation()`: the attempt runs in a task this controller owns,
     /// so cancelling the CALLER's task does not cancel it — this guarantees the outcome (rollback included) is
     /// always absorbed before ownership changes.
-    func start() async -> ImportRetryResult {
+    func start(events: ((ImportAttemptEvent) -> Void)? = nil) async -> ImportRetryResult {
         switch state {
         case .idle: break
         case .running: return .busy
@@ -186,7 +193,7 @@ final class ImportRetryController {
         }
         state = .running   // reserved before any await
         defer { settle() }
-        let outcome = await execute(request)
+        let outcome = await execute(request, events: events)
         await absorb(outcome)
         return .attempted(outcome)
     }
@@ -194,7 +201,7 @@ final class ImportRetryController {
     /// One explicit same-set Retry. The in-flight state is reserved synchronously; a second call while running is
     /// `busy`. Source, target and CR are revalidated by the attempt's own admission — this controller reads no
     /// capacity and holds no gate.
-    func retry() async -> ImportRetryResult {
+    func retry(events: ((ImportAttemptEvent) -> Void)? = nil) async -> ImportRetryResult {
         let evidence: ImportAttemptOutcome
         switch state {
         case .running: return .busy
@@ -206,7 +213,7 @@ final class ImportRetryController {
         if case .ineligible(let reason) = ImportRetryEligibility.evaluate(evidence) { return .ineligible(reason) }
         state = .running   // reserved before any await
         defer { settle() }
-        let outcome = await execute(request.forRetry)
+        let outcome = await execute(request.forRetry, events: events)
 
         if case .refused(let refusal) = outcome, !cancelRequested {
             switch refusal {
@@ -281,10 +288,10 @@ final class ImportRetryController {
         for waiter in waiters { waiter.resume() }
     }
 
-    private func execute(_ request: ImportAttemptRequest) async -> ImportAttemptOutcome {
+    private func execute(_ request: ImportAttemptRequest, events: ((ImportAttemptEvent) -> Void)?) async -> ImportAttemptOutcome {
         cancelRequested = false
         let coordinator = self.coordinator
-        let task = Task { await coordinator.runAttempt(request) }
+        let task = Task { await coordinator.runAttempt(request, events: events) }
         running = task
         let outcome = await task.value
         running = nil

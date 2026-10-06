@@ -322,6 +322,12 @@ actor ProjectMediaStore: ProjectMediaStoring, ProjectMediaURLResolving, ProjectM
         guard !fileManager.fileExists(atPath: url.path) else { throw ProjectMediaStoreError.removalFailed }
     }
 
+    /// The Mellow-root volume's usable capacity for the Phase 6 C1 / C2 / C3 / CR checks; nil = unknown (fails closed).
+    func rootUsableCapacity() async -> Int64? {
+        try? ensureDirectory(root)
+        return ImportCopyAdmission.usableCapacity(forVolumeOf: root)
+    }
+
     func usableCapacityBytes() async -> Int64 {
         try? ensureDirectory(root)
         let values = try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
@@ -626,6 +632,22 @@ extension ProjectMediaStore {
               child.standardizedFileURL.path == url.standardizedFileURL.path,
               case .regularFile(let size) = rollbackNode(child) else { return nil }
         return size
+    }
+
+    /// Removes one regular file that is a direct child of a live, real workspace (never a symlink, never anything else),
+    /// e.g. an excluded source before C1 (050-C). Returns whether the file is now absent.
+    @discardableResult
+    func removeWorkspaceFile(_ url: URL, in workspace: ProjectMediaWorkspace) async -> Bool {
+        guard workspaceRollbackProblem(workspace) == nil,
+              let child = workspaceChild(url.lastPathComponent, in: workspace),
+              child.standardizedFileURL.path == url.standardizedFileURL.path else { return false }
+        switch rollbackNode(child) {
+        case .missing: return true
+        case .regularFile:
+            try? fileManager.removeItem(at: child)
+            return rollbackNode(child) == .missing
+        default: return false
+        }
     }
 
     func mediaNode(_ path: RelativeMediaPath) async -> ImportMediaNode {

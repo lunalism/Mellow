@@ -145,6 +145,7 @@ final class ImportRetryControllerTests: XCTestCase {
             .failedBeforeSave(.materializationFailed(id), clean()),
             .failedBeforeSave(.mediaVerificationFailed, clean()),
             .failedBeforeSave(.attemptDirectoryUnavailable, clean()),
+            .failedBeforeSave(.target(.unreadable), clean()),   // D7b §2
         ]
         for outcome in eligible { XCTAssertEqual(ImportRetryEligibility.evaluate(outcome), .eligible, "\(outcome)") }
 
@@ -162,6 +163,9 @@ final class ImportRetryControllerTests: XCTestCase {
             (.refused(.cancelled), .cancelled),
             (.failedBeforeSave(.sourceChanged(id), clean()), .sourceInvalidated),
             (.failedBeforeSave(.target(.notCurrentSavedProject), clean()), .targetInvalidated),
+            (.failedBeforeSave(.target(.projectChanged), clean()), .targetInvalidated),
+            (.failedBeforeSave(.target(.unreadable), clean(true)), .cancelled),
+            (.failedBeforeSave(.target(.unreadable), unresolved), .cleanupUnresolved),
             (.failedBeforeSave(.cancelled, clean(true)), .cancelled),
             (.failedBeforeSave(.materializationFailed(id), clean(true)), .cancelled),
             (.notSaved(clean(true)), .cancelled),
@@ -519,7 +523,7 @@ final class ImportRetryControllerTests: XCTestCase {
         var outcomes: [ImportAttemptOutcome]
         private(set) var requests: [ImportAttemptRequest] = []
         init(_ outcomes: [ImportAttemptOutcome]) { self.outcomes = outcomes }
-        func runAttempt(_ request: ImportAttemptRequest) async -> ImportAttemptOutcome {
+        func runAttempt(_ request: ImportAttemptRequest, events: ((ImportAttemptEvent) -> Void)?) async -> ImportAttemptOutcome {
             requests.append(request)
             return outcomes.removeFirst()
         }

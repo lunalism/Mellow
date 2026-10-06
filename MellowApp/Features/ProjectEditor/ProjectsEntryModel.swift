@@ -2,6 +2,15 @@ import Foundation
 import Observation
 import OSLog
 
+/// The Phase 6 Select Clips dependencies: the media store (workspace, excluded-source removal, workspace release),
+/// the selection preflight and the internal single-attempt coordinator the Retry controller drives.
+@MainActor
+struct SelectClipsImportServices {
+    let store: ProjectMediaStore
+    let preflight: ImportSelectionPreflight
+    let attempts: any ImportAttemptRunning
+}
+
 /// Presentation state for the Phase 5 Projects screen (ADR-034 semantics, ADR-035 destination,
 /// ADR-036 two-action content).
 ///
@@ -46,8 +55,15 @@ final class ProjectsEntryModel {
         case saveUnverified
         /// U2: the save threw and nothing could be confirmed (`indeterminate`).
         case saveIndeterminate
-        /// P6: the save threw and the prior state is confirmed (`priorConfirmed`) — acknowledgement only.
+        /// P6: the save threw and the prior state is confirmed (`priorConfirmed`) — acknowledgement only. (Retired from
+        /// Select Clips by the Phase 6 path, where `priorConfirmed` is retried under D7a; kept for the legacy coordinator.)
         case notSaved
+        /// The consolidated exclusion notice or single-candidate rejection (ADR-042 R2–R4, ADR-043 R1, ADR-044 R1).
+        case selectionNotice(ImportSelectionNotice)
+        /// D7b §1: a retained source became invalid before a Retry.
+        case sourceUnavailableForRetry
+        /// D7a §5 U3: restoration / cleanup could not be verified (not committed); no Retry.
+        case cleanupUnresolved
 
         var title: String {
             switch self {
@@ -60,6 +76,9 @@ final class ProjectsEntryModel {
             case .saveUnverified: return "저장 확인이 필요해요"
             case .saveIndeterminate: return "저장 결과를 확인하지 못했어요"
             case .notSaved: return "프로젝트를 만들지 못했어요"
+            case .selectionNotice(let notice): return notice.title
+            case .sourceUnavailableForRetry: return "영상을 다시 선택해주세요"
+            case .cleanupUnresolved: return "영상을 준비하지 못했어요"
             }
         }
         var message: String {
@@ -74,6 +93,9 @@ final class ProjectsEntryModel {
             case .saveUnverified: return "새 프로젝트는 저장되었지만 지금은 확인하지 못했어요. 프로젝트 화면에서 다시 확인해주세요."
             case .saveIndeterminate: return "새 프로젝트가 만들어졌는지 지금은 알 수 없어요. 다시 만들기 전에 프로젝트 화면에서 확인해주세요."
             case .notSaved: return "새 프로젝트가 저장되지 않았어요."
+            case .selectionNotice(let notice): return notice.message
+            case .sourceUnavailableForRetry: return "선택한 영상을 더 이상 사용할 수 없어요."
+            case .cleanupUnresolved: return "프로젝트에 변경사항이 저장되지 않았어요. 영상을 다시 선택해주세요."
             }
         }
     }
@@ -100,11 +122,49 @@ final class ProjectsEntryModel {
     private(set) var lookup: SavedProjectLookup = .notLoaded
     /// True while the ADR-034 replacement confirmation is on screen.
     var isReplacementConfirmationPresented = false
-    /// True from picker presentation until the composition outcome is known.
-    private(set) var isComposing = false
+    /// True from picker presentation until the operation reaches a terminal state (including while it waits for an
+    /// explicit Retry). Back is hidden meanwhile (D7b §4).
+    var isComposing: Bool { isSelecting || operation != nil }
+    private var isSelecting = false
     var compositionMessage: CompositionMessage?
+    /// Non-nil while the Blocking Preparation Sheet is shown (only when the Accepted Set has normalization items).
+    private(set) var preparation: ImportPreparationProgress?
+    /// True after `취소` on the sheet until the attempt's own outcome processing finished.
+    private(set) var isCancellingPreparation = false
+    /// An operation waiting for an explicit `다시 시도` / `취소`.
+    var retryPrompt: ImportRetryPrompt?
+    /// A confirmed new Project whose navigation waits for the exclusion notice to be acknowledged.
+    private var pendingCommittedProjectID: UUID?
+
+    /// One Select Clips import operation (Accepted Set, workspace and Retry state live in its controller).
+    private final class Operation {
+        let controller: ImportRetryController
+        let needsSheet: Bool
+        let normalizationIDs: [ImportCandidateID]
+        let notice: ImportSelectionNotice?
+        let replacing: Bool
+        /// Route identity captured at start: false once the originating Projects route was removed externally.
+        let isRouteLive: () -> Bool
+        var attempt = 0
+        /// Set by `다시 시도` until the Retry attempt has started (guards a double tap).
+        var isRetryQueued = false
+        /// Set once an unanswerable Retry wait is being ended (route removed); repeated notifications are no-ops.
+        var isEndingUnreachableWait = false
+        init(controller: ImportRetryController, needsSheet: Bool, normalizationIDs: [ImportCandidateID], notice: ImportSelectionNotice?,
+             replacing: Bool, isRouteLive: @escaping () -> Bool) {
+            self.controller = controller
+            self.needsSheet = needsSheet
+            self.normalizationIDs = normalizationIDs
+            self.notice = notice
+            self.replacing = replacing
+            self.isRouteLive = isRouteLive
+        }
+    }
+    private var operation: Operation?
 
     private let composition: ProjectCompositionCoordinator
+    private let importServices: SelectClipsImportServices?
+    private let routeProbe: () -> () -> Bool
     private let mediaStore: any ProjectMediaStoring
     private let mediaSelector: any ProjectMediaSelecting
     /// Pre-copy admission gate handed to the selector (same policy instance the coordinator uses).
@@ -118,11 +178,15 @@ final class ProjectsEntryModel {
         mediaStore: any ProjectMediaStoring,
         mediaSelector: any ProjectMediaSelecting,
         storageGate: any ProjectStorageGating,
+        importServices: SelectClipsImportServices? = nil,
+        routeProbe: @escaping () -> () -> Bool = { { true } },
         onContinueEditing: @escaping (UUID) -> Void,
         onNewProject: @escaping (NewProjectIntent) -> Void = { _ in },
         onProjectCommitted: @escaping (UUID) -> Void
     ) {
         self.composition = composition
+        self.importServices = importServices
+        self.routeProbe = routeProbe
         self.mediaStore = mediaStore
         self.mediaSelector = mediaSelector
         self.storageGate = storageGate
@@ -168,7 +232,8 @@ final class ProjectsEntryModel {
     /// `기존 프로젝트 불러오기`: delivers the exact saved Project ID as the navigation identity.
     /// No-op without a successfully looked-up saved Project (the control is disabled then).
     func continueEditing() {
-        guard let savedProjectID else { return }
+        // D7b §4: no Editor while an import operation runs or waits (it may be replacing this very Project).
+        guard !isComposing, let savedProjectID else { return }
         onContinueEditing(savedProjectID)
     }
 
@@ -201,16 +266,262 @@ final class ProjectsEntryModel {
         Task { await runSelectClips(intent) }
     }
 
-    /// Select Clips (ADR-033 / ADR-034 §2): workspace → system selection → all-or-nothing composition
+    /// Select Clips. With `importServices` (production and every DEBUG route since 2026-10-06) this is the Phase 6
+    /// path; without it the legacy Phase 5 composition path runs, which is now reachable only from its existing tests.
+    func runSelectClips(_ intent: NewProjectIntent) async {
+        if let importServices { await runPhase6SelectClips(intent, services: importServices) } else { await runLegacySelectClips(intent) }
+    }
+
+    /// Phase 6 Select Clips (ADR-042 R2–R4, ADR-043 R1, ADR-044 R1, ADR-046, ADR-050 050-C / 050-D D7a / D7b / D8.5b):
+    /// workspace → system selection with C0 / C0a → preflight with per-item exclusion (inclusive 1.0–5.0 s) → the
+    /// excluded sources are removed → `ImportRetryController` (C1, preparation with C2, commit with C3, Retry with
+    /// CR) → presentation. The legacy commit-time final guard does not run on this path (D7b §3). Cancel goes
+    /// through the controller, which waits for the attempt's safe outcome processing.
+    private func runPhase6SelectClips(_ intent: NewProjectIntent, services: SelectClipsImportServices) async {
+        guard !isComposing else { return }
+        isSelecting = true
+        let isRouteLive = routeProbe()
+        defer { isSelecting = false }
+        guard let workspace = try? await services.store.beginWorkspace() else {
+            present(.preparationFailed, isRouteLive)
+            return
+        }
+        let sources: [SelectedVideoSource]
+        switch await mediaSelector.selectVideos(into: workspace, store: services.store, admission: storageGate) {
+        case .cancelled:
+            await services.store.discard(workspace)
+            return
+        case .insufficientStorage:
+            await services.store.discard(workspace)
+            present(.importStorageInsufficient, isRouteLive)
+            return
+        case .failed:
+            await services.store.discard(workspace)
+            present(.preparationFailed, isRouteLive)
+            return
+        case .selected(let selected):
+            sources = selected
+        }
+        guard !sources.isEmpty else {
+            await services.store.discard(workspace)
+            return
+        }
+
+        // Preflight: per-item classification in selection order (a single chosen item is a single-candidate operation).
+        let candidates = sources.map { ImportCandidate(url: $0.url) }
+        let preflight: ImportSelectionPreflightOutcome
+        do {
+            preflight = try await services.preflight.run(candidates, context: candidates.count == 1 ? .singleCandidate : .multipleItems)
+        } catch {
+            MellowLog.app.error("Select Clips preflight failed: \(String(describing: error), privacy: .public)")
+            await services.store.discard(workspace)
+            present(.preparationFailed, isRouteLive)
+            return
+        }
+        // Excluded items never enter the Accepted Set; their Mellow-owned copies go before C1 (050-C).
+        for excluded in preflight.excluded where await !services.store.removeWorkspaceFile(excluded.candidate.url, in: workspace) {
+            MellowLog.app.error("Select Clips excluded source could not be removed; it stays with the workspace")
+        }
+        guard !preflight.accepted.isEmpty else {
+            await services.store.discard(workspace)
+            if let notice = preflight.notice { present(.selectionNotice(notice), isRouteLive) }
+            return
+        }
+        var plans: [ImportCandidateID: WorkingMediaNormalizationPlan] = [:]
+        do {
+            for item in preflight.accepted where item.preparationPath.normalization != nil { plans[item.candidate.id] = try WorkingMediaPlanBuilder.plan(for: item) }
+        } catch {
+            await services.store.discard(workspace)
+            present(.preparationFailed, isRouteLive)
+            return
+        }
+        let target: ImportAttemptTarget
+        switch intent {
+        case .fresh: target = .newProject
+        case .replacingSaved(let id): target = .replacingSaved(previousID: id)
+        }
+        let request = ImportAttemptRequest(accepted: preflight.accepted, plans: plans, workspace: workspace, target: target)
+        let normalizationIDs = preflight.accepted.filter { $0.preparationPath.normalization != nil }.map(\.candidate.id)
+        let current = Operation(controller: ImportRetryController(coordinator: services.attempts, workspaces: services.store, request: request),
+                                needsSheet: !normalizationIDs.isEmpty, normalizationIDs: normalizationIDs, notice: preflight.notice,
+                                replacing: target != .newProject, isRouteLive: isRouteLive)
+        operation = current   // ownership of the workspace passes to the controller here
+        isSelecting = false
+        await runAttempt(current, retry: false)
+    }
+
+    /// One attempt (first or Retry) with a fresh progress value; stale callbacks of earlier attempts are ignored.
+    private func runAttempt(_ current: Operation, retry: Bool) async {
+        current.isRetryQueued = false
+        // A Retry queued just before its route was removed never starts: the unreachable wait is ending, and route
+        // removal must never end up cancelling a running attempt (D7b §4 clarification).
+        if retry, current.isEndingUnreachableWait { return }
+        current.attempt += 1
+        let attempt = current.attempt
+        preparation = current.needsSheet ? ImportPreparationProgress(normalizationIDs: current.normalizationIDs) : nil
+        let events: (ImportAttemptEvent) -> Void = { [weak self, weak current] event in
+            guard let self, let current, self.operation === current, current.attempt == attempt else { return }
+            self.preparation?.apply(event)
+        }
+        let result = retry ? await current.controller.retry(events: events) : await current.controller.start(events: events)
+        preparation = nil
+        isCancellingPreparation = false
+        settle(current, result)
+    }
+
+    /// `다시 시도` on a Retry prompt.
+    func retryPreparation() {
+        retryPrompt = nil
+        guard let current = operation, case .awaitingRetry = current.controller.state, !current.isRetryQueued,
+              !current.isEndingUnreachableWait else { return }
+        current.isRetryQueued = true   // a second tap before the attempt starts is a no-op
+        Task { await runAttempt(current, retry: true) }
+    }
+
+    /// `취소` on the sheet or on a Retry prompt: through the controller, which waits for the running attempt's own
+    /// rollback / save processing (a confirmed save stays a success) before anything is released.
+    func cancelPreparation() {
+        retryPrompt = nil
+        guard let current = operation, !current.controller.state.isTerminal else { return }
+        if current.controller.state == .running {
+            isCancellingPreparation = true
+            current.controller.requestCancellation()   // the running start() / retry() settles the outcome
+        } else {
+            Task {
+                await current.controller.cancel()
+                self.settle(current, .ineligible(.cancelled))
+            }
+        }
+    }
+
+    /// The router reports that a Projects route left the path. Only this operation's own route identity decides: a
+    /// running attempt is never cancelled (it settles and suppresses its late UI); a waiting one ends through the
+    /// controller. Idempotent; sheets, pickers and view disappearance never call this.
+    func originatingRouteRemoved() {
+        guard let current = operation, !current.isRouteLive() else { return }
+        retryPrompt = nil
+        if case .awaitingRetry = current.controller.state { endUnreachableWait(current) }
+    }
+
+    /// Ends a Retry wait nobody can answer any more, silently, through `ImportRetryController.cancel()`; then releases
+    /// the operation block. A retained (unresolved) workspace never reaches here — it is terminal already.
+    private func endUnreachableWait(_ current: Operation) {
+        guard !current.isEndingUnreachableWait else { return }
+        current.isEndingUnreachableWait = true
+        retryPrompt = nil
+        Task {
+            await current.controller.cancel()
+            if self.operation === current { self.operation = nil }
+        }
+    }
+
+    /// Maps the controller's state after one call to presentation. Late presentation of an operation whose
+    /// originating route was removed is suppressed (D7b §4); classification and cleanup already happened.
+    private func settle(_ current: Operation, _ result: ImportRetryResult) {
+        guard operation === current else { return }
+        let live = current.isRouteLive()
+        switch current.controller.state {
+        case .idle, .running:
+            return
+        case .awaitingRetry(let evidence):
+            // D7b §4 clarification: no inaccessible Retry wait — on a removed route the waiting state ends through the
+            // controller's own cancellation (its last rollback was verified, so only Mellow-owned candidates go).
+            guard live else { endUnreachableWait(current); return }
+            let prompt: ImportRetryPrompt
+            switch result {
+            case .capacityRefused: prompt = .storageShortage
+            case .targetUnavailable: prompt = .targetUnavailable
+            default: prompt = .forEvidence(evidence)
+            }
+            retryPrompt = prompt
+            return   // the operation stays (and keeps its workspace) until `다시 시도` / `취소`
+        case .succeeded(let commit):
+            operation = nil
+            load()
+            guard live else { return }
+            if let notice = current.notice {
+                pendingCommittedProjectID = commit.project.id
+                compositionMessage = .selectionNotice(notice)
+            } else {
+                onProjectCommitted(commit.project.id)
+            }
+        case .uncertain(let outcome):
+            operation = nil
+            load()
+            if case .committedUnverified = outcome { present(.saveUnverified, live) } else { present(.saveIndeterminate, live) }
+        case .retainedUnresolved:
+            operation = nil
+            present(.cleanupUnresolved, live)
+        case .ended(let reason):
+            operation = nil
+            presentEnd(reason, result: result, replacing: current.replacing, isRetryAttempt: current.attempt > 1, live: live)
+        }
+    }
+
+    private func presentEnd(_ reason: ImportRetryIneligibility, result: ImportRetryResult, replacing: Bool, isRetryAttempt: Bool, live: Bool) {
+        switch reason {
+        case .cancelled:
+            return   // a successful cancel closes silently (D7a §5)
+        case .sourceInvalidated:
+            // D7b §1: a retained source that is no longer usable for a Retry — at Retry admission or during the Retry
+            // attempt (the materialize recheck) — uses the approved copy; the first attempt keeps D8.5b's copy.
+            if case .sourceInvalid = result { present(.sourceUnavailableForRetry, live) }
+            else if isRetryAttempt { present(.sourceUnavailableForRetry, live) }
+            else { present(.preparationFailed, live) }
+        case .targetInvalidated:
+            load()
+            if case .attempted(.refused(.target(.unreadable))) = result {
+                present(.projectInspectionFailed, live)        // first admission: D8.5b
+            } else if replacing {
+                present(.replacementTargetInvalidated, live)   // D8.5b / D7b §1
+            } else {
+                present(.preparationFailed, live)              // new-Project identity: no dedicated copy (D7b open item)
+            }
+        case .initialAdmissionRefusal:
+            if case .attempted(.refused(.storage(let check))) = result, Self.isShortage(check) {
+                present(.importStorageInsufficient, live)     // C1 shortage: R4 §4
+            } else {
+                present(.preparationFailed, live)             // estimate / state defect: never a shortage
+            }
+        case .nonRetryableFailure, .retryAdmissionDefect, .cleanupUnresolved, .notStarted, .operationEnded, .completed, .uncertainPersistence:
+            present(.preparationFailed, live)
+        }
+    }
+
+    private static func isShortage(_ check: ImportBoundaryCheckResult) -> Bool {
+        switch check.outcome {
+        case .insufficient, .capacityUnknown: return true
+        case .sufficient, .invalidEstimate, .invalidBoundaryState: return false
+        }
+    }
+
+    private func present(_ message: CompositionMessage, _ live: Bool) {
+        if live { compositionMessage = message }
+    }
+
+    private func present(_ message: CompositionMessage, _ isRouteLive: () -> Bool) {
+        present(message, isRouteLive())
+    }
+
+    /// The alert's `확인`. After a confirmed save with an exclusion notice, navigation happens once it is acknowledged.
+    func dismissCompositionMessage() {
+        compositionMessage = nil
+        if let projectID = pendingCommittedProjectID {
+            pendingCommittedProjectID = nil
+            onProjectCommitted(projectID)
+        }
+    }
+
+    /// Legacy Select Clips (ADR-033 / ADR-034 §2): workspace → system selection → all-or-nothing composition
     /// → Editor. Picker cancel is a silent, normal result; every other non-success outcome shows one
     /// message and stays on this screen. After an inspection failure, an invalidated replacement target or
     /// a non-`completed` save outcome the saved-Project lookup runs exactly once more (D8.5a P5 / D8.5b); a
     /// failed lookup becomes `unknown`, and composition is never retried automatically. App
     /// launch, opening this screen and presenting the picker never create a Project.
-    func runSelectClips(_ intent: NewProjectIntent) async {
+    private func runLegacySelectClips(_ intent: NewProjectIntent) async {
         guard !isComposing else { return }
-        isComposing = true
-        defer { isComposing = false }
+        isSelecting = true
+        defer { isSelecting = false }
         guard let workspace = try? await mediaStore.beginWorkspace() else {
             compositionMessage = .preparationFailed
             return

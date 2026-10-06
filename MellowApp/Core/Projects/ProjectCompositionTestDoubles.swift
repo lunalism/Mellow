@@ -8,8 +8,9 @@ import Foundation
 
 /// Writes tiny real H.264 QuickTime files so validation / materialization run against actual media.
 enum FixtureVideoWriter {
-    /// Solid-colour frames at `size` for `seconds` at 30 fps, no audio. Portrait when height > width.
-    static func write(to url: URL, size: CGSize = CGSize(width: 540, height: 960), seconds: Double = 2) async throws {
+    /// Solid-colour frames at `size` for `seconds` at `fps` (default 30), no audio. Portrait when height > width.
+    /// 60 fps makes a normalization-required (frame-rate) source for Phase 6 tests.
+    static func write(to url: URL, size: CGSize = CGSize(width: 540, height: 960), seconds: Double = 2, fps: Int32 = 30) async throws {
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -27,7 +28,7 @@ enum FixtureVideoWriter {
         writer.add(input)
         guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         writer.startSession(atSourceTime: .zero)
-        let frames = Int((seconds * 30).rounded())
+        let frames = Int((seconds * Double(fps)).rounded())
         for frame in 0..<frames {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
             guard let pool = adaptor.pixelBufferPool else { throw CocoaError(.fileWriteUnknown) }
@@ -39,7 +40,7 @@ enum FixtureVideoWriter {
                 memset(base, frame % 2 == 0 ? 0x80 : 0x40, CVPixelBufferGetDataSize(buffer))
             }
             CVPixelBufferUnlockBaseAddress(buffer, [])
-            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: fps))
         }
         input.markAsFinished()
         await writer.finishWriting()
@@ -171,4 +172,37 @@ extension ProjectCompositionCoordinator {
     }
 }
 
+/// UI-test normalizer (DEBUG only): the REAL normalizer, optionally held for `-uiTestNormalizerDelay=<ms>` before each
+/// item (so the Preparation Sheet is observable and cancellable) and failing its first `-uiTestNormalizerFailures=<n>`
+/// items (so the R4 §3 Retry path can be driven). Progress is the real normalizer's.
+struct UITestScriptedNormalizer: WorkingMediaNormalizing {
+    private final class Failures: @unchecked Sendable {
+        private let lock = NSLock()
+        private var remaining: Int
+        init(_ count: Int) { remaining = count }
+        func take() -> Bool { lock.lock(); defer { lock.unlock() }; guard remaining > 0 else { return false }; remaining -= 1; return true }
+    }
+    private let inner = AVFoundationWorkingMediaNormalizer()
+    private let delay: Duration
+    private let failures: Failures
+
+    init(arguments: [String]) {
+        func value(_ key: String) -> Int {
+            arguments.first { $0.hasPrefix(key) }.flatMap { Int($0.replacingOccurrences(of: key, with: "")) } ?? 0
+        }
+        delay = .milliseconds(value("-uiTestNormalizerDelay="))
+        failures = Failures(value("-uiTestNormalizerFailures="))
+    }
+
+    func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan) async throws -> WorkingMediaNormalizationResult {
+        try await normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: nil)
+    }
+
+    func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
+                   progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult {
+        try await Task.sleep(for: delay)
+        if failures.take() { throw WorkingMediaNormalizationError.writerFailed(domain: "UITest", code: 1) }
+        return try await inner.normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: progress)
+    }
+}
 #endif

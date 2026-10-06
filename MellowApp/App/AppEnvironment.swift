@@ -24,6 +24,8 @@ final class AppEnvironment {
     /// Startup-only orphan media / Project directory / workspace recovery (ADR-039 STEP 12B).
     let projectRecovery: ProjectStartupRecoveryCoordinator
     let projectMediaStore: any ProjectMediaStoring
+    /// The same store, concretely: the Phase 6 import services need its attempt / workspace surface.
+    private let importMediaStore: ProjectMediaStore
     let projectStorageGate: any ProjectStorageGating
     /// Editor clip thumbnails (ARCHITECTURE §56): Project-owned committed media only, memory cache.
     let clipThumbnails: any ClipThumbnailProviding
@@ -262,6 +264,7 @@ final class AppEnvironment {
         // injects a fake gate so deterministic scenarios never depend on the simulator's disk.
         let projectMediaStore = ProjectMediaStore()
         self.projectMediaStore = projectMediaStore
+        self.importMediaStore = projectMediaStore
         let volumeGate = VolumeProjectStorageGate(
             capacity: { await projectMediaStore.usableCapacityBytes() },
             safetyReserveBytes: ProjectCompositionPolicy.materializationSafetyReserveBytes
@@ -339,6 +342,8 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: photosVideoSelector,
             storageGate: transferAdmission,
+            importServices: Self.makeSelectClipsImportServices(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle),
+            routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { projectID in router.path.append(.projectEditor(projectID)) },
             onProjectCommitted: { projectID in router.path.append(.projectEditor(projectID)) }
         )
@@ -400,6 +405,8 @@ final class AppEnvironment {
             isEditorSessionLive: { [router] projectID in router.hasLiveProjectEditor(for: projectID) }
         )
         self.projectCleanup = projectCleanup
+        let productionProjectsEntry = projectsEntry
+        router.onProjectsEntryRouteRemoved = { productionProjectsEntry.originatingRouteRemoved() }
         router.onProjectEditorRouteRemoved = { [projectCleanup] projectID in
             projectCleanup.scheduleReconcile(projectID: projectID)
         }
@@ -649,6 +656,10 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: selector,
             storageGate: projectStorageGate,
+            importServices: Self.makeSelectClipsImportServices(
+                repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle,
+                normalizer: UITestScriptedNormalizer(arguments: arguments)),
+            routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { [weak self] projectID in
                 // The Projects screen stays below the Editor so Back returns to `프로젝트`.
                 self?.router.path.append(.projectEditor(projectID))
@@ -663,6 +674,7 @@ final class AppEnvironment {
                 self?.router.path.append(.projectEditor(projectID))
             }
         )
+        registerProjectsRouteRemovalListeners()
         router.path = [.projectsEntry]
         let arguments = self.arguments
         selector.pendingScript = Task { await Self.makeUITestSelectionScript(arguments: arguments) }
@@ -682,7 +694,9 @@ final class AppEnvironment {
             composition: projectComposition,
             mediaStore: projectMediaStore,
             mediaSelector: selector,
-            storageGate: projectStorageGate,
+            storageGate: ImportTransferCopyGate.transferVolume(),
+            importServices: Self.makeSelectClipsImportServices(repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle),
+            routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { [weak self] projectID in
                 self?.router.path.append(.projectEditor(projectID))
             },
@@ -690,7 +704,17 @@ final class AppEnvironment {
                 self?.router.path.append(.projectEditor(projectID))
             }
         )
+        registerProjectsRouteRemovalListeners()
         router.path = [.projectsEntry]
+    }
+
+    /// Both Projects models hear real Projects-route removal; each decides by its own operation / route identity.
+    private func registerProjectsRouteRemovalListeners() {
+        let production = projectsEntry, uiEntry = uiTestProjectsEntry
+        router.onProjectsEntryRouteRemoved = {
+            production.originatingRouteRemoved()
+            uiEntry?.originatingRouteRemoved()
+        }
     }
 
     /// STEP 12A deterministic seams (DEBUG / UI tests only). `-uiTestCleanupDiagnostics` surfaces
@@ -836,15 +860,41 @@ final class AppEnvironment {
         }
     }
 
+    #endif
+
+    /// The Phase 6 Select Clips services (ADR-050 050-C / 050-D): the real selection preflight and the internal
+    /// attempt coordinator over the shared repository, media store and lifecycle gate; C1 / C2 / C3 / CR read the
+    /// Mellow-root volume (unknown capacity fails closed).
+    static func makeSelectClipsImportServices(repository: any ProjectRepository, store: ProjectMediaStore, lifecycle: ProjectLifecycleOperationGate,
+                                              normalizer: any WorkingMediaNormalizing = AVFoundationWorkingMediaNormalizer()) -> SelectClipsImportServices {
+        SelectClipsImportServices(
+            store: store,
+            preflight: ImportSelectionPreflight(inspector: AVAssetImportSourceInspector()),
+            attempts: ImportAttemptCoordinator(repository: repository, mediaStore: store, normalizer: normalizer, lifecycle: lifecycle,
+                                               capacity: { await store.rootUsableCapacity() }))
+    }
+
+    #if DEBUG
     private static func makeUITestSelectionScript(arguments: [String], key: String = "-uiTestMediaSelection=") async -> FakeProjectMediaSelector.Script {
         let mode = arguments.first { $0.hasPrefix(key) }?
             .replacingOccurrences(of: key, with: "") ?? "cancel"
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("UITestFixtures", isDirectory: true)
-        func fixture(_ name: String, seconds: Double) async -> URL? {
+        func fixture(_ name: String, seconds: Double, fps: Int32 = 30) async -> URL? {
             let url = directory.appendingPathComponent(name).appendingPathExtension("mov")
-            do { try await FixtureVideoWriter.write(to: url, seconds: seconds); return url } catch { return nil }
+            do { try await FixtureVideoWriter.write(to: url, seconds: seconds, fps: fps); return url } catch { return nil }
         }
         switch mode {
+        case "normalized":   // one 60 fps item: normalization-required (Phase 6 preparation)
+            return await fixture("norm-a", seconds: 2, fps: 60).map { .fixtures([$0]) } ?? .fail
+        case "mixed":        // ready + two normalization items (2/2 position)
+            if let a = await fixture("ready-a", seconds: 2), let b = await fixture("norm-a", seconds: 2, fps: 60),
+               let c = await fixture("norm-b", seconds: 1.5, fps: 60) { return .fixtures([a, b, c]) }
+            return .fail
+        case "short":        // a single 0.5 s item: below the 1.0 s minimum
+            return await fixture("short", seconds: 0.5).map { .fixtures([$0]) } ?? .fail
+        case "shortAndReady": // a short item is excluded; the ready one is created, then the notice
+            if let a = await fixture("short", seconds: 0.5), let b = await fixture("ready-a", seconds: 2) { return .fixtures([a, b]) }
+            return .fail
         case "ready":
             return await fixture("ready-a", seconds: 2).map { .fixtures([$0]) } ?? .fail
         case "ready2":

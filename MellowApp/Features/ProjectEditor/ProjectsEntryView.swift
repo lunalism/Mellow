@@ -62,7 +62,7 @@ struct ProjectsEntryView: View {
                             .accessibilityIdentifier("reloadProjects")
                     } else {
                         ProjectsSecondaryButton("기존 프로젝트 불러오기", action: model.continueEditing)
-                            .disabled(!model.hasSavedProject)
+                            .disabled(!model.hasSavedProject || model.isComposing)
                             .accessibilityHint(model.hasSavedProject ? "저장된 프로젝트를 편집기에서 엽니다" : "")
                             .accessibilityIdentifier("loadExistingProject")
                     }
@@ -75,6 +75,15 @@ struct ProjectsEntryView: View {
             }
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        // ADR-042 R4 §1 Blocking Preparation Sheet (only with normalization items). In-hierarchy and modal so the
+        // Retry / notice alerts that follow it never race a dismissing presentation.
+        .overlay {
+            if let progress = model.preparation {
+                ImportPreparationSheet(progress: progress, isCancelling: model.isCancellingPreparation, cancel: model.cancelPreparation)
+            }
+        }
+        // D7b §4: Back is unavailable while an operation runs or waits for `다시 시도` / `취소`.
+        .navigationBarBackButtonHidden(model.isComposing)
         .navigationTitle("프로젝트")
         .navigationBarTitleDisplayMode(.inline)
         // `.contain` keeps the content individually queryable under the screen identifier while
@@ -87,21 +96,91 @@ struct ProjectsEntryView: View {
         } message: {
             Text("새 프로젝트를 만들면 마지막으로 저장한 프로젝트가 교체됩니다.")
         }
-        // One message for every non-success Select-Clips outcome (never for cancel); the user stays here.
+        // One message per finished operation (never for cancel): failures, save outcomes, or the exclusion notice
+        // after a confirmed save (whose `확인` then opens the new Project).
         .alert(
             model.compositionMessage?.title ?? "",
             isPresented: Binding(
                 get: { model.compositionMessage != nil },
-                set: { if !$0 { model.compositionMessage = nil } }
+                set: { if !$0 { model.dismissCompositionMessage() } }
             ),
             presenting: model.compositionMessage
         ) { _ in
-            Button("확인", role: .cancel) { model.compositionMessage = nil }
+            Button("확인", role: .cancel) { model.dismissCompositionMessage() }
         } message: { message in
             Text(message.message)
         }
+        // An operation waiting for an explicit decision (R4 §3, CR shortage, D7b target unavailable). No auto-retry.
+        .alert(
+            model.retryPrompt?.title ?? "",
+            isPresented: Binding(get: { model.retryPrompt != nil }, set: { _ in }),
+            presenting: model.retryPrompt
+        ) { _ in
+            Button(ImportRetryPrompt.retryAction) { model.retryPreparation() }
+            Button(ImportRetryPrompt.cancelAction, role: .cancel) { model.cancelPreparation() }
+        } message: { prompt in
+            Text(prompt.message)
+        }
         .modifier(SelectClipsPickerHost(selector: photosSelector))
         .onAppear(perform: model.load)
+    }
+}
+
+/// ADR-042 Revision 4 §1: `영상을 준비하고 있어요` / `잠시만 기다려주세요.`, visible progress, `2/5` when several items
+/// need preparation, and `취소`. Progress is the D7b §5 aggregate of real normalizer progress; reaching 100% does not
+/// dismiss it — the attempt's outcome does.
+struct ImportPreparationSheet: View {
+    let progress: ImportPreparationProgress
+    let isCancelling: Bool
+    let cancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            // Opaque: the contrast audit (and readers) must never see the screen below through it.
+            Color(.systemBackground).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text(ImportPreparationCopy.title)
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(ImportPreparationCopy.message)
+                    .font(.subheadline)
+                    .foregroundStyle(MellowDesignSystem.secondaryText)
+                // One read-only accessibility element sized like a control, so the 4 pt bar is never judged as a tiny target.
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(.systemGray5))
+                    Capsule().fill(Color.primary).frame(width: 260 * progress.aggregate)
+                }
+                    .frame(width: 260, height: 4)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityAddTraits(.updatesFrequently)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("준비 진행률")
+                    .accessibilityValue("\(Int((progress.aggregate * 100).rounded()))%")
+                    .accessibilityIdentifier("preparationProgress")
+                if let position = progress.positionLabel {
+                    Text(position)
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(MellowDesignSystem.secondaryText)
+                        .accessibilityIdentifier("preparationPosition")
+                }
+                Button(action: cancel) {
+                    Text(ImportPreparationCopy.cancelAction)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .frame(minWidth: 88, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isCancelling)
+                .accessibilityIdentifier("cancelPreparation")
+            }
+            .multilineTextAlignment(.center)
+            .padding(24)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityIdentifier("preparationSheet")
     }
 }
 

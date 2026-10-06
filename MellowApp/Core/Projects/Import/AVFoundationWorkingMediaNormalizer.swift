@@ -32,6 +32,38 @@ protocol WorkingMediaNormalizing: Sendable {
     ///   startup workspace sweep, as does anything else abandoned in the workspace (ADR-047);
     /// - the source and committed media are never touched.
     func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan) async throws -> WorkingMediaNormalizationResult
+    /// The same run, additionally reporting bounded progress in `0...1` from work actually done (ADR-050 050-D D7b §5).
+    /// Callbacks may arrive on any thread and are not guaranteed to be ordered; the default reports nothing.
+    func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
+                   progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult
+}
+
+extension WorkingMediaNormalizing {
+    func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
+                   progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult {
+        try await normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan)
+    }
+}
+
+enum WorkingMediaProgress {
+    /// The number of cadence targets `t_k = k × d < E` the run writes (ADR-048 Revision 1), from exact rationals;
+    /// nil when it cannot be computed safely (no progress is reported then).
+    static func targetCount(plan: WorkingMediaNormalizationPlan) -> Int? {
+        let end = plan.sourceDuration, step = plan.outputFrameDuration
+        guard end.value > 0, step.value > 0 else { return nil }
+        // ceil((end.value / end.timescale) / (step.value / step.timescale))
+        let (numerator, o1) = end.value.multipliedReportingOverflow(by: Int64(step.timescale))
+        let (denominator, o2) = Int64(end.timescale).multipliedReportingOverflow(by: step.value)
+        guard !o1, !o2, denominator > 0 else { return nil }
+        let count = numerator / denominator + (numerator % denominator == 0 ? 0 : 1)
+        return count > 0 && count <= Int64(Int.max) ? Int(count) : nil
+    }
+
+    /// Fraction after the target with zero-based `index` was written, clamped to `0...1`.
+    static func fraction(afterTarget index: Int, of count: Int) -> Double {
+        guard count > 0, index >= 0 else { return 0 }
+        return min(1, Double(index + 1) / Double(count))
+    }
 }
 
 struct WorkingMediaNormalizationResult: Hashable, Sendable {
@@ -145,7 +177,8 @@ enum WorkingMediaRunTermination: Hashable, Sendable {
 
 // MARK: - Test seams
 
-/// Lifecycle points a test can observe. Production passes no hooks.
+/// Lifecycle points a test can observe. Production passes no hooks of its own; the progress variant of `normalize`
+/// composes an `observe` hook to report cadence progress (ADR-050 050-D D7b §5).
 enum WorkingMediaNormalizationStage: Hashable, Sendable {
     case willStartWriting
     case pipelineStarted
@@ -211,6 +244,23 @@ struct AVFoundationWorkingMediaNormalizer: WorkingMediaNormalizing {
     init(inspector: any ImportSourceInspecting = AVAssetImportSourceInspector(), hooks: WorkingMediaNormalizerHooks = .none) {
         self.inspector = inspector
         self.hooks = hooks
+    }
+
+    /// Progress = cadence targets actually written / targets planned (`WorkingMediaProgress`), reported from the existing
+    /// `videoFrameScheduled` observation; the run itself is unchanged.
+    func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
+                   progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult {
+        guard let progress, let count = WorkingMediaProgress.targetCount(plan: plan) else {
+            return try await normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan)
+        }
+        var composed = hooks
+        let observe = hooks.observe
+        composed.observe = { stage in
+            observe?(stage)
+            if case .videoFrameScheduled(let target, _, _) = stage { progress(WorkingMediaProgress.fraction(afterTarget: target, of: count)) }
+        }
+        return try await AVFoundationWorkingMediaNormalizer(inspector: inspector, hooks: composed)
+            .normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan)
     }
 
     func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan) async throws -> WorkingMediaNormalizationResult {

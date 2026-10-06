@@ -61,6 +61,9 @@ struct ImportAttemptRequest: Sendable {
 enum ImportAttemptEvent: Equatable, Sendable {
     case boundaryChecked(ImportBoundaryCheckResult)
     case normalizationStarted(ImportCandidateID)
+    /// Bounded progress `0...1` reported by the normalizer for this item (may arrive late or out of order; consumers
+    /// clamp and ignore stale values — ADR-050 050-D D7b §5).
+    case normalizationProgress(ImportCandidateID, Double)
     case normalizationFinished(ImportCandidateID)
     /// Inside the commit gate section, after C3, before the first materialization.
     case materializationStarted
@@ -420,7 +423,8 @@ final class ImportAttemptCoordinator {
             attempt.emit(.normalizationStarted(id))
             let result: WorkingMediaNormalizationResult
             do {
-                result = try await normalizer.normalize(sourceURL: item.candidate.url, destinationURL: destination, plan: plan)
+                result = try await normalizer.normalize(sourceURL: item.candidate.url, destinationURL: destination, plan: plan,
+                                                        progress: { fraction in Task { @MainActor in attempt.emit(.normalizationProgress(id, fraction)) } })
             } catch is CancellationError {
                 return .cancelled
             } catch let error as WorkingMediaNormalizationError {
