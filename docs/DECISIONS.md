@@ -4462,8 +4462,20 @@ W_op = Σ_{Operation의 각 Repository Save s} (W_save + W_row × R_s)
 - 진행 중 표시(`isCommittingMutation`)는 Gate를 기다리기 전에 세워지고(Drop은 동기 `commitReorder()`에서) 처리가 끝나면 내려간다; 그동안 `isNavigationLocked`로 Back을 숨긴다. `completed`일 때만 Project · 선택 · History가 한 번에 바뀐다.
 - `EditorReconciliation`(U1, U2, 다시 확인, 찾을 수 없음)은 모든 변경 · Drag · 선택 · Acquisition 진입을 막고, 유일한 Action이 `AppRouter.leaveProjectEditor(_:)`로 Editor Route와 그 위를 제거한다(기존 Route 제거 경계와 Cleanup 예약이 그대로 동작한다). Editor를 떠난 뒤의 Cleanup은 저장소를 읽으며 메모리 상태를 권위로 쓰지 않는다.
 - Replace 대상이 저장소에서 사라졌지만 Project는 있는 경우는 Editor 기준과 Prior가 다르므로 "Project 없음"이 아니라 `프로젝트를 다시 확인해주세요`로 정지한다. 대상 전용 안내가 필요한지는 남은 Presentation 질문이다.
-- 미리 게시하지 않으므로 Drag를 놓으면 Timeline은 확인된 순서로 돌아간 뒤 `completed`에서 새 순서로 바뀐다; 진행 중에는 선택 변경도 받지 않는다. 이 확인된 순서 복귀 뒤 이동(Snap-back) 표시와 진행 중 Back 잠금은 iPhone 12 확인이 필요하며 기기 Gate는 해결되지 않았다(Simulator UI Test만 실행).
+- (Superseded 2026-10-07 — 아래 개정) 미리 게시하지 않으므로 Drag를 놓으면 Timeline은 확인된 순서로 돌아간 뒤 `completed`에서 새 순서로 바뀐다; 진행 중에는 선택 변경도 받지 않는다. 이 확인된 순서 복귀 뒤 이동(Snap-back) 표시와 진행 중 Back 잠금은 iPhone 12 확인이 필요하며 기기 Gate는 해결되지 않았다(Simulator UI Test만 실행). (2026-10-07: iPhone 12 기기 검증 D1-5에서 소유자가 Snap-back을 관찰했고 아래 개정으로 대체되었다; 진행 중 선택 변경 거부는 그대로다.)
 - 남은 것: 기기 검증, 일반 Late Result · 취소 정책, Rollback · Retry.
+
+**개정(2026-10-07, 사용자 승인) — Reorder Drop의 표시 전용 보류 순서:**
+
+- 이 개정은 Drag-and-drop Reorder에만 적용된다. 위 "진행 중 표시"의 "시도한 Project를 미리 게시하지 않는다"는 그대로이며, 화면에 즉시 보이는 배치는 확인된 Project State의 게시와 구별된다.
+- Drop 뒤 저장과 그 확인이 진행되는 동안 Timeline은 Drop한 순서를 표시 전용으로 유지한다(Drop한 Clip은 놓은 자리에 남는다). 시도한 Project, 확정 선택, History는 확인 전에 게시하지 않는다.
+- 저장이 진행 중인 동안 편집과 Navigation은 기존 공유 Lifecycle Gate의 진행 중 표시로 잠긴다(Drag, 선택 변경, Undo / Redo, Delete, Add / Replace, Back 모두 기존대로 막힘).
+- `completed`: 확인된 Project / 순서를 채택하고 표시 전용 순서를 같은 동기 단계에서 해제한다 — 보이는 Snap-back이 없다. History 전이는 기존대로 정확히 한 번이다.
+- 알려진 실패(`priorConfirmed`): 표시 전용 순서를 해제하고 마지막으로 확인된 순서로 돌아가며 기존 `변경사항을 저장하지 못했어요` 안내를 보인다.
+- `committedUnverified` / `indeterminate`와 Save 전 정지(Stale · Prior 읽기 불가 · Project 없음): 표시 전용 순서를 해제하고 기존 잠금 안내 아래에 마지막으로 확인된 순서를 보인다. 이 순서는 마지막으로 확인된 화면이며 현재 저장소 상태의 증거가 아니다. 기존 복구 동작(`프로젝트 화면으로`, 자동 Reload 없음, 다시 열면 빈 History)은 바뀌지 않는다.
+- 같은 자리 Drop, Drag 취소, 거부된 Commit, Non-drag Accessibility 이동(`앞으로 이동` / `뒤로 이동`)은 보류 순서를 만들지 않는다; Accessibility 이동은 기존대로 `completed`에서만 순서가 바뀐다. Delete · Undo · Redo의 표시는 바뀌지 않는다.
+- 이 개정은 DESIGN 19절 STEP 9(Drop은 놓은 자리에 Settle)와 20절(즉시 보이는 배치 vs 확인된 Project State)과의 충돌을 해소한다. 일반 Late Result · 취소 정책, Rollback · Retry, 그 밖의 050-D · 050-E는 바뀌지 않는다.
+- 구현: `ProjectEditorModel.pendingDropOrder`(표시 전용)는 `commitReorder()`에서 진행 중 표시와 함께 설정되고, `orderedClips`가 Drag Preview 다음으로 사용하며, Gate 안에서 결과를 적용하는 같은 동기 단계에서 모든 결과에 대해 해제된다. iPhone 12 재검증(D1-5 재시험)이 필요하다.
 
 #### D8.6 `.replacingSaved`의 두 Save
 
