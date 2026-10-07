@@ -1,6 +1,6 @@
-# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7, Replace (R), K1 and F5 Results
+# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7, Replace (R), K1, F5 and Select Clips Duration (SC) Results
 
-**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) the Editor Replace results (snap-28 … snap-37) the K1 result (snap-39 / snap-40) and the seed setup with the F5 result (snap-42 … snap-44).
+**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) the Editor Replace results (snap-28 … snap-37) the K1 result (snap-39 / snap-40) the seed setup with the F5 result (snap-42 … snap-44) and the Select Clips duration checks (snap-45 … snap-50).
 
 This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progress and Needs Device Test.
 
@@ -13,7 +13,7 @@ This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progres
 | Projects | DP (disposable) `6986CA3E-EE49-4524-A796-E072127EBC6F`; preserved `B8A7FB31-7EC3-4DC4-B330-3B6D25E31DB0` |
 | Rebaseline taken | 2026-10-07T09:59:41Z (18:59 KST), read-only `devicectl copy from` / `info files` only |
 | Durable evidence root (outside git) | `/Volumes/Data/dev/Mellow-device-evidence/phase-06/device-batch-2026-10-07/` |
-| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7, S22 after R2f, S23 after K1 and S-2 after SEED / F5, plus the K1 source checksum) |
+| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7, S22 after R2f, S23 after K1 S-2 after SEED / F5 and SC-S4 after the Select Clips checks, plus the K1 source checksum) |
 
 Raw device databases (`default.store*`), media copies and session-transcript extracts stay in the durable root and are never added to git.
 
@@ -124,7 +124,7 @@ Sources: owner messages (`recovered/owner-messages-verbatim.txt`), run-sheet res
 | F2 | PASS with exact copy; Cancel closed quietly; DP 12 | snap-19: unchanged; console excerpt in run sheet (log file lost) |
 | F3 | PASS; failure alert, then CR shortage alert, then Retry added; DP 13 | snap-20: +1 row `7AF61025` + 1 file; console excerpt in run sheet (log file lost) |
 
-F4, F6, F7, the Replace steps, K1 and F5 are recorded in sections 9 to 14 with evidence that is still inspectable.
+F4, F6, F7, the Replace steps, K1, F5 and the Select Clips checks are recorded in sections 9 to 15 with evidence that is still inspectable.
 
 F5 was postponed by owner decision because its `+ 새 프로젝트 시작` flow replaces the current saved Project, which was DP; it ran later against a separately seeded disposable replacement target (section 14).
 
@@ -475,6 +475,44 @@ S-2 snapshot (snap-44-S2-F5) versus S-1:
 
 Verdict: F5 PASS for the simulated Select Clips C1 rejection — owner-observed alert and no sheet, captured C1 override and refusal logs, and an unchanged S-2 snapshot.
 
-Limitations: simulated capacity only (not real disk exhaustion); one ready source; the seed now remains the current Project for later Select Clips checks.
+Limitations: simulated capacity only (not real disk exhaustion); one ready source; the seed then served as the first replacement target for the Select Clips checks (section 15).
+
+## 15. Select Clips Duration Checks (SC) — seed → P2 → P3 → (SC4x: Px) → P4
+
+The owner approved SC1–SC4, including replacement and cleanup of only the successive disposable Projects; the owner later separately authorized replacing the unplanned Project Px.
+
+All steps ran in one console-attached launch with no app options: pid 7735, 2026-10-07 21:17:09 KST, `com.mellow.Mellow` with no arguments (0 `controls active` / `UI-test` lines; recovery 3 Projects, 18 referenced, removed 0); `logs/sc-console.log` in the durable root.
+
+Before the launch Mellow was running as pid 7718, a launch after F5 that this batch did not perform (observation gap; options and cause not inferred); snap-45-pre-SC was identical to S-2.
+
+Before every `새 프로젝트 만들기` the owner left and re-entered the Projects screen and stopped, and a fresh `Projects entry saved project:` line was checked against the expected disposable Project; DP and B8A7FB31 were never the target.
+
+All sources (M01 1.0 s, M02 5.0 s, M03 0.8 s, M04 5.5 s) are ready synthetic fixtures; every committed file is a byte-identical fast-path copy (M01 `9e68d6e6…ba30`, M02 `8cfee24c…f1e`, equal to DP's earlier copies).
+
+| Step | Target (verified line) | Selection | Owner observation (as transcribed) | Snapshot result |
+| --- | --- | --- | --- | --- |
+| SC1 | seed `F0D95E9E-64A4-4A96-A51A-694A4CD69CD7` (21:17:41) | M03 | `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` / `확인`; alert directly, no sheet; Projects screen remained | SC-S1 (snap-46): no change; seed still current with 0 clips |
+| SC2 | seed (21:21:51) | M01, M03 | `짧은 영상이 제외되었어요` / `1초 미만의 영상은 추가할 수 없어요` / `확인`; no sheet; one 1-second clip; screen behind the notice not reported | SC-S2 (snap-47): seed row gone (it had no media or folder); P2 `3D051BDE-3FC6-40DD-829A-6F10548CEB83` with 1 clip `64F12DC8-…` 600/600, +1 file = M01 |
+| SC3 | P2 (21:31:00) | M02, M04 | `긴 영상이 제외되었어요.` / `5초를 초과한 영상은 추가할 수 없어요.` / `확인`; Editor showed only the 5.0 s clip; no sheet | SC-S3 (snap-48): P2 row, clip, file and folder gone; P3 `02EED3C9-2127-414C-BFD2-4C55C64FF0F2` with 1 clip `EE98CD0A-…` 3000/600, +1 file = M02 |
+| SC4 (corrected) | Px (22:18:18) | exactly M01, M03, M04 | `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` / `확인`; no sheet; Editor showed exactly one clip, M01 (1.0 s) | SC-S4 (snap-50): Px row, both clips, both files and folder gone; P4 `995A1AAF-200E-42C8-8AE2-C6155D54F70A` with 1 clip `7CC09E8E-1A73-4C1F-B701-940CAD27E9A9` 600/600, +1 file = M01 |
+
+Spelling and punctuation differences between the transcriptions and the source strings (for example the SC2 message without its final period and the SC3 title with an extra period) are recorded as reported wording, not verified copy defects.
+
+### 15.1 SC4x — unplanned selection, not an SC4 result
+
+- Target verified as P3 (22:08:49, 22:08:52), but the owner accidentally included M02: the selection was M01, M02, M03 and M04 instead of the prescribed M01, M03, M04.
+- Owner: `일부 영상이 제외되었어요` / `1초 미만이거나 5초를 초과한 영상은 추가할 수 없어요.` / `확인`; no sheet; the Editor showed two clips, M01 and M02; the owner asked that this not be recorded as an SC4 PASS.
+- snap-49-SC4x-actual versus SC-S3: P3's row, clip, file and folder gone; new Project Px `877ECA15-FD66-4735-A680-230D1F6A55C7` (22:13:37) with clips `DD22B9A1-…` 600/600 (= M01) and `27346AC2-…` 3000/600 (= M02); DP, B8A7FB31 and their 18 hashes unchanged; workspace clean.
+- This state became the baseline for the corrected SC4; the owner explicitly authorized replacing Px, including its two clip rows, two media files and folder.
+
+### 15.2 Preservation and cleanup across SC
+
+- DP's 16 and B8A7FB31's 2 clip rows and their 18 media full SHA-256 at SC-S4 are identical to snap-45-pre-SC.
+- After every step ProjectWorkspace was empty again (used at 21:18, 21:22, 21:38, 22:13, 22:18), CaptureStaging empty and tmp entry names unchanged, and every row referenced an existing file with no unreferenced file.
+- Final state: 3 Projects (P4 current with 1 clip, DP 16, B8A7FB31 2) and 19 media files; Mellow left running as pid 7735.
+
+Verdicts: SC1, SC2, SC3 and the corrected SC4 PASS — owner-observed alerts, the console-verified target before each confirmation and the snapshots; SC4x is recorded only as an unplanned run.
+
+Limitations: synthetic ready fixtures only; the screen on which the SC2 notice appeared was not reported; the console does not log successful imports, so each commit is established by the snapshot and the next `saved project` line.
 
 Phase 6 remains In Progress and Needs Device Test.
