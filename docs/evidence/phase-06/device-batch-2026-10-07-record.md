@@ -1,6 +1,6 @@
-# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7, Replace (R) and K1 Results
+# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7, Replace (R), K1 and F5 Results
 
-**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) the Editor Replace results (snap-28 … snap-37) and the K1 result (snap-39 / snap-40).
+**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) the Editor Replace results (snap-28 … snap-37) the K1 result (snap-39 / snap-40) and the seed setup with the F5 result (snap-42 … snap-44).
 
 This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progress and Needs Device Test.
 
@@ -13,7 +13,7 @@ This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progres
 | Projects | DP (disposable) `6986CA3E-EE49-4524-A796-E072127EBC6F`; preserved `B8A7FB31-7EC3-4DC4-B330-3B6D25E31DB0` |
 | Rebaseline taken | 2026-10-07T09:59:41Z (18:59 KST), read-only `devicectl copy from` / `info files` only |
 | Durable evidence root (outside git) | `/Volumes/Data/dev/Mellow-device-evidence/phase-06/device-batch-2026-10-07/` |
-| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7, S22 after R2f and S23 after K1, plus the K1 source checksum) |
+| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7, S22 after R2f, S23 after K1 and S-2 after SEED / F5, plus the K1 source checksum) |
 
 Raw device databases (`default.store*`), media copies and session-transcript extracts stay in the durable root and are never added to git.
 
@@ -124,11 +124,9 @@ Sources: owner messages (`recovered/owner-messages-verbatim.txt`), run-sheet res
 | F2 | PASS with exact copy; Cancel closed quietly; DP 12 | snap-19: unchanged; console excerpt in run sheet (log file lost) |
 | F3 | PASS; failure alert, then CR shortage alert, then Retry added; DP 13 | snap-20: +1 row `7AF61025` + 1 file; console excerpt in run sheet (log file lost) |
 
-F4, F6, F7, the Replace steps and K1 are recorded in sections 9 to 13 with evidence that is still inspectable.
+F4, F6, F7, the Replace steps, K1 and F5 are recorded in sections 9 to 14 with evidence that is still inspectable.
 
-F5 is postponed by owner decision: its `+ 새 프로젝트 시작` flow replaces the current saved Project, which is DP, so it waits for a separately seeded disposable replacement target; the Select Clips C1 device check stays open.
-
-Not run: F5 (postponed).
+F5 was postponed by owner decision because its `+ 새 프로젝트 시작` flow replaces the current saved Project, which was DP; it ran later against a separately seeded disposable replacement target (section 14).
 
 ## 7. S1 Source Correction and Fast-Path Check
 
@@ -419,5 +417,64 @@ Correspondence: the frame count, frame timing, duration, audio rate and audio tr
 Verdict: K1 PASS — owner-observed successful Add (16 clips), a console-verified run without Debug controls, a snapshot showing exactly one committed clip with prior media preserved, and an independently inspected source whose facts the output matches.
 
 Limitations: the preparation screen's exact text was not transcribed and no counter was seen; the link between the Downloads file and the Photos asset rests on the owner's identification, the filename and the exact timing correspondence, not on an asset identifier; the audio track is 2259/600 in both source and output (observation only).
+
+## 14. Disposable Seed and F5 — simulated C1 shortage on Select Clips
+
+### 14.1 Why a seed
+
+`+ 새 프로젝트 시작` › `새 프로젝트 만들기` replaces the current saved Project (`.replacingSaved`), and the current saved Project is `repository.recentProjects().first` (newest `updatedAt`, then `createdAt`, then id; `ProjectCompositionCoordinator.lastSavedProject`).
+
+Before seeding that was DP, so F5 was postponed by the owner to avoid any chance of replacing DP.
+
+The owner approved creating one empty disposable Project with the existing create-only `-uiTestSeedPortrait` control (`AppEnvironment.seedUITestProjects`, which only calls `repository.create`) so that it, not DP, becomes the replacement target.
+
+Consequence accepted by the owner: `기존 프로젝트 불러오기` now opens the seed; DP and B8A7FB31 stay stored and unchanged but are not reachable from the Projects screen; no project is deleted and no timestamp is altered to restore DP.
+
+### 14.2 SEED
+
+| Field | Value |
+| --- | --- |
+| Baseline | snap-42-S0-pre-SEED, identical to snap-41 (store equal to S23; 18 media full SHA-256 equal to the committed S23 manifest); Mellow was running as pid 7612, a launch after K1 that this batch did not perform (observation gap; options and cause not inferred), ended by `--terminate-existing` |
+| Launch | 2026-10-07 20:21:56 KST, pid 7686, `com.mellow.Mellow -- -uiTestSeedPortrait`, console captured (`logs/seed-console.log`) |
+
+- Console: no `controls active` or `UI-test` line; `Cleanup startup reconciliation projects=3`; recovery referenced 18, removed 0, failures 0; 20:22:20.746 `Projects entry saved project: F0D95E9E-64A4-4A96-A51A-694A4CD69CD7`.
+- Owner: opened the Projects screen only, then swiped Mellow away (exit 20:22:26).
+- S-1 (snap-43-S1-post-SEED) versus S-0: exactly one new Project `F0D95E9E-64A4-4A96-A51A-694A4CD69CD7`, `portrait9x16`, created = updated 2026-10-07 20:21:56 KST, 0 clips; DP's 16 and B8A7FB31's 2 rows identical; 18 media full SHA-256 and listing paths identical (the empty seed has no project directory); workspace, staging and tmp clean.
+
+### 14.3 F5 — simulated C1 (first-attempt admission) shortage on Select Clips replacing the seed
+
+Classification: a SIMULATED C1 capacity-check outcome (`usable=0` from the Debug control), not real disk exhaustion or an out-of-space write.
+
+| Field | Value |
+| --- | --- |
+| Launch | 2026-10-07 20:25:30 KST, pid 7689, `com.mellow.Mellow -- -uiTestImportCapacityShortage=c1:1`, console captured (`logs/f5-console.log`); Mellow was not running since S-1 |
+| Target / source | Select Clips replacing the current saved Project = seed `F0D95E9E…`; M01 (`EXACT 1.0s`, ready) |
+| Snapshots | before: snap-43-S1-post-SEED; after: snap-44-S2-F5 (Mellow not running, no launch since) |
+
+Target verification: the owner opened the Projects screen and stopped; the console showed 20:26:56.224 `Projects entry saved project: F0D95E9E-64A4-4A96-A51A-694A4CD69CD7`, an exact match, before the selection step was authorized.
+
+Owner observations (as transcribed; spacing is reported wording, not a verified copy defect):
+
+- The alert was `저장공간이 부족해요` / `영상을 추가하려면 기기의 저장공간을 확보한 후 다시 시도해주세요.` with one button, `확인` (source strings `저장 공간이 부족해요` / `영상을 추가하려면 기기의 저장 공간을 확보한 후 다시 시도해주세요.`).
+- No preparation sheet appeared before the alert.
+- `확인` returned to the Projects screen.
+- The owner then swiped Mellow away without another import attempt.
+
+Captured console (`[app]` lines, KST):
+
+- 20:25:30.994 `UI-test device import controls active: normalizer=false capacity=true`.
+- 20:27:47.065 `UI-test capacity override boundary=c1BeforePreparation usable=0 (simulated)`.
+- 20:27:47.065 `Import attempt admission refused project=2FD0B4C0 boundary=c1BeforePreparation` (`2FD0B4C0` is the would-be replacement Project's id; it was never stored).
+- No further import line; 20:28:18 `The app terminated with the exit code 0.` (the owner's swipe-away).
+
+S-2 snapshot (snap-44-S2-F5) versus S-1:
+
+- Store identical: 3 Projects; the seed still has 0 clips with `updatedAt` 20:21:56 and is still the current saved Project; DP 16 and B8A7FB31 2 rows unchanged; `2FD0B4C0` appears nowhere.
+- 18 media full SHA-256 and listing paths identical; no media added.
+- ProjectWorkspace empty (mtime 20:27, used and cleaned); CaptureStaging empty; tmp entry names identical.
+
+Verdict: F5 PASS for the simulated Select Clips C1 rejection — owner-observed alert and no sheet, captured C1 override and refusal logs, and an unchanged S-2 snapshot.
+
+Limitations: simulated capacity only (not real disk exhaustion); one ready source; the seed now remains the current Project for later Select Clips checks.
 
 Phase 6 remains In Progress and Needs Device Test.
