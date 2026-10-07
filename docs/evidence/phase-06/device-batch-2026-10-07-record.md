@@ -1,6 +1,6 @@
-# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6 and F7 Results
+# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7 and Replace (R) Results
 
-**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) and the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen).
+**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) and the Editor Replace results (snap-28 … snap-37).
 
 This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progress and Needs Device Test.
 
@@ -13,7 +13,7 @@ This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progres
 | Projects | DP (disposable) `6986CA3E-EE49-4524-A796-E072127EBC6F`; preserved `B8A7FB31-7EC3-4DC4-B330-3B6D25E31DB0` |
 | Rebaseline taken | 2026-10-07T09:59:41Z (18:59 KST), read-only `devicectl copy from` / `info files` only |
 | Durable evidence root (outside git) | `/Volumes/Data/dev/Mellow-device-evidence/phase-06/device-batch-2026-10-07/` |
-| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4 and S16 after F7) |
+| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7 and S22 after R2f) |
 
 Raw device databases (`default.store*`), media copies and session-transcript extracts stay in the durable root and are never added to git.
 
@@ -124,11 +124,11 @@ Sources: owner messages (`recovered/owner-messages-verbatim.txt`), run-sheet res
 | F2 | PASS with exact copy; Cancel closed quietly; DP 12 | snap-19: unchanged; console excerpt in run sheet (log file lost) |
 | F3 | PASS; failure alert, then CR shortage alert, then Retry added; DP 13 | snap-20: +1 row `7AF61025` + 1 file; console excerpt in run sheet (log file lost) |
 
-F4, F6 and F7 are recorded in sections 9, 10 and 11 with evidence that is still inspectable.
+F4, F6, F7 and the Replace steps are recorded in sections 9, 10, 11 and 12 with evidence that is still inspectable.
 
 F5 is postponed by owner decision: its `+ 새 프로젝트 시작` flow replaces the current saved Project, which is DP, so it waits for a separately seeded disposable replacement target; the Select Clips C1 device check stays open.
 
-Not run yet: R0 … R2f.
+Not run: F5 (postponed). R2e′ ran without owner observations (section 12.6).
 
 ## 7. S1 Source Correction and Fast-Path Check
 
@@ -300,5 +300,73 @@ S16 snapshot (snap-27-S16-F7-reopen) versus S15:
 Verdict: F7 PASS — the save landed exactly once while the Editor reported U1, media was preserved, and a normal reopen showed the committed state without a lock; based on owner-observed UI, captured log lines and two snapshots.
 
 Limitations: preparation-sheet absence during F7's Add was not separately observed; U2 (save indeterminate) remains unit-tested only; launch B has no console.
+
+## 12. Editor Replace (R) — unavailable-clip Replace, rejections, cancellation and completion
+
+All R steps target DP; B8A7FB31 is never a target. Each media removal was separately approved by the owner and scoped by `-uiTestRemoveActiveClipMedia=<clip>` plus `-uiTestRemoveActiveClipMediaProject=<DP>` (the app refuses unless the clip is an active Clip of the named Project at its canonical path); before each removal the target file was backed up twice in the durable root, write-protected and reverified by full SHA-256.
+
+### 12.1 R1 — make X = `C8846E32-10C8-41EE-B54D-9A72E0B5786D` (slot 15, the F7 clip) unavailable
+
+- Backups: snap-27 and snap-28 copies, `9b4fd2124be9835e386fecad570df61337423e3af64db2081eba8e8f0f26485c` (equal to the S16 manifest).
+- Launch: 19:29:21 KST, pid 7529, `-- -uiTestRemoveActiveClipMedia=C8846E32-… -uiTestRemoveActiveClipMediaProject=6986CA3E-…`; it ended the owner's F7-3 process pid 7525.
+- Console: `UI-test unavailable fixture applied: clip=C8846E32 media removed, metadata kept active`; recovery referenced DP 14 + B8 2, removed 0, failures 0.
+- Owner: tapping the last clip showed `클립을 사용할 수 없어요` / `파일을 찾을 수 없어요.` with the button reported as `클립교체` (source string `클립 교체`; the spacing on screen was not separately confirmed); the other clips looked normal; nothing was changed; exit by owner swipe-away.
+- S17 (snap-29, confirmed by snap-30) versus snap-28: store identical (X active); the only media / listing difference is X's missing file; the other 16 full SHA-256 identical; workspace, staging and tmp clean.
+
+### 12.2 R2a–R2d — invalid replacements of X (owner's normal launch, no console)
+
+Owner observations, as transcribed (spelling and spacing differences from the source strings are not treated as verified UI defects):
+
+| Step | Source | Owner-reported alert | Sheet | Result |
+| --- | --- | --- | --- | --- |
+| R2a | M04 (5.5 s) | `영상이 너무 길어요` / `5초 이하의 영상을 선택해주세요` / `확인` | none | X stayed unavailable |
+| R2b | M03 (0.8 s) | `영상이 너무 짧아요` / `1초 이상의 영상을 선택해주세요.` / `확인` | none | X stayed unavailable |
+| R2c | M07 (landscape) | `지원하지 않는 영상이예요` / `세로영상을 선택해주세요.` / `확인` | none | X stayed unavailable |
+| R2d | M06 (MP4) | `영상을 추가할 수 없어요.` / `읽을 수 없거나 지원하지 않는 영상이에요. 다른 영상을 선택해주세요.` / `확인` | not reported | X stayed unavailable |
+
+Source strings at `3ce5d45` for reference: `5초 이하의 영상을 선택해주세요.`, `지원하지 않는 영상이에요`, `세로 영상을 선택해주세요.`, `영상을 추가할 수 없어요`.
+
+S18 (snap-31) versus S17: store, 16 media full SHA-256 and listing paths identical; workspace used at 19:37 and empty; staging empty; tmp names identical.
+
+### 12.3 R2e — first cancellation attempt missed (normal launch, no console)
+
+The owner reports that the Replace preparation finished before `취소` could be tapped, so no cancellation was exercised and no PASS is recorded.
+
+S19 (snap-32, owner's process pid 7538 running) versus S18: X's row was soft-deleted (deletedAt 19:42:10 KST, kept for session Undo); new active row `588C39AD-E9BA-4AFB-B54C-F6E7EF7AFFA7` at order 14 (slot 15), 2341/600 (H1); +1 file `3a769474fbc7e18b60b5e06872bc515f17d3e8e954fd4e603960c28d5d135f88` (H.264 High 1080×1920, AAC stereo); the other 14 active rows, 16 media hashes and B8A7FB31 unchanged; workspace empty.
+
+### 12.4 R2e′ first try — blocked on a valid clip
+
+- Launch: 19:47:30 KST, pid 7548, `-- -uiTestNormalizerDelay=8000`; console `controls active: normalizer=true capacity=false`; startup cleanup finalized X's soft-deleted row (`Cleanup file already absent clip=C8846E32`, `Cleanup metadata finalized clip=C8846E32`, `finalized=1 removed=0 deferred=0`).
+- Owner: the valid slot-15 clip `588C39AD` offered no `클립 교체`; nothing was attempted (its console shows no import line; the process was later ended by the R1′ launch, signal 9).
+- Cause, by design at `3ce5d45`: `ProjectEditorModel.canReplaceSelectedClip` requires the selected Clip to be derived-unavailable (ADR-040: healthy Clips never expose Replace), and `클립 교체` exists only in the unavailable-clip shell; the plan had wrongly targeted a valid clip.
+
+### 12.5 R1′ — revised setup: make `588C39AD` unavailable
+
+- Backups: snap-32 and snap-33 copies, write-protected, 7,365,844 bytes, `3a769474…5f88`, reverified against both manifests.
+- Pre-launch baseline snap-34: identical to snap-33 except X's row is gone (finalized above); DP 15 active rows, 17 media.
+- Launch: 19:52:04 KST, pid 7550, `-- -uiTestRemoveActiveClipMedia=588C39AD-… -uiTestRemoveActiveClipMediaProject=6986CA3E-…`; console `UI-test unavailable fixture applied: clip=588C39AD media removed, metadata kept active`; recovery DP 14 + B8 2, removed 0, failures 0.
+- Owner: slot 15 showed `클립을 사용할 수 없어요` / `파일을 찾을 수 없어요.` / `클립 교체`; DP 15, other clips normal; no replacement attempted; exit by owner swipe-away.
+- S20 (snap-35) versus snap-34: store identical (`588C39AD` active); the only media / listing difference is `588C39AD`'s missing file; the other 16 full SHA-256 identical (B8A7FB31 equal to its recorded full hashes); workspace, staging and tmp clean.
+
+### 12.6 R2e′ — delayed cancellation (device evidence only)
+
+- Launch: 19:54:49 KST, pid 7552, `-- -uiTestNormalizerDelay=8000`; console `controls active: normalizer=true capacity=false`; recovery DP 14 + B8 2, removed 0; 19:55:05 Editor loaded DP 15; no import, normalizer or cancel line afterwards; 19:55:41 app terminated (exit 0).
+- Owner observations for this step were not provided, so the attempt, the sheet and the cancel timing are not owner-confirmed and no cancellation PASS is recorded.
+- S21 (snap-36) versus S20: store, 16 media full SHA-256 and listing paths identical; ProjectWorkspace empty but modified at 19:55 (used and cleaned during this launch); tmp names identical.
+- Observation gap: at S21 Mellow was running as pid 7556, a launch after pid 7552 ended that this batch did not perform; its options and cause are not inferred.
+
+### 12.7 R2f — successful Replace of unavailable `588C39AD` with H3, Undo / Redo, reopen
+
+- Launch: the owner reports a Home Screen open; there is no console, and because pid 7556's origin is unknown, a no-option execution is not verified.
+- Owner: H3 replaced the unavailable last clip and finished; DP stayed 15 and the replacement played; Undo restored the unavailable clip; Redo restored the replacement; leaving and reopening kept 15 clips and the replacement; then swiped away.
+- S22 (snap-37, Mellow not running) versus S21:
+  - Order 14: the `588C39AD` row is no longer in the store (no deleted row remains); new active row `71CDF383-9A80-4413-A612-8773EED4A664`, `imported`, src = trim = 2262/600 (H3).
+  - +1 file `71CDF383-….mov`, SHA-256 `01ab75b8d5f5d6580c2ca07086065faba794744706f34552b19e24d53dbf86b2`: H.264 High 1080×1920, 2262/600, 30 fps, AAC stereo (normalized H3); `588C39AD`'s bytes survive only in the write-protected backups.
+  - The other 14 DP rows and 16 media full SHA-256 identical; B8A7FB31's 2 rows and recorded full hashes unchanged; DP 15 active; ProjectWorkspace empty (modified 20:00); CaptureStaging empty; tmp names identical.
+- When the `588C39AD` row was removed (Editor exit or startup cleanup within the unrecorded process) is not observable without a console.
+
+Verdicts: R1 and R1′ PASS (owner UI plus captured removal logs plus snapshots); R2a–R2d: the owner observed the expected rejection for each source with X left unavailable (wording as transcribed), and S18 shows no state change; R2f PASS as reported by the owner ("all requested UI checks passed") plus snapshot, without a console; R2e not exercised; R2e′ device evidence only (no owner confirmation), not a PASS.
+
+Limitations: cancellation, if it occurred, would be during the pre-normalization delay, not mid-write; the replacement flow ran without a console; F5 (Select Clips C1) remains postponed.
 
 Phase 6 remains In Progress and Needs Device Test.
