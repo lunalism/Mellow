@@ -1,6 +1,6 @@
-# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline and F4 Result
+# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6 and F7 Results
 
-**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21) and the F4 result (snap-22-S12-F4).
+**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) and the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen).
 
 This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progress and Needs Device Test.
 
@@ -13,7 +13,7 @@ This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progres
 | Projects | DP (disposable) `6986CA3E-EE49-4524-A796-E072127EBC6F`; preserved `B8A7FB31-7EC3-4DC4-B330-3B6D25E31DB0` |
 | Rebaseline taken | 2026-10-07T09:59:41Z (18:59 KST), read-only `devicectl copy from` / `info files` only |
 | Durable evidence root (outside git) | `/Volumes/Data/dev/Mellow-device-evidence/phase-06/device-batch-2026-10-07/` |
-| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` |
+| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4 and S16 after F7) |
 
 Raw device databases (`default.store*`), media copies and session-transcript extracts stay in the durable root and are never added to git.
 
@@ -124,9 +124,11 @@ Sources: owner messages (`recovered/owner-messages-verbatim.txt`), run-sheet res
 | F2 | PASS with exact copy; Cancel closed quietly; DP 12 | snap-19: unchanged; console excerpt in run sheet (log file lost) |
 | F3 | PASS; failure alert, then CR shortage alert, then Retry added; DP 13 | snap-20: +1 row `7AF61025` + 1 file; console excerpt in run sheet (log file lost) |
 
-F4 is recorded in section 9 with evidence that is still inspectable.
+F4, F6 and F7 are recorded in sections 9, 10 and 11 with evidence that is still inspectable.
 
-Not run yet: F5 … F7, R0 … R2f.
+F5 is postponed by owner decision: its `+ 새 프로젝트 시작` flow replaces the current saved Project, which is DP, so it waits for a separately seeded disposable replacement target; the Select Clips C1 device check stays open.
+
+Not run yet: R0 … R2f.
 
 ## 7. S1 Source Correction and Fast-Path Check
 
@@ -205,5 +207,98 @@ S12 snapshot (snap-22-S12-F4) versus snap-21:
 Verdict: F4 PASS — owner-observed UI plus captured C1 injection log plus snapshot.
 
 Limitations: one C1 refusal on a ready-only set via the Editor Add route; Select Clips C1 (F5) is not yet run; the 11 DP files without recovered earlier full hashes are compared only from snap-21 onward.
+
+## 10. F6 Result — Editor Add with every Editor save failing (`-uiTestEditorSaveFailure`)
+
+Classification: a Debug repository seam whose `update` always throws; this exercises the Retry-failure path only, not Retry success.
+
+| Field | Value |
+| --- | --- |
+| Build | Debug `3ce5d45` (unchanged) |
+| Launch | 2026-10-07 19:15:56 KST, `devicectl device process launch --terminate-existing --console` with `OS_ACTIVITY_DT_MODE=enable`, `com.mellow.Mellow -- -uiTestEditorSaveFailure`; pid 7518 |
+| Target / source | DP `6986CA3E…` (14 clips), Editor Add; S1 |
+| Console log | `logs/f6-console.log` in the durable root |
+| Snapshots | before: snap-23-pre-F6 (store and 16 media hashes identical to snap-22-S12-F4); after: snap-24-S14-F6 (Mellow not running) |
+
+Launch notes:
+
+- A first launch attempt failed with devicectl exit 64 because devicectl parsed `-uiTestEditorSaveFailure` as its own options; nothing was launched, and the error output is kept as `logs/f6-attempt1-argparse-error.log`. App arguments without `=value` must follow `--`.
+- Observation gap: Mellow was running as pid 7517 before the launch, started after F4 by a launch not recorded in this batch; its options and cause are unknown and not inferred, and `--terminate-existing` ended it.
+- This seam writes no activation log line and devicectl does not report process arguments, so activation is established by the save-failure log lines below; the console had no `controls active` line (no normalizer or capacity control).
+
+Owner observations (as reported):
+
+- The initial attempt and the Retry both showed the title `영상을 준비하지 못했어요`, the message `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` and the buttons `다시 시도` / `취소`.
+- No preparation sheet appeared.
+- The owner tapped `다시 시도` once, then `취소` on the repeated alert; DP still showed 14 clips afterwards.
+- The exit at 19:16:54 was the owner's manual App Switcher swipe-away.
+
+Captured console (`[app]` lines, KST):
+
+- 19:15:57.460 `Recovery complete dirsRemoved=0 mediaRemoved=0 referenced=16 noncanonical=0 failures=0 skippedLive=0 emptyStoreGuard=0 rowsUnreadable=0`.
+- 19:16:42.098 `Project editor loaded 6986CA3E-… clips=14 total=52.0s`.
+- 19:16:45.526 `Import attempt save failed project=6986CA3E: domain=Mellow.(unknown context …).UpdateFailingProjectRepository.SaveFailure, code=1` (initial attempt).
+- 19:16:49.622 the same line again (the one Retry).
+- No further import line; 19:16:54 `The app terminated with the exit code 0.` (the owner's swipe-away).
+
+S14 snapshot (snap-24-S14-F6) versus snap-23-pre-F6:
+
+- Store rows identical (DP 14, B8A7FB31 2, 2 projects).
+- All 16 media files' full SHA-256 identical; listing paths identical, so no media was added or left behind.
+- ProjectWorkspace empty (mtime 19:16, used and cleaned); CaptureStaging empty; tmp entry names identical.
+
+Verdict: F6 PASS — owner-observed UI plus two captured save-failure log lines plus snapshot.
+
+Limitations: Retry success after a save failure is not reachable with this seam; the Retry was exercised once.
+
+## 11. F7 Result — Editor Add whose save lands but cannot be verified (`-uiTestEditorSaveUnverified`), then normal reopen
+
+Classification: a Debug repository seam that forwards every save but makes the post-save observation unreadable, producing the U1 (save unverified) reconciliation lock; U2 is not reachable with this seam.
+
+| Field | Value |
+| --- | --- |
+| Build | Debug `3ce5d45` (unchanged) |
+| Launch A | 2026-10-07 19:20:52 KST, `devicectl device process launch --terminate-existing --console` with `OS_ACTIVITY_DT_MODE=enable`, `com.mellow.Mellow -- -uiTestEditorSaveUnverified`; pid 7521; Mellow was not running before it |
+| Launch B | owner's normal Home Screen launch, no options, no console; pid 7525 |
+| Target / source | DP `6986CA3E…` (14 clips), Editor Add; S1 |
+| Console log | `logs/f7-console.log` in the durable root (launch A only) |
+| Snapshots | before: snap-25-pre-F7 (store and 16 media hashes identical to snap-24-S14-F6); after launch A: snap-26-S15-F7 (Mellow not running); after launch B: snap-27-S16-F7-reopen (Mellow running) |
+
+The seam writes no activation log line; the console had no `controls active` line, and activation is established by the save-unverified log lines below.
+
+Owner observations (as reported):
+
+- F7-1: the alert title was `저장 확인이 필요해요` and the message `변경사항은 저장되었지만 지금은 확인하지 못했어요. 프로젝트 화면에서 다시 열어 확인해주세요.`, matching the expected wording exactly.
+- F7-2: `프로젝트 화면으로` returned to the Projects screen; the exit at 19:21:30 was the owner's manual App Switcher swipe-away.
+- Whether a preparation sheet appeared during the Add was not separately reported.
+- F7-3: after a normal Home Screen relaunch and reopening the project, DP showed 15 clips with S1 last, and no lock, alert or preparation sheet appeared.
+
+Captured console, launch A (`[app]` lines, KST):
+
+- 19:20:52.624 `Recovery complete dirsRemoved=0 mediaRemoved=0 referenced=16 noncanonical=0 failures=0 skippedLive=0 emptyStoreGuard=0 rowsUnreadable=0`.
+- 19:21:20.373 `Project editor loaded 6986CA3E-… clips=14 total=52.0s`.
+- 19:21:24.405 `Import attempt save unverified project=6986CA3E reason=unreadable; media preserved`.
+- 19:21:24.406 `Project editor import save uncertain; media preserved`.
+- 19:21:28.182 `Projects entry saved project: 6986CA3E-…` (back on the Projects screen).
+- 19:21:30 `The app terminated with the exit code 0.` (the owner's swipe-away).
+
+Launch B has no console capture (Home Screen launch).
+
+S15 snapshot (snap-26-S15-F7) versus snap-25-pre-F7:
+
+- Store: exactly +1 row — DP order 14 `C8846E32-10C8-41EE-B54D-9A72E0B5786D`, `imported`, src = trim = 2761/600, not deleted. DP 15, B8A7FB31 2, 2 projects.
+- Media: exactly +1 file, `Projects/6986CA3E-…/Media/C8846E32-….mov`, referenced by that row; every row references an existing file and no file is unreferenced.
+- The prior 16 media files' full SHA-256 are identical to snap-25.
+- The new file's SHA-256 equals S1's (`9b4fd2124be9835e386fecad570df61337423e3af64db2081eba8e8f0f26485c`); probe: `hvc1` Main 8-bit Rec.709, presentation 1080×1920, 2761/600, AAC 48 kHz stereo.
+- ProjectWorkspace empty (mtime 19:21, used and cleaned); CaptureStaging empty; tmp entry names identical.
+
+S16 snapshot (snap-27-S16-F7-reopen) versus S15:
+
+- Store rows and order identical; all 17 media files' full SHA-256 identical, including both B8A7FB31 files; listing paths identical.
+- ProjectWorkspace and CaptureStaging empty; tmp entry names identical.
+
+Verdict: F7 PASS — the save landed exactly once while the Editor reported U1, media was preserved, and a normal reopen showed the committed state without a lock; based on owner-observed UI, captured log lines and two snapshots.
+
+Limitations: preparation-sheet absence during F7's Add was not separately observed; U2 (save indeterminate) remains unit-tested only; launch B has no console.
 
 Phase 6 remains In Progress and Needs Device Test.
