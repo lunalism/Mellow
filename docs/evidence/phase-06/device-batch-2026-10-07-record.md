@@ -1,6 +1,6 @@
-# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7 and Replace (R) Results
+# Phase 6 Device Batch 2026-10-07 — Evidence Record, Pre-F4 Rebaseline, F4, F6, F7, Replace (R) and K1 Results
 
-**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) and the Editor Replace results (snap-28 … snap-37).
+**Status:** Reconstructed record (D0 … F3), a fresh read-only baseline (snap-21), the F4 result (snap-22-S12-F4), the F6 result (snap-24-S14-F6) the F7 result (snap-26-S15-F7, snap-27-S16-F7-reopen) the Editor Replace results (snap-28 … snap-37) and the K1 result (snap-39 / snap-40).
 
 This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progress and Needs Device Test.
 
@@ -13,7 +13,7 @@ This document is not a Phase 6 Gate completion claim; Phase 6 remains In Progres
 | Projects | DP (disposable) `6986CA3E-EE49-4524-A796-E072127EBC6F`; preserved `B8A7FB31-7EC3-4DC4-B330-3B6D25E31DB0` |
 | Rebaseline taken | 2026-10-07T09:59:41Z (18:59 KST), read-only `devicectl copy from` / `info files` only |
 | Durable evidence root (outside git) | `/Volumes/Data/dev/Mellow-device-evidence/phase-06/device-batch-2026-10-07/` |
-| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7 and S22 after R2f) |
+| In-repo evidence | this record and `device-batch-2026-10-07-pre-f4-manifest.txt` (snap-21 baseline, then S12 after F4, S16 after F7, S22 after R2f and S23 after K1, plus the K1 source checksum) |
 
 Raw device databases (`default.store*`), media copies and session-transcript extracts stay in the durable root and are never added to git.
 
@@ -124,7 +124,7 @@ Sources: owner messages (`recovered/owner-messages-verbatim.txt`), run-sheet res
 | F2 | PASS with exact copy; Cancel closed quietly; DP 12 | snap-19: unchanged; console excerpt in run sheet (log file lost) |
 | F3 | PASS; failure alert, then CR shortage alert, then Retry added; DP 13 | snap-20: +1 row `7AF61025` + 1 file; console excerpt in run sheet (log file lost) |
 
-F4, F6, F7 and the Replace steps are recorded in sections 9, 10, 11 and 12 with evidence that is still inspectable.
+F4, F6, F7, the Replace steps and K1 are recorded in sections 9 to 13 with evidence that is still inspectable.
 
 F5 is postponed by owner decision: its `+ 새 프로젝트 시작` flow replaces the current saved Project, which is DP, so it waits for a separately seeded disposable replacement target; the Select Clips C1 device check stays open.
 
@@ -371,5 +371,53 @@ S19 (snap-32, owner's process pid 7538 running) versus S18: X's row was soft-del
 Verdicts: R1 and R1′ PASS (owner UI plus captured removal logs plus snapshots); R2a–R2d PASS by owner verdict (expected rejection for each source with X left unavailable, wording as transcribed; S18 shows no state change; R2d sheet appearance not reported); R2f PASS as reported by the owner ("all requested UI checks passed") plus snapshot, without a console; R2e not exercised; R2e′ PASS for cancellation during the pre-conversion Debug delay (owner UI plus S21).
 
 Limitations: cancellation was exercised only during the pre-normalization Debug delay, not during an active file write; the replacement flow ran without a console; F5 (Select Clips C1) remains postponed.
+
+## 13. K1 — real-camera 4K HDR (Dolby Vision HLG) Editor Add, no Debug options
+
+| Field | Value |
+| --- | --- |
+| Build | Debug `3ce5d45` (unchanged) |
+| Launch | 2026-10-07 20:07:53 KST, `devicectl device process launch --terminate-existing --console` with `OS_ACTIVITY_DT_MODE=enable`, `com.mellow.Mellow` with no app arguments; pid 7605; Mellow was not running before it |
+| Target / source | DP `6986CA3E…` (15 clips), Editor Add; K1 |
+| Console log | `logs/k1-console.log` in the durable root |
+| Snapshots | before: snap-38-pre-K1 (identical to snap-37-S22-R2f); after: snap-39-S23-K1, confirmed by snap-40-S23-confirm (Mellow not running, no launch in between) |
+| Source copy | `sources/K1/K1-IMG_0163-2.MOV` in the durable root, write-protected, SHA-256 `b52519c8757d97e85f9a27aada06f2cce338b1fb057330dbd6cef67ac233294c`, 12,006,666 bytes |
+
+The console had no `controls active` or `UI-test` line, so this run is verified free of Debug controls.
+
+Owner observations (as reported):
+
+- K1 was recorded in portrait at 4K30 with HDR Video ON.
+- The video was added successfully; a preparation screen appeared with wording about adding the video (exact text not transcribed); no counter was visible.
+- The final clip count was 16.
+- The owner swiped Mellow away afterwards.
+
+Captured console (`[app]` lines, KST): 20:07:53 `Recovery complete dirsRemoved=0 mediaRemoved=0 referenced=17 noncanonical=0 failures=0 …`; 20:08:07 `Project editor loaded 6986CA3E-… clips=15 total=55.8s`; no import or error line (the success path does not log); 20:08:24 `The app terminated with the exit code 0.` (the owner's swipe-away).
+
+S23 snapshot (snap-39-S23-K1) versus snap-38:
+
+- Store: exactly +1 row — DP order 15 (slot 16) `46757A52-8CAD-454D-8E04-ADF5FA334ED7`, `imported`, src = trim = 2260/600, not deleted; DP 16, B8A7FB31 2.
+- Media: exactly +1 file referenced by that row, SHA-256 `e33a59ba995c6f083e37d739d9ccac2aa4871a6923e3fccad4b067f21c785dea`, 6,834,570 bytes; the 17 prior full SHA-256 identical (B8A7FB31 equal to its recorded full hashes); every row references an existing file.
+- ProjectWorkspace empty (mtime 20:08, used and cleaned); CaptureStaging empty; tmp entry names identical.
+
+Source (independently inspected from the owner-provided original; the only recent video file in Downloads, `IMG_0163 2.MOV`, mtime 20:05:34 KST):
+
+- Video `hvc1`, HEVC Main 10 (`general_profile_idc` 2), 10 bits per component, Dolby Vision configuration (`dvvC`) alongside `hvcC`.
+- BT.2020 primaries, HLG transfer (`ITU_R_2100_HLG`), BT.2020 matrix.
+- Encoded 3840×2160 with a 90° transform: presentation 2160×3840, portrait.
+- 113 frames, every frame 20/600 (constant 30 fps), duration 2260/600; ~25.3 Mbit/s.
+- Audio AAC 48 kHz stereo, ~136 kbit/s, audio track 2259/600.
+
+Output (`46757A52`):
+
+- Video `avc1`, H.264 High (profile 100), encoded and displayed 1080×1920 (identity transform), Rec.709 primaries / transfer / matrix (SDR).
+- 113 frames, every frame 20/600 (constant 30 fps), first PTS 0, duration 2260/600; ~14.4 Mbit/s.
+- Audio AAC 48 kHz stereo, ~136 kbit/s, audio track 2259/600 (the same as the source, consistent with AAC pass-through).
+
+Correspondence: the frame count, frame timing, duration, audio rate and audio track length match the source exactly, and 2160×3840 scaled by `min(1.0, 1080 / 2160, 1920 / 3840)` = 0.5 gives exactly 1080×1920, never upscaled; the HDR (HLG / BT.2020 / 10-bit / Main 10 / Dolby Vision) and raster reasons were both present in the source, and the output is tone-mapped SDR.
+
+Verdict: K1 PASS — owner-observed successful Add (16 clips), a console-verified run without Debug controls, a snapshot showing exactly one committed clip with prior media preserved, and an independently inspected source whose facts the output matches.
+
+Limitations: the preparation screen's exact text was not transcribed and no counter was seen; the link between the Downloads file and the Photos asset rests on the owner's identification, the filename and the exact timing correspondence, not on an asset identifier; the audio track is 2259/600 in both source and output (observation only).
 
 Phase 6 remains In Progress and Needs Device Test.
