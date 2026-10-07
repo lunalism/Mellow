@@ -351,7 +351,8 @@ struct ClipThumbnailStrip: View {
 
     private func finishDrag() {
         stopAutoScroll()
-        // The committed order stays visible until the save is `completed` (no optimistic publish).
+        // The dropped order is held for display while its save is pending (presentation only; nothing is
+        // published before `completed`), so the copy settles onto the dropped slot without snapping back.
         settle { model.commitReorder() }
     }
 
@@ -360,11 +361,11 @@ struct ClipThumbnailStrip: View {
         settle { model.cancelReorder() }
     }
 
-    /// Ends the drag in the model (`resolve`: commit request or cancel — synchronous; the committed order
-    /// shown here is the last CONFIRMED one, which the drop's save may later replace) and lets the lifted copy settle onto the clip's final slot
-    /// with a short, highly damped spring before the real cell takes over. A drop settles onto the last
-    /// CONFIRMED order (no optimistic publish); the saved order appears once the save is `completed`. Under Reduce Motion the copy is
-    /// dropped in place at once.
+    /// Ends the drag in the model (`resolve`: commit request or cancel — synchronous) and lets the lifted copy
+    /// settle onto the clip's slot in the order now shown with a short, highly damped spring before the real
+    /// cell takes over. A drop settles onto the held dropped order (`pendingDropOrder`, display only), which a
+    /// `completed` save adopts without movement; a cancel, a same-slot drop or a refused commit settles onto the
+    /// last confirmed order. Under Reduce Motion the copy is dropped in place at once.
     private func settle(_ resolve: @escaping () -> Void) {
         guard let session = drag else { return resolve() }
         let finish = {

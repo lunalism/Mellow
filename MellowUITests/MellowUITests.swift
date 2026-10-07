@@ -835,6 +835,54 @@ final class MellowUITests: XCTestCase {
         removeProjects(in: app)
     }
 
+    /// D8.5c amendment (owner decision 2026-10-07): a dropped Clip stays in the slot where it was released
+    /// while its save waits for the shared gate (held by the DEBUG seam for 8 s) — no snap-back to the last
+    /// confirmed order — with Back hidden and Undo unavailable (nothing published, no history yet). Once the
+    /// save completes, the same order remains and Undo becomes available. Simulator store only.
+    @MainActor
+    func testEditorDroppedClipStaysInPlaceWhileItsSaveIsPending() throws {
+        let app = legacyRecentApp(Self.editorArguments + ["-uiTestEditorGateHold=8000"])
+        app.launch()
+        XCTAssertTrue(app.otherElements["projectEditor"].waitForExistence(timeout: 5))
+        let clip1 = app.buttons["editorClip-1"], clip2 = app.buttons["editorClip-2"], clip3 = app.buttons["editorClip-3"]
+        XCTAssertTrue(clip3.waitForExistence(timeout: 2))
+        expectLabel(clip1, "Clip 1 of 3, 2.0s")
+        expectLabel(clip3, "Clip 3 of 3, 1.0s")
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        let backLabel = back.label
+        XCTAssertNotEqual(backLabel, "실행 취소", "element 0 is the system Back button")
+        XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "no history yet")
+
+        // Long press the 1.0s clip, drag it before the first clip, release.
+        let target = clip1.coordinate(withNormalizedOffset: CGVector(dx: -0.1, dy: 0.5))
+        clip3.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.7, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.3)
+
+        // Pending: Back hidden (the edit is in flight) AND the dropped order is what the timeline shows.
+        XCTAssertTrue(app.navigationBars.buttons[backLabel].waitForNonExistence(timeout: 2), "the save is pending")
+        for sample in 0..<3 {
+            XCTAssertTrue(app.navigationBars.buttons[backLabel].waitForNonExistence(timeout: 0.5), "still pending at sample \(sample)")
+            XCTAssertEqual(clip1.label, "Clip 1 of 3, 1.0s", "sample \(sample): the dropped clip stays where it was released")
+            XCTAssertEqual(clip2.label, "Clip 2 of 3, 2.0s", "sample \(sample)")
+            XCTAssertEqual(clip3.label, "Clip 3 of 3, 3.0s", "sample \(sample)")
+            XCTAssertEqual(clip1.value as? String, "Selected", "sample \(sample): selection follows the dropped clip")
+            XCTAssertFalse(app.buttons["editorUndo"].isEnabled, "sample \(sample): no history before the outcome")
+            XCTAssertLessThan(clip1.frame.minX, clip2.frame.minX)
+            if sample == 0 { try auditAndCapture(app, name: "editor-reorder-pending-hold") }
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+
+        // Completed: the same order remains, navigation and Undo return.
+        XCTAssertTrue(app.navigationBars.buttons[backLabel].waitForExistence(timeout: 15), "Back restored after the save")
+        XCTAssertEqual(clip1.label, "Clip 1 of 3, 1.0s", "adopted without a move")
+        XCTAssertEqual(clip2.label, "Clip 2 of 3, 2.0s")
+        XCTAssertEqual(clip3.label, "Clip 3 of 3, 3.0s")
+        XCTAssertTrue(app.buttons["editorUndo"].isEnabled, "the reorder entered the history on completed")
+        app.navigationBars.buttons[backLabel].tap()
+        XCTAssertTrue(app.otherElements["cameraShell"].waitForExistence(timeout: 5))
+        removeProjects(in: app)
+    }
+
     // MARK: - Phase 5 STEP 11: Add Clips (ADR-037) + history
 
     private func addArguments(_ mode: String, extra: [String] = []) -> [String] {

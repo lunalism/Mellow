@@ -258,6 +258,12 @@ final class ProjectEditorModel {
     /// Temporary logical order shown during the drag (Clip ids). Nil outside a drag. Never persisted
     /// as such — only the drop turns it into a committed order.
     private(set) var previewOrder: [UUID]?
+    /// Presentation-only hold of a dropped order while its save is pending (owner decision 2026-10-07, D8.5c
+    /// amendment): the timeline keeps the dropped Clip where it was released instead of snapping back to the
+    /// last confirmed order. It is never the committed state — `project`, selection and history change only on
+    /// `completed` — and it is cleared in the same synchronous step that applies ANY outcome, so a known failure
+    /// or a reconciliation lock shows the last confirmed order again.
+    private(set) var pendingDropOrder: [UUID]?
     /// True from the moment an edit is requested until its outcome is applied — including the wait for
     /// the lifecycle gate, which is not guaranteed to be short. Every other mutation and drag is refused
     /// meanwhile, and leaving the Editor is disabled (`isNavigationLocked`).
@@ -324,12 +330,13 @@ final class ProjectEditorModel {
         self.selectedClipID = project.clips.first?.id
     }
 
-    /// Clips in the order the timeline shows: the temporary preview order during a drag, otherwise
-    /// the committed logical order (`VlogProject` keeps `clips` sorted by `sortOrder`).
+    /// Clips in the order the timeline shows: the temporary preview order during a drag, the held dropped
+    /// order while that drop's save is pending, otherwise the committed logical order (`VlogProject` keeps
+    /// `clips` sorted by `sortOrder`).
     var orderedClips: [VlogClip] {
-        guard let previewOrder else { return project.clips }
+        guard let order = previewOrder ?? pendingDropOrder else { return project.clips }
         let byID = Dictionary(uniqueKeysWithValues: project.clips.map { ($0.id, $0) })
-        return previewOrder.compactMap { byID[$0] }
+        return order.compactMap { byID[$0] }
     }
 
     /// Committed logical order, unaffected by any drag preview.
@@ -419,10 +426,12 @@ final class ProjectEditorModel {
     }
 
     /// Drops the lifted Clip: commits the preview order through the single reorder path when it
-    /// differs from the committed order; a drop at the original position writes nothing. The preview
-    /// ends at once and the committed order stays visible until the save is `completed` (no optimistic
-    /// publish). Selection stays on the dropped Clip either way. Synchronous so the gesture can settle at
-    /// once: the in-flight flag is reserved here, before the returned task awaits the gate.
+    /// differs from the committed order; a drop at the original position writes nothing. The drag preview
+    /// ends at once and the dropped order is HELD for display only (`pendingDropOrder`) until the save's
+    /// outcome is applied: `completed` adopts it without a visible move, every other outcome shows the last
+    /// confirmed order again. Nothing is published before `completed`. Selection stays on the dropped Clip
+    /// either way. Synchronous so the gesture can settle at once onto the held slot: the in-flight flag and
+    /// the hold are set here, before the returned task awaits the gate.
     @discardableResult
     func commitReorder() -> Task<Bool, Never>? {
         guard let clipID = draggingClipID, let index = dragTargetIndex else { return nil }
@@ -430,6 +439,7 @@ final class ProjectEditorModel {
         previewOrder = nil
         guard !isMutationBlocked, let updated = reordered(clipID: clipID, toIndex: index) else { return nil }
         isCommittingMutation = true
+        pendingDropOrder = updated.clips.map(\.id)
         return Task { await runReservedEdit(updated, selecting: clipID, transition: .push(.reorder), label: "reorder") }
     }
 
@@ -440,13 +450,16 @@ final class ProjectEditorModel {
         previewOrder = nil
     }
 
+    /// The accessibility move actions are offered only while a mutation could start: while an edit is in flight
+    /// (including a held drop order, whose displayed positions differ from the committed ones), a drag, an
+    /// acquisition or a reconciliation lock, neither action is exposed.
     func canMoveEarlier(_ clipID: UUID) -> Bool {
-        guard let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        guard !isMutationBlocked, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
         return index > 0
     }
 
     func canMoveLater(_ clipID: UUID) -> Bool {
-        guard let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        guard !isMutationBlocked, let index = project.clips.firstIndex(where: { $0.id == clipID }) else { return false }
         return index < project.clips.count - 1
     }
 
@@ -929,13 +942,16 @@ final class ProjectEditorModel {
 
     /// The edit after its in-flight flag was reserved (synchronously, by the caller).
     private func runReservedEdit(_ updated: VlogProject, selecting selection: UUID?, transition: HistoryTransition, label: StaticString) async -> Bool {
-        defer { isCommittingMutation = false }
+        defer { isCommittingMutation = false; pendingDropOrder = nil }
         let base = project, baseSelection = selectedClipID
         #if DEBUG
         // UI-test seam: lets another holder take the shared gate first, so the edit visibly waits for it.
         await debugBeforeEditGate?()
         #endif
         return await lifecycle.withExclusiveAccess {
+            // A held drop order ends in the same synchronous step that applies the outcome (no suspension
+            // point in between): adopted with `completed`, replaced by the last confirmed order otherwise.
+            defer { pendingDropOrder = nil }
             guard let prior = verifiedPriorInsideGate(base: base, label: label) else { return false }
             return commitInsideGate(updated, prior: prior, base: base, baseSelection: baseSelection, selecting: selection,
                                     transition: transition, notSaved: .changesNotSaved, label: label) == .completed

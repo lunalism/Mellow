@@ -413,20 +413,176 @@ final class EditorSaveOutcomeTests: XCTestCase {
         XCTAssertEqual(model.project, stored(project.id))
     }
 
-    func testDropKeepsTheCommittedOrderUntilCompletedAndReservesTheFlagSynchronously() async throws {
+    // MARK: Held drop order (owner decision 2026-10-07, D8.5c amendment)
+
+    /// Lifts the last Clip, previews it at the front and drops it while the test holds the gate, so the
+    /// save is pending. Returns the drop task and the dropped (attempted) order.
+    private func dropLastClipFirstWhileHeld(_ model: ProjectEditorModel, _ project: VlogProject) -> (Task<Bool, Never>?, [UUID]) {
+        let ids = project.clips.map(\.id)
+        XCTAssertTrue(model.beginReorder(clipID: ids[2]))
+        model.previewReorder(toIndex: 0)
+        return (model.commitReorder(), [ids[2], ids[0], ids[1]])
+    }
+
+    /// While the save is pending: the dropped order is SHOWN, nothing is published (committed project, store,
+    /// selection, history) and every existing lock holds.
+    private func assertPendingDrop(_ model: ProjectEditorModel, shows dropped: [UUID], committed state: VlogProject, selection: UUID?,
+                                   history: HistorySnapshot, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(model.orderedClips.map(\.id), dropped, "the dropped order stays where it was released", file: file, line: line)
+        XCTAssertEqual(model.pendingDropOrder, dropped, file: file, line: line)
+        XCTAssertEqual(model.project, state, "the attempted Project is not published", file: file, line: line)
+        XCTAssertEqual(model.committedClips.map(\.id), state.clips.map(\.id), file: file, line: line)
+        XCTAssertEqual(stored(state.id), state, "nothing saved yet", file: file, line: line)
+        XCTAssertEqual(model.selectedClipID, selection, file: file, line: line)
+        XCTAssertEqual(HistorySnapshot(model), history, "no history before the outcome", file: file, line: line)
+        XCTAssertTrue(model.isCommittingMutation, file: file, line: line)
+        XCTAssertTrue(model.isNavigationLocked, "Back locked while pending", file: file, line: line)
+        XCTAssertFalse(model.canUndo, file: file, line: line); XCTAssertFalse(model.canRedo, file: file, line: line)
+        XCTAssertFalse(model.canDeleteSelectedClip, file: file, line: line); XCTAssertFalse(model.canAddClips, file: file, line: line)
+        for id in dropped {
+            XCTAssertFalse(model.canMoveEarlier(id), "no accessibility move offered while pending", file: file, line: line)
+            XCTAssertFalse(model.canMoveLater(id), "no accessibility move offered while pending", file: file, line: line)
+        }
+        XCTAssertFalse(model.beginReorder(clipID: state.clips[0].id), "no second drag while pending", file: file, line: line)
+        XCTAssertNil(model.commitReorder(), file: file, line: line)
+        model.select(state.clips[1].id)
+        XCTAssertEqual(model.selectedClipID, selection, "selection waits for the outcome", file: file, line: line)
+    }
+
+    func testDropHoldsTheDroppedOrderForDisplayOnlyThenAdoptsItOnCompleted() async throws {
         let project = try makeProject()
         let model = makeModel(project)
+        let history = HistorySnapshot(model), updates = repository.updateCount
         let holder = await holdGate()
-        XCTAssertTrue(model.beginReorder(clipID: project.clips[2].id))
-        model.previewReorder(toIndex: 0)
-        let task = model.commitReorder()
+        let (task, dropped) = dropLastClipFirstWhileHeld(model, project)
         XCTAssertNotNil(task)
-        XCTAssertTrue(model.isCommittingMutation, "reserved before the gate is awaited")
-        XCTAssertEqual(model.orderedClips.map(\.id), project.clips.map(\.id), "committed order shown, not the attempted one")
+        let selection = model.selectedClipID
+        XCTAssertEqual(selection, project.clips[2].id, "the lifted Clip is selected (STEP 9)")
+        assertPendingDrop(model, shows: dropped, committed: project, selection: selection, history: history)
+        // Refused entry points while pending write nothing and keep the hold.
+        await XCTAssertNilAsync(await model.moveClipLater(id: project.clips[0].id))
+        await XCTAssertFalseAsync(await model.deleteClip(id: project.clips[0].id))
+        XCTAssertEqual(model.pendingDropOrder, dropped)
+        XCTAssertEqual(repository.updateCount, updates)
+
         await holder.release()
         let saved = await bounded("drop completes") { await task?.value }
         XCTAssertEqual(saved ?? nil, true)
-        XCTAssertEqual(model.orderedClips.first?.id, project.clips[2].id)
+        XCTAssertNil(model.pendingDropOrder, "hold cleared")
+        XCTAssertEqual(model.project.clips.map(\.id), dropped, "the confirmed order is the dropped one")
+        XCTAssertEqual(model.orderedClips.map(\.id), dropped, "no visible move on adoption")
+        XCTAssertEqual(model.project, stored(project.id))
+        XCTAssertEqual(repository.updateCount, updates + 1, "one save")
+        XCTAssertEqual(model.undoStack.count, history.undo.count + 1); XCTAssertEqual(model.undoStack.last?.kind, .reorder)
+        XCTAssertTrue(model.redoStack.isEmpty)
+        XCTAssertNil(model.editorMessage); XCTAssertNil(model.reconciliation)
+        XCTAssertFalse(model.isCommittingMutation); XCTAssertFalse(model.isNavigationLocked)
+        XCTAssertFalse(model.canMoveEarlier(dropped[0])); XCTAssertTrue(model.canMoveLater(dropped[0]), "actions follow the adopted order")
+    }
+
+    func testDropKnownFailureClearsTheHoldAndShowsTheLastConfirmedOrderWithTheExistingAlert() async throws {
+        let project = try makeProject()
+        let model = makeModel(project)
+        let history = HistorySnapshot(model)
+        let holder = await holdGate()
+        let (task, dropped) = dropLastClipFirstWhileHeld(model, project)
+        let selection = model.selectedClipID
+        assertPendingDrop(model, shows: dropped, committed: project, selection: selection, history: history)
+        repository.updateFails = true
+        await holder.release()
+        let saved = await bounded("drop fails") { await task?.value }
+        repository.updateFails = false
+        XCTAssertEqual(saved ?? nil, false)
+        XCTAssertNil(model.pendingDropOrder)
+        XCTAssertEqual(model.orderedClips.map(\.id), project.clips.map(\.id), "back to the last confirmed order")
+        XCTAssertEqual(model.project, project)
+        XCTAssertEqual(model.selectedClipID, selection)
+        XCTAssertEqual(HistorySnapshot(model), history)
+        XCTAssertEqual(model.editorMessage, .changesNotSaved)
+        XCTAssertNil(model.reconciliation)
+        XCTAssertFalse(model.isCommittingMutation)
+        XCTAssertEqual(stored(project.id), project)
+    }
+
+    private enum UncertainDrop: CaseIterable { case unverified, contradictory, indeterminate, stalePrior, unreadablePrior, missingProject }
+
+    func testDropUncertainOrStoppedOutcomesClearTheHoldAndShowTheLastConfirmedOrderUnderTheLock() async throws {
+        for outcome in UncertainDrop.allCases {
+            let project = try makeProject()
+            let model = makeModel(project)
+            let history = HistorySnapshot(model)
+            let holder = await holdGate()
+            let (task, dropped) = dropLastClipFirstWhileHeld(model, project)
+            let selection = model.selectedClipID
+            assertPendingDrop(model, shows: dropped, committed: project, selection: selection, history: history)
+            let expected: EditorReconciliation
+            switch outcome {
+            case .unverified:
+                failObservationsAtSave(); expected = .saveUnverified
+            case .contradictory:
+                repository.stateObservationOverride = { _, observed in
+                    var projects = observed.projects
+                    projects[project.id] = .present(project)
+                    return PersistedStateObservation(projects: projects, createdIdentityHolders: observed.createdIdentityHolders)
+                }
+                expected = .saveUnverified
+            case .indeterminate:
+                repository.updateThrowsAfterCommit = true; failObservationsAtSave(); expected = .saveIndeterminate
+            case .stalePrior:
+                var other = try XCTUnwrap(stored(project.id))
+                try other.reorderClip(id: other.clips[0].id, toIndex: 1)
+                try swiftData.update(other)
+                expected = .recheckRequired
+            case .unreadablePrior:
+                swiftData.debugObservationFault = { $0 == .project(project.id) }; expected = .recheckRequired
+            case .missingProject:
+                try swiftData.deleteProject(id: project.id); expected = .projectMissing
+            }
+            await holder.release()
+            let saved = await bounded("\(outcome)") { await task?.value }
+            repository.onUpdate = nil; repository.stateObservationOverride = nil; repository.updateThrowsAfterCommit = false
+            swiftData.debugObservationFault = nil
+            XCTAssertEqual(saved ?? nil, false, "\(outcome)")
+            XCTAssertEqual(model.reconciliation, expected, "\(outcome): existing lock")
+            XCTAssertNil(model.pendingDropOrder, "\(outcome): hold cleared")
+            XCTAssertEqual(model.orderedClips.map(\.id), project.clips.map(\.id), "\(outcome): the last confirmed view, not a store claim")
+            XCTAssertEqual(model.project, project, "\(outcome)")
+            XCTAssertEqual(model.selectedClipID, selection, "\(outcome)")
+            XCTAssertEqual(HistorySnapshot(model), history, "\(outcome)")
+            XCTAssertNil(model.editorMessage, "\(outcome): the lock is the only presentation")
+            XCTAssertFalse(model.isCommittingMutation, "\(outcome)")
+            XCTAssertFalse(model.beginReorder(clipID: project.clips[0].id), "\(outcome): still locked")
+            XCTAssertFalse(model.canMoveLater(project.clips[0].id), "\(outcome): no accessibility move under the lock")
+            if outcome != .missingProject {
+                XCTAssertEqual(mediaFiles(project.id).count, project.clips.count, "\(outcome): media preserved")
+            }
+        }
+    }
+
+    func testDropWithoutACommitNeverHoldsAnOrder() async throws {
+        let project = try makeProject()
+        let model = makeModel(project)
+        // Same slot: nothing to save, nothing held.
+        XCTAssertTrue(model.beginReorder(clipID: project.clips[1].id))
+        XCTAssertNil(model.commitReorder())
+        XCTAssertNil(model.pendingDropOrder)
+        XCTAssertFalse(model.isCommittingMutation)
+        // Cancel: never held.
+        XCTAssertTrue(model.beginReorder(clipID: project.clips[2].id))
+        model.previewReorder(toIndex: 0)
+        model.cancelReorder()
+        XCTAssertNil(model.pendingDropOrder)
+        XCTAssertEqual(model.orderedClips.map(\.id), project.clips.map(\.id))
+        // Accessibility move: no drag, no hold; the order changes on `completed` only.
+        let holder = await holdGate()
+        let move = Task { await model.moveClipLater(id: project.clips[0].id) }
+        _ = await bounded("move queued") { while self.gate.waitingCount < 1 { try? await Task.sleep(for: .milliseconds(2)) } }
+        XCTAssertNil(model.pendingDropOrder)
+        XCTAssertEqual(model.orderedClips.map(\.id), project.clips.map(\.id))
+        await holder.release()
+        let moved = await bounded("move completes") { await move.value }
+        XCTAssertEqual(moved ?? nil, 2)
+        XCTAssertEqual(stored(project.id)?.clips.map(\.id), [project.clips[1].id, project.clips[0].id, project.clips[2].id])
     }
 
     // MARK: Reconciliation lock
