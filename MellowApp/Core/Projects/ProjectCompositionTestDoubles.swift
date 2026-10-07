@@ -201,8 +201,108 @@ struct UITestScriptedNormalizer: WorkingMediaNormalizing {
     func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan,
                    progress: (@Sendable (Double) -> Void)?) async throws -> WorkingMediaNormalizationResult {
         try await Task.sleep(for: delay)
-        if failures.take() { throw WorkingMediaNormalizationError.writerFailed(domain: "UITest", code: 1) }
+        if failures.take() {
+            MellowLog.app.info("UI-test normalizer failure injected before the item's output (simulated, not an environmental failure)")
+            throw WorkingMediaNormalizationError.writerFailed(domain: "UITest", code: 1)
+        }
         return try await inner.normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: progress)
+    }
+
+    static func isRequested(by arguments: [String]) -> Bool {
+        arguments.contains { $0.hasPrefix("-uiTestNormalizerDelay=") || $0.hasPrefix("-uiTestNormalizerFailures=") }
+    }
+}
+
+/// Physical-device capacity control (DEBUG only), `-uiTestImportCapacityShortage=c1:<n>,cr:<n>`: the first n checks at
+/// 050-C C1 (first-attempt admission) and / or CR (Retry admission) in this process see 0 usable bytes, so the
+/// ordinary insufficient-capacity handling runs. Every other check, and every check after the n, reads real capacity.
+/// A simulated capacity-check outcome only — never an actual disk exhaustion or an out-of-space write failure.
+@MainActor
+final class UITestImportCapacityScript {
+    private var remaining: [ImportAttemptBoundary: Int]
+
+    init?(arguments: [String]) {
+        let key = "-uiTestImportCapacityShortage="
+        guard let raw = arguments.first(where: { $0.hasPrefix(key) })?.dropFirst(key.count) else { return nil }
+        var remaining: [ImportAttemptBoundary: Int] = [:]
+        for entry in raw.split(separator: ",") {
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let count = Int(parts[1]), count > 0 else { continue }
+            switch parts[0] {
+            case "c1": remaining[.c1BeforePreparation] = count
+            case "cr": remaining[.crBeforeRetry] = count
+            default: continue   // C0 / C0a / C2 / C3 are not overridable by this control
+            }
+        }
+        guard !remaining.isEmpty else { return nil }
+        self.remaining = remaining
+    }
+
+    /// 0 for a scripted check (consuming it), nil to read real capacity.
+    func override(at boundary: ImportAttemptBoundary) -> Int64? {
+        guard let count = remaining[boundary], count > 0 else { return nil }
+        remaining[boundary] = count - 1
+        MellowLog.app.info("UI-test capacity override boundary=\(String(describing: boundary), privacy: .public) usable=0 (simulated)")
+        return 0
+    }
+}
+
+/// The physical-device failure controls for the production real-picker flows (Select Clips, Editor Add / Replace):
+/// nil unless `-uiTestNormalizerFailures=` / `-uiTestNormalizerDelay=` or `-uiTestImportCapacityShortage=` is present.
+/// One instance per launch, shared by every flow, so each scripted count is consumed once per process.
+@MainActor
+struct UITestDeviceImportControls {
+    /// Internal (not private) so a test can prove every service shares its one failure counter.
+    let normalizer: UITestScriptedNormalizer?
+    private let capacity: UITestImportCapacityScript?
+
+    init?(arguments: [String]) {
+        let normalizer = UITestScriptedNormalizer.isRequested(by: arguments) ? UITestScriptedNormalizer(arguments: arguments) : nil
+        let capacity = UITestImportCapacityScript(arguments: arguments)
+        guard normalizer != nil || capacity != nil else { return nil }
+        let flags = (normalizer: normalizer != nil, capacity: capacity != nil)
+        MellowLog.app.info("UI-test device import controls active: normalizer=\(flags.normalizer, privacy: .public) capacity=\(flags.capacity, privacy: .public)")
+        self.normalizer = normalizer
+        self.capacity = capacity
+    }
+
+    func services(repository: any ProjectRepository, store: ProjectMediaStore, lifecycle: ProjectLifecycleOperationGate) -> ImportFlowServices {
+        let services = AppEnvironment.makeImportFlowServices(repository: repository, store: store, lifecycle: lifecycle,
+                                                             normalizer: normalizer ?? AVFoundationWorkingMediaNormalizer())
+        if let capacity {
+            guard let coordinator = services.attempts as? ImportAttemptCoordinator else {
+                preconditionFailure("UI-test capacity control requires the production ImportAttemptCoordinator")
+            }
+            coordinator.debugCapacityOverride = { capacity.override(at: $0) }
+        }
+        return services
+    }
+}
+/// The scope decision of the `-uiTestRemoveActiveClipMedia=<clipUUID>` physical-review fixture (DEBUG only): removal is
+/// permitted only when `-uiTestRemoveActiveClipMediaProject=<projectUUID>` names the Project that holds the Clip as an
+/// ACTIVE Clip at exactly its canonical committed path. Decides only; the caller performs the existing removal.
+enum UITestActiveClipMediaRemoval: Equatable {
+    enum Refusal: Equatable { case invalidClipArgument, missingProjectScope, notAnActiveClip, notInNamedProject, nonCanonicalPath }
+
+    static let clipKey = "-uiTestRemoveActiveClipMedia="
+    static let projectKey = "-uiTestRemoveActiveClipMediaProject="
+
+    case remove(path: RelativeMediaPath, projectID: UUID, clipID: UUID)
+    case refused(Refusal, clipLabel: String)
+
+    static func decide(arguments: [String], projects: [VlogProject]) -> UITestActiveClipMediaRemoval {
+        func value(_ key: String) -> UUID? {
+            arguments.first { $0.hasPrefix(key) }.flatMap { UUID(uuidString: String($0.dropFirst(key.count))) }
+        }
+        guard let clipID = value(clipKey) else { return .refused(.invalidClipArgument, clipLabel: "-") }
+        let label = String(clipID.uuidString.prefix(8))
+        guard let scope = value(projectKey) else { return .refused(.missingProjectScope, clipLabel: label) }
+        guard let project = projects.first(where: { $0.clips.contains { $0.id == clipID } }),
+              let clip = project.clips.first(where: { $0.id == clipID }) else { return .refused(.notAnActiveClip, clipLabel: label) }
+        guard project.id == scope else { return .refused(.notInNamedProject, clipLabel: label) }
+        guard let canonical = try? ProjectMediaStore.committedMediaPath(projectID: project.id, clipID: clipID),
+              clip.mediaRelativePath == canonical else { return .refused(.nonCanonicalPath, clipLabel: label) }
+        return .remove(path: canonical, projectID: project.id, clipID: clipID)
     }
 }
 #endif

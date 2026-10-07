@@ -450,6 +450,140 @@ final class ImportAttemptCoordinatorTests: XCTestCase {
         XCTAssertEqual(repository.createCount, 0)
     }
 
+    // MARK: - DEBUG device capacity control (simulated C1 / CR outcomes)
+
+    func testDeviceCapacityControlSimulatesOneC1ShortageThenReadsRealCapacity() async throws {
+        let script = try XCTUnwrap(UITestImportCapacityScript(arguments: ["-uiTestImportCapacityShortage=c1:1"]))
+        let coordinator = coordinator()
+        coordinator.debugCapacityOverride = { script.override(at: $0) }
+
+        let first = try await prepare([Spec(kind: .ready), Spec(kind: .normalized)])
+        guard case .refused(.storage(let result)) = await coordinator.run(first.request, events: nil),
+              case .insufficient(_, let usable) = result.outcome else { return XCTFail("expected a simulated C1 shortage") }
+        XCTAssertEqual(result.boundary, .c1BeforePreparation)
+        XCTAssertEqual(result.failureRoute, .initialStorageRefusal)
+        XCTAssertEqual(usable, 0)
+        var reads = await capacity.reads
+        XCTAssertEqual(reads, 0, "the simulated check does not read the real capacity")
+        let calls = await normalizer.calls
+        XCTAssertTrue(calls.isEmpty)
+        XCTAssertTrue(attemptDirectories().isEmpty)
+        for item in first.accepted { XCTAssertEqual(size(item.candidate.url), item.facts.byteCount) }
+        XCTAssertEqual(repository.createCount, 0)
+
+        // The single scripted check is consumed: the next operation reads real capacity at C1 / C2 / C3 and commits.
+        await store.discard(workspace)
+        workspace = try await store.beginWorkspace()
+        let second = try await prepare([Spec(kind: .normalized)])
+        _ = try committed(await coordinator.run(second.request, events: nil))
+        reads = await capacity.reads
+        XCTAssertEqual(reads, 2, "C1 and C3 read the real capacity")
+        XCTAssertFalse(gate.isHeld)
+    }
+
+    func testDeviceCapacityControlSimulatesOneCRShortageAndLeavesC1Alone() async throws {
+        let script = try XCTUnwrap(UITestImportCapacityScript(arguments: ["-uiTestImportCapacityShortage=cr:1"]))
+        let coordinator = coordinator()
+        coordinator.debugCapacityOverride = { script.override(at: $0) }
+        let prepared = try await prepare([Spec(kind: .normalized)])
+        let retry = ImportAttemptRequest(accepted: prepared.request.accepted, plans: prepared.request.plans, workspace: workspace,
+                                         target: prepared.request.target, admission: .retry)
+
+        guard case .refused(.storage(let result)) = await coordinator.run(retry, events: nil),
+              case .insufficient(_, let usable) = result.outcome else { return XCTFail("expected a simulated CR shortage") }
+        XCTAssertEqual(result.boundary, .crBeforeRetry)
+        XCTAssertEqual(result.failureRoute, .retryCapacityRefusal)
+        XCTAssertEqual(usable, 0)
+        let calls = await normalizer.calls
+        XCTAssertTrue(calls.isEmpty)
+        for item in prepared.accepted { XCTAssertEqual(size(item.candidate.url), item.facts.byteCount, "the retained source is untouched") }
+
+        // The next Retry reads real capacity and commits the same Accepted Set.
+        _ = try committed(await coordinator.run(retry, events: nil))
+        XCTAssertFalse(gate.isHeld)
+    }
+
+    func testDeviceCapacityControlParsesOnlyC1AndCRCounts() {
+        XCTAssertNil(UITestImportCapacityScript(arguments: []))
+        XCTAssertNil(UITestImportCapacityScript(arguments: ["-uiTestImportCapacityShortage=c2:1,c3:1,c0:2"]))
+        XCTAssertNil(UITestImportCapacityScript(arguments: ["-uiTestImportCapacityShortage=c1:0,cr:x,garbage"]))
+        let script = UITestImportCapacityScript(arguments: ["-uiTestImportCapacityShortage=c1:2,c3:1,cr:1"])
+        XCTAssertNil(script?.override(at: .c3BeforeMaterialization), "C3 is never overridden")
+        XCTAssertNil(script?.override(at: .c2BeforeNormalizationItem), "C2 is never overridden")
+        XCTAssertEqual(script?.override(at: .c1BeforePreparation), 0)
+        XCTAssertEqual(script?.override(at: .c1BeforePreparation), 0)
+        XCTAssertNil(script?.override(at: .c1BeforePreparation), "only the first two C1 checks")
+        XCTAssertEqual(script?.override(at: .crBeforeRetry), 0)
+        XCTAssertNil(script?.override(at: .crBeforeRetry))
+    }
+
+    func testDeviceImportControlsAreInactiveWithoutTheirArguments() {
+        XCTAssertNil(UITestDeviceImportControls(arguments: []))
+        XCTAssertNil(UITestDeviceImportControls(arguments: ["-uiTestEditorSaveFailure", "-uiTestSeedPortrait", "-uiTestImportCapacityShortage=c3:1"]))
+        XCTAssertNotNil(UITestDeviceImportControls(arguments: ["-uiTestNormalizerFailures=1"]))
+        XCTAssertNotNil(UITestDeviceImportControls(arguments: ["-uiTestImportCapacityShortage=cr:1"]))
+        XCTAssertFalse(UITestScriptedNormalizer.isRequested(by: ["-uiTestImportCapacityShortage=c1:1"]))
+    }
+
+    func testDeviceImportControlsAttachTheCapacityOverrideOnlyWhenRequested() throws {
+        let normalizerOnly = try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestNormalizerFailures=1"]))
+            .services(repository: repository, store: store, lifecycle: gate)
+        XCTAssertNil(try XCTUnwrap(normalizerOnly.attempts as? ImportAttemptCoordinator).debugCapacityOverride)
+        let withCapacity = try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestImportCapacityShortage=c1:1"]))
+            .services(repository: repository, store: store, lifecycle: gate)
+        let override = try XCTUnwrap(try XCTUnwrap(withCapacity.attempts as? ImportAttemptCoordinator).debugCapacityOverride)
+        XCTAssertNil(override(.c3BeforeMaterialization))
+        XCTAssertEqual(override(.c1BeforePreparation), 0)
+        XCTAssertNil(override(.c1BeforePreparation))
+        XCTAssertNil(try XCTUnwrap(AppEnvironment.makeImportFlowServices(repository: repository, store: store, lifecycle: gate).attempts
+            as? ImportAttemptCoordinator).debugCapacityOverride, "the production factory never attaches a control")
+    }
+
+    /// Select Clips and Editor services built from one launch's controls consume ONE capacity count: the Select Clips
+    /// attempt takes the scripted C1 shortage, so the Editor attempt that follows reads real capacity and commits.
+    func testServicesFromOneControlsInstanceShareTheCapacityCount() async throws {
+        let controls = try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestImportCapacityShortage=c1:1"]))
+        let selectClips = controls.services(repository: repository, store: store, lifecycle: gate)
+        let editor = controls.services(repository: repository, store: store, lifecycle: gate)
+        XCTAssertFalse(selectClips.attempts === editor.attempts, "each flow has its own coordinator")
+
+        let first = try await prepare([Spec(kind: .ready)])
+        guard case .refused(.storage(let result)) = await selectClips.attempts.runAttempt(first.request, events: nil) else {
+            return XCTFail("the first flow takes the scripted C1 shortage")
+        }
+        XCTAssertEqual(result.boundary, .c1BeforePreparation)
+
+        await store.discard(workspace)
+        workspace = try await store.beginWorkspace()
+        let second = try await prepare([Spec(kind: .ready)])
+        _ = try committed(await editor.attempts.runAttempt(second.request, events: nil))
+    }
+
+    /// Every service carries a copy of the controls' normalizer; the copies share one failure counter, so
+    /// `-uiTestNormalizerFailures=1` fails exactly one item per launch across all flows.
+    func testNormalizerCopiesFromOneControlsInstanceShareTheFailureCount() async throws {
+        let controls = try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestNormalizerFailures=1"]))
+        let selectClipsCopy = try XCTUnwrap(controls.normalizer)
+        let editorCopy = try XCTUnwrap(controls.normalizer)
+        let prepared = try await prepare([Spec(kind: .normalized)])
+        let plan = try XCTUnwrap(prepared.request.plans.values.first)
+        let missing = root.appendingPathComponent("missing-source.mov")
+        func injected(_ normalizer: UITestScriptedNormalizer) async -> Bool {
+            do {
+                _ = try await normalizer.normalize(sourceURL: missing, destinationURL: root.appendingPathComponent("\(UUID()).mov"), plan: plan)
+                return false
+            } catch WorkingMediaNormalizationError.writerFailed(let domain, _) where domain == "UITest" {
+                return true
+            } catch {
+                return false   // reached the real normalizer, which fails on the missing source
+            }
+        }
+        let firstInjected = await injected(selectClipsCopy)
+        let secondInjected = await injected(editorCopy)
+        XCTAssertTrue(firstInjected, "the first item anywhere takes the one scripted failure")
+        XCTAssertFalse(secondInjected, "the other copy sees the consumed count and runs the real normalizer")
+    }
+
     func testC1UnknownCapacityFailsClosed() async throws {
         let prepared = try await prepare([Spec(kind: .ready)])
         await capacity.script([nil])

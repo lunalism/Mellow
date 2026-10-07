@@ -203,6 +203,11 @@ final class ImportAttemptCoordinator {
     private let lifecycle: ProjectLifecycleOperationGate
     /// Usable capacity of the Mellow-root volume (050-C C1 / C2 / C3). nil / negative / errors fail closed.
     private let capacity: CapacityReader
+    #if DEBUG
+    /// Physical-device validation control (DEBUG only, nil by default): a usable capacity reported in place of the reader
+    /// for one boundary check, or nil to read as usual. The boundary arithmetic and its outcome handling are unchanged.
+    var debugCapacityOverride: (@MainActor (ImportAttemptBoundary) -> Int64?)?
+    #endif
 
     init(repository: any ProjectRepository, mediaStore: any ImportAttemptMediaStoring, normalizer: any WorkingMediaNormalizing,
          lifecycle: ProjectLifecycleOperationGate, capacity: @escaping CapacityReader) {
@@ -381,8 +386,12 @@ final class ImportAttemptCoordinator {
 
     /// Reuses `ImportAttemptBoundaryChecker` unchanged (no arithmetic here).
     private func check(_ boundary: ImportAttemptBoundary, _ workSet: ImportStorageWorkSet, _ attempt: Attempt) async -> BoundaryResult {
+        var reader: () async throws -> Int64? = capacity
+        #if DEBUG
+        if let simulated = debugCapacityOverride?(boundary) { reader = { simulated } }
+        #endif
         let result: ImportBoundaryCheckResult
-        do { result = try await ImportAttemptBoundaryChecker.check(boundary, workSet: workSet, capacity: capacity) } catch { return .cancelled }
+        do { result = try await ImportAttemptBoundaryChecker.check(boundary, workSet: workSet, capacity: reader) } catch { return .cancelled }
         attempt.emit(.boundaryChecked(result))
         return result.passes ? .passed : .refused(result)
     }

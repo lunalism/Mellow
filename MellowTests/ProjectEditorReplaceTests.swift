@@ -645,3 +645,59 @@ final class ProjectEditorReplaceTests: XCTestCase {
         XCTAssertEqual(mediaFiles(before.id).count, 2)
     }
 }
+
+/// Scope guard of the destructive `-uiTestRemoveActiveClipMedia` physical-review fixture: removal is permitted only for an
+/// active Clip of the Project named by `-uiTestRemoveActiveClipMediaProject`.
+@MainActor
+final class UITestActiveClipMediaRemovalTests: XCTestCase {
+    private func project(clips count: Int) throws -> VlogProject {
+        let projectID = UUID()
+        let clips = try (0..<count).map { index -> VlogClip in
+            let clipID = UUID()
+            return try VlogClip(id: clipID, projectID: projectID, sourceKind: .imported,
+                                mediaRelativePath: try ProjectMediaStore.committedMediaPath(projectID: projectID, clipID: clipID),
+                                sourceDuration: .seconds(2), trimDuration: .seconds(2), sortOrder: index)
+        }
+        return try VlogProject(id: projectID, orientation: .portrait9x16, clips: clips)
+    }
+
+    private func arguments(clip: UUID, project: UUID?) -> [String] {
+        ["-uiTestRemoveActiveClipMedia=\(clip.uuidString)"] + (project.map { ["-uiTestRemoveActiveClipMediaProject=\($0.uuidString)"] } ?? [])
+    }
+
+    func testMissingProjectArgumentRefuses() throws {
+        let disposable = try project(clips: 2)
+        let clip = disposable.clips[1].id
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: arguments(clip: clip, project: nil), projects: [disposable]),
+                       .refused(.missingProjectScope, clipLabel: String(clip.uuidString.prefix(8))))
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: arguments(clip: clip, project: nil) + ["-uiTestRemoveActiveClipMediaProject=not-a-uuid"],
+                                                           projects: [disposable]),
+                       .refused(.missingProjectScope, clipLabel: String(clip.uuidString.prefix(8))))
+    }
+
+    func testClipOfADifferentProjectRefuses() throws {
+        let original = try project(clips: 2)
+        let disposable = try project(clips: 1)
+        let originalClip = original.clips[0].id
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: arguments(clip: originalClip, project: disposable.id),
+                                                           projects: [disposable, original]),
+                       .refused(.notInNamedProject, clipLabel: String(originalClip.uuidString.prefix(8))))
+        let unknown = UUID()
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: arguments(clip: unknown, project: disposable.id), projects: [disposable, original]),
+                       .refused(.notAnActiveClip, clipLabel: String(unknown.uuidString.prefix(8))))
+    }
+
+    func testMatchingProjectPermitsRemovalOfExactlyThatClipsCanonicalFile() throws {
+        let original = try project(clips: 2)
+        let disposable = try project(clips: 2)
+        let clip = disposable.clips[1]
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: arguments(clip: clip.id, project: disposable.id), projects: [original, disposable]),
+                       .remove(path: clip.mediaRelativePath, projectID: disposable.id, clipID: clip.id))
+    }
+
+    func testNoClipArgumentNeverPermitsRemoval() throws {
+        let disposable = try project(clips: 1)
+        XCTAssertEqual(UITestActiveClipMediaRemoval.decide(arguments: ["-uiTestRemoveActiveClipMediaProject=\(disposable.id.uuidString)"], projects: [disposable]),
+                       .refused(.invalidClipArgument, clipLabel: "-"))
+    }
+}

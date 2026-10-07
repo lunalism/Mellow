@@ -78,6 +78,9 @@ final class AppEnvironment {
     /// The last intent the Projects Entry delivered, exposed so a UI test can observe it without
     /// any Project being created or replaced.
     private(set) var uiTestProjectsEntryIntent: String?
+    /// The launch's physical-device import controls (nil unless requested), shared by every real-picker import route so
+    /// each scripted count is consumed once per launch.
+    private var deviceImportControls: UITestDeviceImportControls?
     /// STEP 6C manual physical-review route (`-uiTestProjectsEntryRealMedia`): the real production
     /// Photos picker bridge hosted by the DEBUG Projects screen. Nil on the deterministic route.
     private(set) var uiTestRealMediaSelector: PhotosVideoSelector?
@@ -290,6 +293,20 @@ final class AppEnvironment {
         // Phase 6 imports in an Editor, so an Editor-route removal can let them finish before Editor-exit cleanup.
         let importActivity = ImportOperationActivity()
         let editorRouteProbe: (UUID) -> () -> Bool = { [router] projectID in router.routeProbe(for: .projectEditor(projectID)) }
+        // The real-picker import services. In DEBUG the physical-device failure controls attach only when one of their
+        // launch arguments is present (`UITestDeviceImportControls`); otherwise these are the production services.
+        #if DEBUG
+        let deviceImportControls = UITestDeviceImportControls(arguments: arguments)
+        self.deviceImportControls = deviceImportControls
+        #endif
+        func productionImportServices(_ repository: any ProjectRepository) -> ImportFlowServices {
+            #if DEBUG
+            if let deviceImportControls {
+                return deviceImportControls.services(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle)
+            }
+            #endif
+            return Self.makeImportFlowServices(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle)
+        }
         self.projectLifecycle = projectLifecycle
         self.projectComposition = ProjectCompositionCoordinator(
             repository: repository,
@@ -341,7 +358,7 @@ final class AppEnvironment {
             let editorSelector = PhotosVideoSelector()
             self.editorPhotosSelector = editorSelector
             self.editorClipAcquisition = EditorClipAcquisition(mediaStore: projectMediaStore, mediaSelector: editorSelector, storageGate: transferAdmission, appender: appender, lifecycle: projectLifecycle,
-                                                               importServices: Self.makeImportFlowServices(repository: sessionRepository, store: projectMediaStore, lifecycle: projectLifecycle),
+                                                               importServices: productionImportServices(sessionRepository),
                                                                importActivity: importActivity, makeRouteProbe: editorRouteProbe)
         }
         #else
@@ -357,7 +374,7 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: photosVideoSelector,
             storageGate: transferAdmission,
-            importServices: Self.makeImportFlowServices(repository: repository, store: projectMediaStore, lifecycle: projectLifecycle),
+            importServices: productionImportServices(repository),
             routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { projectID in router.path.append(.projectEditor(projectID)) },
             onProjectCommitted: { projectID in router.path.append(.projectEditor(projectID)) }
@@ -707,6 +724,14 @@ final class AppEnvironment {
         selector.pendingScript = Task { await Self.makeUITestSelectionScript(arguments: arguments) }
     }
 
+    /// Real-picker import services for routes built after init, with the same shared device controls as the production routes.
+    private func realPickerImportServices(_ repository: any ProjectRepository) -> ImportFlowServices {
+        if let deviceImportControls {
+            return deviceImportControls.services(repository: repository, store: importMediaStore, lifecycle: projectLifecycle)
+        }
+        return Self.makeImportFlowServices(repository: repository, store: importMediaStore, lifecycle: projectLifecycle)
+    }
+
     /// STEP 6C manual physical-review route (DEBUG only), `-uiTestProjectsEntryRealMedia`. Pushes the
     /// same `.projectsEntry` screen but with the REAL production Phase-5 dependencies: the system
     /// Photos picker (`PhotosVideoSelector`), `VolumeProjectStorageGate` with the approved 100 MiB
@@ -722,7 +747,7 @@ final class AppEnvironment {
             mediaStore: projectMediaStore,
             mediaSelector: selector,
             storageGate: ImportTransferCopyGate.transferVolume(),
-            importServices: Self.makeImportFlowServices(repository: projectRepository, store: importMediaStore, lifecycle: projectLifecycle),
+            importServices: realPickerImportServices(projectRepository),
             routeProbe: { [router] in router.projectsEntryRouteProbe() },
             onContinueEditing: { [weak self] projectID in
                 self?.router.path.append(.projectEditor(projectID))
@@ -836,7 +861,9 @@ final class AppEnvironment {
         uiTestRecoveryFixtures = fixtures
     }
 
-    /// ADR-040 physical-review fixture primitive (DEBUG only), `-uiTestRemoveActiveClipMedia=<clipUUID>`:
+    /// ADR-040 physical-review fixture primitive (DEBUG only), `-uiTestRemoveActiveClipMedia=<clipUUID>` together with
+    /// `-uiTestRemoveActiveClipMediaProject=<projectUUID>` (required, so the destructive step is scoped to an explicitly
+    /// named disposable Project; nothing happens without it or when the Clip belongs to another Project):
     /// removes ONLY the canonical committed media file of that one ACTIVE Clip so the Editor derives
     /// it as unavailable, and never touches metadata. The Clip must exist, be active in its Project
     /// (found by identity across the durable Projects) and reference exactly its canonical path;
@@ -844,23 +871,19 @@ final class AppEnvironment {
     /// cleanup uses — no directory removal, no container wipe, no Baseline identity hard-coded.
     /// Runs once at startup before maintenance (12A / 12B never touch an active Clip either way).
     private func removeUITestActiveClipMediaIfRequested() async {
-        guard let raw = arguments.first(where: { $0.hasPrefix("-uiTestRemoveActiveClipMedia=") })?
-                .replacingOccurrences(of: "-uiTestRemoveActiveClipMedia=", with: ""),
-              let clipID = UUID(uuidString: raw) else { return }
-        let label = String(clipID.uuidString.prefix(8))
-        guard let store = projectMediaStore as? ProjectMediaStore,
-              let projects = try? projectRepository.recentProjects(),
-              let project = projects.first(where: { $0.clips.contains { $0.id == clipID } }),
-              let clip = project.clips.first(where: { $0.id == clipID }) else {
-            MellowLog.app.error("UI-test unavailable fixture refused: clip=\(label, privacy: .public) is not an active Clip of any Project")
+        guard arguments.contains(where: { $0.hasPrefix(UITestActiveClipMediaRemoval.clipKey) }) else { return }
+        guard let store = projectMediaStore as? ProjectMediaStore else { return }
+        let projects = (try? projectRepository.recentProjects()) ?? []
+        let canonical: RelativeMediaPath, projectID: UUID, clipID: UUID, label: String
+        switch UITestActiveClipMediaRemoval.decide(arguments: arguments, projects: projects) {
+        case .refused(let reason, let clipLabel):
+            MellowLog.app.error("UI-test unavailable fixture refused: clip=\(clipLabel, privacy: .public) \(String(describing: reason), privacy: .public)")
             return
-        }
-        guard let canonical = try? ProjectMediaStore.committedMediaPath(projectID: project.id, clipID: clipID), clip.mediaRelativePath == canonical else {
-            MellowLog.app.error("UI-test unavailable fixture refused: clip=\(label, privacy: .public) path is not canonical")
-            return
+        case .remove(let path, let owner, let id):
+            (canonical, projectID, clipID, label) = (path, owner, id, String(id.uuidString.prefix(8)))
         }
         do {
-            try await store.removeCommittedMedia(canonical, projectID: project.id, clipID: clipID)
+            try await store.removeCommittedMedia(canonical, projectID: projectID, clipID: clipID)
             MellowLog.app.info("UI-test unavailable fixture applied: clip=\(label, privacy: .public) media removed, metadata kept active")
         } catch {
             MellowLog.app.error("UI-test unavailable fixture failed: clip=\(label, privacy: .public) \(String(describing: error), privacy: .public)")
