@@ -128,7 +128,7 @@ F4, F6, F7 and the Replace steps are recorded in sections 9, 10, 11 and 12 with 
 
 F5 is postponed by owner decision: its `+ 새 프로젝트 시작` flow replaces the current saved Project, which is DP, so it waits for a separately seeded disposable replacement target; the Select Clips C1 device check stays open.
 
-Not run: F5 (postponed). R2e′ ran without owner observations (section 12.6).
+Not run: F5 (postponed).
 
 ## 7. S1 Source Correction and Fast-Path Check
 
@@ -328,6 +328,8 @@ Source strings at `3ce5d45` for reference: `5초 이하의 영상을 선택해�
 
 S18 (snap-31) versus S17: store, 16 media full SHA-256 and listing paths identical; workspace used at 19:37 and empty; staging empty; tmp names identical.
 
+Owner verdict: PASS for invalid-input rejection and preservation of the unavailable target, supported by the reported alerts and the unchanged S18 snapshot; preparation-sheet appearance was not separately reported for R2d.
+
 ### 12.3 R2e — first cancellation attempt missed (normal launch, no console)
 
 The owner reports that the Replace preparation finished before `취소` could be tapped, so no cancellation was exercised and no PASS is recorded.
@@ -348,12 +350,13 @@ S19 (snap-32, owner's process pid 7538 running) versus S18: X's row was soft-del
 - Owner: slot 15 showed `클립을 사용할 수 없어요` / `파일을 찾을 수 없어요.` / `클립 교체`; DP 15, other clips normal; no replacement attempted; exit by owner swipe-away.
 - S20 (snap-35) versus snap-34: store identical (`588C39AD` active); the only media / listing difference is `588C39AD`'s missing file; the other 16 full SHA-256 identical (B8A7FB31 equal to its recorded full hashes); workspace, staging and tmp clean.
 
-### 12.6 R2e′ — delayed cancellation (device evidence only)
+### 12.6 R2e′ — delayed cancellation during the pre-conversion Debug delay
 
 - Launch: 19:54:49 KST, pid 7552, `-- -uiTestNormalizerDelay=8000`; console `controls active: normalizer=true capacity=false`; recovery DP 14 + B8 2, removed 0; 19:55:05 Editor loaded DP 15; no import, normalizer or cancel line afterwards; 19:55:41 app terminated (exit 0).
-- Owner observations for this step were not provided, so the attempt, the sheet and the cancel timing are not owner-confirmed and no cancellation PASS is recorded.
+- Owner observations (reported in the coordination chat; recorded here after the first version of this section wrongly listed them as missing): the preparation sheet appeared and no counter was seen; the owner tapped `취소` immediately during the initial pause; the sheet closed without an alert; DP remained at 15 clips; the last clip remained unavailable; the owner then swiped Mellow away manually and had not reopened it when asked about pid 7556.
 - S21 (snap-36) versus S20: store, 16 media full SHA-256 and listing paths identical; ProjectWorkspace empty but modified at 19:55 (used and cleaned during this launch); tmp names identical.
-- Observation gap: at S21 Mellow was running as pid 7556, a launch after pid 7552 ended that this batch did not perform; its options and cause are not inferred.
+- Observation gap: at S21 Mellow was running as pid 7556, a launch after pid 7552 ended that this batch did not perform; the owner reports having swiped Mellow away and not having reopened it at that time; its options and cause are not inferred.
+- Verdict: PASS for Replace cancellation during the Debug delay before conversion (owner UI plus S21 showing no row or media change and an empty workspace); it does not cover cancellation during an active file write.
 
 ### 12.7 R2f — successful Replace of unavailable `588C39AD` with H3, Undo / Redo, reopen
 
@@ -365,8 +368,8 @@ S19 (snap-32, owner's process pid 7538 running) versus S18: X's row was soft-del
   - The other 14 DP rows and 16 media full SHA-256 identical; B8A7FB31's 2 rows and recorded full hashes unchanged; DP 15 active; ProjectWorkspace empty (modified 20:00); CaptureStaging empty; tmp names identical.
 - When the `588C39AD` row was removed (Editor exit or startup cleanup within the unrecorded process) is not observable without a console.
 
-Verdicts: R1 and R1′ PASS (owner UI plus captured removal logs plus snapshots); R2a–R2d: the owner observed the expected rejection for each source with X left unavailable (wording as transcribed), and S18 shows no state change; R2f PASS as reported by the owner ("all requested UI checks passed") plus snapshot, without a console; R2e not exercised; R2e′ device evidence only (no owner confirmation), not a PASS.
+Verdicts: R1 and R1′ PASS (owner UI plus captured removal logs plus snapshots); R2a–R2d PASS by owner verdict (expected rejection for each source with X left unavailable, wording as transcribed; S18 shows no state change; R2d sheet appearance not reported); R2f PASS as reported by the owner ("all requested UI checks passed") plus snapshot, without a console; R2e not exercised; R2e′ PASS for cancellation during the pre-conversion Debug delay (owner UI plus S21).
 
-Limitations: cancellation, if it occurred, would be during the pre-normalization delay, not mid-write; the replacement flow ran without a console; F5 (Select Clips C1) remains postponed.
+Limitations: cancellation was exercised only during the pre-normalization Debug delay, not during an active file write; the replacement flow ran without a console; F5 (Select Clips C1) remains postponed.
 
 Phase 6 remains In Progress and Needs Device Test.
