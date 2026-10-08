@@ -883,3 +883,44 @@ Open:
 - R3, R5 / R6 / R10 measurement, accessibility and the other Phase 6 gates remain open.
 
 Phase 6 remains In Progress and Needs Device Test.
+
+## 21. RV — Editor Add Retry Preparation-sheet Visibility, 2026-10-08
+
+Purpose: follow-up to §20's open observation that, on the MWF-Add Retry, the owner did not see the preparation sheet.
+
+### 21.1 Automated model coverage (`a9d0bbe`, `test: cover preparation state on Editor retry`)
+
+- `EditorImportFlowTests.testAddRetryShowsFreshPreparationWhilePendingThenAppliesOnce` and `testReplaceRetryShowsFreshPreparationWhilePendingThenAppliesOnce`, through the existing `addClips()` / `replaceSelectedClip()` and `retryImport()` entry points with a parked fake normalizer: `다시 시도` clears the failure prompt; while the Retry attempt is pending `importPreparation` is non-nil with reset progress (Add: 0 completed, back at `1/2` after the first attempt reached item 2; Replace: a new single-item progress); it clears after the Retry completes; the result is applied exactly once with one Undo entry and no workspace left.
+- Run on the iPhone 17 Simulator with `SelectClipsImportFlowTests`: 49/49 passed; not mutation-checked.
+- These are model-state assertions: they show that the Editor Retry path sets the state its `.overlay` presents, not that SwiftUI rendered the overlay on the device.
+
+### 21.2 Device run (installed Debug `95836a9`, Pm, K1)
+
+- No reinstall; Debug build from `95836a9` (§20.1); only `-uiTestNormalizerFailures=1 -uiTestNormalizerDelay=8000` (`logs/rv-launch-command.txt`), so each attempt waits 8 s before normalizing and the first attempt fails before any output.
+- snap-76-RV-baseline (05:17:33Z) = snap-75: Pm active K1 `A3435A98`, A1 `354E32C3`, K1 `C6C6A5AA`; 29 media files; workspace empty.
+- Launch: 14:19:14 KST, pid 8366, console `controls active: normalizer=true capacity=false midWrite=none` (the delay and failure values are not printed; the arguments are in the launch-command file); recovery referenced 29, failures 0; target `saved project: 9EF36AA2…` (14:25:09); editor `clips=3 total=10.5s` (14:25:35).
+- First attempt (Editor `+` Add, K1 only): 14:25:47 `UI-test normalizer failure injected before the item's output (simulated, not an environmental failure)`, `Import attempt normalization failed`; at the alert, snap-77 (05:26:15Z): store and 29 media identical to snap-76, workspace `98ECF746…` held only the K1 transfer copy, no attempt directory or output.
+
+### 21.3 Owner observation
+
+- After tapping `다시 시도` the owner saw the preparation sheet; no further alert appeared; the Editor showed 4 clips.
+- No screenshot was taken: this is a visual observation, not screenshot-verified evidence.
+
+### 21.4 Snapshot verification
+
+- snap-78-RV-after-retry (05:30:39Z) versus snap-77: exactly one new active row `A659084B-69B7-4978-B7E4-13DF41F7F59A` at order 3, `imported`, trimStart 0, src = trim = 2260/600, framing NULL, file SHA-256 `8a0e18fa8e25642495add09e6151477278f4fa7bd3b61dd43ada3a99b9cb8b20` (avc1 1080×1920 SDR Rec.709, 113 samples all 20/600, AAC 48 kHz stereo); Pm updated 14:29:54 KST.
+- All 29 earlier media SHA-256 (P4, DP, B8A7FB31 and Pm's three clips) identical to snap-76; 30 active rows and 30 files matching one to one; 0 deleted rows; workspace and staging empty.
+- Mellow was left running as pid 8366.
+
+### 21.5 Launch failure
+
+- The first launch attempt (requested 14:19:00 KST) ended the running pid 8356 (`--terminate-existing`) and then failed with `The process identifier of the launched application could not be determined` (CoreDevice 10004; `logs/rv-attempt1-launch-error.log`); the immediate retry launched normally.
+- This is the second such failure today (see §20.6); its cause is not established, and no state change resulted.
+
+### 21.6 Scope
+
+- With an 8-second Debug delay holding the Retry attempt open, the preparation sheet was visible during an Editor Add Retry by the owner's direct observation, consistent with the §21.1 model coverage.
+- This does not establish the sheet's production display duration, and it does not establish what appeared on screen during the earlier MWF-Add Retry (§20.7), which remains recorded as "I did not see the preparation sheet".
+- No other Phase 6 gate is affected.
+
+Phase 6 remains In Progress and Needs Device Test.
