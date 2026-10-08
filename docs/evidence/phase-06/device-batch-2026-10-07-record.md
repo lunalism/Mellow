@@ -723,3 +723,75 @@ Limits:
 - The device evidence for the cadence rule itself remains `IMG_0130.MOV` (ADR-048 Revision 2). This review covers only the six outputs above. It does not certify other sources, and it closes no other Phase 6 gate.
 
 Phase 6 remains In Progress and Needs Device Test.
+
+## 19. SM — Select Clips Exclusion of Unsupported and Non-portrait Items (seed → Pa → Pb → Pm), 2026-10-08
+
+Purpose: the open Select Clips gate for per-item exclusion of unsupported (container) and non-portrait sources with the remaining valid items continuing, and the consolidated multi-item notice (ROADMAP Phase 6 Scope / Tests / Acceptance; ADR-042 Revision 4 §6, ADR-043 Revision 1, ADR-044 Revision 1).
+
+The owner authorized one empty disposable seed and the replacement of only the disposable targets created during this check (seed → Pa → Pb → Pm), and accepted that the final saved Project is Pm, so P4 stays stored but is not reachable from the Projects screen; P4, DP and B8A7FB31 were never a target.
+
+### 19.1 Expected behaviour from the implementation (`d12d067` code = installed `3ce5d45` outside `docs/`)
+
+- `+ 새 프로젝트 시작` › `새 프로젝트 만들기` targets `.replacingSaved(<current saved Project>)`, the newest `updatedAt` (`ProjectsEntryModel` / `ImportAttemptCoordinator`).
+- More than one selected item is a `.multipleItems` session; `ImportSelectionNotice.derive` gives one notice: unsupported only → `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.`; non-portrait only → `일부 영상이 제외되었어요` / `세로 형식이 아닌 영상은 추가할 수 없어요.`; more than one family → `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.`; button `확인`.
+- With no accepted item the flow discards the workspace, shows the notice and changes nothing; otherwise the accepted items commit in selection order and the Editor opens after the notice is acknowledged.
+- Unit coverage of the derivation, including ready + MP4 + landscape mixtures: `ImportSelectionPreflightTests` (lines 354–400, 425–426, 725).
+
+### 19.2 Fixtures, pre-state, seed and launches
+
+| ID | Picker label | Role | Expected result |
+| --- | --- | --- | --- |
+| M01 | `M01 EXACT 1.0s` | valid, ready | byte copy `9e68d6e6…ba30`, 600/600 |
+| M02 | `M02 EXACT 5.0s` | valid, ready | byte copy `8cfee24c…8f1e`, 3000/600 |
+| A1 | grey frame, `A1`, `1080x1440` | valid, ready (3:4, §16) | byte copy `81bf19d2…88fef0`, 1800/600 |
+| M06 | `M06 MP4 3.0s` | unsupported container | excluded, no media |
+| M07 | `M07 LANDSCAPE 3.0s` | non-portrait | excluded, no media |
+
+- snap-57-pre-SM (01:51:11Z): store, media SHA-256 and tmp identical to snap-56 (P4 8, DP 16, B8A7FB31 2, 26 media); Mellow was running as pid 8120, the PS launch (not an observation gap), ended by the seed launch.
+- SEED: 2026-10-08 10:52:39 KST, pid 8157, `--terminate-existing --console` with `-- -uiTestSeedPortrait` only (`logs/smseed-*`); no `controls active` line; startup reconciled 4 Projects; `saved project: 8E2D61F2-0DAC-4B6C-9D3F-A6D51184B74C` at 10:54:01; the owner opened Projects only and swiped Mellow away (console: exit code 0).
+- snap-58-SM-seed (01:56:01Z) versus snap-57: exactly one new Project `8E2D61F2-0DAC-4B6C-9D3F-A6D51184B74C`, portrait, created = updated 10:52:39 KST, 0 clips, no folder; all other rows, the 26 hashes, the listing and tmp identical.
+- SM launch: 10:57:42 KST, pid 8158, `--terminate-existing --console` with no app arguments (`logs/sm-launch-command.txt`, `logs/sm-console.log`); no `controls active` or `UI-test` line (the seed option and the earlier normalizer delay were absent); 4 Projects reconciled (no second seed); recovery referenced 26, removed 0, failures 0.
+- Before every confirmation the owner re-entered the Projects screen and stopped, and a fresh `Projects entry saved project:` line was checked against the expected disposable target.
+
+### 19.3 Results
+
+The notice text below is the owner's transcription; no screenshot was supplied for SM1–SM4, so none of it is screenshot-verified.
+
+| Step | Target (verified line) | Selection | Owner observation | Snapshot result |
+| --- | --- | --- | --- | --- |
+| SM1 | seed `8E2D61F2…` (10:58:21) | M06, M07 | `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.` / `확인`; no preparation sheet; stayed on Projects | snap-59-SM1: store and 26 hashes identical to snap-58; seed still current with 0 clips; no file from M06 / M07 |
+| SM2 | seed (11:12:09) | M01, M07 | `일부영상이 제외되었어요` (owner's spacing) / `세로 형식이 아닌 영상은 추가할 수 없어요.` / `확인`; no sheet or further alert; Editor showed one clip (duration not separately confirmed) | snap-60-SM2: seed row gone (no media or folder); Pa `FF5D752A-9EF2-44BE-AD72-0A78B098778E` (11:13:32) with clip `73318DC5-0BFB-4135-8E12-11462D08D971` 600/600, file `9e68d6e6…ba30` = M01; console `Project editor loaded FF5D752A… clips=1 total=1.0s` (11:13:56) |
+| SM3 | Pa (11:16:55) | M02, M06 | `일부 영상을 추가할 수 없어요` / `읽을 수 없거나 지원하지 않는 영상은 제외되었어요.` / `확인`; no sheet; Editor showed one clip (duration not separately confirmed) | snap-61-SM3: Pa's row, clip `73318DC5` (no row remains), M01-copy file and folder gone; Pb `6BB6D6A3-8035-4465-AEE5-838701AAC5BF` (11:18:23) with clip `77064FC0-282C-49D3-A0A7-10A21F769AB2` 3000/600, file `8cfee24c…8f1e` = M02; console `clips=1 total=5.0s` (11:18:44) |
+| SM4 | Pb (11:51:14) | M01, A1, M06, M07 | `일부 영상이 제외되었어요` / `길이 조건에 맞지 않거나 사용할 수 없는 영상은 추가할 수 없어요.` / `확인`; Editor showed exactly two clips, 1.0 s then 3.0 s; preparation-sheet visibility not reported | snap-62-SM4: Pb's row, clip `77064FC0`, M02-copy file and folder gone; Pm `9EF36AA2-84CB-427C-9B1F-AF5B57BA811E` (11:53:45) with clips in order `69F8280F-871C-4C32-8C8C-6194E5CD12E6` (order 0, 600/600, file `9e68d6e6…ba30` = M01, avc1 1080×1920) and `354E32C3-CD58-41A4-91B6-5C8BB39F8A8C` (order 1, 1800/600, file `81bf19d2…88fef0` = A1, avc1 1080×1440); console `Project editor loaded 9EF36AA2… clips=2 total=4.0s`, active clips in that order (11:54:08) |
+
+- Every committed clip is `imported`, trimStart 0, trimDuration = sourceDuration, framing X / Y / scale NULL and not deleted; each committed file is a byte-identical copy of its fixture.
+- The Editor opened about 20–24 s after each commit, consistent with navigation waiting for `확인`; no Mellow error line appeared in the console.
+- The title spacing the owner transcribed in SM2 differs from the code string `일부 영상이 제외되었어요`; it is recorded as reported wording, not as a verified copy defect.
+
+### 19.4 PhotosPicker representation
+
+- For M01, M02 and A1 the committed files are byte-identical to the Mac-side fixtures, so PhotosPicker delivered the original bytes for these items on this route; this is not a general claim about Photos.
+- For M06 and M07 the delivered representation was not captured; Mellow removes excluded copies from the workspace before commit and does not log the exclusion reason. They are known only to have been excluded, in the families shown by the single-family notices of SM3 (M06: unsupported) and SM2 (M07: non-portrait); this run does not establish that M06 arrived as an MP4 container or which preflight check rejected it.
+
+### 19.5 Preservation and cleanup
+
+- P4's 8, DP's 16 and B8A7FB31's 2 store rows and their 26 media SHA-256 are identical from snap-57 through snap-62, and their `updatedAt` values are unchanged.
+- At snap-62 the store holds 4 Projects (Pm 2, P4 8, DP 16, B8A7FB31 2) and 28 clip rows, all active; the 28 active rows' media paths and the 28 files under `Projects/` match one to one.
+- After every step ProjectWorkspace and CaptureStaging were empty and the only tmp change was the timestamp of the empty `ProjectMediaTransfer` and `TemporaryItems` folders.
+- Removed during SM (all disposable, created in this check): the seed row; Pa's row, clip, file and folder; Pb's row, clip, file and folder.
+- Mellow was left running as pid 8158; Pm is now the saved Project.
+
+### 19.6 Verdict and open gaps
+
+Verdict: SM1–SM4 PASS, bounded to the verified Select Clips exclusion and disposable-target replacement behaviour — an all-excluded unsupported + non-portrait selection changed nothing; a single excluded family excluded only that item and committed the rest; and the mixed unsupported + non-portrait selection with two valid items committed exactly those two, in selection order, as byte-identical copies, replacing only the disposable target. The notice text rests on the owner's transcription (all four matched the expected copy except the SM2 title spacing), not on screenshots.
+
+Scope: ready synthetic fixtures only (no preparation sheet expected; SM4 sheet visibility not reported), Select Clips only, no-option Debug build, LunaTestphone.
+
+Open, not closed by SM:
+- Screenshot-verified copy for these four notices.
+- Normalization-required items mixed with exclusions on Select Clips (M05 deliberately not added).
+- The delivered representation of M06 / M07 and the specific preflight reason for M06.
+- Accessibility of the notices (UI Accessibility Verification gate).
+- SM closes no other Phase 6 gate (mid-write kill, import during delete / replacement, runtime disk full, peak storage, baseline measurement, ADR-050 Integration Gate items remain open).
+
+Phase 6 remains In Progress and Needs Device Test.
