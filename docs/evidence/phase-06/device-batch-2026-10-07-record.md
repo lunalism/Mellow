@@ -648,6 +648,7 @@ Evidence sources: the rendered text and bar fill come from the screenshot images
 - The committed order equals the selection order (H1, H2, H3, M05, M08).
 - All five rows are `imported`, trimStart 0, trimDuration = sourceDuration, framing X / Y / scale NULL, not deleted.
 - Unevaluated observation: the H1 / H2 outputs end with a 1/600 final sample after 117 samples at 20/600, and H3's samples extend to 2280/600 within a 2262/600 track range; these match the same sources' earlier DP outputs and are recorded as observed only — this run does not evaluate or resolve cadence compliance (ADR-048 Revisions 1 / 2) for these sources.
+  - Later note (2026-10-08, after PS): this observation stayed unevaluated within PS; a separate read-only review of the inspected outputs is recorded in §18.
 - Console: no Mellow error lines in the run; the system AVC / HEVC encoder registered at 10:28:40 (about 15 s after the run began, consistent with item 1's hold); the console does not log sheet text or successful imports.
 
 ### 17.5 Preservation and cleanup
@@ -670,5 +671,55 @@ Open, not closed by PS:
 - The sheet's accessibility (VoiceOver label / percentage value, Dynamic Type, contrast, Reduce Motion) belongs to the UI Accessibility Verification gate.
 - Select Clips and Replace sheets were not captured in this run; cancellation and failure paths were covered earlier (D1-3, F1–F3, R2e′) and were not repeated.
 - PS closes no other Phase 6 gate (mid-write kill, import during delete / replacement, runtime disk full, peak storage, baseline measurement, Select Clips mixed exclusion, ADR-050 Integration Gate items remain open).
+
+Phase 6 remains In Progress and Needs Device Test.
+
+## 18. Follow-up — Cadence Review of the Normalized H1–H3 Outputs (read-only), 2026-10-08
+
+Purpose: evaluate the short final sample observed in §17 (left unevaluated there) against the documented output-cadence and duration contract; this is an offline review of existing snapshot copies with no app launch, device import or code change.
+
+### 18.1 Governing requirements
+
+- ADR-048 Revision 1 (Cadence Grid): with `d = outputFrameDuration` and `E` the exact normalization session end, the video output has exactly one frame at every `t_k = k × d` with `t_k < E`; the writer session ends at `E`, so the last encoded sample's terminal duration may be shorter than `d`, and the output is not extended to fill the last interval.
+- ADR-048 Revision 2 (takes precedence): the exact rational presentation-time grid is the authoritative cadence evidence — the grid starts at 0, every adjacent interval is exactly `d`, and only the last sample may be shorter, ending at `E`; average or metadata rates (`nominalFrameRate`, `sampleCount / duration`) may exceed 30 because of that sample and are diagnostic only, never a rejection reason; skipping the short last sample or ending the session early is forbidden.
+- ADR-045 §7: `source duration <= output duration <= source duration + 1/30 s`; for a normalized item, `sourceDuration` is the validated output's actual duration, `trimStart = 0`, `trimDuration` is the validated Accepted Source Duration, and the output must cover the whole trim.
+- Implementation reference (code reading at `64692dd`, unchanged from installed `3ce5d45` outside `docs/`): `AVFoundationWorkingMediaNormalizer` ends the writer session at `plan.sourceDuration`, and `WorkingMediaOutputValidator` requires every interval to equal `d` and `last < E <= last + d` with `E = plan.sourceDuration`.
+
+### 18.2 Inspected outputs and findings
+
+The inputs were snapshot copies, verified by SHA-256 against each snapshot's `media.sha256`. The tool is `analysis/cadence-2026-10-08/gridcheck` in the durable root; its source, invocation, inputs, saved output and hashes are kept there with a README and `cadence-manifest.sha256`. The output frame duration `d` is 20/600 throughout.
+
+| Output | Source | Snapshot | Total (asset = track) | Presentation grid | Final sample (stored duration) | Edit list | Clip metadata |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `642C8513-119E-4107-A7AF-4446BD511FEF` (`99fca423…5e83`) | H1 | snap-56-PS | 2341/600 | 118 samples at 0 … 2340, 0 off-grid, every gap 20, 0 duplicates | at 2340, stored 1/600; stored durations sum to 2341 | media 0+2341 → track 0+2341 | src 2341 = trim 2341, trimStart 0 |
+| `35FC6A16-D8BA-4722-B89A-6985DC3ADC8F` (`5cdac8cf…6363`) | H2 | snap-56-PS | 2341/600 | same as H1 | at 2340, stored 1/600; sum 2341 | media 0+2341 → track 0+2341 | src 2341 = trim 2341, trimStart 0 |
+| `5BA780F5-2FB1-4F64-BC51-DC4C585FD9F8` (`372007d1…a801`) | H3 | snap-56-PS | 2262/600 | 114 samples at 0 … 2260, 0 off-grid, every gap 20, 0 duplicates | at 2260, stored 20/600; sum 2280 | media 0+2262 → track 0+2262 (presents the last frame for 2/600) | src 2262 = trim 2262, trimStart 0 |
+| `D47D2BE1-1392-4D3F-AAC2-5652995777BE` (`9e0cc015…b761`) | H1 (D1-2) | snap-54-AF-final | 2341/600 | same as `642C8513` | stored 1/600; sum 2341 | media 0+2341 → track 0+2341 | src 2341 = trim 2341 |
+| `BFB501AA-21B3-41ED-B1BD-462FF0F9FDD2` (`a7c22adc…b180`) | H2 (D1-2) | snap-54-AF-final | 2341/600 | same as `642C8513` | stored 1/600; sum 2341 | media 0+2341 → track 0+2341 | src 2341 = trim 2341 |
+| `4899F476-D07B-4FAA-BF5E-BCB10027121E` (`8c5e1467…bdbc`) | H3 (D1-2) | snap-54-AF-final | 2262/600 | same as `5BA780F5` | stored 20/600; sum 2280 | media 0+2262 → track 0+2262 | src 2262 = trim 2262 |
+
+Three quantities are kept distinct:
+
+- Presentation spacing: every adjacent interval is exactly 20/600 in all six outputs.
+- Stored sample duration: only the final sample differs. H1 and H2 store 1/600. H3 stores 20/600, and its edit list ends the track at 2262.
+- Total duration: equals `E` exactly in all six outputs.
+
+The H1 / H2 `nominalFrameRate` of 30.243486 and `minFrameDuration` of 1/600 reported earlier by `tools/probe` follow from the short final sample; Revision 2 classes them as diagnostic only.
+
+### 18.3 Result
+
+All six inspected outputs comply with ADR-048 Revisions 1 and 2 and with ADR-045 §7:
+
+- Frame count: `E` = 2341/600 requires targets k = 0…117 (118 frames), and `E` = 2262/600 requires k = 0…113 (114 frames). Both counts are exact, with no missing, duplicate or off-grid timestamp and no `2d` interval.
+- End of the last frame: the final frame is presented for `E − t_last` (1/600 for H1 / H2, 2/600 for H3), so `last < E <= last + d` holds.
+- Total duration: the output equals the Accepted Source Duration recorded as `trimDuration`, which lies within `[source, source + 1/30 s]`, and the trim covers the whole output.
+
+The short final sample is the contract's prescribed form, not a defect, and no contract ambiguity was found for presentation timing or total duration.
+
+Limits:
+
+- The original H1–H3 camera files were never captured. Their own frame timing and bytes are unknown, and the only source-side fact is the Accepted Source Duration, as measured by the app on the delivered file and recorded as `trimDuration`. Compliance is judged on the outputs, which is what the contract governs.
+- The two end-storage forms play back the same (a shortened final sample duration for H1 / H2; a full-length final sample cut by the edit list for H3), but the reason the writer produced different forms is unknown and is not inferred. The contract constrains presentation times and total duration, not the container representation.
+- The device evidence for the cadence rule itself remains `IMG_0130.MOV` (ADR-048 Revision 2). This review covers only the six outputs above. It does not certify other sources, and it closes no other Phase 6 gate.
 
 Phase 6 remains In Progress and Needs Device Test.
