@@ -458,6 +458,86 @@ final class EditorImportFlowTests: XCTestCase {
         await assertOneHistoryEntry(model, kind: .replace, base: base)
     }
 
+    // MARK: - Preparation visibility on Retry (model state only; does not show SwiftUI rendered the overlay)
+
+    /// Editor Add: the first attempt reaches item 2 of 2 and fails; `다시 시도` clears the prompt and, while the Retry
+    /// attempt is pending, `importPreparation` is a NEW progress (nothing completed, back at `1/2`). It clears once the
+    /// Retry completes, and the result is applied exactly once.
+    func testAddRetryShowsFreshPreparationWhilePendingThenAppliesOnce() async throws {
+        let base = try seed()
+        let model = makeModel(base, fixtures: [try await fixture("n1", seconds: 2, fps: 60), try await fixture("n2", seconds: 1.5, fps: 60)])
+        await normalizer.script([.succeed(outputDuration: nil), .fail])
+        _ = await model.addClips()
+        XCTAssertEqual(model.importRetryPrompt, .preparationFailed)
+        XCTAssertNil(model.importPreparation, "no sheet while the Retry prompt waits")
+        XCTAssertEqual(model.project, base)
+
+        await normalizer.script([.park])
+        model.retryImport()
+        XCTAssertNil(model.importRetryPrompt, "the failure prompt is cleared on 다시 시도")
+        await normalizer.waitUntilParked()
+        XCTAssertNil(model.importRetryPrompt)
+        let pending = try XCTUnwrap(model.importPreparation, "the sheet's state is set while the Retry attempt is pending")
+        XCTAssertEqual(pending.total, 2)
+        XCTAssertEqual(pending.completed.count, 0, "progress resets for the Retry attempt")
+        XCTAssertEqual(pending.positionLabel, "1/2")
+        XCTAssertEqual(model.project, base, "the confirmed timeline stays while the Retry is pending")
+        XCTAssertTrue(model.isNavigationLocked)
+
+        await normalizer.release()
+        let applied = await eventually { model.project.clips.count == base.clips.count + 2 }
+        XCTAssertTrue(applied)
+        XCTAssertNil(model.importPreparation, "the sheet's state clears after the Retry completes")
+        XCTAssertNil(model.importRetryPrompt)
+        XCTAssertFalse(model.isNavigationLocked)
+        XCTAssertEqual(model.project.clips.dropFirst(base.clips.count).map { seconds($0.trimDuration) }, [2, 1.5])
+        XCTAssertEqual(try persisted(base.id), model.project)
+        XCTAssertEqual(model.completedRetryImport?.replaced, false)
+        XCTAssertEqual(workspaceCount(), 0)
+        await assertOneHistoryEntry(model, kind: .add, base: base)
+    }
+
+    /// Editor Replace: the first attempt fails; `다시 시도` clears the prompt and, while the Retry attempt is pending,
+    /// `importPreparation` is a new single-item progress with the slot still the confirmed one. It clears once the
+    /// Retry completes, and the replacement is applied exactly once.
+    func testReplaceRetryShowsFreshPreparationWhilePendingThenAppliesOnce() async throws {
+        let base = try seed(withFile: 1, withoutFile: 2)
+        let model = makeModel(base, fixtures: [try await fixture("n1", seconds: 3, fps: 60)])
+        model.select(base.clips[1].id)
+        await model.refreshAvailability()
+        await normalizer.script([.fail])
+        let first = await model.replaceSelectedClip()
+        XCTAssertNil(first)
+        XCTAssertEqual(model.importRetryPrompt, .preparationFailed)
+        XCTAssertNil(model.importPreparation, "no sheet while the Retry prompt waits")
+
+        await normalizer.script([.park])
+        model.retryImport()
+        XCTAssertNil(model.importRetryPrompt, "the failure prompt is cleared on 다시 시도")
+        await normalizer.waitUntilParked()
+        XCTAssertNil(model.importRetryPrompt)
+        let pending = try XCTUnwrap(model.importPreparation, "the sheet's state is set while the Retry attempt is pending")
+        XCTAssertEqual(pending.total, 1)
+        XCTAssertEqual(pending.completed.count, 0, "a fresh progress for the Retry attempt")
+        XCTAssertNil(pending.positionLabel, "no N/M for a single item")
+        XCTAssertEqual(model.project, base, "the slot stays the confirmed (unavailable) clip while pending")
+        XCTAssertTrue(model.isNavigationLocked)
+
+        await normalizer.release()
+        let applied = await eventually { model.project.clips.count == 3 && model.project.deletedClips.count == 1 }
+        XCTAssertTrue(applied)
+        XCTAssertNil(model.importPreparation, "the sheet's state clears after the Retry completes")
+        XCTAssertNil(model.importRetryPrompt)
+        XCTAssertFalse(model.isNavigationLocked)
+        let newID = try XCTUnwrap(model.selectedClipID)
+        XCTAssertEqual(model.project.clips.map(\.id), [base.clips[0].id, newID, base.clips[2].id], "replaced once, same slot")
+        XCTAssertEqual(model.project.deletedClips.map(\.id), [base.clips[1].id])
+        XCTAssertEqual(try persisted(base.id), model.project)
+        XCTAssertEqual(model.completedRetryImport?.replaced, true)
+        XCTAssertEqual(workspaceCount(), 0)
+        await assertOneHistoryEntry(model, kind: .replace, base: base)
+    }
+
     func testActivityTracksEachOperationSeparately() async throws {
         let projectID = UUID()
         let first = activity.begin(projectID: projectID, presenter: ImportOperationPresenter())
