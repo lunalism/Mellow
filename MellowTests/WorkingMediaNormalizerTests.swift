@@ -2980,3 +2980,109 @@ final class WorkingMediaNormalizerTests: XCTestCase {
         XCTAssertEqual(try stamp(source), before)
     }
 }
+
+// MARK: - Debug mid-write control (UITestScriptedNormalizer, `-uiTestNormalizerMidWrite=`)
+
+extension WorkingMediaNormalizerTests {
+    private func midWriteFixture() async throws -> (source: URL, plan: WorkingMediaNormalizationPlan) {
+        let source = try await write(Fixture(frames: 72, frameDuration: CMTime(value: 10, timescale: 600), audio: .aac(channels: 2, rate: 48_000)))
+        return (source, try await plan(for: source))
+    }
+
+    /// `fail:<n>` fails the append after the real writer accepted n video frames, the REAL normalizer removes its partial
+    /// output and keeps the source, only that failure is reported as the simulated ENOSPC, and a retry in the same launch
+    /// (here: the same normalizer, as Retry uses) runs without a second injection.
+    func testMidWriteFailIsOneShotRemappedAndCleanedUp() async throws {
+        let (source, plan) = try await midWriteFixture()
+        let before = try stamp(source)
+        let normalizer = UITestScriptedNormalizer(arguments: ["-uiTestNormalizerMidWrite=fail:5"])
+        let target = destination("mid-write-fail")
+        do {
+            _ = try await normalizer.normalize(sourceURL: source, destinationURL: target, plan: plan)
+            XCTFail("the injected mid-write failure did not fail the run")
+        } catch WorkingMediaNormalizationError.appendFailed(.video, let domain, let code) {
+            XCTAssertEqual(domain, NSPOSIXErrorDomain)
+            XCTAssertEqual(code, Int(ENOSPC))
+        }
+        let trigger = try XCTUnwrap(normalizer.midWriteState.trigger)
+        XCTAssertEqual(trigger.mode, .fail)
+        XCTAssertEqual(trigger.videoFramesAccepted, 5, "triggers only after exactly the configured accepted frames")
+        XCTAssertNotNil(trigger.outputLogicalBytes, "the writer's output existed at the injection point")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path), "partial output left behind")
+        XCTAssertEqual(workspaceEntries(), [])
+        XCTAssertEqual(try stamp(source), before)
+
+        let retryCopy = normalizer
+        let result = try await retryCopy.normalize(sourceURL: source, destinationURL: target, plan: plan)
+        XCTAssertEqual(result.destinationURL, target)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
+        XCTAssertEqual(normalizer.midWriteState.trigger, trigger, "no second injection in the same launch")
+        XCTAssertEqual(try stamp(source), before)
+    }
+
+    /// A run that never reaches the configured frame count is untouched and leaves the claim unused; an unrelated
+    /// failure is never relabelled as the simulated ENOSPC.
+    func testMidWriteFailNeverRelabelsAnUnrelatedError() async throws {
+        let (source, plan) = try await midWriteFixture()
+        let unreached = UITestScriptedNormalizer(arguments: ["-uiTestNormalizerMidWrite=fail:100000"])
+        _ = try await unreached.normalize(sourceURL: source, destinationURL: destination("unreached"), plan: plan)
+        XCTAssertNil(unreached.midWriteState.trigger)
+        XCTAssertTrue(unreached.midWriteState.claim(), "the claim was never consumed")
+
+        let normalizer = UITestScriptedNormalizer(arguments: ["-uiTestNormalizerMidWrite=fail:1"])
+        let missing = sourceDir.appendingPathComponent("missing-\(UUID().uuidString).mov")
+        do {
+            _ = try await normalizer.normalize(sourceURL: missing, destinationURL: destination("missing"), plan: plan)
+            XCTFail("a missing source cannot normalize")
+        } catch WorkingMediaNormalizationError.appendFailed(_, let domain, _) where domain == NSPOSIXErrorDomain {
+            XCTFail("an unrelated failure was relabelled as the simulated out-of-space error")
+        } catch {}
+        XCTAssertNil(normalizer.midWriteState.trigger)
+    }
+
+    /// `hold:<n>:<ms>` waits after n accepted video frames and then lets the run finish normally.
+    func testMidWriteHoldTimesOutThenCompletes() async throws {
+        let (source, plan) = try await midWriteFixture()
+        let normalizer = UITestScriptedNormalizer(arguments: ["-uiTestNormalizerMidWrite=hold:5:400"])
+        let target = destination("mid-write-hold")
+        let clock = ContinuousClock()
+        let started = clock.now
+        let result = try await normalizer.normalize(sourceURL: source, destinationURL: target, plan: plan)
+        XCTAssertGreaterThanOrEqual(started.duration(to: clock.now), .milliseconds(400))
+        XCTAssertEqual(result.destinationURL, target)
+        let trigger = try XCTUnwrap(normalizer.midWriteState.trigger)
+        XCTAssertEqual(trigger.mode, .hold(milliseconds: 400))
+        XCTAssertEqual(trigger.videoFramesAccepted, 5)
+        XCTAssertNotNil(trigger.outputLogicalBytes)
+        XCTAssertEqual(normalizer.midWriteState.holdRelease, .timeout)
+        XCTAssertFalse(normalizer.midWriteState.holdActive)
+    }
+
+    /// Cancelling during a long hold releases it through the run's termination (no deadlock with `abort()` waiting for
+    /// the stream queues), cleans up the partial output and keeps the source; the next item runs without a hold.
+    func testMidWriteHoldIsReleasedByCancellation() async throws {
+        let (source, plan) = try await midWriteFixture()
+        let before = try stamp(source)
+        let normalizer = UITestScriptedNormalizer(arguments: ["-uiTestNormalizerMidWrite=hold:5:30000"])
+        let target = destination("mid-write-cancel")
+        let task = Task { try await normalizer.normalize(sourceURL: source, destinationURL: target, plan: plan) }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(20))
+        while !normalizer.midWriteState.holdActive && clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(normalizer.midWriteState.holdActive, "the hold point was never reached")
+        let cancelledAt = clock.now
+        task.cancel()
+        await expectCancellation { try await task.value }
+        XCTAssertLessThan(cancelledAt.duration(to: clock.now), .seconds(3), "cancellation waited for the hold instead of releasing it")
+        XCTAssertEqual(normalizer.midWriteState.holdRelease, .terminated)
+        XCTAssertFalse(normalizer.midWriteState.holdActive)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path), "partial output left behind")
+        XCTAssertEqual(workspaceEntries(), [])
+        XCTAssertEqual(try stamp(source), before)
+
+        let next = clock.now
+        _ = try await normalizer.normalize(sourceURL: source, destinationURL: target, plan: plan)
+        XCTAssertLessThan(next.duration(to: clock.now), .seconds(20), "the one-shot hold did not apply again")
+        XCTAssertEqual(normalizer.midWriteState.trigger?.videoFramesAccepted, 5)
+    }
+}

@@ -172,9 +172,57 @@ extension ProjectCompositionCoordinator {
     }
 }
 
+/// `-uiTestNormalizerMidWrite=hold:<frames>:<ms>` / `fail:<frames>` (DEBUG only): acts once per launch, on the first
+/// normalization item whose real writer has ACCEPTED `<frames>` video frames (`.sampleAppended` is reported only after
+/// `AVAssetWriterInput.append` returned true). `hold` keeps that item's video queue waiting for up to `<ms>` (≤ 60 s),
+/// released early by the run's termination, so a process kill can land while the output is mid-write; `fail` makes the
+/// next video append fail, so the real normalizer cleans up and its failure is reported as a SIMULATED out-of-space error.
+struct UITestMidWriteControl: Equatable, Sendable {
+    enum Mode: Equatable, Sendable {
+        case hold(milliseconds: Int)
+        case fail
+    }
+
+    static let key = "-uiTestNormalizerMidWrite="
+    static let maximumHoldMilliseconds = 60_000
+
+    let frames: Int
+    let mode: Mode
+
+    /// nil when the argument is absent or malformed (a malformed one never activates anything).
+    init?(arguments: [String]) {
+        guard let raw = arguments.first(where: { $0.hasPrefix(Self.key) })?.dropFirst(Self.key.count) else { return nil }
+        let parts = raw.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count >= 2, let frames = Int(parts[1]), frames > 0 else { return nil }
+        switch (parts[0], parts.count) {
+        case ("hold", 3):
+            guard let milliseconds = Int(parts[2]), (1...Self.maximumHoldMilliseconds).contains(milliseconds) else { return nil }
+            mode = .hold(milliseconds: milliseconds)
+        case ("fail", 2):
+            mode = .fail
+        default:
+            return nil
+        }
+        self.frames = frames
+    }
+
+    var summary: String {
+        switch mode {
+        case .hold(let milliseconds): return "hold:\(frames):\(milliseconds)"
+        case .fail: return "fail:\(frames)"
+        }
+    }
+
+    /// True when the argument is present but not usable (so the launch log can say it was ignored).
+    static func isMalformed(in arguments: [String]) -> Bool {
+        arguments.contains { $0.hasPrefix(key) } && UITestMidWriteControl(arguments: arguments) == nil
+    }
+}
+
 /// UI-test normalizer (DEBUG only): the REAL normalizer, optionally held for `-uiTestNormalizerDelay=<ms>` before each
-/// item (so the Preparation Sheet is observable and cancellable) and failing its first `-uiTestNormalizerFailures=<n>`
-/// items (so the R4 §3 Retry path can be driven). Progress is the real normalizer's.
+/// item (so the Preparation Sheet is observable and cancellable), failing its first `-uiTestNormalizerFailures=<n>`
+/// items (so the R4 §3 Retry path can be driven), and driven once per launch by `UITestMidWriteControl`. Progress is
+/// the real normalizer's.
 struct UITestScriptedNormalizer: WorkingMediaNormalizing {
     private final class Failures: @unchecked Sendable {
         private let lock = NSLock()
@@ -182,9 +230,59 @@ struct UITestScriptedNormalizer: WorkingMediaNormalizing {
         init(_ count: Int) { remaining = count }
         func take() -> Bool { lock.lock(); defer { lock.unlock() }; guard remaining > 0 else { return false }; remaining -= 1; return true }
     }
+
+    /// Launch-wide mid-write state, shared by every copy of this normalizer (one-shot across all flows). Internal so a
+    /// test can read what the control observed; nothing in the app reads it.
+    final class MidWriteState: @unchecked Sendable {
+        enum HoldRelease: Equatable, Sendable { case timeout, terminated }
+        struct Trigger: Equatable, Sendable {
+            let mode: UITestMidWriteControl.Mode
+            let videoFramesAccepted: Int
+            let outputLogicalBytes: Int64?
+            let outputAllocatedBytes: Int64?
+        }
+
+        private let lock = NSLock()
+        private var claimed = false
+        private var _trigger: Trigger?
+        private var _holdActive = false
+        private var _holdRelease: HoldRelease?
+
+        var trigger: Trigger? { lock.withLock { _trigger } }
+        var holdActive: Bool { lock.withLock { _holdActive } }
+        var holdRelease: HoldRelease? { lock.withLock { _holdRelease } }
+
+        /// The single claim per launch: true exactly once.
+        func claim() -> Bool { lock.withLock { guard !claimed else { return false }; claimed = true; return true } }
+        func record(_ trigger: Trigger) { lock.withLock { _trigger = trigger } }
+        func setHoldActive(_ active: Bool, release: HoldRelease? = nil) {
+            lock.withLock { _holdActive = active; if let release { _holdRelease = release } }
+        }
+    }
+
+    /// Per-item observations of one normalization run (the hooks are called from the run's stream queues and from
+    /// whichever thread terminates it).
+    private final class MidWriteRun: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _videoFramesAccepted = 0
+        private var _terminated = false
+        private var _injected = false
+
+        var videoFramesAccepted: Int { lock.withLock { _videoFramesAccepted } }
+        var terminated: Bool { lock.withLock { _terminated } }
+        var injected: Bool { lock.withLock { _injected } }
+        func accepted(_ count: Int) { lock.withLock { _videoFramesAccepted = count } }
+        func markTerminated() { lock.withLock { _terminated = true } }
+        func markInjected() { lock.withLock { _injected = true } }
+    }
+
+    static let holdPollInterval: TimeInterval = 0.05
+
     private let inner = AVFoundationWorkingMediaNormalizer()
     private let delay: Duration
     private let failures: Failures
+    let midWrite: UITestMidWriteControl?
+    let midWriteState = MidWriteState()
 
     init(arguments: [String]) {
         func value(_ key: String) -> Int {
@@ -192,6 +290,7 @@ struct UITestScriptedNormalizer: WorkingMediaNormalizing {
         }
         delay = .milliseconds(value("-uiTestNormalizerDelay="))
         failures = Failures(value("-uiTestNormalizerFailures="))
+        midWrite = UITestMidWriteControl(arguments: arguments)
     }
 
     func normalize(sourceURL: URL, destinationURL: URL, plan: WorkingMediaNormalizationPlan) async throws -> WorkingMediaNormalizationResult {
@@ -205,11 +304,81 @@ struct UITestScriptedNormalizer: WorkingMediaNormalizing {
             MellowLog.app.info("UI-test normalizer failure injected before the item's output (simulated, not an environmental failure)")
             throw WorkingMediaNormalizationError.writerFailed(domain: "UITest", code: 1)
         }
-        return try await inner.normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: progress)
+        guard let midWrite else {
+            return try await inner.normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: progress)
+        }
+        let run = MidWriteRun()
+        let state = midWriteState
+        let hooks = WorkingMediaNormalizerHooks(
+            observe: { stage in
+                switch stage {
+                case .terminated:
+                    // `terminate` reports this before it releases the streams and before `abort()` waits for the stream
+                    // queues, so a hold sees it within one poll interval and the queue drains.
+                    run.markTerminated()
+                case .sampleAppended(.video, let count):
+                    run.accepted(count)
+                    guard case .hold(let milliseconds) = midWrite.mode, count == midWrite.frames, state.claim() else { return }
+                    let trigger = Self.trigger(midWrite.mode, accepted: count, output: destinationURL)
+                    state.record(trigger)
+                    MellowLog.app.info("UI-test mid-write point: mode=hold videoFramesAccepted=\(count, privacy: .public) outputLogical=\(trigger.outputLogicalBytes ?? -1, privacy: .public) outputAllocated=\(trigger.outputAllocatedBytes ?? -1, privacy: .public) holdMs=\(milliseconds, privacy: .public)")
+                    Self.hold(milliseconds: milliseconds, run: run, state: state)
+                default:
+                    break
+                }
+            },
+            injectFault: { fault in
+                // Only the next video append after `frames` accepted ones, once per launch.
+                guard fault == .append(.video), case .fail = midWrite.mode,
+                      !run.injected, run.videoFramesAccepted >= midWrite.frames, state.claim() else { return false }
+                run.markInjected()
+                let trigger = Self.trigger(midWrite.mode, accepted: run.videoFramesAccepted, output: destinationURL)
+                state.record(trigger)
+                MellowLog.app.info("UI-test mid-write point: mode=fail videoFramesAccepted=\(trigger.videoFramesAccepted, privacy: .public) outputLogical=\(trigger.outputLogicalBytes ?? -1, privacy: .public) outputAllocated=\(trigger.outputAllocatedBytes ?? -1, privacy: .public) — injecting a SIMULATED out-of-space failure (not an OS write failure)")
+                return true
+            })
+        do {
+            return try await AVFoundationWorkingMediaNormalizer(hooks: hooks)
+                .normalize(sourceURL: sourceURL, destinationURL: destinationURL, plan: plan, progress: progress)
+        } catch let error as WorkingMediaNormalizationError {
+            // Relabel ONLY the failure this control caused: our injected video append, which the real normalizer reports
+            // with the writer's own error — nil for an injected fault, hence "AVFoundation" / 0. A writer that carried a
+            // real error, a cleanup failure or any other outcome is rethrown unchanged.
+            if run.injected, case .appendFailed(.video, "AVFoundation", 0) = error {
+                MellowLog.app.info("UI-test mid-write failure reported as NSPOSIXErrorDomain ENOSPC (simulated, not an OS write failure)")
+                throw WorkingMediaNormalizationError.appendFailed(.video, domain: NSPOSIXErrorDomain, code: Int(ENOSPC))
+            }
+            throw error
+        }
+    }
+
+    /// Waits on the calling stream queue, in short slices, until `milliseconds` pass or the run terminates.
+    private static func hold(milliseconds: Int, run: MidWriteRun, state: MidWriteState) {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let deadline = start.advanced(by: .milliseconds(milliseconds))
+        state.setHoldActive(true)
+        while !run.terminated && clock.now < deadline { Thread.sleep(forTimeInterval: holdPollInterval) }
+        let release: MidWriteState.HoldRelease = run.terminated ? .terminated : .timeout
+        state.setHoldActive(false, release: release)
+        let elapsed = start.duration(to: clock.now).components
+        let elapsedMs = elapsed.seconds * 1000 + elapsed.attoseconds / 1_000_000_000_000_000
+        MellowLog.app.info("UI-test mid-write hold released: reason=\(release == .terminated ? "terminated" : "timeout", privacy: .public) afterMs=\(elapsedMs, privacy: .public)")
+    }
+
+    /// Sizes of the in-progress output, read fresh (no cached resource values). nil when unreadable.
+    private static func trigger(_ mode: UITestMidWriteControl.Mode, accepted: Int, output: URL) -> MidWriteState.Trigger {
+        var fresh = output
+        fresh.removeAllCachedResourceValues()
+        let values = try? fresh.resourceValues(forKeys: [.fileSizeKey, .totalFileAllocatedSizeKey])
+        return MidWriteState.Trigger(mode: mode, videoFramesAccepted: accepted,
+                                     outputLogicalBytes: values?.fileSize.map(Int64.init),
+                                     outputAllocatedBytes: values?.totalFileAllocatedSize.map(Int64.init))
     }
 
     static func isRequested(by arguments: [String]) -> Bool {
         arguments.contains { $0.hasPrefix("-uiTestNormalizerDelay=") || $0.hasPrefix("-uiTestNormalizerFailures=") }
+            || UITestMidWriteControl(arguments: arguments) != nil
     }
 }
 
@@ -248,7 +417,7 @@ final class UITestImportCapacityScript {
 }
 
 /// The physical-device failure controls for the production real-picker flows (Select Clips, Editor Add / Replace):
-/// nil unless `-uiTestNormalizerFailures=` / `-uiTestNormalizerDelay=` or `-uiTestImportCapacityShortage=` is present.
+/// nil unless `-uiTestNormalizerFailures=` / `-uiTestNormalizerDelay=`, a valid `-uiTestNormalizerMidWrite=` or `-uiTestImportCapacityShortage=` is present.
 /// One instance per launch, shared by every flow, so each scripted count is consumed once per process.
 @MainActor
 struct UITestDeviceImportControls {
@@ -257,11 +426,15 @@ struct UITestDeviceImportControls {
     private let capacity: UITestImportCapacityScript?
 
     init?(arguments: [String]) {
+        if UITestMidWriteControl.isMalformed(in: arguments) {
+            MellowLog.app.error("UI-test mid-write control ignored: malformed \(UITestMidWriteControl.key, privacy: .public) argument")
+        }
         let normalizer = UITestScriptedNormalizer.isRequested(by: arguments) ? UITestScriptedNormalizer(arguments: arguments) : nil
         let capacity = UITestImportCapacityScript(arguments: arguments)
         guard normalizer != nil || capacity != nil else { return nil }
         let flags = (normalizer: normalizer != nil, capacity: capacity != nil)
-        MellowLog.app.info("UI-test device import controls active: normalizer=\(flags.normalizer, privacy: .public) capacity=\(flags.capacity, privacy: .public)")
+        let midWrite = normalizer?.midWrite?.summary ?? "none"
+        MellowLog.app.info("UI-test device import controls active: normalizer=\(flags.normalizer, privacy: .public) capacity=\(flags.capacity, privacy: .public) midWrite=\(midWrite, privacy: .public)")
         self.normalizer = normalizer
         self.capacity = capacity
     }

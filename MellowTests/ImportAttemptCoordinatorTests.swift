@@ -523,6 +523,38 @@ final class ImportAttemptCoordinatorTests: XCTestCase {
         XCTAssertNotNil(UITestDeviceImportControls(arguments: ["-uiTestNormalizerFailures=1"]))
         XCTAssertNotNil(UITestDeviceImportControls(arguments: ["-uiTestImportCapacityShortage=cr:1"]))
         XCTAssertFalse(UITestScriptedNormalizer.isRequested(by: ["-uiTestImportCapacityShortage=c1:1"]))
+        XCTAssertNil(UITestDeviceImportControls(arguments: ["-uiTestNormalizerMidWrite=hold:0:100", "-uiTestNormalizerMidWrite=bogus"]),
+                     "a malformed mid-write argument activates nothing")
+        XCTAssertNil(UITestScriptedNormalizer(arguments: ["-uiTestNormalizerDelay=0"]).midWrite)
+        XCTAssertEqual(try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestNormalizerMidWrite=fail:3"])).normalizer?.midWrite?.summary, "fail:3")
+    }
+
+    func testMidWriteControlParsesOnlyBoundedWellFormedArguments() {
+        func parsed(_ value: String) -> UITestMidWriteControl? { UITestMidWriteControl(arguments: ["-uiTestNormalizerMidWrite=\(value)"]) }
+        XCTAssertNil(UITestMidWriteControl(arguments: []))
+        XCTAssertEqual(parsed("hold:30:20000")?.mode, .hold(milliseconds: 20_000))
+        XCTAssertEqual(parsed("hold:30:20000")?.frames, 30)
+        XCTAssertEqual(parsed("hold:1:60000")?.mode, .hold(milliseconds: 60_000))
+        XCTAssertEqual(parsed("fail:5")?.mode, .fail)
+        XCTAssertEqual(parsed("fail:5")?.frames, 5)
+        for malformed in ["hold:30", "hold:30:0", "hold:30:60001", "hold:0:100", "hold:-1:100", "hold:x:100", "hold:30:20000:1",
+                          "fail:0", "fail:", "fail:5:100", "fail:x", "kill:5", "", ":5"] {
+            XCTAssertNil(parsed(malformed), malformed)
+            XCTAssertTrue(UITestMidWriteControl.isMalformed(in: ["-uiTestNormalizerMidWrite=\(malformed)"]), malformed)
+            XCTAssertFalse(UITestScriptedNormalizer.isRequested(by: ["-uiTestNormalizerMidWrite=\(malformed)"]), malformed)
+        }
+        XCTAssertFalse(UITestMidWriteControl.isMalformed(in: ["-uiTestNormalizerMidWrite=fail:5"]))
+        XCTAssertFalse(UITestMidWriteControl.isMalformed(in: []))
+    }
+
+    /// The claim is launch-wide: copies of one controls instance share it, so the control acts exactly once per process.
+    func testMidWriteClaimIsOneShotAcrossCopies() throws {
+        let controls = try XCTUnwrap(UITestDeviceImportControls(arguments: ["-uiTestNormalizerMidWrite=fail:1"]))
+        let first = try XCTUnwrap(controls.normalizer), second = try XCTUnwrap(controls.normalizer)
+        XCTAssertTrue(first.midWriteState === second.midWriteState)
+        XCTAssertTrue(first.midWriteState.claim())
+        XCTAssertFalse(second.midWriteState.claim())
+        XCTAssertFalse(first.midWriteState.claim())
     }
 
     func testDeviceImportControlsAttachTheCapacityOverrideOnlyWhenRequested() throws {
