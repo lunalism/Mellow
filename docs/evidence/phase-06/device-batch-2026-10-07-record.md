@@ -516,3 +516,79 @@ Verdicts: SC1, SC2, SC3 and the corrected SC4 PASS — owner-observed alerts, th
 Limitations: synthetic ready fixtures only; the screen on which the SC2 notice appeared was not reported; the console does not log successful imports, so each commit is established by the snapshot and the next `saved project` line.
 
 Phase 6 remains In Progress and Needs Device Test.
+
+## 16. AF — Aspect-mismatch Framing Preservation (Editor Add into P4), 2026-10-08
+
+Purpose: the Physical Device Test item "Source / Project Aspect Mismatch의 Framing 영역 보존" — a 3:4 portrait source added to a 9:16 project keeps its whole presentation frame and aspect ratio in the working file, with no Project crop baked in and `framing = nil` (ROADMAP Phase 6 Scope / Acceptance; ADR-022; ADR-047 and Revision 1).
+
+The owner authorized Editor Add of A1 and A2 into the disposable Project P4 `995A1AAF-200E-42C8-8AE2-C6155D54F70A` only, preserving its M01 clip, DP and B8A7FB31; Select Clips and Project replacement were not used.
+
+A3 (a Photos-cropped real source) was deferred, and baseline performance measurement is kept separate from this functional check.
+
+### 16.1 Fixtures and offline tools
+
+The fixtures and tools were created 2026-10-08 in the durable root (outside git): `tools/makefixture` and `tools/edgecheck` (with `.swift` sources), `sources/AF/` (fixtures, `FIXTURES.md`, `AF-manifest.sha256`, source edgecheck frames).
+
+Each frame is mid-grey with 16 px edge stripes (top red, bottom green, left blue, right yellow), 32 px corner squares (TL white, TR cyan, BL magenta, BR orange), a large `A1` / `A2` label, the raster text and a frame counter.
+
+`edgecheck` decodes every frame and measures each stripe's width on three sample lines per edge, counts non-stripe and near-black pixels on the outermost rows and columns (corners excluded) and classifies the four corners.
+
+| ID | File | SHA-256 | Source-file facts (`tools/probe`) | Expected classification (code reading) |
+| --- | --- | --- | --- | --- |
+| A1 | `A1-3x4-1080x1440.mov`, 75,986 B | `81bf19d29d0129ade1f327417844895c019c9429603d91bdc73f9d9ebe88fef0` | QuickTime, avc1 High, 1080×1440, identity transform, 90 frames at 20/600, 1800/600, Rec.709, no audio | ready fast path (byte copy) |
+| A2 | `A2-3x4-1440x1920.mov`, 98,236 B | `e3c58a93073a946df6c32369807f97641d05274d1bf892d986bbff8ff9a83d03` | same, 1440×1920 | normalization (raster reason), full aperture, built-in path; ADR-047 output 1080×1440 |
+
+Source baseline over all 90 frames of each fixture: stripe widths top 16, left 16, right 16, bottom 17 (the green/grey boundary pixel decodes nearer green), 0 non-stripe and 0 near-black pixels on every outermost line, corners correct in 90/90 frames.
+
+Negative control: the same checker on DP media `0E9BA7E9…` (no markers) reports stripe widths 0 and up to 1824 non-stripe outermost pixels.
+
+The owner AirDropped both files to LunaTestphone, saved them to Photos and confirmed the labels and 3-second durations before Mellow was opened.
+
+### 16.2 Pre-state and launch
+
+- snap-51-pre-AF (00:55:40Z): store, media SHA-256 and tmp identical to snap-50 (SC-S4); DP 16 active, B8A7FB31 2, P4 1 clip (`7CC09E8E`, M01, framing NULL) and P4 newest `updatedAt`; ProjectWorkspace empty.
+- Mellow was already running as pid 7823, a launch this batch did not perform (observation gap; options and cause not inferred; the owner had not opened Mellow); state was unchanged.
+- Launch: 2026-10-08 09:57:06 KST, pid 8041, `--terminate-existing --console` with `OS_ACTIVITY_DT_MODE` and no app arguments (`logs/af-launch-command.txt`, `logs/af-console.log`); no `controls active` or injection lines; recovery preserved DP 16, P4 1, B8A7FB31 2, removed 0, failures 0.
+- Target: `Projects entry saved project: 995A1AAF-200E-42C8-8AE2-C6155D54F70A` at 09:58:11, checked before the owner opened `기존 프로젝트 불러오기`; `Project editor loaded 995A1AAF… clips=1 total=1.0s` at 09:58:57.
+
+### 16.3 Results
+
+| Step | Owner observation | Committed clip / file | Output facts | Decoded edges (all 90 frames) | Metadata |
+| --- | --- | --- | --- | --- | --- |
+| A1 (snap-52-AF-A1) | no sheet, no alert; timeline 1.0 s, 3.0 s | +1 row `77BA7C31-AB17-465C-8E6B-E87425444EF8` order 1, +1 file 75,986 B, SHA-256 `81bf19d2…88fef0` = A1 source | avc1 High 1080×1440, identity, 20/600, 1800/600, Rec.709, no audio | stripes 16 / 16 / 16 / 17 (= source), outermost non-stripe 0, near-black 0, corners 90/90 | `imported`, trimStart 0, trimDuration = sourceDuration = 1800/600, framing X / Y / scale NULL |
+| A2 (snap-53-AF-A2) | a preparation sheet appeared and dismissed itself; no alert; timeline 1.0 s, 3.0 s, 3.0 s | +1 row `B7FDADAB-06B9-43ED-B6F4-AE402687D6E7` order 2, +1 file 89,691 B, SHA-256 `3f50cf85413bccde5f024c36742015634877e014988c88778bb7ba2dab054978` | avc1 High 1080×1440 (scale 0.75, no upscale), identity, 90 samples all 20/600 from 0, ends 1800/600, Rec.709, no audio | stripes 12 / 12 / 12 / 12 (16 × 0.75), outermost non-stripe 0, near-black 0, corners 90/90 | `imported`, trimStart 0, trimDuration = sourceDuration = 1800/600, framing X / Y / scale NULL |
+
+Evidence sources: the "Owner observation" column is the owner's report as given; every other column comes from inspection of the snapshot's file copies (`tools/probe`, `tools/edgecheck`, `tools/frametiming`, SHA-256) and store copy (SQLite on a scratch copy); console lines are quoted from `logs/af-console.log`.
+
+Edge widths: the fixture design draws 16 px stripes, but the decoded source baseline is 16 px on the top, left and right edges and 17 px on the bottom edge (one boundary pixel decodes nearer green); A1 reproduces that baseline exactly, and A2's decoded output is 12 px on all four edges — the nominal 16 × 0.75, with the bottom going from 17 decoded source pixels to 12 output pixels.
+
+Source file versus delivered representation: A1's committed file is byte-identical to the source file, so PhotosPicker delivered the original bytes for A1 on this AirDrop → Photos → PhotosPicker route; this is not a claim that Photos always preserves original bytes.
+
+For A2 the delivered representation is not directly observable, because the normalizer reads a temporary copy that is cleaned up and its output is a re-encode by design; the 1080×1440 output and A1's byte identity on the same route are consistent with original delivery, which is recorded as an inference.
+
+The console does not log successful imports; the only A2-window lines are the system AVC / HEVC encoder registration at 10:02:52, indirect evidence that an encode ran.
+
+The Editor thumbnails (Aspect Fill cells) were not used as evidence of preserved or missing source area.
+
+### 16.4 Persistence, Photos sources and cleanup
+
+- AF-3: the owner went Back to Projects and reopened P4; the console shows `Projects entry saved project: 995A1AAF…` (10:06:23) and `Project editor loaded 995A1AAF… clips=3 total=7.0s` with active clips `7CC09E8E`, `77BA7C31`, `B7FDADAB` (10:06:26); the owner saw M01, A1, A2 (1.0 s, 3.0 s, 3.0 s).
+- The owner swipe-closed Mellow at about 10:06 KST; the console recorded `App terminated due to signal 9` at 10:06:33.
+- Photos: the owner saw A1 and A2 unchanged (labels, coloured borders, raster text, 3-second durations); this is a visual observation, not a byte-level verification of the Photos assets.
+- snap-54-AF-final (01:08:13Z, Mellow not running): store, media SHA-256 and tmp identical to snap-53; P4 3 / 3 active, DP 16 / 16, B8A7FB31 2 / 2, no clip with non-NULL framing; 21 media files for 21 active rows; ProjectWorkspace (last used 10:02) and CaptureStaging empty; `ProjectMediaTransfer` and `TemporaryItems` in tmp touched at 09:59 and 10:02 and empty.
+- DP's 16 and B8A7FB31's 2 rows and their 18 media full SHA-256 are identical from snap-51 to snap-54; M01 `7CC09E8E` is unchanged; the Mac-side fixtures still match `AF-manifest.sha256`.
+
+### 16.5 Verdict and open gaps
+
+Verdict: AF PASS for framing-area preservation — for the fast path (A1) and the normalization path (A2) the working file holds the full 3:4 presentation frame (all four edge stripes at the expected width and all corners present in every frame, no padding or black border), the aspect ratio and orientation are kept, no Project crop is baked in, and `framing` is NULL with trim equal to the full source.
+
+Scope: synthetic H.264 SDR 30 fps fixtures through AirDrop → Photos → PhotosPicker on LunaTestphone, Editor Add only, installed Debug `3ce5d45` (same app bundle container as the rest of the batch; HEAD `96e4202` differs from it only under `docs/`); not HDR, not a real-camera or Photos-edited source (A3 deferred), not Select Clips or Replace.
+
+Open, not closed by AF:
+- Exact preparation-sheet copy: the owner could not transcribe the title or subtitle (an uncertain recollection, "영상이 준비되고 있어요", is not recorded as copy) and no progress text was captured; the sheet-copy and progress gate stays open.
+- Unexplained launch: Mellow was running as pid 7823 before the AF launch, and its origin and launch options are unknown (observation gap, as with pids 7510, 7517, 7556, 7612 and 7718).
+- Portrait Aspect Mismatch baseline measurement (elapsed, memory, peak storage, thermal) remains a separate open item.
+- AF is a bounded synthetic H.264 SDR Editor Add check and closes no other Phase 6 gate (mid-write kill, import during delete / replacement, runtime disk full, peak storage, baseline measurement, accessibility, Select Clips mixed exclusion, ADR-050 Integration Gate items remain open).
+- Phase 7 Fill + Crop and drag framing are not implemented; AF shows only that the source area they need is preserved.
+
+Phase 6 remains In Progress and Needs Device Test.
