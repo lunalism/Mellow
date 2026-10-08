@@ -795,3 +795,91 @@ Open, not closed by SM:
 - SM closes no other Phase 6 gate (mid-write kill, import during delete / replacement, runtime disk full, peak storage, baseline measurement, ADR-050 Integration Gate items remain open).
 
 Phase 6 remains In Progress and Needs Device Test.
+
+## 20. MW — Mid-write Kill (R2a / R2b) and Simulated Mid-write Failure (MWF), 2026-10-08
+
+Purpose: device evidence for the ROADMAP Physical Device Test interruption cases "부분 출력 후" and "Replace의 기존 Clip 보존" under a kill during an active write (R2), and recovery / Retry after an injected out-of-space-labelled write failure (evidence for a proposed, NOT yet approved R4 revision).
+
+The owner authorized the in-place install, R2a, R2b (removing only the media of Pm clip `69F8280F-871C-4C32-8C8C-6194E5CD12E6`), and MWF on the disposable Project Pm `9EF36AA2-84CB-427C-9B1F-AF5B57BA811E`; P4, DP, B8A7FB31 and Pm's A1 clip were to be preserved.
+
+This entry does not satisfy the real Runtime Disk Full requirement: the ENOSPC code below is simulated (no OS storage pressure, no real write error), and R3 / R4 requirement revisions remain unapproved.
+
+### 20.1 Control, build and install
+
+- Control: Debug-only `-uiTestNormalizerMidWrite=hold:<frames>:<ms>` / `fail:<frames>` in `UITestScriptedNormalizer` (commit `95836a985bf67a62750257a406675ab42b252a33`, `test: add debug mid-write normalizer control`, not pushed; Codex review: no findings). It acts once per launch after the real writer has accepted `<frames>` video frames; `fail` relabels only its own injected append failure as `NSPOSIXErrorDomain` / `ENOSPC` and logs it as simulated.
+- Build: Debug `iphoneos` from that commit (clean tree), `logs/mw-device-build.log`; `Mellow` SHA-256 `40886d8036823deb84da78492ed63f8065b84c9b1cdb051948a69ae166437da3`, `Mellow.debug.dylib` SHA-256 `7c43719215e71e3781c163d237244466d8972a16a1387ecc935d5c26588e40d4` (`logs/mw-build-identity.txt`).
+- Install: `devicectl device install app` in place, without `--remove-existing-content` (`logs/mw-install-command.txt`); new bundle container `AFAC168E-…`; it ended the running SM process pid 8158.
+- snap-63-pre-MW-install (04:00:03Z) = snap-62; snap-64-post-MW-install (04:01:36Z): store, listing and all 28 media SHA-256 identical to snap-63 (Pm 2, P4 8, DP 16, B8A7FB31 2).
+- Source for every run: K1 (`IMG_0163 2`, 4K HEVC HLG / Dolby Vision, 2260/600; §13).
+
+### 20.2 Evidence sources
+
+- Accepted video frames and the output size at the trigger come from the control's console line (`logs/r2a-console.log`, `r2b-console.log`, `mwf-console.log`, `mwfadd-console.log`); they show what the writer accepted, not what was flushed to disk.
+- On-disk observations come from snapshots and from read-only `devicectl copy from` copies of the workspace files (`snapshots/snap-65…/workspace/`, `snap-68…/workspace/`).
+- "Owner" lines are the owner's reports as given; the alert wording is the owner's transcription, not screenshot-verified.
+
+### 20.3 R2a — Editor Add, kill during an active write
+
+- Launch 13:02:39 KST, pid 8273, only `-uiTestNormalizerMidWrite=hold:30:60000` (console `controls active: normalizer=true capacity=false midWrite=hold:30:60000`); recovery referenced 28, failures 0; target `saved project: 9EF36AA2…` (13:04:15); `Project editor loaded … clips=2 total=4.0s` (13:06:00).
+- Trigger (console, 13:06:33.890): `mode=hold videoFramesAccepted=30 outputLogical=1911481 outputAllocated=1912832 holdMs=60000`; an automatic watcher sent SIGKILL to pid 8273 at 13:06:36 (`logs/r2a-kill.txt`); no `hold released` line, so the kill landed during the hold; console `App terminated due to signal 9`.
+- Owner: the preparation sheet appeared, the bar was roughly 30 % full (30 of 113 targets accepted), and Mellow closed by itself.
+- On disk before relaunch (snap-65, 04:06:47Z, Mellow not running): store and 28 media files unchanged; workspace `0B94ACB3…` held the K1 transfer copy (12,006,666 B, SHA-256 `b52519c8…294c` = the preserved K1 source) and `attempt-A79EE485…/709A6C5B….mov` of 1,930,394 B (SHA-256 `8c2fed35…ee15`), which AVFoundation reports as `Cannot Open` (-11829) — recorded as an observation, not as the pass criterion.
+- Normal relaunch (13:08:24, pid 8278, no options): `Recovery workspace candidates=1` → `Recovery workspace removed op=0B94ACB3`; referenced 28, removed 0, failures 0.
+- snap-66 (04:08:33Z): store, listing (apart from the workspace timestamp) and all 28 media SHA-256 identical to snap-64; workspace and staging empty; no clip row added.
+- Owner after relaunch: Pm still showed exactly 2 clips (1.0 s, 3.0 s); no preparation sheet; no resumed import.
+
+### 20.4 R2b — Replace of an unavailable clip, kill during an active write
+
+- Setup launch 13:17:04, pid 8281, with `-uiTestRemoveActiveClipMedia=69F8280F-… -uiTestRemoveActiveClipMediaProject=9EF36AA2-…` and `-uiTestNormalizerMidWrite=hold:30:60000`; console `UI-test unavailable fixture applied: clip=69F8280F media removed, metadata kept active`; recovery referenced 27, failures 0.
+- The removed bytes are preserved off-device (snap-62 and snap-66 copies, SHA-256 `9e68d6e6…ba30`, write-protected); snap-67 versus snap-66: store unchanged, exactly that one media file absent.
+- Owner: slot 1 showed the unavailable-clip message and slot 2 was normal; the owner used `클립 교체` on slot 1 and chose K1 only; the sheet appeared at roughly 30 %, then Mellow closed by itself.
+- Trigger (13:27:05.093): `mode=hold videoFramesAccepted=30 outputLogical=1911481 outputAllocated=1912832`; SIGKILL to pid 8281 at 13:27:07 (`logs/r2b-kill.txt`); no `hold released` line.
+- Before relaunch (snap-68, 04:27:25Z): store and 27 media identical to snap-67 (slot 1 still the active unavailable `69F8280F`); workspace `2BBA8A45…` held the K1 transfer copy (`b52519c8…294c`) and `attempt-F119BA3A…/F0AE0F59….mov` of 1,930,394 B (SHA-256 `2696dbcb…0e93`).
+- Normal relaunch (13:29:52, pid 8305): `Recovery workspace removed op=2BBA8A45`; referenced 27, failures 0; snap-69: store and 27 media identical to snap-67, workspace empty.
+- Owner after relaunch: slot 1 still unavailable (not replaced by K1), slot 2 the normal 3.0 s clip, no sheet, no resumed import.
+
+### 20.5 MWF-R — UNPLANNED: simulated mid-write failure on Replace, then Retry
+
+The planned step was Editor Add; the owner reported afterwards that `클립 교체` was used on the unavailable slot 1 by mistake, so this run is recorded separately and is not the MWF-Add result.
+
+- Launch 13:32:43, pid 8308, only `-uiTestNormalizerMidWrite=fail:30`; target `9EF36AA2…` (13:36:06); editor `clips=2 total=4.0s` (13:36:33).
+- Console: 13:36:36.998 `mode=fail videoFramesAccepted=30 outputLogical=1930394 outputAllocated=1933312 — injecting a SIMULATED out-of-space failure (not an OS write failure)`; 13:36:37.003 `reported as NSPOSIXErrorDomain ENOSPC (simulated, not an OS write failure)`; `Import attempt normalization failed project=9EF36AA2: domain=Mellow.WorkingMediaNormalizationError, code=11` (the bridged Swift error; the ENOSPC domain / code is its payload).
+- At the alert (snap-70, 04:36:48Z): store and 27 media identical to snap-69 (slot 1 unchanged); workspace held only the K1 transfer copy; no attempt directory or output file. Alert wording was not transcribed for this run.
+- After the owner's Retry (snap-71, 04:43:32Z): exactly one replacement — `69F8280F` soft-deleted at 2026-10-08T04:42:02Z (kept for session Undo; its media was already absent) and new active `A3435A98-AB3B-4080-AB0A-8DD61E8C2107` at order 0, src = trim = 2260/600, framing NULL, file SHA-256 `49e5e66a…65eb2` (avc1 1080×1920 SDR Rec.709, 113 samples all 20/600, AAC 48 kHz stereo); exactly one new file; A1 and all other media unchanged; workspace empty; the console logged nothing further (successful imports are not logged).
+
+### 20.6 Startup cleanup between MWF-R and MWF-Add
+
+- The first fresh launch attempt (13:51) failed with `The process identifier of the launched application could not be determined` (CoreDevice 10004; `logs/mwfadd-attempt1-launch-error.log`) after ending pid 8308; snap-72 (04:51:18Z) showed no state change from snap-71 and Mellow not running.
+- The retried launch (13:52:52, pid 8356, only `fail:30`) ran the normal startup cleanup: `Cleanup started project=9EF36AA2 pending=1`, `Cleanup file already absent clip=69F8280F`, `Cleanup metadata finalized clip=69F8280F`, `finalized=1 removed=0`; recovery referenced 28, failures 0.
+- snap-73 (04:53:02Z) versus snap-72: only the deleted `69F8280F` row is gone; media identical; Pm active `A3435A98` (order 0) and `354E32C3` (order 1).
+
+### 20.7 MWF-Add — simulated mid-write failure on Editor Add, then Retry (planned)
+
+- Target `9EF36AA2…` (13:56:41); editor `clips=2 total=6.8s`, active `A3435A98`, `354E32C3` (13:57:11); the owner used Editor `+` Add with K1 only.
+- Console 13:57:51.803 `mode=fail videoFramesAccepted=30 outputLogical=1930394 outputAllocated=1933312 — injecting a SIMULATED out-of-space failure`; 13:57:51.807 `reported as NSPOSIXErrorDomain ENOSPC (simulated, not an OS write failure)`; `Import attempt normalization failed project=9EF36AA2`.
+- Owner transcription of the alert: `영상을 준비하지 못했어요` / `프로젝트에 변경사항이 저장되지 않았어요. 다시 시도해주세요.` / `다시시도` (owner's spacing; code string `다시 시도`) / `취소`.
+- At the alert, before Retry (snap-74, 04:58:32Z): store and 28 media identical to snap-73; workspace `0DF1B7AB…` held only the K1 transfer copy; no attempt directory and no output file.
+- Owner after Retry: "I did not see the preparation sheet"; the operation completed without another alert, and the Editor showed 3 clips. This does not establish that the sheet was never presented.
+- After Retry (snap-75, 05:03:20Z): exactly one new active row `C6C6A5AA-9588-4617-9902-1DED2B68ED52` at order 2, src = trim = 2260/600, framing NULL, file SHA-256 `aec13f2e…1cfee` (avc1 1080×1920 SDR Rec.709, 113 samples all 20/600, AAC 48 kHz stereo); Pm active order K1 `A3435A98`, A1 `354E32C3`, K1 `C6C6A5AA`; 29 active rows, 0 deleted, 29 files matching one to one; workspace and staging empty.
+
+### 20.8 Preservation
+
+- P4's 8, DP's 16 and B8A7FB31's 2 rows and their 26 media SHA-256 are identical from snap-63 through snap-75.
+- Pm's A1 clip `354E32C3` (`81bf19d2…88fef0`) is unchanged throughout.
+- The only Pm media removed was `69F8280F`'s file (authorized, R2b), and its row was later finalized by normal startup cleanup after the unplanned MWF-R replacement.
+- Mellow was left running as pid 8356 (Debug `95836a9`).
+
+### 20.9 Verdict and open items
+
+- R2a PASS and R2b PASS: with a write proven in progress (30 accepted video frames, a non-empty partial output inside the attempt directory before relaunch), a SIGKILL left the Project unchanged, the relaunch removed the abandoned workspace and partial output, nothing resumed, and the Replace target slot was preserved.
+- MWF-Add PASS for the simulated case: after an injected, out-of-space-labelled failure following 30 accepted frames, the attempt rolled back with no row, no media and no partial output, the source copy was kept for Retry, and Retry in the same launch added exactly one clip with no duplicate.
+- MWF-R is recorded as an unplanned Replace variant with the same rollback and single-replacement result; it is not counted as the planned test.
+
+Open:
+- Real Runtime Disk Full, real storage pressure and freeing space before retry remain unverified; the R4 requirement is not satisfied and its revision is unapproved.
+- On the MWF-Add Retry the owner did not see the preparation sheet; whether it was presented (for example too briefly to notice) is not established by this run and is investigated separately.
+- The logged sizes reflect writer state at the trigger, not flushed frames; the partial file's readability is incidental.
+- One unexplained launch failure (CoreDevice 10004) before the successful retry; no state change resulted.
+- R3, R5 / R6 / R10 measurement, accessibility and the other Phase 6 gates remain open.
+
+Phase 6 remains In Progress and Needs Device Test.
