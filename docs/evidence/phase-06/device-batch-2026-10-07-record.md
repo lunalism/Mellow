@@ -592,3 +592,83 @@ Open, not closed by AF:
 - Phase 7 Fill + Crop and drag framing are not implemented; AF shows only that the source area they need is preserved.
 
 Phase 6 remains In Progress and Needs Device Test.
+
+## 17. PS — Preparation Sheet Copy and `2/5` Position (Editor Add of five normalization items into P4), 2026-10-08
+
+Purpose: the open observation gap for the Preparation Sheet's exact rendered copy and its multi-item `2/5` position (ROADMAP Phase 6 Physical Device Test; ADR-042 Revision 4 §1: `영상을 준비하고 있어요` / `잠시만 기다려주세요.`, visible progress, `2/5` when several items need preparation, `취소`).
+
+The owner authorized one successful Editor Add of H1, H2, H3, M05 and M08 into P4 `995A1AAF-200E-42C8-8AE2-C6155D54F70A`, preserving its three clips, DP and B8A7FB31, with only `-uiTestNormalizerDelay=15000`.
+
+### 17.1 Expected behaviour from the implementation (`96e4202` code = installed `3ce5d45`)
+
+- Copy constants: `ImportPreparationCopy.title` `영상을 준비하고 있어요`, `.message` `잠시만 기다려주세요.`, `.cancelAction` `취소`.
+- `ImportPreparationProgress.positionLabel` is `N/M` only when M > 1, where M counts normalization-required items only (ready items do not count) and N is the 1-based ordinal of the item being normalized.
+- The bar is a 260 pt track whose fill is `aggregate = (completed items + current item's real normalizer fraction) / M`; it shows no numeric text (the percentage exists only as the accessibility value, outside this check).
+- `ImportAttemptCoordinator` emits `normalizationStarted` for an item before calling the normalizer, and the Debug `UITestScriptedNormalizer` sleeps for `-uiTestNormalizerDelay` inside that call before running the real normalizer, so each item's hold shows `N/M` with the bar at `(N − 1) / M`.
+
+Debug pacing limitation: the 15 s hold before each item is a Debug control; during a hold the bar stands still at its true value, so this run does not show production timing or production bar motion; the copy, layout and progress model are the production view's.
+
+### 17.2 Selection, pre-state and launch
+
+- Selection: H1, H2, H3 (camera HDR, D1-2 sources), M05 `60FPS 3.0s` and M08 `4K SDR 3.0s` — five normalization-required items (HDR, frame rate, resolution), all previously normalized on this device; no ready item was included.
+- snap-55-pre-PS (01:17:23Z): store, media SHA-256 and tmp identical to snap-54; workspace empty.
+- Mellow was already running as pid 8086 (not running at snap-54 01:08:13Z), a launch this batch did not perform (observation gap; origin and options unknown); it was ended by `--terminate-existing`.
+- Launch: 2026-10-08 10:18:48 KST, pid 8120, `--terminate-existing --console` with `OS_ACTIVITY_DT_MODE` and the single app argument `-uiTestNormalizerDelay=15000` (`logs/ps-launch-command.txt`, `logs/ps-console.log`); console `UI-test device import controls active: normalizer=true capacity=false`; recovery preserved DP 16, P4 3, B8A7FB31 2, removed 0, failures 0.
+- Target: `Projects entry saved project: 995A1AAF-200E-42C8-8AE2-C6155D54F70A` at 10:22:52, checked before the owner opened `기존 프로젝트 불러오기`; `Project editor loaded 995A1AAF… clips=3 total=7.0s` at 10:27:36.
+
+### 17.3 Captured sheet (owner screenshots)
+
+The owner took two screenshots during the run and AirDropped them to the Mac; copies are preserved write-protected in the durable root at `screenshots/PS/`.
+
+Evidence sources: the rendered text and bar fill come from the screenshot images (read and pixel-measured on the Mac); "Owner" lines are the owner's report as given; rows, files, output facts and cleanup come from snapshot inspection; console lines are quoted from `logs/ps-console.log`.
+
+| File | Captured (EXIF) | SHA-256 | Rendered content |
+| --- | --- | --- | --- |
+| `IMG_0166.PNG` (1170×2532) | 2026-10-08 10:28:26 | `b2e2101dc30cbd104ce3e9a29d27b3787068d67bf117beb25ae701a6ebf20d2d` | title `영상을 준비하고 있어요`, subtitle `잠시만 기다려주세요.`, position `1/5`, button `취소`; bar fill 0 of 780 px (0.000) |
+| `IMG_0167.PNG` (1170×2532) | 2026-10-08 10:28:45 | `b5abbb5a5d8a994ef72de882b592b34f04dfb41e69d06bca589b2a54448789f1` | same title, subtitle and button; position `2/5`; bar fill 156 of 780 px (0.200) |
+
+- The text in both images matches the code constants character for character, including the subtitle's final period; the owner's own reading of the screenshots reports the same title, subtitle and button and no numeric percentage.
+- The bar was measured on the image pixels with `screenshots/PS/barfill` (source, invocation, method and expected output in `screenshots/PS/README.md`; track 780 px = 260 pt × 3): 0.000 at `1/5` and 0.200 at `2/5`, equal to `(1 completed + 0) / 5` during item 2's hold — the model's real value, not a fabricated one; the measurement covers only these two captured frames, not bar motion between them.
+- Both screenshots show the Editor navigation bar with the title `Project` and Undo / Redo, no Back button, and the status bar's `◀ 사진` back-link; the back-link is recorded as seen, without inferring its cause.
+- `3/5`, `4/5`, `5/5` and the dismissal were not captured or reported and are not claimed.
+
+### 17.4 Result
+
+- Owner: no alert; after preparation the timeline showed exactly 8 clips.
+- snap-56-PS (01:32:13Z, pid 8120 running) versus snap-55: exactly +5 rows in P4 at orders 3–7 and +5 files; M01, A1 and A2 unchanged at orders 0–2.
+
+| Order | Clip | src = trim | Source (evidence) | File SHA-256 | Output facts |
+| --- | --- | --- | --- | --- | --- |
+| 3 | `642C8513-119E-4107-A7AF-4446BD511FEF` | 2341/600 | H1 — decoded first frame pixel-identical to DP's H1 output `D47D2BE1` | `99fca42375e2fedec1f9f2cc75d093400305dbc35fc901bdf980118eb9e25e83` | avc1 1080×1920, Rec.709, 117 samples at 20/600 + a final 1/600 sample ending at 2341/600, AAC 48 kHz stereo |
+| 4 | `35FC6A16-D8BA-4722-B89A-6985DC3ADC8F` | 2341/600 | H2 — first frame identical to DP's H2 output `BFB501AA` | `5cdac8cf9ba83fb770cf33ed2846bacf4dcbe8d37fb406e7bda5750894006363` | same profile and sample pattern as H1, AAC 48 kHz stereo |
+| 5 | `5BA780F5-2FB1-4F64-BC51-DC4C585FD9F8` | 2262/600 | H3 — the only selected source with 2262/600 | `372007d1e7476f0c7d46bc0fd079f16012ff9fe3c3929fadf13672312fa3a801` | avc1 1080×1920, Rec.709, 114 samples all 20/600, track range 2262/600, AAC 48 kHz stereo |
+| 6 | `D574295F-175F-4B4F-B3F1-B275BA613654` | 1800/600 | M05 — first frame identical to DP's M05 output `AB163D20` | `ae8870abf6b5bcdba794fafce1908be8426d2230e4dff9adba55b050cbde7f56` | avc1 1080×1920, Rec.709, 90 samples all 20/600, no audio |
+| 7 | `F212B6FC-3CE3-4757-8FCE-C13D8C40BC5A` | 1800/600 | M08 — first frame identical to DP's M08 output `D74FCDC9` | `732bcfc1525891fce985e5e402851b61123d4cd7333a459d88264ead561cd3c2` | avc1 1080×1920, Rec.709, 90 samples all 20/600, no audio |
+
+- The committed order equals the selection order (H1, H2, H3, M05, M08).
+- All five rows are `imported`, trimStart 0, trimDuration = sourceDuration, framing X / Y / scale NULL, not deleted.
+- Unevaluated observation: the H1 / H2 outputs end with a 1/600 final sample after 117 samples at 20/600, and H3's samples extend to 2280/600 within a 2262/600 track range; these match the same sources' earlier DP outputs and are recorded as observed only — this run does not evaluate or resolve cadence compliance (ADR-048 Revisions 1 / 2) for these sources.
+- Console: no Mellow error lines in the run; the system AVC / HEVC encoder registered at 10:28:40 (about 15 s after the run began, consistent with item 1's hold); the console does not log sheet text or successful imports.
+
+### 17.5 Preservation and cleanup
+
+- DP's 16 and B8A7FB31's 2 rows and their 18 media SHA-256, and P4's three earlier files, are identical to snap-55 (21 prior hashes); 26 media files for 26 active rows (DP 16, P4 8, B8A7FB31 2).
+- ProjectWorkspace (last used 10:29) and CaptureStaging empty; `ProjectMediaTransfer` and `TemporaryItems` in tmp touched at 10:28 and empty; no other tmp change.
+- Mellow was left running as pid 8120 at snap-56.
+
+### 17.6 Verdict and open gaps
+
+Verdict: PS PASS, bounded to the captured Preparation Sheet copy and the `1/5` → `2/5` positions on Editor Add with the Debug delay enabled — the two screenshots show exactly `영상을 준비하고 있어요` / `잠시만 기다려주세요.` / `1/5`, then `2/5` / `취소`, and the measured fill at `2/5` equals the model's real 0.200; the owner reported no alert and 8 clips, and snapshot inspection shows the five items committed together in selection order with nothing else changed.
+
+Not verified by PS: production timing, smooth or continuous bar progress, `3/5`–`5/5`, automatic dismissal, failure-path atomicity, and H1 / H2 / H3 cadence compliance.
+
+Scope: one successful Editor Add of five normalization-required camera-HDR and synthetic sources, Debug build with `-uiTestNormalizerDelay=15000`, Dark appearance as captured, LunaTestphone.
+
+Open, not closed by PS:
+- Debug pacing: production timing and bar motion without the hold are not shown; `3/5`–`5/5` and automatic dismissal were not captured.
+- Unexplained launch: Mellow was running as pid 8086 before the PS launch (observation gap, as with pid 7823 and the earlier pids).
+- The sheet's accessibility (VoiceOver label / percentage value, Dynamic Type, contrast, Reduce Motion) belongs to the UI Accessibility Verification gate.
+- Select Clips and Replace sheets were not captured in this run; cancellation and failure paths were covered earlier (D1-3, F1–F3, R2e′) and were not repeated.
+- PS closes no other Phase 6 gate (mid-write kill, import during delete / replacement, runtime disk full, peak storage, baseline measurement, Select Clips mixed exclusion, ADR-050 Integration Gate items remain open).
+
+Phase 6 remains In Progress and Needs Device Test.
